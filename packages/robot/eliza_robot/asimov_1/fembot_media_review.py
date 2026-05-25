@@ -66,9 +66,35 @@ def build_fembot_media_review_proof(
     source = existing_proof.get("source") if isinstance(existing_proof, dict) else {}
     if not isinstance(source, dict):
         source = {}
+    source_fitted_part_media = (
+        existing_proof.get("source_fitted_part_media")
+        if isinstance(existing_proof, dict)
+        else []
+    )
+    if not isinstance(source_fitted_part_media, list):
+        source_fitted_part_media = []
+    source_fitted_part_images = [
+        _image_report(Path(str(item.get("path"))))
+        | {
+            "link": item.get("link"),
+            "shape_family": item.get("shape_family"),
+            "generated_step_path": item.get("generated_step_path"),
+            "surface_symmetric_hausdorff_m": item.get("surface_symmetric_hausdorff_m"),
+        }
+        for item in source_fitted_part_media
+        if isinstance(item, dict) and item.get("path")
+    ]
 
     missing_screenshots = [item["path"] for item in screenshots if not item["exists"]]
     blank_screenshots = [item["path"] for item in screenshots if item["exists"] and not item["nonblank"]]
+    missing_source_fitted_part_images = [
+        item["path"] for item in source_fitted_part_images if not item["exists"]
+    ]
+    blank_source_fitted_part_images = [
+        item["path"]
+        for item in source_fitted_part_images
+        if item["exists"] and not item["nonblank"]
+    ]
     frame_count = (existing_proof.get("video") or {}).get("frame_count") if isinstance(existing_proof, dict) else None
     joint_count = joint_motion.get("joint_count")
     ok = bool(
@@ -79,6 +105,8 @@ def build_fembot_media_review_proof(
         and frame_count > 0
         and isinstance(joint_count, int)
         and joint_count > 0
+        and not missing_source_fitted_part_images
+        and not blank_source_fitted_part_images
     )
     return {
         "schema": FEMBOT_MEDIA_REVIEW_SCHEMA,
@@ -97,6 +125,14 @@ def build_fembot_media_review_proof(
             "video_bytes": video["bytes"],
             "video_frame_count": frame_count,
             "joint_count": joint_count,
+            "source_fitted_part_screenshot_count": len(source_fitted_part_images),
+            "source_fitted_part_links": sorted(
+                str(item.get("link"))
+                for item in source_fitted_part_images
+                if item.get("link")
+            ),
+            "missing_source_fitted_part_screenshots": missing_source_fitted_part_images,
+            "blank_source_fitted_part_screenshots": blank_source_fitted_part_images,
             "accepted": False,
             "acceptance_blocker": (
                 "screenshots and constrained all-joint video exist, but production "
@@ -104,6 +140,7 @@ def build_fembot_media_review_proof(
             ),
         },
         "screenshots": screenshots,
+        "source_fitted_part_screenshots": source_fitted_part_images,
         "video": video,
         "joint_motion": joint_motion,
     }

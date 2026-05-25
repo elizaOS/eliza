@@ -307,7 +307,7 @@ export function disableLocalElizaWorkspace(
   // https://github.com/oven-sh/bun/issues/13770 and
   // https://github.com/oven-sh/bun/issues/13330.
   //
-  // The llama-cpp-capacitor patch creates android/src/main/eliza-dflash-jni.cpp
+  // The llama-cpp-capacitor patch creates android/src/main/eliza-mtp-jni.cpp
   // which trips this bug whenever the cache restore between CI runs gives Bun
   // a partly-extracted unpacked package. The patch is Android-only — the
   // server Docker image never compiles Android sources — so we can safely drop

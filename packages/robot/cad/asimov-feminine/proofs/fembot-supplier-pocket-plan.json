@@ -11,12 +11,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 8.963810074757994e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.7927620149515988e-07,
+        "proxy_bbox_containment_margin_m": -0.013250000050000007,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": null,
+        "candidate": false,
+        "minimum_sorted_extent_slack_m": 1.7927620149515988e-07,
+        "required": false,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_ankle_a.step",
-      "generated_step_sha256": "8b26d19f736cf46476595958daa8947213d89bd9e4d564bbaa68a8a3c89f3156",
+      "generated_step_sha256": "ec50c314b607fab61dfb7a33126d8f44020807930f57a955985d69e278072f65",
       "link": "LEFT_ANKLE_A",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_ANKLE_A:1600-0515-0006:bbox-center",
+        "LEFT_ANKLE_A:1600-0515-0006:short-axis-x",
+        "LEFT_ANKLE_A:1600-0515-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -38,7 +66,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_ankle_a/1600-0515-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "f85d47966eb51dae7ef251b3ddbd60021fbd667ab10dc1a808fa94ad7c0693ba",
+      "placement_proxy_step_sha256": "5b0481133b7684fb31c2b3592caed0b97afd0fcb531b410932240b7c0e950256",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -54,6 +82,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.7927620149515988e-07,
+        "required_sorted_extent_m": [
+          0.011,
+          0.038500000100000015,
+          0.041999999999999996
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -181,8 +214,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_34X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_35X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "link is not in the current structural remediation set, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": null,
+        "minimum_safety_factor": null,
+        "source": "no_structural_remediation_required_by_current_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "1600-0515-0006"
+      "supplier_code": "1600-0515-0006",
+      "supplier_family": "bearing_or_ring"
     },
     {
       "accepted": false,
@@ -193,12 +236,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 8.963810074757994e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.7927620149515988e-07,
+        "proxy_bbox_containment_margin_m": -0.013250000050000007,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": null,
+        "candidate": false,
+        "minimum_sorted_extent_slack_m": 1.7927620149515988e-07,
+        "required": false,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_ankle_a.step",
-      "generated_step_sha256": "8b26d19f736cf46476595958daa8947213d89bd9e4d564bbaa68a8a3c89f3156",
+      "generated_step_sha256": "ec50c314b607fab61dfb7a33126d8f44020807930f57a955985d69e278072f65",
       "link": "LEFT_ANKLE_A",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_ANKLE_A:1602-0032-0006:bbox-center",
+        "LEFT_ANKLE_A:1602-0032-0006:short-axis-x",
+        "LEFT_ANKLE_A:1602-0032-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -220,7 +291,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_ankle_a/1602-0032-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "d2147243e17433915e8da08554651a141669ba0d6f93f0db4a33900408c2c812",
+      "placement_proxy_step_sha256": "cce305733d54a7feaba9588453de8b96b10ca38c3369425db3ff59d0085ecf31",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -236,6 +307,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.7927620149515988e-07,
+        "required_sorted_extent_m": [
+          0.011,
+          0.038500000100000015,
+          0.041999999999999996
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -363,8 +439,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_34X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_35X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "link is not in the current structural remediation set, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": null,
+        "minimum_safety_factor": null,
+        "source": "no_structural_remediation_required_by_current_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "1602-0032-0006"
+      "supplier_code": "1602-0032-0006",
+      "supplier_family": "bearing_or_ring"
     },
     {
       "accepted": false,
@@ -375,12 +461,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.3536293752905437e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "proxy_bbox_containment_margin_m": -0.002750000100000002,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_ankle_a.step",
-      "generated_step_sha256": "8b26d19f736cf46476595958daa8947213d89bd9e4d564bbaa68a8a3c89f3156",
+      "generated_step_sha256": "ec50c314b607fab61dfb7a33126d8f44020807930f57a955985d69e278072f65",
       "link": "LEFT_ANKLE_A",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_ANKLE_A:2806-0005-0004:bbox-center",
+        "LEFT_ANKLE_A:2806-0005-0004:short-axis-x",
+        "LEFT_ANKLE_A:2806-0005-0004:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -402,7 +516,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_ankle_a/2806-0005-0004-placement-candidate.step",
-      "placement_proxy_step_sha256": "fad4bc95718637ac42a7dd23533a274fdde33e1fd492114b33e3acfd4da6313d",
+      "placement_proxy_step_sha256": "bdd8da2db35af7b6f08925dde3d20dbe41d99d2d93ad18259fc477829f977bfc",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -418,6 +532,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -505,8 +624,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "link is not in the current structural remediation set, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": null,
+        "minimum_safety_factor": null,
+        "source": "no_structural_remediation_required_by_current_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "2806-0005-0004"
+      "supplier_code": "2806-0005-0004",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -517,12 +646,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.3536293752905437e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "proxy_bbox_containment_margin_m": -0.002750000100000002,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_ankle_a.step",
-      "generated_step_sha256": "8b26d19f736cf46476595958daa8947213d89bd9e4d564bbaa68a8a3c89f3156",
+      "generated_step_sha256": "ec50c314b607fab61dfb7a33126d8f44020807930f57a955985d69e278072f65",
       "link": "LEFT_ANKLE_A",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_ANKLE_A:2920-0001-0006:bbox-center",
+        "LEFT_ANKLE_A:2920-0001-0006:short-axis-x",
+        "LEFT_ANKLE_A:2920-0001-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -544,7 +701,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_ankle_a/2920-0001-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "51a9e7c5cf26525a8031af1621dd3a1ebb3d67f7e39d73095540ecd6c945f3af",
+      "placement_proxy_step_sha256": "a9f3fdb9dd30ede2b73a1a6d377e19b8efb1fb8390c36c2ebd8c9701552564c3",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -560,6 +717,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -647,8 +809,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "link is not in the current structural remediation set, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": null,
+        "minimum_safety_factor": null,
+        "source": "no_structural_remediation_required_by_current_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "2920-0001-0006"
+      "supplier_code": "2920-0001-0006",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -659,12 +831,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.3536293752905437e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "proxy_bbox_containment_margin_m": -0.002750000100000002,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_ankle_a.step",
-      "generated_step_sha256": "8b26d19f736cf46476595958daa8947213d89bd9e4d564bbaa68a8a3c89f3156",
+      "generated_step_sha256": "ec50c314b607fab61dfb7a33126d8f44020807930f57a955985d69e278072f65",
       "link": "LEFT_ANKLE_A",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_ANKLE_A:91390A117:bbox-center",
+        "LEFT_ANKLE_A:91390A117:short-axis-x",
+        "LEFT_ANKLE_A:91390A117:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -686,7 +886,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_ankle_a/91390A117-placement-candidate.step",
-      "placement_proxy_step_sha256": "b64cabdd105e29feafb7a388adca6dac4241a27527a0415b11602f172c83c320",
+      "placement_proxy_step_sha256": "6e0e15813dc1e7cb791e5dd057c1e1e799a166807d36ac8b16b3e0676d27b339",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -702,6 +902,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -789,8 +994,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "link is not in the current structural remediation set, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": null,
+        "minimum_safety_factor": null,
+        "source": "no_structural_remediation_required_by_current_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "91390A117"
+      "supplier_code": "91390A117",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -801,12 +1016,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 9.963262454816546e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.9926524909633092e-07,
+        "proxy_bbox_containment_margin_m": -0.0002500000999999998,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.9926524909633092e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_hip_roll.step",
-      "generated_step_sha256": "69301aa6cb59f8aeac9963fec975318ffdf8e507aa3f179a140d0599bd78787c",
+      "generated_step_sha256": "674dfaeba86f427cc453913139b2a75e6fd3fa88ba188b99c30728e5ebce7e3e",
       "link": "LEFT_HIP_ROLL",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_HIP_ROLL:2806-0005-0004:bbox-center",
+        "LEFT_HIP_ROLL:2806-0005-0004:short-axis-y",
+        "LEFT_HIP_ROLL:2806-0005-0004:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -828,7 +1071,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_hip_roll/2806-0005-0004-placement-candidate.step",
-      "placement_proxy_step_sha256": "a27bf46e2ae0878177a7a5535cd06931d0153e0f97615918332b4ea3f0f5b0e3",
+      "placement_proxy_step_sha256": "927672f23f35124cb997544b523cefc8bc94ebdf058bcc2fec7b58eb32c61773",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -844,6 +1087,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.9926524909633092e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -931,8 +1179,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "link is not in the current structural remediation set, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": null,
+        "minimum_safety_factor": null,
+        "source": "no_structural_remediation_required_by_current_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "2806-0005-0004"
+      "supplier_code": "2806-0005-0004",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -943,12 +1201,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 9.963262454816546e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.9926524909633092e-07,
+        "proxy_bbox_containment_margin_m": -0.0002500000999999998,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.9926524909633092e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_hip_roll.step",
-      "generated_step_sha256": "69301aa6cb59f8aeac9963fec975318ffdf8e507aa3f179a140d0599bd78787c",
+      "generated_step_sha256": "674dfaeba86f427cc453913139b2a75e6fd3fa88ba188b99c30728e5ebce7e3e",
       "link": "LEFT_HIP_ROLL",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_HIP_ROLL:2920-0001-0006:bbox-center",
+        "LEFT_HIP_ROLL:2920-0001-0006:short-axis-y",
+        "LEFT_HIP_ROLL:2920-0001-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -970,7 +1256,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_hip_roll/2920-0001-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "a7486bc2ba87ea76368295b290cd1e046fd3d58a55b3c941931532e1c710d7e0",
+      "placement_proxy_step_sha256": "9506cbd86e2c37d776a6b1ad9bea70ca440682d13f48e26ba3b91de0d3c58218",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -986,6 +1272,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.9926524909633092e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -1073,8 +1364,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "link is not in the current structural remediation set, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": null,
+        "minimum_safety_factor": null,
+        "source": "no_structural_remediation_required_by_current_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "2920-0001-0006"
+      "supplier_code": "2920-0001-0006",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -1085,12 +1386,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 9.963262454816546e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.9926524909633092e-07,
+        "proxy_bbox_containment_margin_m": -0.0002500000999999998,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.9926524909633092e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_hip_roll.step",
-      "generated_step_sha256": "69301aa6cb59f8aeac9963fec975318ffdf8e507aa3f179a140d0599bd78787c",
+      "generated_step_sha256": "674dfaeba86f427cc453913139b2a75e6fd3fa88ba188b99c30728e5ebce7e3e",
       "link": "LEFT_HIP_ROLL",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_HIP_ROLL:91390A117:bbox-center",
+        "LEFT_HIP_ROLL:91390A117:short-axis-y",
+        "LEFT_HIP_ROLL:91390A117:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -1112,7 +1441,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_hip_roll/91390A117-placement-candidate.step",
-      "placement_proxy_step_sha256": "58ea58fd046653775dd0b3683a819d58093aefe8b5e6342234d77ded48003896",
+      "placement_proxy_step_sha256": "0bb7abdf03d543dfd3d2a15c08a0fda5069ba4f148b4a7831a7408d4acc90fbb",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -1128,6 +1457,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.9926524909633092e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -1215,8 +1549,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "link is not in the current structural remediation set, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": null,
+        "minimum_safety_factor": null,
+        "source": "no_structural_remediation_required_by_current_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "91390A117"
+      "supplier_code": "91390A117",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -1227,12 +1571,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 8.963810372436543e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.7927620744873085e-07,
+        "proxy_bbox_containment_margin_m": -0.01133270982437497,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": null,
+        "candidate": false,
+        "minimum_sorted_extent_slack_m": 1.7927620744873085e-07,
+        "required": false,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_hip_yaw.step",
-      "generated_step_sha256": "14dabedeec27da0cdd2aed2c56d529e5c47992c5afd313f4d176dbbc88fe7c82",
+      "generated_step_sha256": "f0e0138e8ac533fd37e5a6dfab5798e1f5802193fd1149162e9a0af4fd492724",
       "link": "LEFT_HIP_YAW",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_HIP_YAW:1600-0515-0006:bbox-center",
+        "LEFT_HIP_YAW:1600-0515-0006:short-axis-y",
+        "LEFT_HIP_YAW:1600-0515-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -1254,7 +1626,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_hip_yaw/1600-0515-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "3aa6c50fa850e44c10dbe435c0e6da3fdd22f9294a2a6cc5e818990cf29defed",
+      "placement_proxy_step_sha256": "981a4f33584d10103f4fe28018dda72390c1538ed1671167a1d89655ac372686",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -1270,6 +1642,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.7927620744873085e-07,
+        "required_sorted_extent_m": [
+          0.011,
+          0.038500000100000015,
+          0.041999999999999996
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -1397,8 +1774,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_34X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_35X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.03880140723804999,
+        "minimum_safety_factor": 1.0500000000000007,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "1600-0515-0006"
+      "supplier_code": "1600-0515-0006",
+      "supplier_family": "bearing_or_ring"
     },
     {
       "accepted": false,
@@ -1409,12 +1796,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 8.963810372436543e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.7927620744873085e-07,
+        "proxy_bbox_containment_margin_m": -0.01133270982437497,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": null,
+        "candidate": false,
+        "minimum_sorted_extent_slack_m": 1.7927620744873085e-07,
+        "required": false,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_hip_yaw.step",
-      "generated_step_sha256": "14dabedeec27da0cdd2aed2c56d529e5c47992c5afd313f4d176dbbc88fe7c82",
+      "generated_step_sha256": "f0e0138e8ac533fd37e5a6dfab5798e1f5802193fd1149162e9a0af4fd492724",
       "link": "LEFT_HIP_YAW",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_HIP_YAW:1602-0032-0006:bbox-center",
+        "LEFT_HIP_YAW:1602-0032-0006:short-axis-y",
+        "LEFT_HIP_YAW:1602-0032-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -1436,7 +1851,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_hip_yaw/1602-0032-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "c1d934dbe9a8a3f6ac4dca2ed1cbb4ae3e7f0157eeb7257a914015225a74564a",
+      "placement_proxy_step_sha256": "0ffb7cafdc9c382a3b0ed5d3fa659201e418a9b1ee25fb3f6307a6170fc48e32",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -1452,6 +1867,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.7927620744873085e-07,
+        "required_sorted_extent_m": [
+          0.011,
+          0.038500000100000015,
+          0.041999999999999996
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -1579,8 +1999,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_34X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_35X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.03880140723804999,
+        "minimum_safety_factor": 1.0500000000000007,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "1602-0032-0006"
+      "supplier_code": "1602-0032-0006",
+      "supplier_family": "bearing_or_ring"
     },
     {
       "accepted": false,
@@ -1591,12 +2021,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.35362937995695e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587599139e-07,
+        "proxy_bbox_containment_margin_m": -0.000832709874374964,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587599139e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_hip_yaw.step",
-      "generated_step_sha256": "14dabedeec27da0cdd2aed2c56d529e5c47992c5afd313f4d176dbbc88fe7c82",
+      "generated_step_sha256": "f0e0138e8ac533fd37e5a6dfab5798e1f5802193fd1149162e9a0af4fd492724",
       "link": "LEFT_HIP_YAW",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_HIP_YAW:2806-0005-0004:bbox-center",
+        "LEFT_HIP_YAW:2806-0005-0004:short-axis-y",
+        "LEFT_HIP_YAW:2806-0005-0004:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -1618,7 +2076,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_hip_yaw/2806-0005-0004-placement-candidate.step",
-      "placement_proxy_step_sha256": "1f70eeb2c465eec5b7215e4a045f70892b9b5b5a9fcc7d96512dcae34d25d720",
+      "placement_proxy_step_sha256": "abfbbf9966c8846aed92353123dc936f9f90f41740e9f7f50127ce2f486db4ac",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -1634,6 +2092,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.7072587599139e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -1721,8 +2184,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.03880140723804999,
+        "minimum_safety_factor": 1.0500000000000007,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "2806-0005-0004"
+      "supplier_code": "2806-0005-0004",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -1733,12 +2206,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.35362937995695e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587599139e-07,
+        "proxy_bbox_containment_margin_m": -0.000832709874374964,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587599139e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_hip_yaw.step",
-      "generated_step_sha256": "14dabedeec27da0cdd2aed2c56d529e5c47992c5afd313f4d176dbbc88fe7c82",
+      "generated_step_sha256": "f0e0138e8ac533fd37e5a6dfab5798e1f5802193fd1149162e9a0af4fd492724",
       "link": "LEFT_HIP_YAW",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_HIP_YAW:2920-0001-0006:bbox-center",
+        "LEFT_HIP_YAW:2920-0001-0006:short-axis-y",
+        "LEFT_HIP_YAW:2920-0001-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -1760,7 +2261,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_hip_yaw/2920-0001-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "0cfa40ee8de8070c8b7fb75afaff42a938592741b85e41f03c6e08b292519830",
+      "placement_proxy_step_sha256": "3011c00e5c8e417f7f6d2164775848fabce394867b49c39d7edd1f87e7af47bd",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -1776,6 +2277,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.7072587599139e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -1863,8 +2369,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.03880140723804999,
+        "minimum_safety_factor": 1.0500000000000007,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "2920-0001-0006"
+      "supplier_code": "2920-0001-0006",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -1875,12 +2391,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.35362937995695e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587599139e-07,
+        "proxy_bbox_containment_margin_m": -0.000832709874374964,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587599139e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_hip_yaw.step",
-      "generated_step_sha256": "14dabedeec27da0cdd2aed2c56d529e5c47992c5afd313f4d176dbbc88fe7c82",
+      "generated_step_sha256": "f0e0138e8ac533fd37e5a6dfab5798e1f5802193fd1149162e9a0af4fd492724",
       "link": "LEFT_HIP_YAW",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_HIP_YAW:91390A117:bbox-center",
+        "LEFT_HIP_YAW:91390A117:short-axis-y",
+        "LEFT_HIP_YAW:91390A117:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -1902,7 +2446,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_hip_yaw/91390A117-placement-candidate.step",
-      "placement_proxy_step_sha256": "f78a3725d47ccd903532614a3783e9d9f074e7e1e8bc416d44738f22881c09ae",
+      "placement_proxy_step_sha256": "38abff9059c96f14b5d7159b33e8753ed1dbdd232ed8ca4f7c7df2b3c624d149",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -1918,6 +2462,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.7072587599139e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -2005,8 +2554,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.03880140723804999,
+        "minimum_safety_factor": 1.0500000000000007,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "91390A117"
+      "supplier_code": "91390A117",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -2017,12 +2576,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 8.963809892612029e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.7927619785224058e-07,
+        "proxy_bbox_containment_margin_m": -0.013250000050000007,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": null,
+        "candidate": false,
+        "minimum_sorted_extent_slack_m": 1.7927619785224058e-07,
+        "required": false,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_knee.step",
-      "generated_step_sha256": "17a5a26497ecc662e55f24bc1573a5b9467f37b7b15cd4508c15605b956849e9",
+      "generated_step_sha256": "23e64f66f5cc9f7c10b492409ecd94c0a695ced15c3af99c4af3a32b2f8fe93b",
       "link": "LEFT_KNEE",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_KNEE:1600-0515-0006:bbox-center",
+        "LEFT_KNEE:1600-0515-0006:short-axis-x",
+        "LEFT_KNEE:1600-0515-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -2044,7 +2631,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_knee/1600-0515-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "296aa7a68c704262bb6385555b8d3d28b11c19dbc3e2c8718084b5005b7abd85",
+      "placement_proxy_step_sha256": "01989e037155df21decf075790dcc8f0e8fc772e1417d908490b55e4c721daba",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -2060,6 +2647,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.7927619785224058e-07,
+        "required_sorted_extent_m": [
+          0.011,
+          0.038500000100000015,
+          0.041999999999999996
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -2187,8 +2779,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_34X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_35X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.05237988749910271,
+        "minimum_safety_factor": 1.0500000000000007,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "1600-0515-0006"
+      "supplier_code": "1600-0515-0006",
+      "supplier_family": "bearing_or_ring"
     },
     {
       "accepted": false,
@@ -2199,12 +2801,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 8.963809892612029e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.7927619785224058e-07,
+        "proxy_bbox_containment_margin_m": -0.013250000050000007,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": null,
+        "candidate": false,
+        "minimum_sorted_extent_slack_m": 1.7927619785224058e-07,
+        "required": false,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_knee.step",
-      "generated_step_sha256": "17a5a26497ecc662e55f24bc1573a5b9467f37b7b15cd4508c15605b956849e9",
+      "generated_step_sha256": "23e64f66f5cc9f7c10b492409ecd94c0a695ced15c3af99c4af3a32b2f8fe93b",
       "link": "LEFT_KNEE",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_KNEE:1602-0032-0006:bbox-center",
+        "LEFT_KNEE:1602-0032-0006:short-axis-x",
+        "LEFT_KNEE:1602-0032-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -2226,7 +2856,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_knee/1602-0032-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "6c84152ff055a695ca3e943cd3e25ad90fc0ac0b9843fbfdbaafe3d324dfec2d",
+      "placement_proxy_step_sha256": "72298c25ed73788d1295654d0928988a2671198b5f3d564e9eaca4e0a10923bd",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -2242,6 +2872,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.7927619785224058e-07,
+        "required_sorted_extent_m": [
+          0.011,
+          0.038500000100000015,
+          0.041999999999999996
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -2369,8 +3004,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_34X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_35X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.05237988749910271,
+        "minimum_safety_factor": 1.0500000000000007,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "1602-0032-0006"
+      "supplier_code": "1602-0032-0006",
+      "supplier_family": "bearing_or_ring"
     },
     {
       "accepted": false,
@@ -2381,12 +3026,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.3536293771293506e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.707258754258701e-07,
+        "proxy_bbox_containment_margin_m": -0.002750000100000002,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.707258754258701e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_knee.step",
-      "generated_step_sha256": "17a5a26497ecc662e55f24bc1573a5b9467f37b7b15cd4508c15605b956849e9",
+      "generated_step_sha256": "23e64f66f5cc9f7c10b492409ecd94c0a695ced15c3af99c4af3a32b2f8fe93b",
       "link": "LEFT_KNEE",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_KNEE:2806-0005-0004:bbox-center",
+        "LEFT_KNEE:2806-0005-0004:short-axis-x",
+        "LEFT_KNEE:2806-0005-0004:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -2408,7 +3081,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_knee/2806-0005-0004-placement-candidate.step",
-      "placement_proxy_step_sha256": "2e5d06f8c9528a32ef507b93ec1dc75472bc7a3a1a45e0e4460c1840c935608b",
+      "placement_proxy_step_sha256": "45bbe74a7af2bdbdfb4951de3d13e46b12355d4bdb42430940298ef92c5ccbde",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -2424,6 +3097,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.707258754258701e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -2511,8 +3189,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.05237988749910271,
+        "minimum_safety_factor": 1.0500000000000007,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "2806-0005-0004"
+      "supplier_code": "2806-0005-0004",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -2523,12 +3211,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.3536293771293506e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.707258754258701e-07,
+        "proxy_bbox_containment_margin_m": -0.002750000100000002,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.707258754258701e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_knee.step",
-      "generated_step_sha256": "17a5a26497ecc662e55f24bc1573a5b9467f37b7b15cd4508c15605b956849e9",
+      "generated_step_sha256": "23e64f66f5cc9f7c10b492409ecd94c0a695ced15c3af99c4af3a32b2f8fe93b",
       "link": "LEFT_KNEE",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_KNEE:2920-0001-0006:bbox-center",
+        "LEFT_KNEE:2920-0001-0006:short-axis-x",
+        "LEFT_KNEE:2920-0001-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -2550,7 +3266,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_knee/2920-0001-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "fbcd255d60ef3dd4d3adad2c45871e48c23c41526ca92d636f873ca6b5c7be4d",
+      "placement_proxy_step_sha256": "7a11f86eac4d90085f30c151ecc680e3ce8ad51f68847066dc692a5d5a2ea5e5",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -2566,6 +3282,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.707258754258701e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -2653,8 +3374,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.05237988749910271,
+        "minimum_safety_factor": 1.0500000000000007,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "2920-0001-0006"
+      "supplier_code": "2920-0001-0006",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -2665,12 +3396,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.3536293771293506e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.707258754258701e-07,
+        "proxy_bbox_containment_margin_m": -0.002750000100000002,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.707258754258701e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_knee.step",
-      "generated_step_sha256": "17a5a26497ecc662e55f24bc1573a5b9467f37b7b15cd4508c15605b956849e9",
+      "generated_step_sha256": "23e64f66f5cc9f7c10b492409ecd94c0a695ced15c3af99c4af3a32b2f8fe93b",
       "link": "LEFT_KNEE",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "LEFT_KNEE:91390A117:bbox-center",
+        "LEFT_KNEE:91390A117:short-axis-x",
+        "LEFT_KNEE:91390A117:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -2692,7 +3451,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/left_knee/91390A117-placement-candidate.step",
-      "placement_proxy_step_sha256": "a22e3f9fe56f111c78ed796aad83146dff657ae49a958609d03585e6b6338f2b",
+      "placement_proxy_step_sha256": "bf67d4c2fc97c4a55a67bfa297b4a9744a21479e35e2c7fd8dd5cd2904f70365",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -2708,6 +3467,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.707258754258701e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -2795,8 +3559,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.05237988749910271,
+        "minimum_safety_factor": 1.0500000000000007,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "91390A117"
+      "supplier_code": "91390A117",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -2807,12 +3581,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 8.963810074757994e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.7927620149515988e-07,
+        "proxy_bbox_containment_margin_m": -0.013250000050000007,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": null,
+        "candidate": false,
+        "minimum_sorted_extent_slack_m": 1.7927620149515988e-07,
+        "required": false,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_ankle_a.step",
-      "generated_step_sha256": "f74501023aab0d00fb7805cc685259b41fd3bcc63001fc16e92cdc53b516d32d",
+      "generated_step_sha256": "5cb6dd6c5a5ab487cf7d43a42c575b42cd4a464dd1f427b93d5dbc26950dfb93",
       "link": "RIGHT_ANKLE_A",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_ANKLE_A:1600-0515-0006:bbox-center",
+        "RIGHT_ANKLE_A:1600-0515-0006:short-axis-x",
+        "RIGHT_ANKLE_A:1600-0515-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -2834,7 +3636,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_ankle_a/1600-0515-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "1b2c90965961cf5f22c1dcbd33deb2343c9d22f9ac16868b2056b9c922600807",
+      "placement_proxy_step_sha256": "ca4d201951f98466274b1fde95b87a42ae56ccaea1544c1ebbd178ca4efb7f4c",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -2850,6 +3652,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.7927620149515988e-07,
+        "required_sorted_extent_m": [
+          0.011,
+          0.038500000100000015,
+          0.041999999999999996
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -2977,8 +3784,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_34X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_35X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "link is not in the current structural remediation set, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": null,
+        "minimum_safety_factor": null,
+        "source": "no_structural_remediation_required_by_current_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "1600-0515-0006"
+      "supplier_code": "1600-0515-0006",
+      "supplier_family": "bearing_or_ring"
     },
     {
       "accepted": false,
@@ -2989,12 +3806,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 8.963810074757994e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.7927620149515988e-07,
+        "proxy_bbox_containment_margin_m": -0.013250000050000007,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": null,
+        "candidate": false,
+        "minimum_sorted_extent_slack_m": 1.7927620149515988e-07,
+        "required": false,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_ankle_a.step",
-      "generated_step_sha256": "f74501023aab0d00fb7805cc685259b41fd3bcc63001fc16e92cdc53b516d32d",
+      "generated_step_sha256": "5cb6dd6c5a5ab487cf7d43a42c575b42cd4a464dd1f427b93d5dbc26950dfb93",
       "link": "RIGHT_ANKLE_A",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_ANKLE_A:1602-0032-0006:bbox-center",
+        "RIGHT_ANKLE_A:1602-0032-0006:short-axis-x",
+        "RIGHT_ANKLE_A:1602-0032-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -3016,7 +3861,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_ankle_a/1602-0032-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "9fbebb16a801e7e6a16339cb5a6cf6edba88c64df5f91c4670e6f913b373b66d",
+      "placement_proxy_step_sha256": "53486bb772526e2bbb042e301c21b8d4933cee9210ba1b813aab80a0ee62dfda",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -3032,6 +3877,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.7927620149515988e-07,
+        "required_sorted_extent_m": [
+          0.011,
+          0.038500000100000015,
+          0.041999999999999996
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -3159,8 +4009,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_34X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_35X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "link is not in the current structural remediation set, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": null,
+        "minimum_safety_factor": null,
+        "source": "no_structural_remediation_required_by_current_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "1602-0032-0006"
+      "supplier_code": "1602-0032-0006",
+      "supplier_family": "bearing_or_ring"
     },
     {
       "accepted": false,
@@ -3171,12 +4031,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.3536293752905437e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "proxy_bbox_containment_margin_m": -0.002750000100000002,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_ankle_a.step",
-      "generated_step_sha256": "f74501023aab0d00fb7805cc685259b41fd3bcc63001fc16e92cdc53b516d32d",
+      "generated_step_sha256": "5cb6dd6c5a5ab487cf7d43a42c575b42cd4a464dd1f427b93d5dbc26950dfb93",
       "link": "RIGHT_ANKLE_A",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_ANKLE_A:2806-0005-0004:bbox-center",
+        "RIGHT_ANKLE_A:2806-0005-0004:short-axis-x",
+        "RIGHT_ANKLE_A:2806-0005-0004:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -3198,7 +4086,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_ankle_a/2806-0005-0004-placement-candidate.step",
-      "placement_proxy_step_sha256": "3d425b06db0d7aa2512a6da3385267d77846c26c22c4afdadf5f8a2af5b6435d",
+      "placement_proxy_step_sha256": "905f59d376e6b391a378ac0303576a7d3f9ef53fecead63db28467d8f061f502",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -3214,6 +4102,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -3301,8 +4194,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "link is not in the current structural remediation set, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": null,
+        "minimum_safety_factor": null,
+        "source": "no_structural_remediation_required_by_current_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "2806-0005-0004"
+      "supplier_code": "2806-0005-0004",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -3313,12 +4216,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.3536293752905437e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "proxy_bbox_containment_margin_m": -0.002750000100000002,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_ankle_a.step",
-      "generated_step_sha256": "f74501023aab0d00fb7805cc685259b41fd3bcc63001fc16e92cdc53b516d32d",
+      "generated_step_sha256": "5cb6dd6c5a5ab487cf7d43a42c575b42cd4a464dd1f427b93d5dbc26950dfb93",
       "link": "RIGHT_ANKLE_A",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_ANKLE_A:2920-0001-0006:bbox-center",
+        "RIGHT_ANKLE_A:2920-0001-0006:short-axis-x",
+        "RIGHT_ANKLE_A:2920-0001-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -3340,7 +4271,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_ankle_a/2920-0001-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "0d931bc81bdab44fa6e33814489f7dbbe03599059a168a0cc525b077e771dac1",
+      "placement_proxy_step_sha256": "ba03bc2189e1c7d25b45487089fd0308df0f4b5ed1bb97027e921c4ba2b6589f",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -3356,6 +4287,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -3443,8 +4379,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "link is not in the current structural remediation set, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": null,
+        "minimum_safety_factor": null,
+        "source": "no_structural_remediation_required_by_current_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "2920-0001-0006"
+      "supplier_code": "2920-0001-0006",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -3455,12 +4401,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.3536293752905437e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "proxy_bbox_containment_margin_m": -0.002750000100000002,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_ankle_a.step",
-      "generated_step_sha256": "f74501023aab0d00fb7805cc685259b41fd3bcc63001fc16e92cdc53b516d32d",
+      "generated_step_sha256": "5cb6dd6c5a5ab487cf7d43a42c575b42cd4a464dd1f427b93d5dbc26950dfb93",
       "link": "RIGHT_ANKLE_A",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_ANKLE_A:91390A117:bbox-center",
+        "RIGHT_ANKLE_A:91390A117:short-axis-x",
+        "RIGHT_ANKLE_A:91390A117:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -3482,7 +4456,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_ankle_a/91390A117-placement-candidate.step",
-      "placement_proxy_step_sha256": "4119acf87fda7990e153ccd4c89219cf9ac6890649844a426c12622e37cedf9c",
+      "placement_proxy_step_sha256": "add1fe398284edbed8daba08e43d591f24f2127d91173c112a6af217d08c2fe6",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -3498,6 +4472,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.7072587505810874e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -3585,8 +4564,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "link is not in the current structural remediation set, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": null,
+        "minimum_safety_factor": null,
+        "source": "no_structural_remediation_required_by_current_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "91390A117"
+      "supplier_code": "91390A117",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -3597,12 +4586,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 9.96326247355156e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.992652494710312e-07,
+        "proxy_bbox_containment_margin_m": -0.0002500000999999998,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.992652494710312e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_hip_roll.step",
-      "generated_step_sha256": "cc6b5e40283d9f2f206d5c70b27129555372cd57804f43e2b88bb8d57dbd3b0c",
+      "generated_step_sha256": "d3bf1cdc6e28371193a5221ae2107877de2b11140dcf442cf62e7b261b4d8eef",
       "link": "RIGHT_HIP_ROLL",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_HIP_ROLL:2806-0005-0004:bbox-center",
+        "RIGHT_HIP_ROLL:2806-0005-0004:short-axis-y",
+        "RIGHT_HIP_ROLL:2806-0005-0004:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -3624,7 +4641,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_hip_roll/2806-0005-0004-placement-candidate.step",
-      "placement_proxy_step_sha256": "2fbc2b6199818532d42e6d0b82ff069861f08d1cea4dd1b2c7bfe4bf72c27d05",
+      "placement_proxy_step_sha256": "737644845185b50fd0b457235408182739eedbae658dbb19df695d72f5bb4108",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -3640,6 +4657,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.992652494710312e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -3727,8 +4749,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "link is not in the current structural remediation set, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": null,
+        "minimum_safety_factor": null,
+        "source": "no_structural_remediation_required_by_current_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "2806-0005-0004"
+      "supplier_code": "2806-0005-0004",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -3739,12 +4771,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 9.96326247355156e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.992652494710312e-07,
+        "proxy_bbox_containment_margin_m": -0.0002500000999999998,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.992652494710312e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_hip_roll.step",
-      "generated_step_sha256": "cc6b5e40283d9f2f206d5c70b27129555372cd57804f43e2b88bb8d57dbd3b0c",
+      "generated_step_sha256": "d3bf1cdc6e28371193a5221ae2107877de2b11140dcf442cf62e7b261b4d8eef",
       "link": "RIGHT_HIP_ROLL",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_HIP_ROLL:2920-0001-0006:bbox-center",
+        "RIGHT_HIP_ROLL:2920-0001-0006:short-axis-y",
+        "RIGHT_HIP_ROLL:2920-0001-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -3766,7 +4826,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_hip_roll/2920-0001-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "31e5690d4f094856afd0fdab00e05929cbe452934e9717fd9931652908295626",
+      "placement_proxy_step_sha256": "a6e2e3d2ef5110f63e82ae47ed5d4dcc537ac602744b883f391e62bbcc7c2107",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -3782,6 +4842,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.992652494710312e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -3869,8 +4934,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "link is not in the current structural remediation set, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": null,
+        "minimum_safety_factor": null,
+        "source": "no_structural_remediation_required_by_current_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "2920-0001-0006"
+      "supplier_code": "2920-0001-0006",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -3881,12 +4956,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 9.96326247355156e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.992652494710312e-07,
+        "proxy_bbox_containment_margin_m": -0.0002500000999999998,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.992652494710312e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_hip_roll.step",
-      "generated_step_sha256": "cc6b5e40283d9f2f206d5c70b27129555372cd57804f43e2b88bb8d57dbd3b0c",
+      "generated_step_sha256": "d3bf1cdc6e28371193a5221ae2107877de2b11140dcf442cf62e7b261b4d8eef",
       "link": "RIGHT_HIP_ROLL",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_HIP_ROLL:91390A117:bbox-center",
+        "RIGHT_HIP_ROLL:91390A117:short-axis-y",
+        "RIGHT_HIP_ROLL:91390A117:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -3908,7 +5011,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_hip_roll/91390A117-placement-candidate.step",
-      "placement_proxy_step_sha256": "d96fd571bc2890348a1ebc119e1576be047b96553aebaaf0ea3bce2fb09e8023",
+      "placement_proxy_step_sha256": "6cc558bb91308fedf4bbfab2ab9c6d32e0c92bc8df940ae16b5914f77f91b996",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -3924,6 +5027,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.992652494710312e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -4011,8 +5119,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "link is not in the current structural remediation set, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": null,
+        "minimum_safety_factor": null,
+        "source": "no_structural_remediation_required_by_current_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "91390A117"
+      "supplier_code": "91390A117",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -4023,12 +5141,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 8.963810372436543e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.7927620744873085e-07,
+        "proxy_bbox_containment_margin_m": -0.01133270982437497,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": null,
+        "candidate": false,
+        "minimum_sorted_extent_slack_m": 1.7927620744873085e-07,
+        "required": false,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_hip_yaw.step",
-      "generated_step_sha256": "96b6cc83fe978ea43ee5175dea0ebada7420d1fcfa77423a9d7c432e866aba6f",
+      "generated_step_sha256": "0fbbb783dc3d5ab4987aa024ebfb3d762e34cd57f30e1f58ac0df32e962e42b4",
       "link": "RIGHT_HIP_YAW",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_HIP_YAW:1600-0515-0006:bbox-center",
+        "RIGHT_HIP_YAW:1600-0515-0006:short-axis-y",
+        "RIGHT_HIP_YAW:1600-0515-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -4050,7 +5196,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_hip_yaw/1600-0515-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "ec793320914a387da81f1a68c93ed2221d8ab53e312f7682d19957a1756e7e35",
+      "placement_proxy_step_sha256": "fe57aeb9f2a3dfb4a492f743d2754330efae3bc1b522a188faa23b20fecdad56",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -4066,6 +5212,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.7927620744873085e-07,
+        "required_sorted_extent_m": [
+          0.011,
+          0.038500000100000015,
+          0.041999999999999996
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -4193,8 +5344,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_34X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_35X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.038801410359263135,
+        "minimum_safety_factor": 1.050000000000001,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "1600-0515-0006"
+      "supplier_code": "1600-0515-0006",
+      "supplier_family": "bearing_or_ring"
     },
     {
       "accepted": false,
@@ -4205,12 +5366,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 8.963810372436543e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.7927620744873085e-07,
+        "proxy_bbox_containment_margin_m": -0.01133270982437497,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": null,
+        "candidate": false,
+        "minimum_sorted_extent_slack_m": 1.7927620744873085e-07,
+        "required": false,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_hip_yaw.step",
-      "generated_step_sha256": "96b6cc83fe978ea43ee5175dea0ebada7420d1fcfa77423a9d7c432e866aba6f",
+      "generated_step_sha256": "0fbbb783dc3d5ab4987aa024ebfb3d762e34cd57f30e1f58ac0df32e962e42b4",
       "link": "RIGHT_HIP_YAW",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_HIP_YAW:1602-0032-0006:bbox-center",
+        "RIGHT_HIP_YAW:1602-0032-0006:short-axis-y",
+        "RIGHT_HIP_YAW:1602-0032-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -4232,7 +5421,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_hip_yaw/1602-0032-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "4054b45004b1ef51512020746ccb1337e4a8aa2f5056aa10c799edfe1b066e7d",
+      "placement_proxy_step_sha256": "53f1b8bd370eb7bed2be876225fb4559a1953888bb36c0934fe25f530b817018",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -4248,6 +5437,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.7927620744873085e-07,
+        "required_sorted_extent_m": [
+          0.011,
+          0.038500000100000015,
+          0.041999999999999996
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -4375,8 +5569,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_34X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_35X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.038801410359263135,
+        "minimum_safety_factor": 1.050000000000001,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "1602-0032-0006"
+      "supplier_code": "1602-0032-0006",
+      "supplier_family": "bearing_or_ring"
     },
     {
       "accepted": false,
@@ -4387,12 +5591,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.353629374579307e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.707258749158614e-07,
+        "proxy_bbox_containment_margin_m": -0.000832709874374964,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.707258749158614e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_hip_yaw.step",
-      "generated_step_sha256": "96b6cc83fe978ea43ee5175dea0ebada7420d1fcfa77423a9d7c432e866aba6f",
+      "generated_step_sha256": "0fbbb783dc3d5ab4987aa024ebfb3d762e34cd57f30e1f58ac0df32e962e42b4",
       "link": "RIGHT_HIP_YAW",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_HIP_YAW:2806-0005-0004:bbox-center",
+        "RIGHT_HIP_YAW:2806-0005-0004:short-axis-y",
+        "RIGHT_HIP_YAW:2806-0005-0004:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -4414,7 +5646,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_hip_yaw/2806-0005-0004-placement-candidate.step",
-      "placement_proxy_step_sha256": "13a3fc0ba91e0c2ddc53fd73e2bbec62afd8ca198c9b071f4a9a447d4fe576c7",
+      "placement_proxy_step_sha256": "7c89bd5589ea12f7e84a673477d4dfe592d90abb10bcf0ef9a012a12f34d1401",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -4430,6 +5662,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.707258749158614e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -4517,8 +5754,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.038801410359263135,
+        "minimum_safety_factor": 1.050000000000001,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "2806-0005-0004"
+      "supplier_code": "2806-0005-0004",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -4529,12 +5776,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.353629374579307e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.707258749158614e-07,
+        "proxy_bbox_containment_margin_m": -0.000832709874374964,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.707258749158614e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_hip_yaw.step",
-      "generated_step_sha256": "96b6cc83fe978ea43ee5175dea0ebada7420d1fcfa77423a9d7c432e866aba6f",
+      "generated_step_sha256": "0fbbb783dc3d5ab4987aa024ebfb3d762e34cd57f30e1f58ac0df32e962e42b4",
       "link": "RIGHT_HIP_YAW",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_HIP_YAW:2920-0001-0006:bbox-center",
+        "RIGHT_HIP_YAW:2920-0001-0006:short-axis-y",
+        "RIGHT_HIP_YAW:2920-0001-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -4556,7 +5831,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_hip_yaw/2920-0001-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "099a13427b96d83bd8328933c235221ccb8f9c1e965d7b0d571fa7da4752415c",
+      "placement_proxy_step_sha256": "6d65da6b12842f3eedcead9e5e852154fe21fc297c11dd0028988405cdd84e3b",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -4572,6 +5847,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.707258749158614e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -4659,8 +5939,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.038801410359263135,
+        "minimum_safety_factor": 1.050000000000001,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "2920-0001-0006"
+      "supplier_code": "2920-0001-0006",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -4671,12 +5961,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.353629374579307e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.707258749158614e-07,
+        "proxy_bbox_containment_margin_m": -0.000832709874374964,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.707258749158614e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_hip_yaw.step",
-      "generated_step_sha256": "96b6cc83fe978ea43ee5175dea0ebada7420d1fcfa77423a9d7c432e866aba6f",
+      "generated_step_sha256": "0fbbb783dc3d5ab4987aa024ebfb3d762e34cd57f30e1f58ac0df32e962e42b4",
       "link": "RIGHT_HIP_YAW",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_HIP_YAW:91390A117:bbox-center",
+        "RIGHT_HIP_YAW:91390A117:short-axis-y",
+        "RIGHT_HIP_YAW:91390A117:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -4698,7 +6016,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_hip_yaw/91390A117-placement-candidate.step",
-      "placement_proxy_step_sha256": "a40f84edbe3ab2a547ef07eadf07154ec876dd6e7658eec308f67a60a91ea423",
+      "placement_proxy_step_sha256": "a6070b220f913564471edaad16a2d5d01655123f807722d420fe8d4052352ba5",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -4714,6 +6032,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.707258749158614e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -4801,8 +6124,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.038801410359263135,
+        "minimum_safety_factor": 1.050000000000001,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "91390A117"
+      "supplier_code": "91390A117",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -4813,12 +6146,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 8.963809892265084e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.792761978453017e-07,
+        "proxy_bbox_containment_margin_m": -0.013250000050000007,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": null,
+        "candidate": false,
+        "minimum_sorted_extent_slack_m": 1.792761978453017e-07,
+        "required": false,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_knee.step",
-      "generated_step_sha256": "dd23a63808d9b44d72d9fa1b74a28633b78e4198451d98bc03b601d773ad61a5",
+      "generated_step_sha256": "619c4b8b0f53cd0bbdf4ba0e8b73282b1ea04724b47b16a8d9c21b9eaf98ff42",
       "link": "RIGHT_KNEE",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_KNEE:1600-0515-0006:bbox-center",
+        "RIGHT_KNEE:1600-0515-0006:short-axis-x",
+        "RIGHT_KNEE:1600-0515-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -4840,7 +6201,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_knee/1600-0515-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "87c98cbda5012072c98c7910d5ef7725ac88153844cd0adffe312c9a66b10115",
+      "placement_proxy_step_sha256": "b7a58be5efaa43cc6dee724568c15f2288478eeded4fe24a9dfda50f65613311",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -4856,6 +6217,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.792761978453017e-07,
+        "required_sorted_extent_m": [
+          0.011,
+          0.038500000100000015,
+          0.041999999999999996
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -4983,8 +6349,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_34X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_35X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.05237988749910271,
+        "minimum_safety_factor": 1.0500000000000007,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "1600-0515-0006"
+      "supplier_code": "1600-0515-0006",
+      "supplier_family": "bearing_or_ring"
     },
     {
       "accepted": false,
@@ -4995,12 +6371,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 8.963809892265084e-08,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 1.792761978453017e-07,
+        "proxy_bbox_containment_margin_m": -0.013250000050000007,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": null,
+        "candidate": false,
+        "minimum_sorted_extent_slack_m": 1.792761978453017e-07,
+        "required": false,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_knee.step",
-      "generated_step_sha256": "dd23a63808d9b44d72d9fa1b74a28633b78e4198451d98bc03b601d773ad61a5",
+      "generated_step_sha256": "619c4b8b0f53cd0bbdf4ba0e8b73282b1ea04724b47b16a8d9c21b9eaf98ff42",
       "link": "RIGHT_KNEE",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_KNEE:1602-0032-0006:bbox-center",
+        "RIGHT_KNEE:1602-0032-0006:short-axis-x",
+        "RIGHT_KNEE:1602-0032-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -5022,7 +6426,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_knee/1602-0032-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "10400c9b832e5172f6f7d2695490c0c35e57f8101b56fe9f4d588bd9d7ea4d9c",
+      "placement_proxy_step_sha256": "1403d308a0889f234d166e2196b3b955989747928de496a6d486288bef2b62da",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -5038,6 +6442,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 1.792761978453017e-07,
+        "required_sorted_extent_m": [
+          0.011,
+          0.038500000100000015,
+          0.041999999999999996
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -5165,8 +6574,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_34X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_35X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.05237988749910271,
+        "minimum_safety_factor": 1.0500000000000007,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "1602-0032-0006"
+      "supplier_code": "1602-0032-0006",
+      "supplier_family": "bearing_or_ring"
     },
     {
       "accepted": false,
@@ -5177,12 +6596,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.3536293747441058e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587494882117e-07,
+        "proxy_bbox_containment_margin_m": -0.002750000100000002,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587494882117e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_knee.step",
-      "generated_step_sha256": "dd23a63808d9b44d72d9fa1b74a28633b78e4198451d98bc03b601d773ad61a5",
+      "generated_step_sha256": "619c4b8b0f53cd0bbdf4ba0e8b73282b1ea04724b47b16a8d9c21b9eaf98ff42",
       "link": "RIGHT_KNEE",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_KNEE:2806-0005-0004:bbox-center",
+        "RIGHT_KNEE:2806-0005-0004:short-axis-x",
+        "RIGHT_KNEE:2806-0005-0004:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -5204,7 +6651,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_knee/2806-0005-0004-placement-candidate.step",
-      "placement_proxy_step_sha256": "a5dc670728ccad29421c455aa5ff8945ad9a6042835f722a705c7aea39b953ab",
+      "placement_proxy_step_sha256": "597c9986bc225a688104a302fdc88facd819475695e3f6f2952fa10895936c6e",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -5220,6 +6667,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.7072587494882117e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -5307,8 +6759,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.05237988749910271,
+        "minimum_safety_factor": 1.0500000000000007,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "2806-0005-0004"
+      "supplier_code": "2806-0005-0004",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -5319,12 +6781,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.3536293747441058e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587494882117e-07,
+        "proxy_bbox_containment_margin_m": -0.002750000100000002,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587494882117e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_knee.step",
-      "generated_step_sha256": "dd23a63808d9b44d72d9fa1b74a28633b78e4198451d98bc03b601d773ad61a5",
+      "generated_step_sha256": "619c4b8b0f53cd0bbdf4ba0e8b73282b1ea04724b47b16a8d9c21b9eaf98ff42",
       "link": "RIGHT_KNEE",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_KNEE:2920-0001-0006:bbox-center",
+        "RIGHT_KNEE:2920-0001-0006:short-axis-x",
+        "RIGHT_KNEE:2920-0001-0006:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -5346,7 +6836,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_knee/2920-0001-0006-placement-candidate.step",
-      "placement_proxy_step_sha256": "047d2931b087faf1b473edc6bb36647282b7d42da67a4eab575ce3772e5fa986",
+      "placement_proxy_step_sha256": "ac807993bebc1a249b4f21723fa80104349c5c40b2c3b20338e20a53e01b8763",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -5362,6 +6852,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.7072587494882117e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -5449,8 +6944,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.05237988749910271,
+        "minimum_safety_factor": 1.0500000000000007,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "2920-0001-0006"
+      "supplier_code": "2920-0001-0006",
+      "supplier_family": "fastener_or_thread"
     },
     {
       "accepted": false,
@@ -5461,12 +6966,40 @@
       ],
       "bbox_fit_after_adjustment": true,
       "blocking_reason": "supplier bbox fits the adjusted generated envelope, but exact vendor placement transform, mate faces, fastener/tool access, and physics/structural validation are not assigned",
+      "collision_precheck": {
+        "accepted": false,
+        "adjusted_sorted_extent_clearance_margin_m": 1.3536293747441058e-07,
+        "blocking_reason": "adjusted bbox slack proves only an axis-aligned candidate pocket volume; raw proxy containment may exceed the pre-growth source bbox, and final collision validation needs exact subtracted pocket geometry in the assembled MuJoCo/STEP model",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587494882117e-07,
+        "proxy_bbox_containment_margin_m": -0.002750000100000002,
+        "source": "generated_bbox_proxy_containment_screen"
+      },
+      "collision_precheck_candidate": true,
       "collision_validation_at_placed_pocket": false,
+      "fastener_access": {
+        "blocking_reason": "fastener/tool access has only an axis-aligned bbox slack screen; tool approach cone and exact thread/mate geometry are not assigned",
+        "candidate": true,
+        "minimum_sorted_extent_slack_m": 2.7072587494882117e-07,
+        "required": true,
+        "source": "sorted_bbox_slack_screen",
+        "verified": false
+      },
       "fastener_access_verified": false,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_knee.step",
-      "generated_step_sha256": "dd23a63808d9b44d72d9fa1b74a28633b78e4198451d98bc03b601d773ad61a5",
+      "generated_step_sha256": "619c4b8b0f53cd0bbdf4ba0e8b73282b1ea04724b47b16a8d9c21b9eaf98ff42",
       "link": "RIGHT_KNEE",
-      "mate_feature_ids": [],
+      "mate_feature_assignment": {
+        "accepted": false,
+        "blocking_reason": "candidate mate identifiers are derived from the generated bbox and supplier axis alignment; exact STEP faces/bores are not assigned",
+        "candidate": true,
+        "source": "generated_bbox_axis_alignment_candidate"
+      },
+      "mate_feature_ids": [
+        "RIGHT_KNEE:91390A117:bbox-center",
+        "RIGHT_KNEE:91390A117:short-axis-x",
+        "RIGHT_KNEE:91390A117:long-axis-z"
+      ],
       "max_residual_extent_growth_m": 0.0,
       "placement_frame": "generated_link_local_bbox_center",
       "placement_proxy_extent_delta_m": [
@@ -5488,7 +7021,7 @@
       ],
       "placement_proxy_solid_count": 1,
       "placement_proxy_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step/right_knee/91390A117-placement-candidate.step",
-      "placement_proxy_step_sha256": "35b91fbeeb251d44d88d8faca780f88b2cf722835744883fcae88305b783acf1",
+      "placement_proxy_step_sha256": "e5013d9a04849e629ed809922166610e84233e5334c171247471cd579e1d8cc2",
       "placement_transform_accepted": false,
       "placement_transform_m": {
         "accepted": false,
@@ -5504,6 +7037,11 @@
         },
         "blocking_reason": "axis-aligned bbox-center transform is a placement hypothesis; exact STEP assembly transform and mate faces are not assigned",
         "minimum_sorted_extent_slack_m": 2.7072587494882117e-07,
+        "required_sorted_extent_m": [
+          0.0125000002,
+          0.017500000200000004,
+          0.017500000200000004
+        ],
         "rotation_quat_xyzw": [
           0.0,
           0.0,
@@ -5591,8 +7129,18 @@
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
         "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP"
       ],
+      "structural_precheck": {
+        "accepted": false,
+        "blocking_reason": "structural remediation preview passes the analytic screen, but final validation still needs exact pocket subtraction edge-distance, load-path, buckling, and deflection analysis",
+        "candidate": true,
+        "max_deflection_m": 0.05237988749910271,
+        "minimum_safety_factor": 1.0500000000000007,
+        "source": "structural_remediation_preview_screen"
+      },
+      "structural_precheck_candidate": true,
       "structural_validation_at_placed_pocket": false,
-      "supplier_code": "91390A117"
+      "supplier_code": "91390A117",
+      "supplier_family": "fastener_or_thread"
     }
   ],
   "schema": "asimov-fembot-supplier-pocket-plan-v1",
@@ -5616,11 +7164,16 @@
     "candidate_placement_proxy_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-pocket-placement-candidate-step",
     "candidate_placement_proxy_single_solid_plans": 36,
     "candidate_placement_transforms": 36,
+    "collision_precheck_candidate_plans": 36,
     "collision_validation_missing_plans": 36,
+    "fastener_access_candidate_plans": 24,
+    "fastener_access_required_plans": 24,
     "fastener_access_unverified_plans": 36,
     "links_requiring_supplier_pockets": 8,
-    "mate_feature_unassigned_plans": 36,
+    "mate_feature_candidate_plans": 36,
+    "mate_feature_unassigned_plans": 0,
     "missing_generated_links": [],
+    "structural_precheck_candidate_plans": 36,
     "structural_validation_missing_plans": 36,
     "supplier_codes": 5,
     "supplier_link_pocket_plans": 36,

@@ -8751,13 +8751,17 @@ ${section_end}`;
 		target: TargetInfo,
 		messageId: string,
 		content: Content,
-	): Promise<Memory | void> {
+	): Promise<Memory | undefined> {
 		const connector = this.requireConnectorHook(
 			target,
 			"editHandler",
 			"edit_message",
 		);
-		return connector.editHandler!(this, { target, messageId, content });
+		const handler = connector.editHandler;
+		if (!handler) {
+			throw new Error("Connector does not support edit_message");
+		}
+		return (await handler(this, { target, messageId, content })) ?? undefined;
 	}
 
 	async sendTypingOnTarget(target: TargetInfo): Promise<void> {
@@ -8766,7 +8770,7 @@ ${section_end}`;
 			"typingHandler",
 			"typing_indicator",
 		);
-		await connector.typingHandler!(this, { target });
+		await connector.typingHandler?.(this, { target });
 	}
 
 	async stopTypingOnTarget(target: TargetInfo): Promise<void> {
@@ -8775,7 +8779,7 @@ ${section_end}`;
 			"stopTypingHandler",
 			"typing_indicator",
 		);
-		await connector.stopTypingHandler!(this, { target });
+		await connector.stopTypingHandler?.(this, { target });
 	}
 
 	async createThreadOnTarget(
@@ -8787,7 +8791,11 @@ ${section_end}`;
 			"createThreadHandler",
 			"create_thread",
 		);
-		return connector.createThreadHandler!(this, { target, ...params });
+		const handler = connector.createThreadHandler;
+		if (!handler) {
+			throw new Error("Connector does not support create_thread");
+		}
+		return handler(this, { target, ...params });
 	}
 
 	async postToThreadOnTarget(
@@ -8795,13 +8803,13 @@ ${section_end}`;
 		thread: ThreadHandle,
 		content: Content,
 		identity?: ConnectorPostIdentity,
-	): Promise<Memory | void> {
+	): Promise<Memory | undefined> {
 		const connector = this.requireConnectorHook(
 			target,
 			"postToThreadHandler",
 			"post_to_thread",
 		);
-		return connector.postToThreadHandler!(this, {
+		return connector.postToThreadHandler?.(this, {
 			target,
 			thread,
 			content,
@@ -8819,7 +8827,7 @@ ${section_end}`;
 			"reactHandler",
 			"react_message",
 		);
-		await connector.reactHandler!(this, { target, messageId, emoji });
+		await connector.reactHandler?.(this, { target, messageId, emoji });
 	}
 
 	async getMemoriesByWorldId(params: {

@@ -105,7 +105,7 @@ export interface LlmStreamConfig {
 	/** MTP drafter bounds; `0` for either disables speculative decoding. */
 	draftMin: number;
 	draftMax: number;
-	/** Reserved for separate draft-model speculation; null for Eliza-1 MTP. */
+	/** Absolute MTP drafter GGUF path; null disables drafter-backed MTP. */
 	draftModelPath: string | null;
 }
 

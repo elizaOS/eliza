@@ -9,8 +9,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	type CancelTokenWithSignal,
-	type MtpTextRunner,
 	MtpDraftProposer,
+	type MtpTextRunner,
 } from "./pipeline-impls";
 import type { VerifierStreamEvent } from "./types";
 

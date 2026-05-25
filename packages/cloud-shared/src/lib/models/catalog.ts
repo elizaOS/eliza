@@ -433,7 +433,7 @@ export const VAST_NATIVE_MODELS: CatalogModel[] = [
     owned_by: "vast",
     name: "Eliza-1 27B 256K",
     description:
-      "Single RTX 3090 long-context lane. Served via llama.cpp/GGUF with q4_0 KV cache, flash attention, one decode slot, and 262K context. DFlash remains benchmark-gated for this lane. HF: elizaos/eliza-1 (bundles/27b-256k/)",
+      "Single RTX 3090 long-context lane. Served via llama.cpp/GGUF with q4_0 KV cache, flash attention, one decode slot, and 262K context. MTP remains benchmark-gated for this lane. HF: elizaos/eliza-1 (bundles/27b-256k/)",
     type: "language",
     context_window: 262144,
     tags: ["self-hosted", "llama.cpp", "gguf", "q4-kv", "rtx-3090", "eliza-eliza-1"],

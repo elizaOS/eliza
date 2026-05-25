@@ -40,10 +40,12 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
     assert report["body_matching"]["summary"]["matched_links"] == 28
     assert report["body_matching"]["summary"]["accepted_link_matches"] == 0
     assert report["mesh_traceability"]["ok"] is True
-    assert report["mesh_traceability"]["accepted"] is False
+    assert report["mesh_traceability"]["accepted"] is True
     assert report["mesh_traceability"]["summary"]["traceability_ready_links"] == 28
     assert report["mesh_traceability"]["summary"]["controlled_loft_source_ready_links"] == 28
     assert report["mesh_traceability"]["summary"]["exact_brep_source_ready_links"] == 0
+    assert report["mesh_traceability"]["summary"]["generated_stl_physics_ready_links"] == 28
+    assert report["mesh_traceability"]["summary"]["mesh_artifact_free_links"] == 28
     assert report["slimming_envelope"]["ok"] is True
     assert report["slimming_envelope"]["accepted"] is False
     assert report["slimming_envelope"]["summary"]["z_preserved_links"] == 28
@@ -55,13 +57,15 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
     assert report["generated_cad"]["accepted"] is False
     assert report["generated_cad"]["summary"]["step_exports"] == 28
     assert report["generated_cad"]["summary"]["step_reloads"] == 28
-    assert report["generated_cad"]["summary"]["shape_family_counts"]["hollow_lofted_elliptic_limb_reference"] == 22
+    assert report["generated_cad"]["summary"]["shape_family_counts"] == {
+        "source_fitted_controlled_loft": 28,
+    }
     assert report["generated_cad"]["summary"]["surface_intent_counts"] == {"flat": 2, "smooth": 26}
     assert report["generated_cad"]["summary"]["hollow_shell_links"] == 26
     assert report["generated_cad"]["summary"]["internal_cavity_violation_links"] == 26
     assert report["generated_cad"]["summary"]["internal_cavity_minimum_projected_clearance_m"] < 0.0
-    assert report["generated_cad"]["summary"]["volume_adjusted_xy_violation_links"] == 20
-    assert report["generated_cad"]["summary"]["volume_adjusted_z_blocked_links"] == 16
+    assert report["generated_cad"]["summary"]["volume_adjusted_xy_violation_links"] == 18
+    assert report["generated_cad"]["summary"]["volume_adjusted_z_blocked_links"] == 18
     assert report["generated_cad"]["summary"]["remediation_target_count"] == 73
     assert report["generated_cad"]["summary"]["remediation_z_pocket_or_refinement_count"] == 23
     assert report["generated_cad"]["summary"]["remediation_plan_links"] == 26
@@ -72,18 +76,22 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
     assert report["generated_cad"]["summary"]["remediation_link_pocket_set_reloads"] == 26
     assert report["generated_cad"]["summary"]["pocketed_preview_exports"] == 26
     assert report["generated_cad"]["summary"]["pocketed_preview_fragmented_links"] == 7
-    assert report["generated_cad"]["summary"]["pocketed_preview_structural_risk_links"] == 12
-    assert report["generated_cad"]["summary"]["pocketed_preview_high_volume_loss_links"] == 10
+    assert report["generated_cad"]["summary"]["pocketed_preview_structural_risk_links"] == 25
+    assert report["generated_cad"]["summary"]["pocketed_preview_high_volume_loss_links"] == 25
     assert report["generated_cad"]["summary"]["bulged_preview_exports"] == 26
-    assert report["generated_cad"]["summary"]["bulged_preview_high_volume_loss_links"] == 0
+    assert report["generated_cad"]["summary"]["bulged_preview_high_volume_loss_links"] == 15
     assert report["generated_cad"]["summary"]["bulged_preview_fragmented_links"] == 4
-    assert report["generated_cad"]["summary"]["bulged_preview_residual_structural_risk_links"] == 4
-    assert report["generated_cad"]["summary"]["bulged_preview_top_residual_risk_links"][0] == "RIGHT_ELBOW"
-    assert report["generated_cad"]["summary"]["ribbed_bulged_preview_exports"] == 4
-    assert report["generated_cad"]["summary"]["ribbed_bulged_preview_reloads"] == 4
+    assert report["generated_cad"]["summary"]["bulged_preview_residual_structural_risk_links"] == 15
+    assert report["generated_cad"]["summary"]["bulged_preview_top_residual_risk_links"][0] == "NECK_PITCH"
+    assert report["generated_cad"]["summary"]["ribbed_bulged_preview_exports"] == 15
+    assert report["generated_cad"]["summary"]["ribbed_bulged_preview_reloads"] == 15
     assert report["generated_cad"]["summary"]["ribbed_bulged_preview_fragmented_links"] == 0
     assert report["generated_cad"]["summary"]["ribbed_bulged_preview_high_volume_loss_links"] == 0
     assert report["generated_cad"]["summary"]["ribbed_bulged_preview_residual_structural_risk_links"] == 0
+    assert report["generated_cad"]["summary"]["full_cavity_clearance_exports"] == 26
+    assert report["generated_cad"]["summary"]["full_cavity_clearance_cleared_links"] == 26
+    assert report["generated_cad"]["summary"]["full_cavity_clearance_residual_violation_links"] == 0
+    assert report["generated_cad"]["summary"]["full_cavity_clearance_z_expansion_links"] == 18
     assert report["generated_cad"]["summary"]["manufacturing_adjusted_plate_exports"] == 2
     assert (
         report["generated_cad"]["summary"][
@@ -117,6 +125,11 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
         ]
         is True
     )
+    assert report["topology_promotion"]["ok"] is True
+    assert report["topology_promotion"]["accepted"] is True
+    assert report["topology_promotion"]["summary"]["links"] == 28
+    assert report["topology_promotion"]["summary"]["promoted_repair_preview_links"] == 9
+    assert report["topology_promotion"]["summary"]["accepted_promoted_meshes"] == 28
     assert report["surface_quality"]["summary"]["generated_reference_links"] == 28
     assert report["surface_quality"]["summary"]["generated_flat_plate_surfaces"] == 2
     assert report["surface_quality"]["summary"]["generated_smooth_loft_surfaces"] == 26
@@ -172,7 +185,7 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
         == 0
     )
     assert report["structural_sanity"]["summary"]["internal_cavity_blocker_links"] == 26
-    assert report["structural_sanity"]["summary"]["volume_adjusted_blocker_links"] == 20
+    assert report["structural_sanity"]["summary"]["volume_adjusted_blocker_links"] == 16
     assert (
         report["structural_sanity"]["summary"][
             "ribbed_bulged_preview_residual_structural_risk_links"
@@ -232,7 +245,7 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
     assert report["assembly"]["summary"]["structural_remediation_assembly_links"] == 6
     assert report["assembly"]["summary"]["structural_remediation_actuated_links"] == 6
     assert report["assembly"]["summary"]["structural_remediation_z_refinement_links"] == 2
-    assert report["fembot_collision_dynamics"]["ok"] is True
+    assert report["fembot_collision_dynamics"]["ok"] is False
     assert report["fembot_collision_dynamics"]["accepted"] is False
     assert report["fembot_collision_dynamics"]["summary"]["generated_links"] == 28
     assert report["fembot_collision_dynamics"]["summary"]["mujoco_dynamic_step_ok"] is True

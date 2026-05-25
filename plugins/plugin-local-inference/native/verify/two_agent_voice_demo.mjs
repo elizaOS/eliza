@@ -6,7 +6,7 @@
  * The harness records the dynamics the product demo needs:
  *
  *   agent A text -> TTS audio -> agent B ASR -> schema-prefilled tool call
- *     -> text generation/DFlash metrics -> TTS audio -> agent A ASR -> ...
+ *     -> text generation/MTP metrics -> TTS audio -> agent A ASR -> ...
  *
  * `--backend synthetic` is deterministic and CI-safe. It verifies the
  * orchestration, metrics shape, and schema-prefill accounting without
@@ -165,7 +165,7 @@ function defaultBinDir() {
     stateRoot(),
     "local-inference",
     "bin",
-    "dflash",
+    "mtp",
     `${platformTag()}-metal-fused`,
   );
 }
@@ -327,7 +327,7 @@ class SyntheticBackend {
       firstTokenMs: round(firstTokenMs),
       decodeMs: round(decodeMs),
       tokensPerSecond: round(generatedTokens / (decodeMs / 1000), 3),
-      dflash: {
+      mtp: {
         draftedTokens,
         acceptedDraftTokens,
         rejectedDraftTokens: draftedTokens - acceptedDraftTokens,
@@ -357,7 +357,7 @@ function envForRealBridge(args, real) {
   if (args.binDir) {
     env.ELIZA_INFERENCE_LIBRARY = real.dylib;
     env.ELIZA_INFERENCE_LIB_DIR = real.binDir;
-    env.ELIZA_DFLASH_LLAMA_SERVER = real.server;
+    env.ELIZA_MTP_LLAMA_SERVER = real.server;
   }
   const defaultBundlePath = defaultBundle(args.modelId);
   if (args.bundle && path.resolve(args.bundle) !== path.resolve(defaultBundlePath)) {
@@ -642,9 +642,9 @@ function aggregate(report) {
   const schemaSaved = sum(
     turns.map((t) => t.schemaToolCall?.savedEstimatedTokens || 0),
   );
-  const drafted = sum(turns.map((t) => t.llm?.dflash?.draftedTokens || 0));
+  const drafted = sum(turns.map((t) => t.llm?.mtp?.draftedTokens || 0));
   const accepted = sum(
-    turns.map((t) => t.llm?.dflash?.acceptedDraftTokens || 0),
+    turns.map((t) => t.llm?.mtp?.acceptedDraftTokens || 0),
   );
   return {
     totalTurns: turns.length,
@@ -672,7 +672,7 @@ function aggregate(report) {
     averageReplyRtf: turns.length
       ? round(sum(turns.map((t) => t.audio?.replyTts?.rtf || 0)) / turns.length, 5)
       : null,
-    dflash: {
+    mtp: {
       draftedTokens: drafted,
       acceptedDraftTokens: accepted,
       acceptanceRate: drafted > 0 ? round(accepted / drafted, 5) : null,

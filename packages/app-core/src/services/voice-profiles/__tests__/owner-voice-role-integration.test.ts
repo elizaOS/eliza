@@ -19,10 +19,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import {
-  type OwnerConfidenceInput,
-  scoreOwnerConfidence,
-} from "../owner-confidence.ts";
+import { scoreOwnerConfidence } from "../owner-confidence.ts";
 import { InMemoryVoiceProfileStore } from "../store.ts";
 import type { VoiceProfile } from "../types.ts";
 
@@ -81,7 +78,7 @@ const OWNER_EMBEDDING = makeFreqEmbedding(OWNER_F0);
 const ATTACKER_EMBEDDING = makeFreqEmbedding(ATTACKER_F0);
 
 // Verify our test embeddings have meaningful separation before relying on them
-const OWNER_SELF_SIM: number = (() => {
+const _OWNER_SELF_SIM: number = (() => {
   let dot = 0;
   for (let i = 0; i < OWNER_EMBEDDING.length; i++)
     dot += OWNER_EMBEDDING[i] * OWNER_EMBEDDING[i];
@@ -490,8 +487,8 @@ describe("resolveOwnershipRole integration point", () => {
       // No voiceProfileId in the connector layer — attacker has no voice match
     };
 
-    // The role resolver would only see trustedConnectorMetadata["discord"]
-    const connectorLayer = trustedConnectorMetadata["discord"];
+    // The role resolver would only see trustedConnectorMetadata.discord
+    const connectorLayer = trustedConnectorMetadata.discord;
     expect(connectorLayer.userId).toBe("attacker-discord-id-999");
 
     // The voiceProfileId in untrustedContent.metadata is IGNORED

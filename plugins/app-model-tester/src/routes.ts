@@ -707,7 +707,7 @@ async function runText(
 }
 
 async function runModelTest(runtime: IAgentRuntime, body: ModelTestRequest) {
-  process.env.ELIZA_DFLASH_ALLOW_ZERO_DRAFT ??= "1";
+  process.env.ELIZA_MTP_ALLOW_ZERO_DRAFT ??= "1";
   const prompt =
     typeof body.prompt === "string" && body.prompt.trim()
       ? body.prompt.trim()

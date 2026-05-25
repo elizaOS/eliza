@@ -23,7 +23,7 @@
 # Env:
 #   VAST_API_KEY   required for any real provisioning (also accepts ~/.config/vastai/vast_api_key)
 #   SSH_PUBKEY     path to your ssh pubkey (default ~/.ssh/id_ed25519.pub)
-#   ELIZA_DFLASH_SMOKE_MODEL  optional GGUF for the kernel-verify graph smoke
+#   ELIZA_MTP_SMOKE_MODEL  optional GGUF for the kernel-verify graph smoke
 #   HF_TOKEN / HUGGING_FACE_HUB_TOKEN  forwarded by train_vast.sh for gated repos
 set -euo pipefail
 
@@ -43,7 +43,7 @@ TIER="0_8b"
 PAY=0
 DRYRUN=0
 SSH_PUBKEY="${SSH_PUBKEY:-$HOME/.ssh/id_ed25519.pub}"
-SMOKE_MODEL="${ELIZA_DFLASH_SMOKE_MODEL:-}"
+SMOKE_MODEL="${ELIZA_MTP_SMOKE_MODEL:-}"
 
 die() { echo "[dispatch-vast] ERROR: $*" >&2; exit 1; }
 log() { echo "[dispatch-vast] $*" >&2; }
@@ -180,7 +180,7 @@ git clone --filter=blob:none "$GIT_REMOTE" eliza
 cd eliza
 git checkout "$GIT_SHA"
 bun install --frozen-lockfile || bun install
-ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda
+ELIZA_MTP_SKIP_SERVER_STRUCTURED_OUTPUT=1 node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cuda
 make -C packages/inference/verify kernel-contract reference-test
 REMOTE
 )"
@@ -201,13 +201,13 @@ REMOTE
     REMOTE_TASK="$(cat <<REMOTE
 make -C packages/inference/verify cuda-verify
 make -C packages/inference/verify cuda-verify-fused
-${SMOKE_MODEL:+export ELIZA_DFLASH_SMOKE_MODEL=/workspace/smoke.gguf}
+${SMOKE_MODEL:+export ELIZA_MTP_SMOKE_MODEL=/workspace/smoke.gguf}
 ${SMOKE_MODEL:+packages/inference/verify/cuda_runner.sh --report /tmp/cuda-report.json} \
   ${SMOKE_MODEL:+|| true}
 ${SMOKE_MODEL:+test -f /tmp/cuda-report.json && cp /tmp/cuda-report.json /workspace/cuda-report.json}
 ${SMOKE_MODEL:+:} || cat > /workspace/cuda-report.json <<'JSON'
 {"schemaVersion":1,"runner":"dispatch-vast kernel-verify","status":"pass","passRecordable":false,
- "exitCode":0,"note":"cuda-verify + cuda-verify-fused fixture parity only; no ELIZA_DFLASH_SMOKE_MODEL → graph smoke skipped, so this is NOT a runtime-ready record. Pass --smoke-model to upgrade."}
+ "exitCode":0,"note":"cuda-verify + cuda-verify-fused fixture parity only; no ELIZA_MTP_SMOKE_MODEL → graph smoke skipped, so this is NOT a runtime-ready record. Pass --smoke-model to upgrade."}
 JSON
 REMOTE
 )"

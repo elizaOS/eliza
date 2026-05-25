@@ -184,6 +184,15 @@ const VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
 	"27b-256k",
 ]);
 
+const MTP_TIERS: ReadonlySet<Eliza1Tier> = new Set([
+	"0_8b",
+	"2b",
+	"4b",
+	"9b",
+	"27b",
+	"27b-256k",
+]);
+
 const MIN_TEXT_CONTEXT = 131072;
 
 function collectContractErrors(m: Eliza1Manifest): string[] {
@@ -241,6 +250,23 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 		}
 	} else if (m.files.vision.length > 0) {
 		errors.push(`files.vision: unsupported for non-vision tier ${m.tier}`);
+	}
+
+	const mtpEnabled = MTP_TIERS.has(m.tier);
+	if (mtpEnabled) {
+		if (m.files.mtp.length === 0) {
+			errors.push(`files.mtp: required for MTP-enabled tier ${m.tier}`);
+		}
+		if (!m.lineage.drafter) {
+			errors.push(`lineage.drafter: required for MTP-enabled tier ${m.tier}`);
+		}
+		if (!m.evals.mtp) {
+			errors.push(`evals.mtp: required for MTP-enabled tier ${m.tier}`);
+		} else if (strictRelease && !m.evals.mtp.passed) {
+			errors.push("evals.mtp.passed: false");
+		}
+	} else if (m.files.mtp.length > 0) {
+		errors.push(`files.mtp: unsupported for non-MTP tier ${m.tier}`);
 	}
 
 	// Backend kernel-verify coverage. A production release must verify every
@@ -331,6 +357,9 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 		if (lineage && files.length === 0) {
 			errors.push(`files.${slot}: required when lineage.${slot} is present`);
 		}
+	}
+	if (m.lineage.drafter && m.files.mtp.length === 0) {
+		errors.push("files.mtp: required when lineage.drafter is present");
 	}
 
 	if (m.files.asr.length > 0) {
@@ -444,6 +473,9 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 			];
 			for (const slot of ["asr", "vad", "embedding", "vision"] as const) {
 				if ((m.files[slot] ?? []).length > 0) requiredSlots.push(slot);
+			}
+			if (m.files.mtp.length > 0) {
+				requiredSlots.push("drafter");
 			}
 			if ((m.files.imagegen ?? []).length > 0) {
 				requiredSlots.push("imagegen");

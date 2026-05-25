@@ -108,7 +108,7 @@ import { ELIZA_DEFAULT_THEME } from "@elizaos/ui/themes";
 // biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
 import * as React from "react";
 import { type ComponentType, lazy, StrictMode, Suspense } from "react";
-import { createRoot } from "react-dom/client";
+import ReactDomClient from "react-dom/client";
 import {
   APP_BRANDING_BASE,
   APP_CONFIG,
@@ -142,6 +142,7 @@ declare global {
 }
 
 const appModuleCache = new Map<string, Promise<unknown>>();
+const { createRoot } = ReactDomClient;
 
 function cachedDynamicImport<T>(
   key: string,

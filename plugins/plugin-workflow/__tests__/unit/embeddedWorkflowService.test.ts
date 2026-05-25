@@ -1,3 +1,4 @@
+import { Database } from 'bun:sqlite';
 import { describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -225,6 +226,77 @@ describe('EmbeddedWorkflowService', () => {
     } finally {
       await service.stop();
       await harness.close();
+    }
+  }, 60_000);
+
+  test('persists node execution through Smithers step storage', async () => {
+    const harness = await persistentRuntime();
+    const service = await EmbeddedWorkflowService.start(harness.runtime);
+    let smithersDbPath: string | null = null;
+    try {
+      const created = await service.createWorkflow({
+        name: 'Smithers persistence',
+        nodes: [
+          {
+            id: 'manual',
+            name: 'Manual Trigger',
+            type: 'workflows-nodes-base.manualTrigger',
+            typeVersion: 1,
+            position: [0, 0],
+            parameters: {},
+          },
+          {
+            id: 'set',
+            name: 'Set',
+            type: 'workflows-nodes-base.set',
+            typeVersion: 3.4,
+            position: [200, 0],
+            parameters: {
+              assignments: { assignments: [{ name: 'smithersRecorded', value: true }] },
+            },
+          },
+        ],
+        connections: {
+          'Manual Trigger': { main: [[{ node: 'Set', type: 'main', index: 0 }]] },
+        },
+      });
+
+      const execution = await service.executeWorkflow(created.id);
+      const item = firstRunJson(execution, 'Set');
+      smithersDbPath = join(process.cwd(), '.eliza', 'smithers', `${created.id}.sqlite`);
+      const smithersDb = new Database(smithersDbPath, { readonly: true });
+      try {
+        const tables = smithersDb
+          .query<{ name: string }, []>(
+            "select name from sqlite_master where type = 'table' and name like 'smithers_%' order by name"
+          )
+          .all()
+          .map((row) => row.name);
+        const persistedSetRows = smithersDb
+          .query<{ payload: unknown }, []>(
+            'select payload from smithers_0001_set where node_id = ? order by iteration'
+          )
+          .all('0001-set');
+
+        expect(execution.status).toBe('success');
+        expect(item?.smithersRecorded).toBe(true);
+        expect(tables).toContain('smithers_0000_manual');
+        expect(tables).toContain('smithers_0001_set');
+        expect(tables).toContain('smithers_eliza_workflow_result');
+        expect(persistedSetRows.length).toBe(1);
+      } finally {
+        smithersDb.close();
+      }
+    } finally {
+      await service.stop();
+      await harness.close();
+      if (smithersDbPath) {
+        await Promise.all([
+          rm(smithersDbPath, { force: true }),
+          rm(`${smithersDbPath}-wal`, { force: true }),
+          rm(`${smithersDbPath}-shm`, { force: true }),
+        ]);
+      }
     }
   }, 60_000);
 

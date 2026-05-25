@@ -1,6 +1,7 @@
 "use client";
 
 import { Heart, Sparkles } from "lucide-react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { APP_CONFIG, ROUTES } from "@/lib/constants";
@@ -201,9 +202,12 @@ export default function CloningPage() {
           <div className="relative w-full md:max-w-md h-screen md:h-[600px] md:rounded-3xl overflow-hidden shadow-2xl">
             {/* Background Image */}
             {characterPhoto ? (
-              <img
+              <Image
                 src={characterPhoto}
                 alt={characterName}
+                fill
+                sizes="(min-width: 768px) 448px, 100vw"
+                unoptimized
                 className="absolute inset-0 w-full h-full object-cover"
               />
             ) : (

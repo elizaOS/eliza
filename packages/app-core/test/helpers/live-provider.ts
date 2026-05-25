@@ -196,8 +196,8 @@ const PROVIDERS: Array<{
     defaultLargeModel: "google/gemini-2.0-flash-001",
   },
   {
-    // Local OpenAI-compatible server (dflash llama-server fork or Ollama).
-    // The dflash fork at ~/.cache/eliza-dflash/eliza-llama-cpp is preferred
+    // Local OpenAI-compatible server (mtp llama-server fork or Ollama).
+    // The mtp fork at ~/.cache/eliza-mtp/eliza-llama-cpp is preferred
     // when present; otherwise ELIZA_OPENCODE_BASE_URL points at Ollama
     // (default http://localhost:11434/v1). No real API key is required, but
     // the selector requires a non-empty key string, so callers must set

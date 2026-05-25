@@ -15,12 +15,17 @@ os.environ.setdefault("MUJOCO_GL", "glfw")
 import cv2
 import mujoco
 import numpy as np
-from PIL import Image, ImageStat
+import trimesh
+from PIL import Image, ImageDraw, ImageStat
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MJCF = PACKAGE_ROOT / "cad" / "asimov-feminine" / "output" / "mjcf" / "asimov_fembot.xml"
 DEFAULT_OUTPUT = PACKAGE_ROOT / "cad" / "asimov-feminine" / "output" / "media" / "fembot"
 DEFAULT_PROOF = PACKAGE_ROOT / "cad" / "asimov-feminine" / "proofs" / "fembot-media-review.json"
+DEFAULT_GENERATED_CAD_PROOF = (
+    PACKAGE_ROOT / "cad" / "asimov-feminine" / "proofs" / "fembot-generated-cad-envelope.json"
+)
+DEFAULT_SPLINE_PROOF_ROOT = PACKAGE_ROOT / "cad" / "asimov-feminine" / "proofs"
 
 
 def _joint_name(model: mujoco.MjModel, joint_id: int) -> str:
@@ -123,6 +128,127 @@ def _write_video(frames_dir: Path, output: Path, *, fps: int) -> dict[str, Any]:
     }
 
 
+def _load_json(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _projection_points(
+    vertices: np.ndarray,
+    dims: tuple[int, int],
+    *,
+    image_size: int,
+    margin: int,
+) -> list[tuple[float, float]]:
+    points = vertices[:, list(dims)].astype(float)
+    lo = points.min(axis=0)
+    hi = points.max(axis=0)
+    span = np.maximum(hi - lo, 1.0e-9)
+    scale = (image_size - margin * 2) / float(max(span))
+    centered = (points - (lo + hi) * 0.5) * scale
+    return [
+        (
+            float(image_size * 0.5 + point[0]),
+            float(image_size * 0.5 - point[1]),
+        )
+        for point in centered
+    ]
+
+
+def _draw_mesh_projection(
+    *,
+    mesh: trimesh.Trimesh,
+    title: str,
+    output: Path,
+    image_size: int = 360,
+) -> dict[str, Any]:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    canvas = Image.new("RGB", (image_size * 3, image_size + 42), (248, 248, 246))
+    draw = ImageDraw.Draw(canvas)
+    vertices = np.asarray(mesh.vertices)
+    face_indices = np.asarray(mesh.faces)
+    views = [
+        ("XY", (0, 1), 0),
+        ("XZ", (0, 2), image_size),
+        ("YZ", (1, 2), image_size * 2),
+    ]
+    for label, dims, x_offset in views:
+        projected = _projection_points(
+            vertices,
+            dims,
+            image_size=image_size,
+            margin=22,
+        )
+        for face in face_indices:
+            coords = [
+                (projected[int(index)][0] + x_offset, projected[int(index)][1] + 36)
+                for index in face
+            ]
+            draw.line([*coords, coords[0]], fill=(35, 88, 110), width=1)
+        draw.rectangle(
+            [x_offset + 6, 36 + 6, x_offset + image_size - 6, 36 + image_size - 6],
+            outline=(170, 170, 165),
+            width=1,
+        )
+        draw.text((x_offset + 12, 12), label, fill=(30, 30, 30))
+    draw.text((12, image_size + 18), title, fill=(25, 25, 25))
+    canvas.save(output)
+    return _nonblank_image(output)
+
+
+def _source_fitted_part_screenshots(
+    *,
+    generated_cad_proof: Path,
+    spline_proof_root: Path,
+    output_root: Path,
+) -> list[dict[str, Any]]:
+    generated = _load_json(generated_cad_proof) or {}
+    records = []
+    for record in generated.get("link_steps", []):
+        if record.get("shape_family") != "source_fitted_controlled_loft":
+            continue
+        link = str(record.get("link", "")).upper()
+        spline = _load_json(spline_proof_root / f"{link}.spline-fit.json") or {}
+        mesh_path = Path(str(spline.get("output_mesh_path") or ""))
+        if not link or not mesh_path.is_file():
+            records.append(
+                {
+                    "link": link,
+                    "exists": False,
+                    "nonblank": False,
+                    "blocking_reason": "missing controlled-loft output mesh for media projection",
+                }
+            )
+            continue
+        mesh = trimesh.load(mesh_path, force="mesh")
+        output = output_root / f"fembot_source_fitted_{link.lower()}.png"
+        image_report = _draw_mesh_projection(
+            mesh=mesh,
+            title=f"{link} source-fitted controlled loft",
+            output=output,
+        )
+        records.append(
+            {
+                "link": link,
+                "shape_family": record.get("shape_family"),
+                "generated_step_path": record.get("step_path"),
+                "generated_step_sha256": record.get("step_sha256"),
+                "controlled_loft_mesh": str(mesh_path),
+                "controlled_loft_mesh_sha256": spline.get("output_mesh_sha256"),
+                "source_mesh": spline.get("mesh_path"),
+                "surface_symmetric_hausdorff_m": spline.get("summary", {}).get(
+                    "surface_symmetric_hausdorff_m"
+                ),
+                **image_report,
+            }
+        )
+    return records
+
+
 def render_media(
     *,
     mjcf_path: Path,
@@ -133,6 +259,8 @@ def render_media(
     frames: int,
     fps: int,
     keep_frames: bool,
+    generated_cad_proof: Path = DEFAULT_GENERATED_CAD_PROOF,
+    spline_proof_root: Path = DEFAULT_SPLINE_PROOF_ROOT,
 ) -> dict[str, Any]:
     output_root.mkdir(parents=True, exist_ok=True)
     frames_dir = output_root / "joint_rotation_frames"
@@ -179,6 +307,11 @@ def render_media(
     ]
     if not keep_frames:
         shutil.rmtree(frames_dir)
+    source_fitted_part_media = _source_fitted_part_screenshots(
+        generated_cad_proof=generated_cad_proof,
+        spline_proof_root=spline_proof_root,
+        output_root=output_root,
+    )
 
     proof = {
         "schema": "asimov-fembot-media-review-v1",
@@ -203,6 +336,7 @@ def render_media(
             ],
         },
         "sample_video_frames": sample_frames,
+        "source_fitted_part_media": source_fitted_part_media,
         "verification": {
             "renderer": "mujoco.Renderer",
             "video_encoder": "opencv VideoWriter mp4v",
@@ -225,6 +359,8 @@ def main() -> None:
     parser.add_argument("--frames", type=int, default=144)
     parser.add_argument("--fps", type=int, default=24)
     parser.add_argument("--keep-frames", action="store_true")
+    parser.add_argument("--generated-cad-proof", type=Path, default=DEFAULT_GENERATED_CAD_PROOF)
+    parser.add_argument("--spline-proof-root", type=Path, default=DEFAULT_SPLINE_PROOF_ROOT)
     args = parser.parse_args()
     proof = render_media(
         mjcf_path=args.mjcf,
@@ -235,6 +371,8 @@ def main() -> None:
         frames=args.frames,
         fps=args.fps,
         keep_frames=args.keep_frames,
+        generated_cad_proof=args.generated_cad_proof,
+        spline_proof_root=args.spline_proof_root,
     )
     print(json.dumps({"ok": proof["ok"], "screenshots": len(proof["screenshots"]), "video": proof["video"]}, indent=2))
 

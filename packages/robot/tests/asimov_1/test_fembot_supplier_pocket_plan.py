@@ -4,8 +4,7 @@ import json
 import subprocess
 import sys
 
-from eliza_robot.asimov_1.fembot_inventory import FEMBOT_BODY_GROUP_LINKS
-from eliza_robot.asimov_1.fembot_inventory import collect_fembot_inventory
+from eliza_robot.asimov_1.fembot_inventory import FEMBOT_BODY_GROUP_LINKS, collect_fembot_inventory
 from eliza_robot.asimov_1.fembot_supplier_pocket_plan import (
     build_fembot_supplier_pocket_plan_proof,
 )
@@ -40,9 +39,14 @@ def test_fembot_supplier_pocket_plan_tracks_exact_vendor_pocket_gaps(tmp_path) -
     assert report["summary"]["candidate_placement_proxy_single_solid_plans"] == 36
     assert report["summary"]["accepted_placement_transforms"] == 0
     assert report["summary"]["unassigned_placement_transforms"] == 0
-    assert report["summary"]["mate_feature_unassigned_plans"] == 36
+    assert report["summary"]["mate_feature_candidate_plans"] == 36
+    assert report["summary"]["mate_feature_unassigned_plans"] == 0
+    assert report["summary"]["fastener_access_required_plans"] == 24
+    assert report["summary"]["fastener_access_candidate_plans"] == 24
     assert report["summary"]["fastener_access_unverified_plans"] == 36
+    assert report["summary"]["collision_precheck_candidate_plans"] == 36
     assert report["summary"]["collision_validation_missing_plans"] == 36
+    assert report["summary"]["structural_precheck_candidate_plans"] == 36
     assert report["summary"]["structural_validation_missing_plans"] == 36
 
     plans = {
@@ -64,7 +68,26 @@ def test_fembot_supplier_pocket_plan_tracks_exact_vendor_pocket_gaps(tmp_path) -
         >= 0.0
     )
     assert left_knee["placement_transform_accepted"] is False
-    assert left_knee["mate_feature_ids"] == []
+    assert left_knee["supplier_family"] == "bearing_or_ring"
+    assert left_knee["mate_feature_ids"] == [
+        "LEFT_KNEE:1600-0515-0006:bbox-center",
+        "LEFT_KNEE:1600-0515-0006:short-axis-x",
+        "LEFT_KNEE:1600-0515-0006:long-axis-z",
+    ]
+    assert left_knee["mate_feature_assignment"]["candidate"] is True
+    assert left_knee["mate_feature_assignment"]["accepted"] is False
+    assert left_knee["fastener_access"]["required"] is False
+    assert left_knee["collision_precheck"]["candidate"] is True
+    assert left_knee["collision_precheck"]["accepted"] is False
+    assert (
+        left_knee["collision_precheck"]["adjusted_sorted_extent_clearance_margin_m"]
+        >= 0.0
+    )
+    assert left_knee["collision_precheck_candidate"] is True
+    assert left_knee["structural_precheck"]["candidate"] is True
+    assert left_knee["structural_precheck"]["accepted"] is False
+    assert left_knee["structural_precheck"]["minimum_safety_factor"] >= 1.05
+    assert left_knee["structural_precheck_candidate"] is True
     assert left_knee["placement_proxy_step_path"]
     assert left_knee["placement_proxy_step_sha256"]
     assert left_knee["placement_proxy_reload_ok"] is True
@@ -74,6 +97,11 @@ def test_fembot_supplier_pocket_plan_tracks_exact_vendor_pocket_gaps(tmp_path) -
     assert left_knee["source_geometry"]["max_body_extent_m"] == 0.038
     assert left_knee["generated_step_sha256"]
     assert left_knee["accepted"] is False
+    fastener = plans["LEFT_KNEE", "2806-0005-0004"]
+    assert fastener["supplier_family"] == "fastener_or_thread"
+    assert fastener["fastener_access"]["required"] is True
+    assert fastener["fastener_access"]["candidate"] is True
+    assert fastener["fastener_access"]["verified"] is False
 
 
 def test_fembot_supplier_pocket_plan_cli_writes_gateable_proof(tmp_path) -> None:
@@ -124,3 +152,6 @@ def test_fembot_inventory_surfaces_supplier_pocket_plan_status() -> None:
         == 36
     )
     assert report["supplier_pocket_plan"]["summary"]["accepted_placement_transforms"] == 0
+    assert report["supplier_pocket_plan"]["summary"]["mate_feature_candidate_plans"] == 36
+    assert report["supplier_pocket_plan"]["summary"]["mate_feature_unassigned_plans"] == 0
+    assert report["supplier_pocket_plan"]["summary"]["fastener_access_candidate_plans"] == 24

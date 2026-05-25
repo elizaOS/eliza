@@ -153,7 +153,7 @@ void eliza_llama_log_silence(void) {
     llama_log_set(eliza__silent_log, NULL);
 }
 
-// ─── DFlash combined-path (STUB) ─────────────────────────────────────────────
+// ─── MTP combined-path (STUB) ─────────────────────────────────────────────
 // The real implementation must reach into llama.cpp's common/ helpers
 // (common_speculative_*) which are not exposed via the public C API and
 // live in libcommon.a, not libllama.so. Phase B will pull a thin
@@ -176,12 +176,12 @@ int32_t eliza_llama_context_set_spec_mode(
 
 int32_t eliza_llama_decode_unified(void* ctx, void* batch) {
     // AUTO/NONE fallback: until the drafter wiring lands, decode_unified
-    // delegates to plain decode. Callers that explicitly set spec_mode=DFLASH
+    // delegates to plain decode. Callers that explicitly set spec_mode=MTP
     // already get -ENOSYS from set_spec_mode and won't reach this path.
     return eliza_llama_decode(ctx, batch);
 }
 
-void eliza_llama_dflash_stats(void* ctx, int32_t* out) {
+void eliza_llama_mtp_stats(void* ctx, int32_t* out) {
     (void)ctx;
     if (!out) return;
     out[0] = 0; out[1] = 0; out[2] = 0; out[3] = 0;

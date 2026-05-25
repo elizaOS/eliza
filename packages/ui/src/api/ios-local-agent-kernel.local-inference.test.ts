@@ -43,9 +43,7 @@ function eliza1MobileManifest(modelId = "eliza-1-2b"): Record<string, unknown> {
       ? "text/eliza-1-4b-64k.gguf"
       : "text/eliza-1-2b-128k.gguf";
   const drafterPath =
-    modelId === "eliza-1-4b"
-      ? "dflash/drafter-4b.gguf"
-      : "dflash/drafter-2b.gguf";
+    modelId === "eliza-1-4b" ? "mtp/drafter-4b.gguf" : "mtp/drafter-2b.gguf";
 
   return {
     id: modelId,
@@ -72,7 +70,7 @@ function eliza1MobileManifest(modelId = "eliza-1-2b"): Record<string, unknown> {
         },
       ],
       vision: [],
-      dflash: [
+      mtp: [
         {
           path: drafterPath,
           sha256: "0".repeat(64),
@@ -145,7 +143,7 @@ vi.mock("@elizaos/capacitor-llama", () => ({
       cpuCores: 8,
       gpu: { backend: "metal", available: true },
       gpuSupported: true,
-      dflashSupported: true,
+      mtpSupported: true,
       source: "native",
       ...mockState.hardware,
     })),
@@ -503,7 +501,7 @@ describe("iOS local-agent local inference flow", () => {
     const kernel = await loadKernel({
       load,
       hardware: {
-        dflashSupported: true,
+        mtpSupported: true,
       },
       availableModels: [
         {

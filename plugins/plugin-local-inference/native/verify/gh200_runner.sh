@@ -8,14 +8,14 @@
 # Environment overrides:
 #   GH200_DELEGATE_REPORT       cuda_runner.sh JSON path; default is
 #                               <gh200-report>.cuda.json when --report is set
-#   ELIZA_DFLASH_SMOKE_MODEL    required by the delegated CUDA graph smoke
-#   CUDA_BUILD_FORK/CUDA_HOME/ELIZA_DFLASH_*
+#   ELIZA_MTP_SMOKE_MODEL    required by the delegated CUDA graph smoke
+#   CUDA_BUILD_FORK/CUDA_HOME/ELIZA_MTP_*
 #                               forwarded through cuda_runner.sh
 
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPORT_PATH="${ELIZA_DFLASH_HARDWARE_REPORT:-}"
+REPORT_PATH="${ELIZA_MTP_HARDWARE_REPORT:-}"
 STARTED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 FAIL_REASON=""
 GPU_INFO=""
@@ -59,7 +59,7 @@ on_error() {
 }
 
 model_sha256() {
-    local model="${ELIZA_DFLASH_SMOKE_MODEL:-}"
+    local model="${ELIZA_MTP_SMOKE_MODEL:-}"
     [[ -n "$model" && -f "$model" ]] || return 0
     if command -v sha256sum >/dev/null 2>&1; then
         sha256sum "$model" | awk '{print $1}'
@@ -84,8 +84,8 @@ write_report() {
     TARGET="${CUDA_TARGET:-linux-aarch64-cuda}" \
     GPU_INFO="$GPU_INFO" \
     TOOLCHAIN_INFO="$TOOLCHAIN_INFO" \
-    CMAKE_FLAGS="${ELIZA_DFLASH_CMAKE_FLAGS:-}" \
-    MODEL="${ELIZA_DFLASH_SMOKE_MODEL:-}" \
+    CMAKE_FLAGS="${ELIZA_MTP_CMAKE_FLAGS:-}" \
+    MODEL="${ELIZA_MTP_SMOKE_MODEL:-}" \
     MODEL_SHA256="$(model_sha256)" \
     GRAPH_SMOKE_STATUS="$GRAPH_SMOKE_STATUS" \
     DELEGATE_REPORT_PATH="$DELEGATE_REPORT_PATH" \
@@ -159,8 +159,8 @@ if ! grep -Eq '(H100|H200|GH200|Grace Hopper|9\.[0-9])' <<<"$GPU_INFO"; then
 fi
 
 export CUDA_TARGET="${CUDA_TARGET:-linux-aarch64-cuda}"
-if [[ -z "${ELIZA_DFLASH_CMAKE_FLAGS:-}" ]]; then
-    export ELIZA_DFLASH_CMAKE_FLAGS='-DCMAKE_CUDA_ARCHITECTURES=90a'
+if [[ -z "${ELIZA_MTP_CMAKE_FLAGS:-}" ]]; then
+    export ELIZA_MTP_CMAKE_FLAGS='-DCMAKE_CUDA_ARCHITECTURES=90a'
 fi
 
 if [[ -n "$REPORT_PATH" ]]; then

@@ -8,7 +8,7 @@
  *
  * These profiles are *recommendations* — the runtime selects a bundle by id
  * and then maps the host's GPU to a `GpuProfile` to fill in llama-server
- * flags (KV cache types, n-gpu-layers, batch sizing, DFlash draft range,
+ * flags (KV cache types, n-gpu-layers, batch sizing, MTP draft range,
  * mlock). A non-NVIDIA host returns `null` and the runtime falls back to
  * the catalog defaults.
  *
@@ -86,9 +86,9 @@ export interface GpuProfile {
   /** `--ubatch-size N` physical micro-batch. */
   ubatchSize: number;
 
-  /** DFlash speculative-decoding draft range. */
-  dflashDraftMin: number;
-  dflashDraftMax: number;
+  /** MTP speculative-decoding draft range. */
+  mtpDraftMin: number;
+  mtpDraftMax: number;
 
   /** `--mlock` — pin model pages in RAM. */
   mlock: boolean;
@@ -131,8 +131,8 @@ const RTX_3090: GpuProfile = {
   parallel: 4,
   batchSize: 2048,
   ubatchSize: 512,
-  dflashDraftMin: 4,
-  dflashDraftMax: 16,
+  mtpDraftMin: 4,
+  mtpDraftMax: 16,
   mlock: true,
   noMmap: false,
   kvSpillToCpu: false,
@@ -165,8 +165,8 @@ const RTX_4090: GpuProfile = {
   parallel: 4,
   batchSize: 2048,
   ubatchSize: 512,
-  dflashDraftMin: 4,
-  dflashDraftMax: 24,
+  mtpDraftMin: 4,
+  mtpDraftMax: 24,
   mlock: true,
   noMmap: false,
   kvSpillToCpu: false,
@@ -202,8 +202,8 @@ const RTX_5090: GpuProfile = {
   parallel: 8,
   batchSize: 4096,
   ubatchSize: 1024,
-  dflashDraftMin: 4,
-  dflashDraftMax: 24,
+  mtpDraftMin: 4,
+  mtpDraftMax: 24,
   mlock: true,
   noMmap: false,
   kvSpillToCpu: false,
@@ -236,8 +236,8 @@ const H200: GpuProfile = {
   parallel: 16,
   batchSize: 4096,
   ubatchSize: 2048,
-  dflashDraftMin: 8,
-  dflashDraftMax: 32,
+  mtpDraftMin: 8,
+  mtpDraftMax: 32,
   mlock: true,
   noMmap: false,
   kvSpillToCpu: false,

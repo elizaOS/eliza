@@ -13,7 +13,7 @@
  *
  * Eliza structure-forcing fields (prefillPlan, guidedDecode, plannerActionSchemas)
  * are forwarded from providerOptions.eliza as top-level eliza_* keys so the
- * worker's dflash-enabled llama-server can apply them without code changes.
+ * worker's mtp-enabled llama-server can apply them without code changes.
  */
 
 import { getVastApiModelId, VAST_NATIVE_MODELS } from "../models";
@@ -48,7 +48,7 @@ function toSnakeCase(str: string): string {
 /**
  * Forward eliza-specific providerOptions fields as top-level keys.
  * Known fields: prefillPlan, guidedDecode, plannerActionSchemas.
- * The dflash-enabled llama-server on Vast workers expects these as top-level
+ * The mtp-enabled llama-server on Vast workers expects these as top-level
  * eliza_* fields in the request body.
  */
 function extractElizaFields(

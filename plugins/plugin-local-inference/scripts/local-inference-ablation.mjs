@@ -2,7 +2,7 @@
 /**
  * Portable llama-server ablation runner for local inference backends.
  *
- * Measures target-only, DFlash, TurboQuant KV, TCQ/QJL KV, and combined paths
+ * Measures target-only, MTP, TurboQuant KV, TCQ/QJL KV, and combined paths
  * with the same OpenAI-compatible request shape across Metal, CUDA, ROCm, and
  * CPU builds. Results are written as JSON for cross-machine comparison.
  */
@@ -41,18 +41,18 @@ const DEFAULT_VARIANTS = [
     args: ["--cache-type-k", "qjl1_256", "--cache-type-v", "tbq3_0"],
   },
   {
-    name: "dflash_only",
-    label: "DFlash, f16 KV",
+    name: "mtp_only",
+    label: "MTP, f16 KV",
     needsDrafter: true,
-    args: ["--spec-type", "dflash"],
+    args: ["--spec-type", "mtp"],
   },
   {
-    name: "dflash_turbo4_polar",
-    label: "DFlash + Turbo/Polar KV turbo4",
+    name: "mtp_turbo4_polar",
+    label: "MTP + Turbo/Polar KV turbo4",
     needsDrafter: true,
     args: [
       "--spec-type",
-      "dflash",
+      "mtp",
       "--cache-type-k",
       "tbq4_0",
       "--cache-type-v",
@@ -64,12 +64,12 @@ const DEFAULT_VARIANTS = [
     ],
   },
   {
-    name: "all_dflash_qjl_tcq",
-    label: "DFlash + QJL K + TBQ3 V",
+    name: "all_mtp_qjl_tcq",
+    label: "MTP + QJL K + TBQ3 V",
     needsDrafter: true,
     args: [
       "--spec-type",
-      "dflash",
+      "mtp",
       "--cache-type-k",
       "qjl1_256",
       "--cache-type-v",
@@ -89,7 +89,7 @@ function stateDir() {
 }
 
 function detectBackend() {
-  const forced = process.env.ELIZA_DFLASH_BACKEND?.trim().toLowerCase();
+  const forced = process.env.ELIZA_MTP_BACKEND?.trim().toLowerCase();
   if (forced) return forced;
   if (process.platform === "darwin") return "metal";
   if (process.env.HIP_VISIBLE_DEVICES || process.env.ROCR_VISIBLE_DEVICES)
@@ -138,7 +138,7 @@ function defaultBinary(backend) {
     stateDir(),
     "local-inference",
     "bin",
-    "dflash",
+    "mtp",
     platformKey(backend),
     "llama-server",
   );
@@ -183,8 +183,8 @@ function variantRequiredKernels(variant) {
     const arg = argv[i];
     if (arg === "--spec-type" || arg.startsWith("--spec-type=")) {
       const parsed = optionValue(argv, i);
-      if (parsed.value && normalizeKernelArg(parsed.value) === "dflash") {
-        required.add("dflash");
+      if (parsed.value && normalizeKernelArg(parsed.value) === "mtp") {
+        required.add("mtp");
       }
       i += parsed.consumed;
       continue;
@@ -224,7 +224,7 @@ function defaultModelPath(name) {
 const QUICK_VARIANTS = [
   "baseline_f16_kv",
   "turbo4_polar_kv",
-  "dflash_only",
+  "mtp_only",
 ];
 
 const OPTION_ALIASES = new Map([
@@ -379,7 +379,7 @@ Options:
   --binary /path/to/llama-server
   --model /path/to/target.gguf
   --drafter /path/to/drafter.gguf
-  --variants baseline_f16_kv,turbo4_polar_kv,qjl_tcq_forced,dflash_only
+  --variants baseline_f16_kv,turbo4_polar_kv,qjl_tcq_forced,mtp_only
   --runs 3 --max-tokens 256 --quick
   --out-dir artifacts/local-inference-ablation
   --config scripts/local-inference-ablation.config.json

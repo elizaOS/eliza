@@ -92,8 +92,8 @@ def test_stage_local_bundle_writes_non_publishable_layout(
     assert report["manifestValidation"]["publishReadyOk"] is False
     assert report["checksumValidation"]["ok"] is True
     assert (bundle / "text" / "eliza-1-2b-128k.gguf").is_file()
-    assert (bundle / "dflash" / "drafter-2b.gguf").is_file()
-    assert (bundle / "dflash" / "target-meta.json").is_file()
+    assert (bundle / "mtp" / "drafter-2b.gguf").is_file()
+    assert (bundle / "mtp" / "target-meta.json").is_file()
     assert (bundle / "vision" / "mmproj-2b.gguf").is_file()
     assert (bundle / "evals" / "aggregate.json").is_file()
     assert (bundle / "evals" / "text-eval.json").is_file()
@@ -105,7 +105,7 @@ def test_stage_local_bundle_writes_non_publishable_layout(
     assert (bundle / "quantization" / "qjl_config.json").is_file()
     assert (bundle / "quantization" / "polarquant_config.json").is_file()
     assert (bundle / "licenses" / "LICENSE.text").is_file()
-    assert (bundle / "licenses" / "LICENSE.dflash").is_file()
+    assert (bundle / "licenses" / "LICENSE.mtp").is_file()
     assert (bundle / "licenses" / "LICENSE.eliza-1").is_file()
     aggregate = json.loads((bundle / "evals" / "aggregate.json").read_text())
     assert "vad_boundary_mae_ms" in aggregate["results"]

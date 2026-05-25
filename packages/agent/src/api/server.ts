@@ -300,7 +300,6 @@ import {
 import {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
-  getErrorMessage,
   hasPersistedOnboardingState,
   isUuidLike,
   patchTouchesProviderSelection,
@@ -1014,54 +1013,6 @@ async function handleBuiltinOptionalRoutes(
 
   return false;
 }
-
-function isModuleResolutionFailure(err: unknown): boolean {
-  if (typeof err !== "object" || err === null) {
-    return false;
-  }
-  const code = "code" in err ? (err as NodeJS.ErrnoException).code : undefined;
-  if (
-    code === "MODULE_NOT_FOUND" ||
-    code === "ERR_MODULE_NOT_FOUND" ||
-    code === "ERR_PACKAGE_PATH_NOT_EXPORTED"
-  ) {
-    return true;
-  }
-  if (!("message" in err) || typeof err.message !== "string") {
-    return false;
-  }
-  return (
-    err.message.includes("Cannot find module") ||
-    err.message.includes("Cannot find package") ||
-    err.message.includes("ERR_MODULE_NOT_FOUND") ||
-    err.message.includes('is not defined by "exports"')
-  );
-}
-
-function isWalletBridgeImportFailure(err: unknown): boolean {
-  if (isModuleResolutionFailure(err)) {
-    return true;
-  }
-  if (typeof err !== "object" || err === null) {
-    return false;
-  }
-  const code = "code" in err ? (err as NodeJS.ErrnoException).code : undefined;
-  if (code === "ERR_UNKNOWN_FILE_EXTENSION") {
-    return true;
-  }
-  if (!("message" in err) || typeof err.message !== "string") {
-    return false;
-  }
-  return err.message.includes('Unknown file extension ".css"');
-}
-
-type StewardWalletCoreRoutesHandler = (
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  state: unknown,
-) => Promise<boolean>;
-
-const STEWARD_WALLET_CORE_ROUTES_MODULE: string = "@elizaos/plugin-steward-app";
 
 // ---------------------------------------------------------------------------
 import {
@@ -2292,45 +2243,11 @@ async function handleRequest(
 
   // ═══════════════════════════════════════════════════════════════════════
   // Wallet core routes (addresses, balances, generate, config, export)
-  // Canonical implementation lives in @elizaos/plugin-steward-app; wired here
-  // so the API server exposes them without requiring plugin registration.
+  // Prefer the local wallet implementation during desktop startup. The
+  // steward-app bridge can pull browser/UI-only dependencies into the agent
+  // process and must not block local assistant boot.
   // ═══════════════════════════════════════════════════════════════════════
   if (pathname.startsWith("/api/wallet/")) {
-    let stewardWalletCoreRoutes: StewardWalletCoreRoutesHandler | null = null;
-    try {
-      const loaded = (await import(
-        /* @vite-ignore */ STEWARD_WALLET_CORE_ROUTES_MODULE
-      )) as { handleWalletCoreRoutes?: StewardWalletCoreRoutesHandler };
-      stewardWalletCoreRoutes = loaded.handleWalletCoreRoutes ?? null;
-    } catch (err) {
-      if (isWalletBridgeImportFailure(err)) {
-        logger.debug(
-          { err },
-          "[eliza-api] Wallet core routes unavailable from @elizaos/plugin-steward-app; falling back to local bridge",
-        );
-      } else {
-        logger.error({ err }, "[eliza-api] Wallet core route bridge failed");
-        error(res, getErrorMessage(err), 500);
-        return;
-      }
-    }
-    if (stewardWalletCoreRoutes) {
-      try {
-        if (
-          await stewardWalletCoreRoutes(req, res, {
-            runtime: state.runtime ?? null,
-            restartRuntime,
-            scheduleRuntimeRestart,
-          })
-        ) {
-          return;
-        }
-      } catch (err) {
-        logger.error({ err }, "[eliza-api] Wallet core route bridge failed");
-        error(res, getErrorMessage(err), 500);
-        return;
-      }
-    }
     const { handleWalletRoutes } = await getWalletApi();
     if (
       await handleWalletRoutes({

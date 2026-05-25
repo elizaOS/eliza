@@ -18,7 +18,7 @@
  *     pipeline driven by `cmake-graft.mjs`).  Putting the binding here
  *     keeps "all native libllama.cpp on Android" co-located.
  *   - It lets us register the same `FfiStreamingRunnerFactory` shape
- *     `aosp-dflash-adapter.ts` already imports from app-core — so the
+ *     `aosp-mtp-adapter.ts` already imports from app-core — so the
  *     existing dispatcher stitches mobile streaming through the same
  *     entry point the desktop runner uses.
  *
@@ -27,8 +27,8 @@
  * opened by the shared voice-lifecycle FFI service.  When the streaming
  * symbols are missing (older fused build) the loader returns null and
  * the dispatcher falls back to the non-streaming `aosp-llama-adapter.ts`
- * path on text turns.  DFlash on mobile then degrades to "target-only,
- * no speculative" (see `aosp-dflash-adapter.ts`).
+ * path on text turns.  MTP on mobile then degrades to "target-only,
+ * no speculative" (see `aosp-mtp-adapter.ts`).
  */
 
 import { logger } from "@elizaos/core";
@@ -56,13 +56,13 @@ export interface AospLlmStreamConfig {
   promptCacheKey: string | null;
   draftMin: number;
   draftMax: number;
-  dflashDrafterPath: string | null;
+  mtpDrafterPath: string | null;
   disableThinking: boolean;
 }
 
 /**
  * One streaming step surfaced to the runner.  `tokens` carries the
- * accepted-batch token ids (>= 1 — > 1 only under DFlash speculative
+ * accepted-batch token ids (>= 1 — > 1 only under MTP speculative
  * decoding when the verifier accepted multiple drafts on this step).
  * `text` is the detokenised UTF-8 for those tokens concatenated.  `done`
  * is true only on the final step (EOS / EOG / `max_tokens` cap).
@@ -281,8 +281,8 @@ export async function* streamGenerateIterable(
  * the FFI layer.  The runtime uses this to:
  *   - decide whether to register the FFI streaming runner factory at all
  *     (`streamingLlm === false` → fall back to single-model FFI),
- *   - decide whether the DFlash adapter should attempt speculative
- *     decoding (`dflashSupported === false` → run target-only),
+ *   - decide whether the MTP adapter should attempt speculative
+ *     decoding (`mtpSupported === false` → run target-only),
  *   - choose between the omnivoice streaming path and the batch path,
  *   - hide multi-modal-projection (mmproj) UI elements on phones that
  *     don't carry the projector.
@@ -293,7 +293,7 @@ export async function* streamGenerateIterable(
  */
 export interface AospInferenceCapabilities {
   streamingLlm: boolean;
-  dflashSupported: boolean;
+  mtpSupported: boolean;
   omnivoiceStreaming: boolean;
   mmprojSupported: boolean;
 }
@@ -312,18 +312,18 @@ export function probeAospCapabilities(
   omnivoiceStreaming: boolean,
 ): AospInferenceCapabilities {
   const streamingLlm = binding?.llmStreamSupported() ?? false;
-  // Mobile builds today don't carry the drafter weights mapped — DFlash
-  // requires both target + drafter resident.  Marking dflashSupported
+  // Mobile builds today don't carry the drafter weights mapped — MTP
+  // requires both target + drafter resident.  Marking mtpSupported
   // off on mobile lets the runtime emit a single accept event per token
   // (no rejects) instead of routing through the verifier callback.
   // Desktop keeps its native verifier-callback drive.
-  const dflashSupported = streamingLlm && platform === "other";
+  const mtpSupported = streamingLlm && platform === "other";
   // mmproj almost never fits on a phone alongside the chat model; let
   // the runtime opt the build in explicitly when it does.
   const mmprojSupported = platform === "other";
   return {
     streamingLlm,
-    dflashSupported,
+    mtpSupported,
     omnivoiceStreaming,
     mmprojSupported,
   };
@@ -341,7 +341,7 @@ export function probeAospCapabilities(
 export function logCapabilities(caps: AospInferenceCapabilities): void {
   logger.info(
     `[aosp-llama-streaming] caps: streamingLlm=${caps.streamingLlm} ` +
-      `dflashSupported=${caps.dflashSupported} ` +
+      `mtpSupported=${caps.mtpSupported} ` +
       `omnivoiceStreaming=${caps.omnivoiceStreaming} ` +
       `mmprojSupported=${caps.mmprojSupported}`,
   );

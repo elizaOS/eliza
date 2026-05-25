@@ -1,4 +1,4 @@
-// llama-server structured-output / DFlash verifier-stream patch.
+// llama-server structured-output / MTP verifier-stream patch.
 //
 // W4 (Eliza-1 voice swarm) needs the patched `llama-server` to support, on
 // `/v1/chat/completions` + `/completion`:
@@ -14,10 +14,10 @@
 //   5. a token-level forced-span path                  — covered by (1): a lazy
 //      GBNF whose literal spans cost zero sampled tokens (so the drafter never
 //      drafts them either)
-//   6. a native DFlash verifier reject-range on streamed chunks (the
+//   6. a native MTP verifier reject-range on streamed chunks (the
 //      `{ "verifier": { "rejected": [a, b] } }` SSE extension the runtime
-//      parses in dflash-server.ts `extractVerifierRejectRange` — see
-//      docs/porting/dflash-drafter-strategy.md "DFlash↔TTS Rollback Coupling")
+//      parses in ffi-streaming-backend.ts `extractVerifierRejectRange` — see
+//      docs/porting/mtp-drafter-strategy.md "MTP↔TTS Rollback Coupling")
 //
 // Items (1)–(5) are upstream llama.cpp features (the v1.0.0-eliza fork is
 // rebased on a recent enough llama.cpp — the server source is the post-refactor
@@ -30,15 +30,15 @@
 // streamed-chunk JSON when speculative decoding rejected a contiguous span of
 // previously-emitted drafted tokens.
 //
-// The patch is keyed by a `// ELIZA-DFLASH-VERIFIER-STREAM-V1` sentinel so it
+// The patch is keyed by a `// ELIZA-MTP-VERIFIER-STREAM-V1` sentinel so it
 // is idempotent. If the anchor it needs is absent (fork layout changed) it
-// throws — `build-llama-cpp-dflash.mjs` then exits non-zero rather than
+// throws — `build-llama-cpp-mtp.mjs` then exits non-zero rather than
 // shipping a binary without the verifier stream.
 
 import fs from "node:fs";
 import path from "node:path";
 
-const VERIFIER_SENTINEL = "// ELIZA-DFLASH-VERIFIER-STREAM-V1";
+const VERIFIER_SENTINEL = "// ELIZA-MTP-VERIFIER-STREAM-V1";
 
 // Server source files in the post-refactor llama.cpp layout, in the order we
 // prefer for the verifier-stream anchor (the streamed-chunk JSON builders live
@@ -71,7 +71,7 @@ function collectServerSources(cacheDir) {
   }
   if (found.length === 0) {
     throw new Error(
-      `[dflash-build] server-structured-output: no llama-server source found ` +
+      `[mtp-build] server-structured-output: no llama-server source found ` +
         `under ${cacheDir} (looked at tools/server/server*.cpp/.h and ` +
         `examples/server/server.cpp). The elizaOS/llama.cpp fork layout has ` +
         `changed; update kernel-patches/server-structured-output.mjs.`,
@@ -118,11 +118,11 @@ function assertUpstreamFeatures(sources) {
   if (missing.length > 0) {
     const where = sources.map((s) => s.rel).join(", ");
     throw new Error(
-      `[dflash-build] server-structured-output: the llama-server sources ` +
+      `[mtp-build] server-structured-output: the llama-server sources ` +
         `(${where}) are missing ${missing.map((m) => m.feature).join("; ")}. ` +
         `The elizaOS/llama.cpp fork must be rebased on a llama.cpp recent ` +
         `enough to include these (they are upstream features). Bump the fork ` +
-        `ref or set ELIZA_DFLASH_LLAMA_CPP_REMOTE / a -eliza tag that has them.`,
+        `ref or set ELIZA_MTP_LLAMA_CPP_REMOTE / a -eliza tag that has them.`,
     );
   }
 }
@@ -135,12 +135,12 @@ function assertUpstreamFeatures(sources) {
 const VERIFIER_PATCH_BLOCK = [
   "",
   VERIFIER_SENTINEL,
-  "// Eliza-1 voice swarm (W4): expose the DFlash verifier's reject span on",
+  "// Eliza-1 voice swarm (W4): expose the MTP verifier's reject span on",
   '// streamed chunks as `{ "verifier": { "rejected": [a, b] } }` so the',
   "// runtime can drop the not-yet-played TTS audio for the overlapping",
-  '// phrases (docs/porting/dflash-drafter-strategy.md "DFlash↔TTS Rollback',
+  '// phrases (docs/porting/mtp-drafter-strategy.md "MTP↔TTS Rollback',
   '// Coupling"). `a`/`b` are inclusive token indices in target output order.',
-  "namespace eliza_dflash {",
+  "namespace eliza_mtp {",
   "  // Set by the speculative loop after each verify pass; consumed + cleared",
   '  // by the next streamed-chunk send. -1 means "no reject this step".',
   "  static thread_local long long g_reject_from = -1;",
@@ -223,7 +223,7 @@ export function patchServerStructuredOutput(cacheDir, { dryRun = false } = {}) {
 
   if (sources.some((s) => s.text.includes(VERIFIER_SENTINEL))) {
     console.log(
-      `[dflash-build] llama-server sources already carry the DFlash ` +
+      `[mtp-build] llama-server sources already carry the MTP ` +
         `verifier-stream patch (sentinel present)`,
     );
   } else {
@@ -244,17 +244,17 @@ export function patchServerStructuredOutput(cacheDir, { dryRun = false } = {}) {
     if (!target) {
       const where = sources.map((s) => s.rel).join(", ");
       throw new Error(
-        `[dflash-build] server-structured-output: could not find a llama-server ` +
+        `[mtp-build] server-structured-output: could not find a llama-server ` +
           `translation unit (.cpp) containing a streamed-result builder ` +
           `(${VERIFIER_TU_MARKERS.join(" / ")}) with a recognizable include/using ` +
           `preamble in any of ${where}. The fork's server layout changed; update ` +
-          `kernel-patches/server-structured-output.mjs to re-anchor the DFlash ` +
+          `kernel-patches/server-structured-output.mjs to re-anchor the MTP ` +
           `verifier-stream extension.`,
       );
     }
     if (dryRun) {
       console.log(
-        `[dflash-build] (dry-run) would patch ${target.rel} with the DFlash ` +
+        `[mtp-build] (dry-run) would patch ${target.rel} with the MTP ` +
           `verifier-stream extension (TU marker: ${target.marker})`,
       );
     } else {
@@ -265,14 +265,14 @@ export function patchServerStructuredOutput(cacheDir, { dryRun = false } = {}) {
         target.text.slice(target.index);
       fs.writeFileSync(target.full, patched, "utf8");
       console.log(
-        `[dflash-build] patched ${target.rel} with the DFlash verifier-stream ` +
+        `[mtp-build] patched ${target.rel} with the MTP verifier-stream ` +
           `extension (TU marker: ${target.marker})`,
       );
     }
   }
 
   console.log(
-    `[dflash-build] server structured-output features verified across ` +
+    `[mtp-build] server structured-output features verified across ` +
       `${sources.map((s) => s.rel).join(", ")}: grammar_lazy, json_schema, ` +
       `response_format, prefill_assistant`,
   );

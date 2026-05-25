@@ -27,7 +27,7 @@
  *   MODEL_REPO         — HF repo id of the GGUF.
  *   MODEL_FILE         — GGUF filename inside that repo.
  *   MODEL_ALIAS        — `--alias` for llama-server (also the catalog id).
- *   DFLASH_DRAFTER_REPO / DFLASH_DRAFTER_FILE — optional drafter GGUF.
+ *   MTP_DRAFTER_REPO / MTP_DRAFTER_FILE — optional drafter GGUF.
  *   LLAMA_SERVER_BIN   — compatible llama-server binary (default: llama-server).
  *   HF_TOKEN_SECRET    — pass-through HuggingFace token for gated repos.
  *
@@ -226,8 +226,8 @@ async function main(): Promise<void> {
       "KV_CACHE_DTYPE",
       "VLLM_ENABLE_TURBOQUANT",
       "VLLM_TURBOQUANT_PRESET",
-      "DFLASH_MODEL",
-      "ELIZA_VLLM_DFLASH",
+      "MTP_MODEL",
+      "ELIZA_VLLM_MTP",
       "SPECULATIVE_CONFIG_JSON",
       "SPECULATIVE_TOKENS",
       "DRAFT_TENSOR_PARALLEL_SIZE",
@@ -283,9 +283,9 @@ async function main(): Promise<void> {
     env.LLAMA_SERVER_BIN = readEnv("LLAMA_SERVER_BIN", "llama-server");
     env.MODEL_DIR = readEnv("MODEL_DIR", "/workspace/models");
     optionalEnv(env, [
-      "DFLASH_DRAFTER_REPO",
-      "DFLASH_DRAFTER_FILE",
-      "DFLASH_SPEC_TYPE",
+      "MTP_DRAFTER_REPO",
+      "MTP_DRAFTER_FILE",
+      "MTP_SPEC_TYPE",
       "LLAMA_DRAFT_NGL",
       "LLAMA_DRAFT_CONTEXT",
       "LLAMA_DRAFT_MIN",
@@ -323,7 +323,7 @@ async function main(): Promise<void> {
         ? `eliza-cloud-${manifest?.manifest.label ?? "eliza-1-vllm"}`
         : "eliza-cloud-eliza-1-27b",
     ),
-    // Official llama.cpp CUDA server image for stock GGUF. DFlash/TurboQuant
+    // Official llama.cpp CUDA server image for stock GGUF. MTP/TurboQuant
     // deployments must set VAST_IMAGE to a compatible fork/runtime image.
     image: readEnv(
       "VAST_IMAGE",

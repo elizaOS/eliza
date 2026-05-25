@@ -166,7 +166,7 @@ const OPTIMIZED_PROMPT_HMAC_DEFAULT_KEY_TAG =
 
 function resolveHmacKey(): Buffer {
 	const fromEnv = process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
-	if (fromEnv && fromEnv.trim()) {
+	if (fromEnv?.trim()) {
 		// Accept hex (64 chars) or base64; fall back to raw utf-8 bytes.
 		const trimmed = fromEnv.trim();
 		if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {

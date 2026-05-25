@@ -140,7 +140,7 @@ fi
 # AOSP test suite.
 if timeout 90 bun test \
     "$repo_root/packages/app-core/scripts/aosp/compile-libllama-fused.test.mjs" \
-    "$repo_root/packages/app-core/scripts/build-llama-cpp-dflash-targets.test.mjs" \
+    "$repo_root/packages/app-core/scripts/build-llama-cpp-mtp-targets.test.mjs" \
     >"$tmp_log" 2>&1; then
     pass_count="$(grep -oE '[0-9]+ pass' "$tmp_log" | tail -1 || echo '0 pass')"
     record "aosp:test-suite" "PASS" "$pass_count"

@@ -9,7 +9,7 @@ peft, librosa, onnx). They rely on:
 
 Each test runs the script's `main()` function directly with argv, asserting
 file outputs. This matches the convention in
-`packages/training/scripts/test_distill_dflash_drafter.py` — drive a CLI by
+`packages/training/scripts/test_distill_mtp_drafter.py` — drive a CLI by
 its own main() so coverage tracks the real entry point.
 """
 

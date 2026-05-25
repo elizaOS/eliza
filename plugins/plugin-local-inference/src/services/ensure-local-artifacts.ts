@@ -12,7 +12,7 @@
  *     settings UI / a CLI.
  *
  * Today every Eliza-1 tier ships every component (text + voice + asr +
- * embedding + dflash drafter + cache) as one HuggingFace bundle. The
+ * embedding + mtp drafter + cache) as one HuggingFace bundle. The
  * orchestrator picks a tier per artifact kind (always the same tier today —
  * tier resolution is centralised on the recommender) and triggers parallel
  * `service.startDownload(modelId)` calls per kind. The downloader is

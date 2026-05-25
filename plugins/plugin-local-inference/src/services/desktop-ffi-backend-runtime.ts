@@ -28,7 +28,8 @@
  *   - slot save/restore — same.
  *   - prewarm — same.
  *   - parallel resize — same.
- *   - speculative decoding — native MTP heads only; no companion drafter.
+ *   - speculative decoding — native MTP requires the bundled drafter GGUF
+ *     resolved by the active-model coordinator.
  */
 
 import type { BackendPlan } from "./backend";
@@ -89,6 +90,7 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 			runner,
 			tokenize: (prompt) => result.adapter.tokenize(prompt),
 			mtp: plan.catalog?.runtime?.mtp ?? null,
+			draftModelPath: plan.overrides?.draftModelPath ?? null,
 			mmprojPath,
 		};
 		this.active = { adapter: result.adapter, session };

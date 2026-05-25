@@ -33,7 +33,7 @@ Known remaining blockers:
 - Required iOS, Android, Linux, and Windows platform evidence.
 - Active `0_8b` fine-tuned artifact plus baseline-vs-finetuned comparison
   reports.
-- DFlash drafter validation, acceptance, and speedup evidence for `2b`, `4b`,
+- MTP drafter validation, acceptance, and speedup evidence for `2b`, `4b`,
   `9b`, `27b`, and `27b-256k`.
 - Final release evidence promotion after the above gates pass.
 

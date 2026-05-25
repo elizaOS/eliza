@@ -114,7 +114,7 @@ fi
   || die "missing llama.cpp pin in $LLAMA_CPP_VERSION_FILE"
 
 # Source repo. Defaults to the elizaOS-controlled fork (carries the
-# elizaOS kernels + DFlash); override with LLAMA_CPP_REPO env var if you
+# elizaOS kernels + MTP); override with LLAMA_CPP_REPO env var if you
 # need to point at stock upstream (e.g. for an A/B parity check).
 LLAMA_CPP_REPO="${LLAMA_CPP_REPO:-https://github.com/elizaOS/llama.cpp}"
 

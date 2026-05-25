@@ -1,10 +1,10 @@
 {
   "generatedAt": "2026-05-20T17:31:36.234Z",
-  "conclusion": "Current MTP and current DFlash/AR artifacts are not shippable for all requested tiers; only short n=1 DFlash runs show intermittent speedups, and 512-token controlled runs are slower or flat. True small-tier dflash-draft training/export remains required.",
+  "conclusion": "Current MTP and current MTP/AR artifacts are not shippable for all requested tiers; only short n=1 MTP runs show intermittent speedups, and 512-token controlled runs are slower or flat. True small-tier mtp-draft training/export remains required.",
   "rows": [
     {
       "file": "evidence/speculative/rerun-20260520/bench-0_8b-tiny-metal-128.json",
-      "speculator": "dflash",
+      "speculator": "mtp",
       "tier": "0_8b",
       "status": "pass",
       "tokens": 128,
@@ -18,7 +18,7 @@
     },
     {
       "file": "evidence/speculative/rerun-20260520/bench-0_8b-tiny-metal.json",
-      "speculator": "dflash",
+      "speculator": "mtp",
       "tier": "0_8b",
       "status": "pass",
       "tokens": 64,
@@ -31,8 +31,8 @@
       "acceptance": 1
     },
     {
-      "file": "evidence/speculative/rerun-20260520/dflash-0_8b-tiny-n1-512-metal.json",
-      "speculator": "dflash",
+      "file": "evidence/speculative/rerun-20260520/mtp-0_8b-tiny-n1-512-metal.json",
+      "speculator": "mtp",
       "tier": "0_8b",
       "status": "pass",
       "tokens": 512,
@@ -46,7 +46,7 @@
     },
     {
       "file": "evidence/speculative/rerun-20260520/bench-2b-q4-metal-128.json",
-      "speculator": "dflash",
+      "speculator": "mtp",
       "tier": "2b",
       "status": "pass",
       "tokens": 128,
@@ -60,7 +60,7 @@
     },
     {
       "file": "evidence/speculative/rerun-20260520/bench-2b-q4-metal.json",
-      "speculator": "dflash",
+      "speculator": "mtp",
       "tier": "2b",
       "status": "pass",
       "tokens": 64,
@@ -73,8 +73,8 @@
       "acceptance": 1
     },
     {
-      "file": "evidence/speculative/rerun-20260520/dflash-2b-q4-n1-512-metal.json",
-      "speculator": "dflash",
+      "file": "evidence/speculative/rerun-20260520/mtp-2b-q4-n1-512-metal.json",
+      "speculator": "mtp",
       "tier": "2b",
       "status": "pass",
       "tokens": 512,
@@ -87,8 +87,8 @@
       "acceptance": 1
     },
     {
-      "file": "evidence/speculative/rerun-20260520/dflash-2b-q4-n8-512-metal.json",
-      "speculator": "dflash",
+      "file": "evidence/speculative/rerun-20260520/mtp-2b-q4-n8-512-metal.json",
+      "speculator": "mtp",
       "tier": "2b",
       "status": "pass",
       "tokens": 512,
@@ -101,8 +101,8 @@
       "acceptance": 0.1257396449704142
     },
     {
-      "file": "evidence/speculative/rerun-20260520/bench-4b-dflash-metal-128.json",
-      "speculator": "dflash",
+      "file": "evidence/speculative/rerun-20260520/bench-4b-mtp-metal-128.json",
+      "speculator": "mtp",
       "tier": "4b",
       "status": "pass",
       "tokens": 128,
@@ -115,8 +115,8 @@
       "acceptance": 1
     },
     {
-      "file": "evidence/speculative/rerun-20260520/bench-4b-dflash-metal.json",
-      "speculator": "dflash",
+      "file": "evidence/speculative/rerun-20260520/bench-4b-mtp-metal.json",
+      "speculator": "mtp",
       "tier": "4b",
       "status": "pass",
       "tokens": 64,
@@ -129,8 +129,8 @@
       "acceptance": 1
     },
     {
-      "file": "evidence/speculative/rerun-20260520/dflash-4b-n1-512-metal.json",
-      "speculator": "dflash",
+      "file": "evidence/speculative/rerun-20260520/mtp-4b-n1-512-metal.json",
+      "speculator": "mtp",
       "tier": "4b",
       "status": "pass",
       "tokens": 512,
@@ -143,8 +143,8 @@
       "acceptance": 1
     },
     {
-      "file": "evidence/speculative/rerun-20260520/dflash-4b-n16-512-metal.json",
-      "speculator": "dflash",
+      "file": "evidence/speculative/rerun-20260520/mtp-4b-n16-512-metal.json",
+      "speculator": "mtp",
       "tier": "4b",
       "status": "pass",
       "tokens": 512,

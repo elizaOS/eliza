@@ -8,7 +8,7 @@
         "internal_cavity_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -63,9 +63,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/imu_origin.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -79,6 +84,25 @@
           ],
           "value": -0.030127043642848732,
           "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": false,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/imu_origin.step",
+            "step_sha256": "f3b2160a8c20a0cc136b7335d765e0c65e1cc3b0d29629ab929b51d77c052f70",
+            "volume_increase_fraction": 1.2603209586232005,
+            "xy_area_increase_fraction": 0.9718401175112494,
+            "z_expansion_m": 0.02688999845981599
+          },
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -152,11 +176,11 @@
           "verified": true
         }
       ],
-      "production_blocker_count": 5,
+      "production_blocker_count": 6,
       "shape_family": "hollow_lofted_elliptic_shell_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/imu_origin.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 5
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -165,7 +189,7 @@
         "internal_cavity_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -220,9 +244,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/waist_yaw.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -235,6 +264,25 @@
             "asimov-fembot-thinness-frontier-proof-v1"
           ],
           "value": -0.052892124935303014,
+          "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": false,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/waist_yaw.step",
+            "step_sha256": "08056207765c89469dd899153530c28a630f06ade1949730394e6e53758036a2",
+            "volume_increase_fraction": 3.284876678875424,
+            "xy_area_increase_fraction": 2.9211818972561154,
+            "z_expansion_m": 0.035400114336609834
+          },
           "verified": false
         },
         {
@@ -261,8 +309,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.0362128253533167,
           "clearance_adjusted_value_m": 0.0362128253533167,
-          "generated_delta_vs_adjusted_m": 1.9787141090216176e-07,
-          "generated_value_m": 0.0362130232247276,
+          "generated_delta_vs_adjusted_m": -3.4968134076523993e-07,
+          "generated_value_m": 0.036212475671975934,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -278,8 +326,8 @@
           "axis": "y",
           "candidate_min_value_m": 0.2029999999999999,
           "clearance_adjusted_value_m": 0.2029999999999999,
-          "generated_delta_vs_adjusted_m": 1.9862045980145737e-07,
-          "generated_value_m": 0.2030001986204597,
+          "generated_delta_vs_adjusted_m": 6.263880306389691e-07,
+          "generated_value_m": 0.20300062638803054,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -309,7 +357,7 @@
           "verified": true
         }
       ],
-      "production_blocker_count": 5,
+      "production_blocker_count": 6,
       "shape_family": "hollow_lofted_elliptic_shell_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/waist_yaw.step",
       "surface_intent": "smooth",
@@ -323,7 +371,7 @@
         "internal_cavity_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -376,12 +424,17 @@
           "kind": "topology",
           "limit": null,
           "name": "topology_or_repair_preview",
-          "production_blocker": "generated mesh topology needs repair preview promotion",
+          "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": false,
-          "verified": false
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/neck_yaw.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": false
+          },
+          "verified": true
         },
         {
           "kind": "internal_keepout",
@@ -394,6 +447,25 @@
           ],
           "value": -0.019199999905005094,
           "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": false,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/neck_yaw.step",
+            "step_sha256": "5293821d48fa7e3b3d8ffe24a1496a6f0ec0a87fc696fc5eaf1d7effc507e4ac",
+            "volume_increase_fraction": 20.142094686863363,
+            "xy_area_increase_fraction": 12.96173564133151,
+            "z_expansion_m": 0.0383999998100102
+          },
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -471,7 +543,7 @@
       "shape_family": "hollow_lofted_elliptic_shell_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/neck_yaw.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 4
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -481,7 +553,7 @@
         "internal_cavity_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -536,9 +608,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/neck_pitch.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -552,6 +629,25 @@
           ],
           "value": -0.05044285140633583,
           "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": false,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/neck_pitch.step",
+            "step_sha256": "d8549318b20eb3fff1f0d9c4695c0ba65d7bac3e492aa03147da301886347c56",
+            "volume_increase_fraction": 31.492425621902868,
+            "xy_area_increase_fraction": 30.750976902235376,
+            "z_expansion_m": 0.004295835340023063
+          },
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -625,11 +721,11 @@
           "verified": true
         }
       ],
-      "production_blocker_count": 5,
+      "production_blocker_count": 6,
       "shape_family": "hollow_lofted_elliptic_shell_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/neck_pitch.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 5
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -640,7 +736,7 @@
         "internal_cavity_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -695,9 +791,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/left_shoulder_pitch.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -711,6 +812,25 @@
           ],
           "value": -0.019199999999999995,
           "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": true,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_shoulder_pitch.step",
+            "step_sha256": "e3a23bec2643809dae16a08557308c930b8b0c97dd4964e47e18010762797f2d",
+            "volume_increase_fraction": 4.147211682534416,
+            "xy_area_increase_fraction": 4.147211682534415,
+            "z_expansion_m": 0.0
+          },
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -784,11 +904,11 @@
           "verified": true
         }
       ],
-      "production_blocker_count": 5,
+      "production_blocker_count": 6,
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_pitch.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 5
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -799,7 +919,7 @@
         "internal_cavity_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -854,9 +974,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/right_shoulder_pitch.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -870,6 +995,25 @@
           ],
           "value": -0.019199999999999995,
           "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": true,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_shoulder_pitch.step",
+            "step_sha256": "ef4c07d12be2d16b293a460642687ecca9ddb0596d22f5ffe770a9b336a92092",
+            "volume_increase_fraction": 4.147211682534416,
+            "xy_area_increase_fraction": 4.147211682534415,
+            "z_expansion_m": 0.0
+          },
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -943,11 +1087,11 @@
           "verified": true
         }
       ],
-      "production_blocker_count": 5,
+      "production_blocker_count": 6,
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_pitch.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 5
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -958,7 +1102,7 @@
         "internal_cavity_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -1013,9 +1157,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/left_shoulder_roll.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -1029,6 +1178,25 @@
           ],
           "value": -0.0362,
           "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": false,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_shoulder_roll.step",
+            "step_sha256": "542743e55560d0205b87787602830b36ddc1dc4eb74caf3212f300a66eead533",
+            "volume_increase_fraction": 28.711817709516005,
+            "xy_area_increase_fraction": 24.606249319670933,
+            "z_expansion_m": 0.029402513647079492
+          },
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -1102,11 +1270,11 @@
           "verified": true
         }
       ],
-      "production_blocker_count": 5,
+      "production_blocker_count": 6,
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_roll.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 5
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -1117,7 +1285,7 @@
         "internal_cavity_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -1172,9 +1340,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/right_shoulder_roll.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -1188,6 +1361,25 @@
           ],
           "value": -0.0362,
           "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": false,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_shoulder_roll.step",
+            "step_sha256": "fd7456a58423a836b05680b7a1623c21d2f417f40dfd4d42a4fd4b9f3e8e8756",
+            "volume_increase_fraction": 28.711817709516005,
+            "xy_area_increase_fraction": 24.606249319670933,
+            "z_expansion_m": 0.029402513647079492
+          },
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -1261,11 +1453,11 @@
           "verified": true
         }
       ],
-      "production_blocker_count": 5,
+      "production_blocker_count": 6,
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_roll.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 5
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -1276,7 +1468,7 @@
         "structural_safety_factor"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -1329,12 +1521,17 @@
           "kind": "topology",
           "limit": null,
           "name": "topology_or_repair_preview",
-          "production_blocker": "generated mesh topology needs repair preview promotion",
+          "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": false,
-          "verified": false
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/left_shoulder_yaw.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": false
+          },
+          "verified": true
         },
         {
           "kind": "internal_keepout",
@@ -1347,6 +1544,25 @@
           ],
           "value": -0.016200000111758713,
           "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": false,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_shoulder_yaw.step",
+            "step_sha256": "3c21b4aecf5647c189356b8d6ed126a47fca184742c6327a1dff3352ab61f8c0",
+            "volume_increase_fraction": 15.228855680294522,
+            "xy_area_increase_fraction": 12.08874910877764,
+            "z_expansion_m": 0.03240000022351744
+          },
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -1424,7 +1640,7 @@
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_yaw.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 4
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -1435,7 +1651,7 @@
         "structural_safety_factor"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -1488,12 +1704,17 @@
           "kind": "topology",
           "limit": null,
           "name": "topology_or_repair_preview",
-          "production_blocker": "generated mesh topology needs repair preview promotion",
+          "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": false,
-          "verified": false
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/right_shoulder_yaw.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": false
+          },
+          "verified": true
         },
         {
           "kind": "internal_keepout",
@@ -1506,6 +1727,25 @@
           ],
           "value": -0.016200000111758713,
           "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": false,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_shoulder_yaw.step",
+            "step_sha256": "07274ccc915e379775dce17f8bf7a6130d8259ce42a2bbbe52a8fff6721da440",
+            "volume_increase_fraction": 14.922875037451123,
+            "xy_area_increase_fraction": 11.847482244504725,
+            "z_expansion_m": 0.03240000022351744
+          },
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -1583,7 +1823,7 @@
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_yaw.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 4
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -1593,7 +1833,7 @@
         "internal_cavity_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -1648,9 +1888,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/left_elbow.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -1664,6 +1909,25 @@
           ],
           "value": -0.031200000000000006,
           "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": false,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_elbow.step",
+            "step_sha256": "6501962b2eee3eca927de4cd0be58afeb0a5c73e61579ec3e8ff9aa458ce56cc",
+            "volume_increase_fraction": 5.050905158274735,
+            "xy_area_increase_fraction": 4.641034821303061,
+            "z_expansion_m": 0.009601705217361478
+          },
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -1737,11 +2001,11 @@
           "verified": true
         }
       ],
-      "production_blocker_count": 5,
+      "production_blocker_count": 6,
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_elbow.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 5
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -1751,7 +2015,7 @@
         "internal_cavity_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -1806,9 +2070,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/right_elbow.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -1822,6 +2091,25 @@
           ],
           "value": -0.031200000000000006,
           "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": false,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_elbow.step",
+            "step_sha256": "04d25e2819c2d1b3f5d0dfe64a4924b7e6b5fccd682359e31cd3885feaa0f901",
+            "volume_increase_fraction": 5.060274465959773,
+            "xy_area_increase_fraction": 4.642355583334117,
+            "z_expansion_m": 0.009781308913230924
+          },
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -1895,11 +2183,11 @@
           "verified": true
         }
       ],
-      "production_blocker_count": 5,
+      "production_blocker_count": 6,
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_elbow.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 5
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -1909,7 +2197,7 @@
         "internal_cavity_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -1962,12 +2250,17 @@
           "kind": "topology",
           "limit": null,
           "name": "topology_or_repair_preview",
-          "production_blocker": "generated mesh topology needs repair preview promotion",
+          "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": false,
-          "verified": false
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/left_wrist_yaw.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": false
+          },
+          "verified": true
         },
         {
           "kind": "internal_keepout",
@@ -1980,6 +2273,25 @@
           ],
           "value": -0.01909243522658944,
           "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": false,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_wrist_yaw.step",
+            "step_sha256": "b7ffdfd8b64c5c3c24cc926347d5fcbeec7497af00c641319c8494f76e204ee4",
+            "volume_increase_fraction": 16.89419636858474,
+            "xy_area_increase_fraction": 13.776656300102667,
+            "z_expansion_m": 0.008506828302144998
+          },
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -2057,7 +2369,7 @@
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_wrist_yaw.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 4
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -2067,7 +2379,7 @@
         "internal_cavity_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -2120,12 +2432,17 @@
           "kind": "topology",
           "limit": null,
           "name": "topology_or_repair_preview",
-          "production_blocker": "generated mesh topology needs repair preview promotion",
+          "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": false,
-          "verified": false
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/right_wrist_yaw.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": false
+          },
+          "verified": true
         },
         {
           "kind": "internal_keepout",
@@ -2138,6 +2455,25 @@
           ],
           "value": -0.019091863860189913,
           "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": false,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_wrist_yaw.step",
+            "step_sha256": "bf04e4906550fac64083e135d1038f0f854499430e5d3caf255cc837ee673f64",
+            "volume_increase_fraction": 16.87111300314844,
+            "xy_area_increase_fraction": 13.776320477906813,
+            "z_expansion_m": 0.008455665165185922
+          },
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -2215,7 +2551,7 @@
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_wrist_yaw.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 4
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -2225,7 +2561,7 @@
         "internal_cavity_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -2280,9 +2616,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/left_hip_pitch.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -2296,6 +2637,25 @@
           ],
           "value": -0.02344948980743885,
           "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": false,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_hip_pitch.step",
+            "step_sha256": "36c67c0fa06283a2e6fe93ac86f28699ac73152f5c0737ff2f36586e4ae1e33b",
+            "volume_increase_fraction": 1.870314809746743,
+            "xy_area_increase_fraction": 1.7445241838340433,
+            "z_expansion_m": 0.004399997735023503
+          },
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -2369,11 +2729,11 @@
           "verified": true
         }
       ],
-      "production_blocker_count": 5,
+      "production_blocker_count": 6,
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_pitch.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 5
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -2383,7 +2743,7 @@
         "internal_cavity_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -2438,9 +2798,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/right_hip_pitch.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -2454,6 +2819,25 @@
           ],
           "value": -0.023449947726726532,
           "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": false,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_hip_pitch.step",
+            "step_sha256": "c21f260bdb98d75db660201f50caacfa63a27cd110b206b4ee1645866f18517b",
+            "volume_increase_fraction": 1.871723502883023,
+            "xy_area_increase_fraction": 1.7458711414454506,
+            "z_expansion_m": 0.004399997735023503
+          },
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -2527,11 +2911,11 @@
           "verified": true
         }
       ],
-      "production_blocker_count": 5,
+      "production_blocker_count": 6,
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_pitch.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 5
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -2543,7 +2927,7 @@
         "supplier_vendor_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 8,
+      "constraint_count": 9,
       "constraints": [
         {
           "kind": "interface",
@@ -2598,9 +2982,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/left_hip_roll.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -2643,7 +3032,26 @@
             "supplier_vendor_adjusted_fit_pass_count": 3,
             "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
             "supplier_vendor_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_hip_roll.step",
-            "supplier_vendor_adjusted_step_sha256": "141a1d3e3e6d904651285cbfa22b5fadd36c1d4dbc3b3a138b5324c41e812e04"
+            "supplier_vendor_adjusted_step_sha256": "8059281fe63eedfb830abd2db1361df305aeac7b5ab2916e5236a692cd19f3b9"
+          },
+          "verified": true
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": true,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_hip_roll.step",
+            "step_sha256": "43ccc8f18678ea492a1bcf5453ed08fa4fe6ec6c0fc6f7a788bf42210ea6512f",
+            "volume_increase_fraction": 5.966814785388086,
+            "xy_area_increase_fraction": 5.966814785388087,
+            "z_expansion_m": 0.0
           },
           "verified": true
         },
@@ -2719,11 +3127,11 @@
           "verified": true
         }
       ],
-      "production_blocker_count": 6,
+      "production_blocker_count": 7,
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_roll.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 6
+      "verified_constraint_count": 7
     },
     {
       "accepted": false,
@@ -2735,7 +3143,7 @@
         "supplier_vendor_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 8,
+      "constraint_count": 9,
       "constraints": [
         {
           "kind": "interface",
@@ -2790,9 +3198,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/right_hip_roll.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -2835,7 +3248,26 @@
             "supplier_vendor_adjusted_fit_pass_count": 3,
             "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
             "supplier_vendor_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_hip_roll.step",
-            "supplier_vendor_adjusted_step_sha256": "9b14b3f62392dfef770a32f813eb78270e1b6f213fca9f4dadeeed18b6d7243a"
+            "supplier_vendor_adjusted_step_sha256": "fe25ecf5017dc1f86f1910c9df9b0d9cf001794fd77c4757c977de665eae9032"
+          },
+          "verified": true
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": true,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_hip_roll.step",
+            "step_sha256": "1c6f493c76fd4d58648464c2d1edcfc666d0807b0e891243f9dd47b44203b8af",
+            "volume_increase_fraction": 5.969327735626895,
+            "xy_area_increase_fraction": 5.969327735626895,
+            "z_expansion_m": 0.0
           },
           "verified": true
         },
@@ -2911,11 +3343,11 @@
           "verified": true
         }
       ],
-      "production_blocker_count": 6,
+      "production_blocker_count": 7,
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_roll.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 6
+      "verified_constraint_count": 7
     },
     {
       "accepted": false,
@@ -2928,7 +3360,7 @@
         "supplier_vendor_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 8,
+      "constraint_count": 9,
       "constraints": [
         {
           "kind": "interface",
@@ -2983,9 +3415,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/left_hip_yaw.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -3030,7 +3467,26 @@
             "supplier_vendor_adjusted_fit_pass_count": 5,
             "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
             "supplier_vendor_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_hip_yaw.step",
-            "supplier_vendor_adjusted_step_sha256": "6d9c7299a217181b1d4aecf1abae3627482c85d3b3697ae7f99f8457195a20ec"
+            "supplier_vendor_adjusted_step_sha256": "8c3fe13d78b067664d1f395a1c6da18befaa77f5594b164d16166608795ae5c2"
+          },
+          "verified": true
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": true,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_hip_yaw.step",
+            "step_sha256": "12cdc574f17b9d32674987f3aa733d472010dcba6e359f9c6be1e69dd87c8848",
+            "volume_increase_fraction": 46.164834968034825,
+            "xy_area_increase_fraction": 46.164834968034825,
+            "z_expansion_m": 0.0
           },
           "verified": true
         },
@@ -3106,11 +3562,11 @@
           "verified": true
         }
       ],
-      "production_blocker_count": 6,
+      "production_blocker_count": 7,
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_yaw.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 6
+      "verified_constraint_count": 7
     },
     {
       "accepted": false,
@@ -3123,7 +3579,7 @@
         "supplier_vendor_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 8,
+      "constraint_count": 9,
       "constraints": [
         {
           "kind": "interface",
@@ -3178,9 +3634,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/right_hip_yaw.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -3225,7 +3686,26 @@
             "supplier_vendor_adjusted_fit_pass_count": 5,
             "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
             "supplier_vendor_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_hip_yaw.step",
-            "supplier_vendor_adjusted_step_sha256": "311d7b191355a97a606c17499049d620b9d8000e9ec953e5a9936339c17e0b3b"
+            "supplier_vendor_adjusted_step_sha256": "05e79e74d473f14ae5b0bd821976e18ea023f4721ebfd2a31a4eaea1e262dd90"
+          },
+          "verified": true
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": true,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_hip_yaw.step",
+            "step_sha256": "9224f60459afbfcdaa99e373c21b203ea3a82213d112163100d3ee42ced95157",
+            "volume_increase_fraction": 46.163180608598566,
+            "xy_area_increase_fraction": 46.16318060859857,
+            "z_expansion_m": 0.0
           },
           "verified": true
         },
@@ -3301,11 +3781,11 @@
           "verified": true
         }
       ],
-      "production_blocker_count": 6,
+      "production_blocker_count": 7,
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_yaw.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 6
+      "verified_constraint_count": 7
     },
     {
       "accepted": false,
@@ -3317,7 +3797,7 @@
         "supplier_vendor_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 8,
+      "constraint_count": 9,
       "constraints": [
         {
           "kind": "interface",
@@ -3370,12 +3850,17 @@
           "kind": "topology",
           "limit": null,
           "name": "topology_or_repair_preview",
-          "production_blocker": "generated mesh topology needs repair preview promotion",
+          "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": false,
-          "verified": false
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/left_knee.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": false
+          },
+          "verified": true
         },
         {
           "kind": "internal_keepout",
@@ -3419,7 +3904,26 @@
             "supplier_vendor_adjusted_fit_pass_count": 5,
             "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
             "supplier_vendor_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_knee.step",
-            "supplier_vendor_adjusted_step_sha256": "26a83898215cfabc496a938699d57ab078ea10839ded861999dc09fceaf7b9dd"
+            "supplier_vendor_adjusted_step_sha256": "7f10f66dc66e7e813e0db0b5352fc3902314e17fa91e454bc541bca682055b1e"
+          },
+          "verified": true
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": true,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_knee.step",
+            "step_sha256": "5b021343c7e852430deef0aebb34ba3fa9cdd7bc5e0258baa8c9e948be644286",
+            "volume_increase_fraction": 55.615329900788964,
+            "xy_area_increase_fraction": 55.615329900788964,
+            "z_expansion_m": 0.0
           },
           "verified": true
         },
@@ -3499,7 +4003,7 @@
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_knee.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 5
+      "verified_constraint_count": 7
     },
     {
       "accepted": false,
@@ -3511,7 +4015,7 @@
         "supplier_vendor_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 8,
+      "constraint_count": 9,
       "constraints": [
         {
           "kind": "interface",
@@ -3564,12 +4068,17 @@
           "kind": "topology",
           "limit": null,
           "name": "topology_or_repair_preview",
-          "production_blocker": "generated mesh topology needs repair preview promotion",
+          "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": false,
-          "verified": false
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/right_knee.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": false
+          },
+          "verified": true
         },
         {
           "kind": "internal_keepout",
@@ -3613,7 +4122,26 @@
             "supplier_vendor_adjusted_fit_pass_count": 5,
             "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
             "supplier_vendor_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_knee.step",
-            "supplier_vendor_adjusted_step_sha256": "1104543bb0e4f9261f8e8258b79cfdb85af2b8274773517cfee26346c1856169"
+            "supplier_vendor_adjusted_step_sha256": "c2075ab15c929c2a0b02d2d13ed0f9decc4ca397186b58c767c112670297a2cb"
+          },
+          "verified": true
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": true,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_knee.step",
+            "step_sha256": "ed5de79354e61f57e342023e44072801c39351a2fff939f119c7af32c9460c42",
+            "volume_increase_fraction": 55.272269917804344,
+            "xy_area_increase_fraction": 55.272269917804344,
+            "z_expansion_m": 0.0
           },
           "verified": true
         },
@@ -3693,7 +4221,7 @@
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_knee.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 5
+      "verified_constraint_count": 7
     },
     {
       "accepted": false,
@@ -3704,7 +4232,7 @@
         "supplier_vendor_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 8,
+      "constraint_count": 9,
       "constraints": [
         {
           "kind": "interface",
@@ -3757,12 +4285,17 @@
           "kind": "topology",
           "limit": null,
           "name": "topology_or_repair_preview",
-          "production_blocker": "generated mesh topology needs repair preview promotion",
+          "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": false,
-          "verified": false
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/left_ankle_a.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": false
+          },
+          "verified": true
         },
         {
           "kind": "internal_keepout",
@@ -3806,7 +4339,26 @@
             "supplier_vendor_adjusted_fit_pass_count": 5,
             "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
             "supplier_vendor_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_ankle_a.step",
-            "supplier_vendor_adjusted_step_sha256": "8110317b43c690d19164e5bd35935c6fc7fb63165ec9d10afe5b07f167971e1f"
+            "supplier_vendor_adjusted_step_sha256": "a4706408d0a4183b570152bd42b888fe35b1d37d44b800eb3b55f17d1ea4d5dd"
+          },
+          "verified": true
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": false,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_ankle_a.step",
+            "step_sha256": "04036ce1e57c0fa56cfd0b65a0eb20beda4d59249cf300b56c8e1b0981dc9d31",
+            "volume_increase_fraction": 14.045303060573945,
+            "xy_area_increase_fraction": 12.367777374121873,
+            "z_expansion_m": 0.006400001549720757
           },
           "verified": true
         },
@@ -3886,7 +4438,7 @@
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_ankle_a.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 5
+      "verified_constraint_count": 7
     },
     {
       "accepted": false,
@@ -3897,7 +4449,7 @@
         "supplier_vendor_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 8,
+      "constraint_count": 9,
       "constraints": [
         {
           "kind": "interface",
@@ -3950,12 +4502,17 @@
           "kind": "topology",
           "limit": null,
           "name": "topology_or_repair_preview",
-          "production_blocker": "generated mesh topology needs repair preview promotion",
+          "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": false,
-          "verified": false
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/right_ankle_a.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": false
+          },
+          "verified": true
         },
         {
           "kind": "internal_keepout",
@@ -3999,7 +4556,26 @@
             "supplier_vendor_adjusted_fit_pass_count": 5,
             "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
             "supplier_vendor_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_ankle_a.step",
-            "supplier_vendor_adjusted_step_sha256": "b297e9d90eee12ce18752aa471acc70a96475f2d864d4d6899f0261e4445ae96"
+            "supplier_vendor_adjusted_step_sha256": "455f9c7d6b513edf299ceb14b4c3335fd48a89e46bf5bf3804c1c7c83196259c"
+          },
+          "verified": true
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": false,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_ankle_a.step",
+            "step_sha256": "e9546031244155a954c9aeceaf7cdbe574f8c9af5c93ef8c1a7ba5ab3a21b366",
+            "volume_increase_fraction": 14.045303060573945,
+            "xy_area_increase_fraction": 12.367777374121873,
+            "z_expansion_m": 0.006400001549720757
           },
           "verified": true
         },
@@ -4079,7 +4655,7 @@
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_ankle_a.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 5
+      "verified_constraint_count": 7
     },
     {
       "accepted": false,
@@ -4088,7 +4664,7 @@
         "internal_cavity_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -4143,9 +4719,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/left_ankle_b.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -4159,6 +4740,25 @@
           ],
           "value": -0.004923667770624163,
           "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": true,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_ankle_b.step",
+            "step_sha256": "135f7ef5d152cecd815752b72fc43a4b7da6edf54d393b5bdf000b344679c144",
+            "volume_increase_fraction": 0.1230916942656044,
+            "xy_area_increase_fraction": 0.12309169426560418,
+            "z_expansion_m": 0.0
+          },
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -4232,11 +4832,11 @@
           "verified": true
         }
       ],
-      "production_blocker_count": 5,
+      "production_blocker_count": 6,
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_ankle_b.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 5
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -4245,7 +4845,7 @@
         "internal_cavity_keepout"
       ],
       "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 7,
+      "constraint_count": 8,
       "constraints": [
         {
           "kind": "interface",
@@ -4300,9 +4900,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/right_ankle_b.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -4316,6 +4921,25 @@
           ],
           "value": -0.0049269218116998695,
           "verified": false
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "full_cavity_clearance_candidate",
+          "production_blocker": "full-cavity clearance is parameterized, but production still needs mate-preserving local pockets or exact component envelopes",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "value": {
+            "height_preserved": true,
+            "internal_cavity_cleared": true,
+            "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_ankle_b.step",
+            "step_sha256": "3925227b53a1383fcc22bc9af40f61bed61a7828e3780329eeb2207fa9cc036f",
+            "volume_increase_fraction": 0.12317304529249684,
+            "xy_area_increase_fraction": 0.12317304529249684,
+            "z_expansion_m": 0.0
+          },
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -4389,10 +5013,158 @@
           "verified": true
         }
       ],
-      "production_blocker_count": 5,
+      "production_blocker_count": 6,
       "shape_family": "hollow_lofted_elliptic_limb_reference",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_ankle_b.step",
       "surface_intent": "smooth",
+      "verified_constraint_count": 6
+    },
+    {
+      "accepted": false,
+      "active_thinness_limiters": [
+        "z_height_preservation",
+        "keepout_clearance"
+      ],
+      "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
+      "constraint_count": 6,
+      "constraints": [
+        {
+          "kind": "interface",
+          "limit": null,
+          "name": "z_height_preservation",
+          "production_blocker": null,
+          "proofs": [
+            "asimov-fembot-slimming-envelope-v1",
+            "asimov-fembot-thinness-frontier-proof-v1",
+            "asimov-fembot-assembly-proof-v1"
+          ],
+          "value": true,
+          "verified": true
+        },
+        {
+          "kind": "keepout",
+          "limit": 0.0,
+          "name": "keepout_clearance_adjusted",
+          "production_blocker": "point-projected clearance is not full component volume clearance",
+          "proofs": [
+            "asimov-fembot-clearance-projection-v1"
+          ],
+          "value": 0.0003999012038111687,
+          "verified": true
+        },
+        {
+          "kind": "manufacturing",
+          "limit": 0.0015,
+          "name": "wall_or_plate_thickness",
+          "production_blocker": "exact process drawings and inspection plan still required",
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1",
+            "asimov-fembot-material-manufacturing-proof-v1"
+          ],
+          "value": 0.0008,
+          "verified": false
+        },
+        {
+          "kind": "surface",
+          "limit": null,
+          "name": "surface_intent",
+          "production_blocker": "manufactured flatness/smoothness tolerances are not yet accepted",
+          "proofs": [
+            "asimov-fembot-surface-quality-proof-v1"
+          ],
+          "value": "flat",
+          "verified": true
+        },
+        {
+          "kind": "topology",
+          "limit": null,
+          "name": "topology_or_repair_preview",
+          "production_blocker": null,
+          "proofs": [
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
+          ],
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/left_toe.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
+          "verified": true
+        },
+        {
+          "kind": "internal_keepout",
+          "limit": 0.0,
+          "name": "internal_cavity_clearance",
+          "production_blocker": null,
+          "proofs": [
+            "asimov-fembot-generated-cad-parametric-v1",
+            "asimov-fembot-thinness-frontier-proof-v1"
+          ],
+          "value": null,
+          "verified": true
+        }
+      ],
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
+      "group": "foot",
+      "link": "LEFT_TOE",
+      "parameter_count": 3,
+      "parameters": [
+        {
+          "axis": "x",
+          "candidate_min_value_m": 0.06999999999999999,
+          "clearance_adjusted_value_m": 0.07030546944588423,
+          "generated_delta_vs_adjusted_m": -0.010305269445883225,
+          "generated_value_m": 0.060000200000001,
+          "kind": "dimension",
+          "name": "x_extent_m",
+          "preserve_source_value": false,
+          "proofs": [
+            "asimov-fembot-slimming-envelope-v1",
+            "asimov-fembot-clearance-projection-v1",
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "source_value_m": 0.07030546944588423,
+          "verified": false
+        },
+        {
+          "axis": "y",
+          "candidate_min_value_m": 0.08,
+          "clearance_adjusted_value_m": 0.08803634458780289,
+          "generated_delta_vs_adjusted_m": 0.006149825017137109,
+          "generated_value_m": 0.09418616960494,
+          "kind": "dimension",
+          "name": "y_extent_m",
+          "preserve_source_value": false,
+          "proofs": [
+            "asimov-fembot-slimming-envelope-v1",
+            "asimov-fembot-clearance-projection-v1",
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "source_value_m": 0.09526947140693665,
+          "verified": false
+        },
+        {
+          "axis": "z",
+          "candidate_min_value_m": 0.04073064122349024,
+          "clearance_adjusted_value_m": 0.04073064122349024,
+          "generated_delta_vs_adjusted_m": 0.0006210975818654527,
+          "generated_value_m": 0.04135173880535569,
+          "kind": "dimension",
+          "name": "z_extent_m",
+          "preserve_source_value": true,
+          "proofs": [
+            "asimov-fembot-slimming-envelope-v1",
+            "asimov-fembot-clearance-projection-v1",
+            "asimov-fembot-generated-cad-parametric-v1"
+          ],
+          "source_value_m": 0.04073064122349024,
+          "verified": false
+        }
+      ],
+      "production_blocker_count": 3,
+      "shape_family": "source_fitted_controlled_loft",
+      "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_toe.step",
+      "surface_intent": "flat",
       "verified_constraint_count": 5
     },
     {
@@ -4457,152 +5229,14 @@
           "name": "topology_or_repair_preview",
           "production_blocker": null,
           "proofs": [
-            "asimov-fembot-topology-proof-v1"
+            "asimov-fembot-topology-proof-v1",
+            "asimov-fembot-topology-promotion-v1"
           ],
-          "value": true,
-          "verified": true
-        },
-        {
-          "kind": "internal_keepout",
-          "limit": 0.0,
-          "name": "internal_cavity_clearance",
-          "production_blocker": null,
-          "proofs": [
-            "asimov-fembot-generated-cad-parametric-v1",
-            "asimov-fembot-thinness-frontier-proof-v1"
-          ],
-          "value": null,
-          "verified": true
-        }
-      ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
-      "group": "foot",
-      "link": "LEFT_TOE",
-      "parameter_count": 3,
-      "parameters": [
-        {
-          "axis": "x",
-          "candidate_min_value_m": 0.06999999999999999,
-          "clearance_adjusted_value_m": 0.07030546944588423,
-          "generated_delta_vs_adjusted_m": -3.219646771412954e-15,
-          "generated_value_m": 0.07030546944588101,
-          "kind": "dimension",
-          "name": "x_extent_m",
-          "preserve_source_value": false,
-          "proofs": [
-            "asimov-fembot-slimming-envelope-v1",
-            "asimov-fembot-clearance-projection-v1",
-            "asimov-fembot-generated-cad-parametric-v1"
-          ],
-          "source_value_m": 0.07030546944588423,
-          "verified": true
-        },
-        {
-          "axis": "y",
-          "candidate_min_value_m": 0.08,
-          "clearance_adjusted_value_m": 0.08803634458780289,
-          "generated_delta_vs_adjusted_m": -2.886579864025407e-15,
-          "generated_value_m": 0.0880363445878,
-          "kind": "dimension",
-          "name": "y_extent_m",
-          "preserve_source_value": false,
-          "proofs": [
-            "asimov-fembot-slimming-envelope-v1",
-            "asimov-fembot-clearance-projection-v1",
-            "asimov-fembot-generated-cad-parametric-v1"
-          ],
-          "source_value_m": 0.09526947140693665,
-          "verified": true
-        },
-        {
-          "axis": "z",
-          "candidate_min_value_m": 0.04073064122349024,
-          "clearance_adjusted_value_m": 0.04073064122349024,
-          "generated_delta_vs_adjusted_m": -2.3592239273284576e-16,
-          "generated_value_m": 0.04073064122349,
-          "kind": "dimension",
-          "name": "z_extent_m",
-          "preserve_source_value": true,
-          "proofs": [
-            "asimov-fembot-slimming-envelope-v1",
-            "asimov-fembot-clearance-projection-v1",
-            "asimov-fembot-generated-cad-parametric-v1"
-          ],
-          "source_value_m": 0.04073064122349024,
-          "verified": true
-        }
-      ],
-      "production_blocker_count": 3,
-      "shape_family": "flat_plate_envelope",
-      "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_toe.step",
-      "surface_intent": "flat",
-      "verified_constraint_count": 6
-    },
-    {
-      "accepted": false,
-      "active_thinness_limiters": [
-        "z_height_preservation",
-        "keepout_clearance"
-      ],
-      "blocking_reason": "parametric constraint manifest is complete for generated references, but production acceptance requires every linked proof to be accepted",
-      "constraint_count": 6,
-      "constraints": [
-        {
-          "kind": "interface",
-          "limit": null,
-          "name": "z_height_preservation",
-          "production_blocker": null,
-          "proofs": [
-            "asimov-fembot-slimming-envelope-v1",
-            "asimov-fembot-thinness-frontier-proof-v1",
-            "asimov-fembot-assembly-proof-v1"
-          ],
-          "value": true,
-          "verified": true
-        },
-        {
-          "kind": "keepout",
-          "limit": 0.0,
-          "name": "keepout_clearance_adjusted",
-          "production_blocker": "point-projected clearance is not full component volume clearance",
-          "proofs": [
-            "asimov-fembot-clearance-projection-v1"
-          ],
-          "value": 0.0003999012038111687,
-          "verified": true
-        },
-        {
-          "kind": "manufacturing",
-          "limit": 0.0015,
-          "name": "wall_or_plate_thickness",
-          "production_blocker": "exact process drawings and inspection plan still required",
-          "proofs": [
-            "asimov-fembot-generated-cad-parametric-v1",
-            "asimov-fembot-material-manufacturing-proof-v1"
-          ],
-          "value": 0.0008,
-          "verified": true
-        },
-        {
-          "kind": "surface",
-          "limit": null,
-          "name": "surface_intent",
-          "production_blocker": "manufactured flatness/smoothness tolerances are not yet accepted",
-          "proofs": [
-            "asimov-fembot-surface-quality-proof-v1"
-          ],
-          "value": "flat",
-          "verified": true
-        },
-        {
-          "kind": "topology",
-          "limit": null,
-          "name": "topology_or_repair_preview",
-          "production_blocker": null,
-          "proofs": [
-            "asimov-fembot-topology-proof-v1"
-          ],
-          "value": true,
+          "value": {
+            "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/right_toe.step",
+            "promoted_step_topology_accepted": true,
+            "raw_generated_topology_accepted": true
+          },
           "verified": true
         },
         {
@@ -4693,25 +5327,29 @@
     "slimming_schema": "asimov-fembot-slimming-envelope-v1",
     "surface_schema": "asimov-fembot-surface-quality-proof-v1",
     "thinness_frontier_schema": "asimov-fembot-thinness-frontier-proof-v1",
+    "topology_promotion_schema": "asimov-fembot-topology-promotion-v1",
     "topology_schema": "asimov-fembot-topology-proof-v1"
   },
   "summary": {
     "acceptance_blocker": "parametric dimensions and linked constraints are inventoried for all generated fembot references, but production acceptance still requires all linked geometry, manufacturing, topology, DFM, structural, collision, inertia, and controller proofs to be accepted together",
     "accepted": false,
-    "constraints": 202,
+    "constraints": 228,
     "dimension_parameters_per_link": 3,
     "links": 28,
+    "links_with_full_cavity_clearance_candidate": 26,
+    "links_with_full_cavity_clearance_verified": 25,
     "links_with_height_preserved": 28,
     "links_with_keepout_adjusted_clearance": 28,
+    "links_with_promoted_topology_accepted": 28,
     "links_with_supplier_vendor_adjusted_bbox_fit": 8,
     "links_with_supplier_vendor_keepout_growth": 8,
-    "links_with_topology_accepted": 19,
+    "links_with_topology_accepted": 28,
     "missing_links": [],
     "parameters": 84,
-    "production_blockers": 153,
+    "production_blockers": 170,
     "supplier_vendor_adjusted_fit_fail": 0,
     "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
     "supplier_vendor_max_required_extent_growth_m": 0.0264997322031618,
-    "verified_constraints": 141
+    "verified_constraints": 174
   }
 }

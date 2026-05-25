@@ -10,7 +10,7 @@
 // The matching cmake flag (-DGGML_CUDA_FUSED_ATTN_QJL=ON, exported as
 // CUDA_KERNEL_CMAKE_FLAGS) and the add_compile_definitions(GGML_CUDA_FUSED_ATTN_QJL)
 // CMakeLists patch (patchGgmlCudaForFusedAttn) both live in
-// build-llama-cpp-dflash.mjs; its applyForkPatches() calls patchCudaKernels +
+// build-llama-cpp-mtp.mjs; its applyForkPatches() calls patchCudaKernels +
 // patchGgmlCudaForFusedAttn for CUDA targets and its cuda branch pushes
 // CUDA_KERNEL_CMAKE_FLAGS. A build without the flag (or anyone running this
 // staging step alone) gets a staged-but-inert TU — the symbol compiles to an
@@ -58,7 +58,7 @@ const STANDALONE_CUDA_DIR = fs.existsSync(LEGACY_STANDALONE_CUDA_DIR)
 export const CUDA_KERNEL_FILES = ["fused-attn-qjl-tbq.cu"];
 
 // The cmake flag the build script must pass for these TUs to compile a body
-// (consumed by build-llama-cpp-dflash.mjs's `backend === "cuda"` branch).
+// (consumed by build-llama-cpp-mtp.mjs's `backend === "cuda"` branch).
 export const CUDA_KERNEL_CMAKE_FLAGS = ["-DGGML_CUDA_FUSED_ATTN_QJL=ON"];
 
 const SENTINEL = "// ELIZA-CUDA-KERNEL-PATCH-V1";
@@ -102,8 +102,8 @@ export function patchCudaKernels(cacheDir, { dryRun = false } = {}) {
       const text = fs.readFileSync(src, "utf8");
       const stamped =
         `${SENTINEL} — staged from packages/inference/cuda/${name} by\n` +
-        `// build-llama-cpp-dflash.mjs. Frozen — do not edit in fork. Body gated by\n` +
-        `// GGML_CUDA_FUSED_ATTN_QJL (build flag set in build-llama-cpp-dflash.mjs).\n` +
+        `// build-llama-cpp-mtp.mjs. Frozen — do not edit in fork. Body gated by\n` +
+        `// GGML_CUDA_FUSED_ATTN_QJL (build flag set in build-llama-cpp-mtp.mjs).\n` +
         text;
       fs.writeFileSync(dst, stamped, "utf8");
     }
@@ -111,7 +111,7 @@ export function patchCudaKernels(cacheDir, { dryRun = false } = {}) {
   }
   console.log(
     `[cuda-kernels] ${dryRun ? "(dry-run) " : ""}staged ${copied.length} CUDA kernel(s): ${copied.join(", ")}` +
-      ` (needs ${CUDA_KERNEL_CMAKE_FLAGS.join(" ")} from build-llama-cpp-dflash.mjs)`,
+      ` (needs ${CUDA_KERNEL_CMAKE_FLAGS.join(" ")} from build-llama-cpp-mtp.mjs)`,
   );
   return { copied, cmakeFlags: CUDA_KERNEL_CMAKE_FLAGS };
 }

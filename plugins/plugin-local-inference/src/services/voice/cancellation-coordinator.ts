@@ -17,7 +17,7 @@
  *      planner-loop / action handlers see the abort within one tick
  *      (between model calls / between actions / between provider calls).
  *   3. Optional `slotAbort(slotId)` — invokes the registered LM
- *      slot-abort callback (typically `DflashLlamaServer.abortSlot` which
+ *      slot-abort callback (typically `MtpLlamaServer.abortSlot` which
  *      either aborts in-flight HTTP fetches against that slot or, on a
  *      capable fork, calls the slot-cancel REST route).
  *   4. Optional `ttsStop()` — invokes the registered TTS-stop callback
@@ -61,7 +61,7 @@ export interface VoiceCancellationCoordinatorOptions {
 	/** The runtime to bind to. */
 	runtime: CoordinatorRuntime;
 	/**
-	 * Abort the inference server slot. Wired to `DflashLlamaServer.abortSlot`
+	 * Abort the inference server slot. Wired to `MtpLlamaServer.abortSlot`
 	 * in production. Async — the coordinator does NOT await it (the slot
 	 * abort path is best-effort; the AbortSignal closure on the fetch is the
 	 * authoritative cancel).

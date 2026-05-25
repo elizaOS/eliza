@@ -90,11 +90,11 @@ export interface BenchMetrics {
    * align.
    */
   rollbackWasteTokens: number;
-  /** Tokens accepted from the DFlash drafter (speculative-decoding stat).
-   *  Absent on runs where DFlash isn't wired. */
-  dflashAccepted?: number;
-  /** Tokens drafted by DFlash (denominator for accept-rate). */
-  dflashDrafted?: number;
+  /** Tokens accepted from the MTP drafter (speculative-decoding stat).
+   *  Absent on runs where MTP isn't wired. */
+  mtpAccepted?: number;
+  /** Tokens drafted by MTP (denominator for accept-rate). */
+  mtpDrafted?: number;
   /** Peak resident set size during the run, MB. */
   peakRssMb: number;
   /** Peak host CPU percent during the run (one core = 100). */
@@ -236,10 +236,10 @@ export interface BenchDriverResult {
   draftTokensTotal: number;
   /** Drafter tokens rejected by the verifier (rollback waste). */
   draftTokensWasted: number;
-  /** Tokens accepted from DFlash, when DFlash is wired. */
-  dflashAccepted?: number;
-  /** Tokens drafted by DFlash. */
-  dflashDrafted?: number;
+  /** Tokens accepted from MTP, when MTP is wired. */
+  mtpAccepted?: number;
+  /** Tokens drafted by MTP. */
+  mtpDrafted?: number;
   /**
    * Optional: drafter tokens that were thrown away specifically because the
    * voice state machine rolled the slot back to a C1 checkpoint

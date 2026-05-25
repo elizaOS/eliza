@@ -779,6 +779,10 @@ export class DesktopLlamaAdapter {
 			const mem = this.llama.llama_get_memory(ctx);
 			this.llama.llama_memory_clear(mem, true);
 		}
+		// llama.cpp MTP + mtmd/mmproj is still a moving target. Keep the
+		// vision ctx target-only so image embeddings cannot inherit a drafter
+		// attached by a previous text session on the same pooled ctx.
+		this.detachDrafterFromCtx(0);
 
 		// Reference args explicitly so unused-warnings stay quiet on the
 		// stub. Once the JS-side RGB decode + embedding-batch shim wrapper

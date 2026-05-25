@@ -63,6 +63,9 @@ from eliza_robot.asimov_1.fembot_thinness_frontier import (
     build_fembot_thinness_frontier_proof,
 )
 from eliza_robot.asimov_1.fembot_topology import build_fembot_topology_proof
+from eliza_robot.asimov_1.fembot_topology_promotion import (
+    build_fembot_topology_promotion_proof,
+)
 from eliza_robot.asimov_1.fembot_visual_review import build_fembot_visual_review_proof
 from eliza_robot.asimov_1.mujoco_load_proof import build_mujoco_load_proof
 from eliza_robot.asimov_1.parametric_inventory import collect_asimov1_parametric_inventory
@@ -451,14 +454,24 @@ def collect_fembot_inventory(
                 if proof != "hardware_measurements"
             ]
     generated_topology = build_fembot_topology_proof(generated_cad_report=generated_cad)
+    topology_promotion = build_fembot_topology_promotion_proof(
+        generated_cad_report=generated_cad,
+        topology_report=generated_topology,
+    )
     generated_topology_links = {
         str(record.get("link")).upper()
         for record in generated_topology.get("link_topology", [])
         if record.get("accepted")
     }
+    promoted_topology_links = {
+        str(record.get("link")).upper()
+        for record in topology_promotion.get("validation", [])
+        if record.get("accepted")
+    }
+    topology_ready_links = generated_topology_links | promoted_topology_links
     for record in records_dict:
         links = [str(link) for link in record.get("links", [])]
-        if links and all(link in generated_topology_links for link in links):
+        if links and all(link in topology_ready_links for link in links):
             record["missing_proofs"] = [
                 proof for proof in record["missing_proofs"] if proof != "topology"
             ]
@@ -514,6 +527,7 @@ def collect_fembot_inventory(
         material_report=material_manufacturing,
         surface_report=surface_quality,
         topology_report=generated_topology,
+        topology_promotion_report=topology_promotion,
         mold_dfm_report=mold_dfm,
         thinness_frontier_report=thinness_frontier,
     )
@@ -526,6 +540,8 @@ def collect_fembot_inventory(
     all_cad_readiness = build_fembot_all_cad_readiness_proof(
         records_dict,
         generated_cad_report=generated_cad,
+        topology_report=generated_topology,
+        topology_promotion_report=topology_promotion,
     )
     if all_cad_readiness.get("accepted"):
         for record in records_dict:
@@ -690,6 +706,11 @@ def collect_fembot_inventory(
             "ok": bool(generated_topology.get("ok")),
             "accepted": bool(generated_topology.get("accepted")),
             "summary": generated_topology.get("summary", {}),
+        },
+        "topology_promotion": {
+            "ok": bool(topology_promotion.get("ok")),
+            "accepted": bool(topology_promotion.get("accepted")),
+            "summary": topology_promotion.get("summary", {}),
         },
         "structural_sanity": {
             "ok": bool(structural_sanity.get("ok")),

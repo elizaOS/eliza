@@ -57,8 +57,8 @@ import {
 	buildLocalEmbeddingRoute,
 	EMBEDDING_FULL_DIM,
 	isValidEmbeddingDim,
-	truncateMatryoshka,
 	type LocalEmbeddingRoute,
+	truncateMatryoshka,
 } from "./voice/embedding";
 import {
 	createKokoroSpeakerPreset,
@@ -246,6 +246,9 @@ function toBackendLoadOverrides(
 	if (args.mlock !== undefined) overrides.mlock = args.mlock;
 	if (args.useGpu !== undefined) overrides.useGpu = args.useGpu;
 	if (args.mmprojPath !== undefined) overrides.mmprojPath = args.mmprojPath;
+	if (args.draftModelPath !== undefined) {
+		overrides.draftModelPath = args.draftModelPath;
+	}
 	if (args.modelId?.startsWith("eliza-1-")) {
 		const bundleRoot = path.dirname(path.dirname(args.modelPath));
 		overrides.bundleRoot = bundleRoot;
@@ -417,9 +420,9 @@ interface LlamaBindingModule {
 /**
  * In-process llama.cpp backend backed by `node-llama-cpp` 3.18.1.
  *
-	 * Stock GGUF only. Does NOT support `--lookahead`, n-gram drafter, MoE
-	 * expert offload (`-ot`), `--parallel` continuous batching, or MTP
-	 * speculative decoding. Models that declare any of those in their catalog
+ * Stock GGUF only. Does NOT support `--lookahead`, n-gram drafter, MoE
+ * expert offload (`-ot`), `--parallel` continuous batching, or MTP
+ * speculative decoding. Models that declare any of those in their catalog
  * `runtime.optimizations` must route to optimized llama.cpp via the dispatcher.
  *
  * `useMmap`, `useMlock`, and `defaultContextFlashAttention` are honored
@@ -1252,6 +1255,14 @@ export class LocalInferenceEngine {
 					output_tokens: Number(result.usage?.completion_tokens ?? 0),
 					cache_creation_input_tokens: 0,
 					cache_read_input_tokens: 0,
+					...(result.mtpStats
+						? {
+								mtp_drafted_tokens: result.mtpStats.drafted,
+								mtp_accepted_tokens: result.mtpStats.accepted,
+								mtp_acceptance_rate:
+									result.mtpStats.acceptanceRate ?? undefined,
+							}
+						: {}),
 				},
 				slotId: result.slotId ?? handle.slotId,
 			};
@@ -2054,14 +2065,14 @@ export class LocalInferenceEngine {
 
 	/**
 	 * Run one fused mic→speech voice turn through the overlapped
-		 * `VoicePipeline`: ASR → {MTP drafts ∥ target verifies} → phrase
-		 * chunker → OmniVoice → PCM ring buffer, with rollback-on-reject and
-		 * barge-in cancel. Requires `startVoice()` + `armVoice()` first.
+	 * `VoicePipeline`: ASR → {MTP drafts ∥ target verifies} → phrase
+	 * chunker → OmniVoice → PCM ring buffer, with rollback-on-reject and
+	 * barge-in cancel. Requires `startVoice()` + `armVoice()` first.
 	 *
 	 * `opts.textRunner` lets a host that runs its own text engine in-process
-		 * (the iOS/Android FFI path or the desktop FFI runtime) supply its own
-		 * {@link MtpTextRunner}. When omitted, the active local dispatcher is
-		 * used.
+	 * (the iOS/Android FFI path or the desktop FFI runtime) supply its own
+	 * {@link MtpTextRunner}. When omitted, the active local dispatcher is
+	 * used.
 	 *
 	 * Resolves with the turn's exit reason (`done` / `token-cap` /
 	 * `cancelled`). A missing ASR region in voice mode surfaces as a

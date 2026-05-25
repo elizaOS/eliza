@@ -38,7 +38,7 @@ documents looks like::
 
     llama-server --model eliza-1-0_8b-Q4_POLAR.gguf \\
                  --draft-model eliza-1-0_8b-drafter.gguf \\
-                 --spec-type dflash \\
+                 --spec-type mtp \\
                  --cache-type-k qjl1_256 \\
                  --cache-type-v tbq3_0
 
@@ -325,7 +325,7 @@ def _build_eliza1_manifest(
                     else []
                 ),
                 "--spec-type",
-                "dflash",
+                "mtp",
                 "--cache-type-k",
                 "qjl1_256",
                 "--cache-type-v",
@@ -373,7 +373,7 @@ def _emit_load_readme(manifest: dict[str, object]) -> str:
         "  - polarquant\n"
         "  - qjl\n"
         "  - turboquant\n"
-        "  - dflash\n"
+        "  - mtp\n"
         "---\n"
         "\n"
         "# Eliza-1-optimized GGUF\n"
@@ -408,10 +408,10 @@ def _emit_load_readme(manifest: dict[str, object]) -> str:
         f"{cmd}\n"
         "```\n"
         "\n"
-        "DFlash speculative decoding is enabled when a `--draft-model` is set; the\n"
+        "MTP speculative decoding is enabled when a `--draft-model` is set; the\n"
         "drafter must be an Eliza-1 GGUF with the same tokenizer family as the\n"
         "target (see "
-        "`docs/porting/dflash-drafter-strategy.md`).\n"
+        "`docs/porting/mtp-drafter-strategy.md`).\n"
     )
 
 
@@ -790,7 +790,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--drafter-repo",
         default=None,
-        help="Optional drafter HF repo id recorded in the manifest (DFlash pairing).",
+        help="Optional drafter HF repo id recorded in the manifest (MTP pairing).",
     )
     p.add_argument(
         "--dry-run",

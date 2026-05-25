@@ -46,10 +46,10 @@
     "lineageVisionPresent": true
   },
   "mtmdCli": {
-    "selected": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+    "selected": "/Users/shawwalters/.eliza/local-inference/bin/mtp/darwin-arm64-metal-fused/llama-mtmd-cli",
     "candidates": [
       {
-        "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+        "path": "/Users/shawwalters/.eliza/local-inference/bin/mtp/darwin-arm64-metal-fused/llama-mtmd-cli",
         "exists": true,
         "executable": true,
         "helpExitCode": 0,
@@ -106,7 +106,7 @@
     "spawnArg": "--mmproj",
     "envOverride": "ELIZA_LOCAL_MMPROJ",
     "optimizationField": "runtime.optimizations.mmproj",
-    "note": "packages/app-core/src/services/local-inference/dflash-server.ts only enables image inputs when a tier-compatible mmproj path is provided."
+    "note": "packages/app-core/src/services/local-inference/ffi-streaming-backend.ts only enables image inputs when a tier-compatible mmproj path is provided."
   },
   "memoryImplications": {
     "largestTextBytes": 5680522464,
@@ -121,7 +121,7 @@
     "status": "pass",
     "startedAt": "2026-05-12T07:02:16.249Z",
     "command": [
-      "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+      "/Users/shawwalters/.eliza/local-inference/bin/mtp/darwin-arm64-metal-fused/llama-mtmd-cli",
       "-m",
       "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle/text/eliza-1-9b-128k.gguf",
       "--mmproj",
@@ -141,10 +141,10 @@
     "exitCode": 0,
     "signal": null,
     "detection": {
-      "selected": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+      "selected": "/Users/shawwalters/.eliza/local-inference/bin/mtp/darwin-arm64-metal-fused/llama-mtmd-cli",
       "candidates": [
         {
-          "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+          "path": "/Users/shawwalters/.eliza/local-inference/bin/mtp/darwin-arm64-metal-fused/llama-mtmd-cli",
           "exists": true,
           "executable": true,
           "helpExitCode": 0,

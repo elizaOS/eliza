@@ -67,8 +67,8 @@ describe("gpu-profile YAML files", () => {
     expect(profile.verify_recipe.cuda_arch).toBeGreaterThan(0);
     expect(profile.verify_recipe.cmake_flags.length).toBeGreaterThan(0);
     expect(profile.verify_recipe.expected_kernels.length).toBeGreaterThan(0);
-    // dflash range is sane
-    expect(profile.dflash.draft_min).toBeLessThan(profile.dflash.draft_max);
+    // mtp range is sane
+    expect(profile.mtp.draft_min).toBeLessThan(profile.mtp.draft_max);
   });
 
   it.each(ALL_IDS)("%s recommends only known Eliza-1 tier ids", (id) => {
@@ -250,14 +250,14 @@ describe("getGpuOverrides", () => {
       expect(result.overrides.cacheTypeV).toBe("q4_polar");
       expect(result.overrides.nGpuLayers).toBe(-1);
       expect(result.overrides.flashAttention).toBe(true);
-      // DFlash propagation
+      // MTP propagation
       expect(result.overrides.draftMin).toBe(4);
       expect(result.overrides.draftMax).toBe(24);
       expect(result.gpuId).toBe("rtx-4090");
     }
   });
 
-  it("does not attach DFlash draft flags to the single-file 0.8B tier", () => {
+  it("does not attach MTP draft flags to the single-file 0.8B tier", () => {
     const profile = loadProfile("rtx-3090");
     const result = getGpuOverrides({ profile, bundleId: "eliza-1-0_8b" });
     expect(result.kind).toBe("applied");
@@ -265,7 +265,7 @@ describe("getGpuOverrides", () => {
     expect(result.overrides.draftMin).toBeUndefined();
   });
 
-  it("attaches DFlash draft flags to larger chat tiers", () => {
+  it("attaches MTP draft flags to larger chat tiers", () => {
     const profile = loadProfile("rtx-4090");
     const result = getGpuOverrides({ profile, bundleId: "eliza-1-9b" });
     expect(result.kind).toBe("applied");

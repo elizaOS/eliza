@@ -206,7 +206,7 @@ function copyStandalonesIntoFork(cacheDir, { dryRun }) {
       // human inspecting the fork tree can see the file came from us.
       const stamped =
         `${SHADER_SENTINEL} — staged from packages/inference/vulkan/${name} by\n` +
-        `// build-llama-cpp-dflash.mjs. Frozen — do not edit in fork.\n` +
+        `// build-llama-cpp-mtp.mjs. Frozen — do not edit in fork.\n` +
         text;
       fs.writeFileSync(dst, stamped, "utf8");
     }
@@ -972,7 +972,7 @@ ${switchAnchor}`,
   };
 }
 
-// Public entry point used by build-llama-cpp-dflash.mjs.
+// Public entry point used by build-llama-cpp-mtp.mjs.
 export function patchVulkanKernels(
   cacheDir,
   { dryRun = false, target = null } = {},
@@ -1013,7 +1013,7 @@ export function patchVulkanKernels(
     `[vulkan-kernels] fused_attn push-range repair: ${fusedAttnPipeline.wouldChange ? (dryRun ? "would-patch" : "patched") : "already-present"} (${fusedAttnPipeline.target})`,
   );
   // AGENTS.md §3 enforcement (no eliza-missing vulkan binary) is done at
-  // build-llama-cpp-dflash.mjs post-build via the requiredKernels audit.
+  // build-llama-cpp-mtp.mjs post-build via the requiredKernels audit.
   console.log(
     `[vulkan-kernels] runtime-ready evidence still requires ` +
       `make -C packages/inference/verify vulkan-dispatch-smoke on a native Vulkan build.`,

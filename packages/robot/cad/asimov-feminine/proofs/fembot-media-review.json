@@ -279,41 +279,41 @@
   "ok": true,
   "sample_video_frames": [
     {
-      "bytes": 326100,
+      "bytes": 293762,
       "exists": true,
       "height": 720,
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/joint_rotation_frames/frame_0000.png",
       "stddev_rgb": [
-        50.623,
-        63.64,
-        81.391
+        45.742,
+        61.691,
+        81.116
       ],
       "width": 960
     },
     {
-      "bytes": 336748,
+      "bytes": 297823,
       "exists": true,
       "height": 720,
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/joint_rotation_frames/frame_0072.png",
       "stddev_rgb": [
-        49.293,
-        62.564,
-        80.551
+        43.882,
+        60.814,
+        80.77
       ],
       "width": 960
     },
     {
-      "bytes": 326143,
+      "bytes": 294559,
       "exists": true,
       "height": 720,
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/joint_rotation_frames/frame_0143.png",
       "stddev_rgb": [
-        51.065,
-        63.919,
-        81.553
+        45.613,
+        61.62,
+        81.075
       ],
       "width": 960
     }
@@ -321,86 +321,86 @@
   "schema": "asimov-fembot-media-review-v1",
   "screenshots": [
     {
-      "bytes": 250611,
+      "bytes": 218854,
       "exists": true,
       "height": 720,
       "name": "front",
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_front.png",
       "stddev_rgb": [
-        49.024,
-        62.893,
-        81.2
+        47.355,
+        62.962,
+        82.135
       ],
       "width": 960
     },
     {
-      "bytes": 255446,
+      "bytes": 221829,
       "exists": true,
       "height": 720,
       "name": "rear",
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_rear.png",
       "stddev_rgb": [
-        47.8,
-        61.951,
-        80.498
+        47.214,
+        62.737,
+        81.883
       ],
       "width": 960
     },
     {
-      "bytes": 243534,
+      "bytes": 207036,
       "exists": true,
       "height": 720,
       "name": "left",
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_left.png",
       "stddev_rgb": [
-        45.359,
-        61.471,
-        81.036
+        43.585,
+        61.661,
+        82.147
       ],
       "width": 960
     },
     {
-      "bytes": 242311,
+      "bytes": 206931,
       "exists": true,
       "height": 720,
       "name": "right",
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_right.png",
       "stddev_rgb": [
-        45.347,
-        61.456,
-        81.018
+        43.568,
+        61.655,
+        82.148
       ],
       "width": 960
     },
     {
-      "bytes": 341161,
+      "bytes": 304003,
       "exists": true,
       "height": 720,
       "name": "three_quarter",
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_three_quarter.png",
       "stddev_rgb": [
-        47.122,
-        60.878,
-        79.249
+        44.413,
+        60.573,
+        80.047
       ],
       "width": 960
     },
     {
-      "bytes": 333371,
+      "bytes": 296658,
       "exists": true,
       "height": 720,
       "name": "upper_three_quarter",
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_upper_three_quarter.png",
       "stddev_rgb": [
-        53.148,
-        63.628,
-        79.943
+        46.546,
+        61.498,
+        80.611
       ],
       "width": 960
     }
@@ -409,6 +409,596 @@
     "mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/mjcf/asimov_fembot.xml",
     "output_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot"
   },
+  "source_fitted_part_media": [
+    {
+      "bytes": 38014,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/IMU_ORIGIN.STL",
+      "controlled_loft_mesh_sha256": "1357d679e6b9232382d1160e68dd1be27fa0017397c0585be3d48cad33adc03d",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/imu_origin.step",
+      "generated_step_sha256": "48fb4b1b01706ad22f70c1682e409a9fe70914587091e788cc6e316df09c80bb",
+      "height": 402,
+      "link": "IMU_ORIGIN",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_imu_origin.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/IMU_ORIGIN.STL",
+      "stddev_rgb": [
+        104.838,
+        78.819,
+        67.082
+      ],
+      "surface_symmetric_hausdorff_m": 0.006262899581169909,
+      "width": 1080
+    },
+    {
+      "bytes": 45042,
+      "controlled_loft_mesh": "cad/asimov-feminine/output/stl/WAIST_YAW.STL",
+      "controlled_loft_mesh_sha256": "3aa03b921c1f50fcdab16b54fc48817bc99c68aff5f29dde5ccb4c8ee97dfac9",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/waist_yaw.step",
+      "generated_step_sha256": "e46553e0870cdd704fcc2cff6e2bed583f01629b0b6bc5ce8569ad08711060f7",
+      "height": 402,
+      "link": "WAIST_YAW",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_waist_yaw.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/WAIST_YAW.STL",
+      "stddev_rgb": [
+        95.098,
+        71.583,
+        60.993
+      ],
+      "surface_symmetric_hausdorff_m": 0.0,
+      "width": 1080
+    },
+    {
+      "bytes": 36632,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/NECK_YAW.STL",
+      "controlled_loft_mesh_sha256": "b04d7c67558190827fc7df56a9b4e2870a6839a3ab9378545abed049180e84b6",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/neck_yaw.step",
+      "generated_step_sha256": "c043a9a03459cfdcfca9019f8bedd0e4a735ea3d5be6f03349f75fb2322a6951",
+      "height": 402,
+      "link": "NECK_YAW",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_neck_yaw.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/NECK_YAW.STL",
+      "stddev_rgb": [
+        88.003,
+        66.301,
+        56.54
+      ],
+      "surface_symmetric_hausdorff_m": 0.0032663551949610433,
+      "width": 1080
+    },
+    {
+      "bytes": 33062,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/NECK_PITCH.STL",
+      "controlled_loft_mesh_sha256": "f94b7ecfc2fbb26cf9f96ebf74b050690e55c5a3c502bbf3f4c6ad62376fd0c1",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/neck_pitch.step",
+      "generated_step_sha256": "ec1a0ac7f6c8cd9a9f2499d1022741d4634a782718cd436e20a680031fa46b66",
+      "height": 402,
+      "link": "NECK_PITCH",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_neck_pitch.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/NECK_PITCH.STL",
+      "stddev_rgb": [
+        102.645,
+        77.198,
+        65.725
+      ],
+      "surface_symmetric_hausdorff_m": 0.010824496522070579,
+      "width": 1080
+    },
+    {
+      "bytes": 31315,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_SHOULDER_PITCH.STL",
+      "controlled_loft_mesh_sha256": "386d9808026cf1e7b1f31b00419ac89cf35d3e0750732b52cbe6171c2db1454d",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_pitch.step",
+      "generated_step_sha256": "eda8fb675291c0cfd757ca37d93cf6e15cb98a9fce94684e12deeda20c770d33",
+      "height": 402,
+      "link": "LEFT_SHOULDER_PITCH",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_left_shoulder_pitch.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_SHOULDER_PITCH.STL",
+      "stddev_rgb": [
+        86.289,
+        65.061,
+        55.521
+      ],
+      "surface_symmetric_hausdorff_m": 0.002208361810191009,
+      "width": 1080
+    },
+    {
+      "bytes": 31542,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_SHOULDER_PITCH.STL",
+      "controlled_loft_mesh_sha256": "5aa8ac3e103d2b200a9f46d16e2b5b1e826016ad8b7eab71dfc6fae71a43b540",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_pitch.step",
+      "generated_step_sha256": "bd32d57ae56328ad542e1e34a735e38e581ae5bb4f88295fffa3dbc62e750145",
+      "height": 402,
+      "link": "RIGHT_SHOULDER_PITCH",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_right_shoulder_pitch.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_SHOULDER_PITCH.STL",
+      "stddev_rgb": [
+        86.476,
+        65.205,
+        55.647
+      ],
+      "surface_symmetric_hausdorff_m": 0.0019816024144385324,
+      "width": 1080
+    },
+    {
+      "bytes": 27558,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_SHOULDER_ROLL.STL",
+      "controlled_loft_mesh_sha256": "9dcc4f0ca6bb6ccda7f368b1a8aec07c12e5b92579c3296b23ac799390555c97",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_roll.step",
+      "generated_step_sha256": "68a3a92f1d57d361b3921934fa7d62b53a2fb2a3ab5deff62a30a46c99f5ea3c",
+      "height": 402,
+      "link": "LEFT_SHOULDER_ROLL",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_left_shoulder_roll.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_SHOULDER_ROLL.STL",
+      "stddev_rgb": [
+        91.553,
+        68.974,
+        58.816
+      ],
+      "surface_symmetric_hausdorff_m": 0.008139014989137758,
+      "width": 1080
+    },
+    {
+      "bytes": 27620,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_SHOULDER_ROLL.STL",
+      "controlled_loft_mesh_sha256": "1edd68ecfea58a6a6b03dc395b3ce86e559a4b005c59a0124c9342e42ac106de",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_roll.step",
+      "generated_step_sha256": "bdd19e5677cd2a69808c64d80c239493ff867ca2de3d588fdc989b04c094c03e",
+      "height": 402,
+      "link": "RIGHT_SHOULDER_ROLL",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_right_shoulder_roll.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_SHOULDER_ROLL.STL",
+      "stddev_rgb": [
+        91.592,
+        69.008,
+        58.849
+      ],
+      "surface_symmetric_hausdorff_m": 0.008188691735267754,
+      "width": 1080
+    },
+    {
+      "bytes": 33757,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_SHOULDER_YAW.STL",
+      "controlled_loft_mesh_sha256": "7fac3ec25b4dbafd5160eb0f5fe763368e2f004102bda9ea9a4cc9f9428bc331",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_yaw.step",
+      "generated_step_sha256": "387dbbfcc44d32c4cdf725a80475dffc334aa607c8c047b2e41c609fcb7db3e5",
+      "height": 402,
+      "link": "LEFT_SHOULDER_YAW",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_left_shoulder_yaw.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_SHOULDER_YAW.STL",
+      "stddev_rgb": [
+        99.433,
+        74.83,
+        63.745
+      ],
+      "surface_symmetric_hausdorff_m": 0.005675348316523562,
+      "width": 1080
+    },
+    {
+      "bytes": 33329,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_SHOULDER_YAW.STL",
+      "controlled_loft_mesh_sha256": "1ed621ec55d39b6c7a43dc0ad3535120782499f551956574868ffae725328d66",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_yaw.step",
+      "generated_step_sha256": "8de833a9d5187a6fa355cac2f58b70d7308de7149f3ef4df7846bffc06654855",
+      "height": 402,
+      "link": "RIGHT_SHOULDER_YAW",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_right_shoulder_yaw.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_SHOULDER_YAW.STL",
+      "stddev_rgb": [
+        99.945,
+        75.214,
+        64.072
+      ],
+      "surface_symmetric_hausdorff_m": 0.005982702625640337,
+      "width": 1080
+    },
+    {
+      "bytes": 31517,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_ELBOW.STL",
+      "controlled_loft_mesh_sha256": "989464c2ee1f2105a0fbafd79c21ed6cc8b773db11cb054bdd2c4f2db7f277bb",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_elbow.step",
+      "generated_step_sha256": "1699b6ba35204c8765b3c56126f239825f065ec35db370947a4692d59eec9c96",
+      "height": 402,
+      "link": "LEFT_ELBOW",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_left_elbow.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_ELBOW.STL",
+      "stddev_rgb": [
+        89.889,
+        67.712,
+        57.734
+      ],
+      "surface_symmetric_hausdorff_m": 0.011640389462556418,
+      "width": 1080
+    },
+    {
+      "bytes": 31661,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_ELBOW.STL",
+      "controlled_loft_mesh_sha256": "69c0ddf53d0d6af7112b038fc3ce4ae694f41f4ca5b4382316821b08e907c4f5",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_elbow.step",
+      "generated_step_sha256": "c88dca1fbb59f4f9d069d855342a5c4d180e18b2e9a05d68ebd6a0ce52cbbe13",
+      "height": 402,
+      "link": "RIGHT_ELBOW",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_right_elbow.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_ELBOW.STL",
+      "stddev_rgb": [
+        89.781,
+        67.636,
+        57.675
+      ],
+      "surface_symmetric_hausdorff_m": 0.011604815956365441,
+      "width": 1080
+    },
+    {
+      "bytes": 51978,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_WRIST_YAW.STL",
+      "controlled_loft_mesh_sha256": "0afc00835b827164b739f642e01d0b1f5639c0f766ff23a056017d2307b603dd",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_wrist_yaw.step",
+      "generated_step_sha256": "456b8aadaa858fef574f82f6a4a1aeec8095e2f60b9cdb29358e8a04eaf54fb5",
+      "height": 402,
+      "link": "LEFT_WRIST_YAW",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_left_wrist_yaw.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_WRIST_YAW.STL",
+      "stddev_rgb": [
+        89.653,
+        67.543,
+        57.597
+      ],
+      "surface_symmetric_hausdorff_m": 0.004155321478778076,
+      "width": 1080
+    },
+    {
+      "bytes": 50820,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_WRIST_YAW.STL",
+      "controlled_loft_mesh_sha256": "f3c47eecffcedf67e861aca4972a50deac978af57a7c6089e3afd46ae5b1616f",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_wrist_yaw.step",
+      "generated_step_sha256": "9341009955ca549e24386b62319840a2173759bcb3a875507e68c022f6b168b7",
+      "height": 402,
+      "link": "RIGHT_WRIST_YAW",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_right_wrist_yaw.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_WRIST_YAW.STL",
+      "stddev_rgb": [
+        89.5,
+        67.434,
+        57.51
+      ],
+      "surface_symmetric_hausdorff_m": 0.00409806560294737,
+      "width": 1080
+    },
+    {
+      "bytes": 45764,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_HIP_PITCH.STL",
+      "controlled_loft_mesh_sha256": "a4c65c80e0c099c424bc879df7dae7b77919cba3591ba7325b270481d08c9d1f",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_pitch.step",
+      "generated_step_sha256": "a6f4ce6d6a1c4aa528fc2f34f2b9a7b70da5524e45210dafc21b52aec9f8e5b2",
+      "height": 402,
+      "link": "LEFT_HIP_PITCH",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_left_hip_pitch.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_HIP_PITCH.STL",
+      "stddev_rgb": [
+        105.591,
+        79.373,
+        67.545
+      ],
+      "surface_symmetric_hausdorff_m": 0.002314297211048973,
+      "width": 1080
+    },
+    {
+      "bytes": 45942,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_HIP_PITCH.STL",
+      "controlled_loft_mesh_sha256": "1e79104df16f75b4d6e6a26caa91eb5169cce7eff16c9ea9039d0585dac94e11",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_pitch.step",
+      "generated_step_sha256": "5876204acf44efc7528449ce7350725c91682531fbd390d836bcd54d0fa7dd28",
+      "height": 402,
+      "link": "RIGHT_HIP_PITCH",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_right_hip_pitch.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_HIP_PITCH.STL",
+      "stddev_rgb": [
+        105.536,
+        79.336,
+        67.517
+      ],
+      "surface_symmetric_hausdorff_m": 0.0027826704242887605,
+      "width": 1080
+    },
+    {
+      "bytes": 33383,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_HIP_ROLL.STL",
+      "controlled_loft_mesh_sha256": "a25a90c087e950df3d03ae26e83ef95c15e1bff70be243b61a29489c0ba13dae",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_roll.step",
+      "generated_step_sha256": "780b8a9c4a210d27ea3349474da26fa51dd749872783f046b62ed4911db5c184",
+      "height": 402,
+      "link": "LEFT_HIP_ROLL",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_left_hip_roll.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_HIP_ROLL.STL",
+      "stddev_rgb": [
+        83.422,
+        62.902,
+        53.684
+      ],
+      "surface_symmetric_hausdorff_m": 0.0006594572565943252,
+      "width": 1080
+    },
+    {
+      "bytes": 33536,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_HIP_ROLL.STL",
+      "controlled_loft_mesh_sha256": "7123866f4144486825205a09213a482b23f134af9f8a77e7781d812e05850d03",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_roll.step",
+      "generated_step_sha256": "f4c27be48ff44a148836970597157238326dfdea7208d72aefa8d5a14debbf29",
+      "height": 402,
+      "link": "RIGHT_HIP_ROLL",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_right_hip_roll.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_HIP_ROLL.STL",
+      "stddev_rgb": [
+        83.861,
+        63.235,
+        53.969
+      ],
+      "surface_symmetric_hausdorff_m": 0.0006594547267412729,
+      "width": 1080
+    },
+    {
+      "bytes": 22075,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_HIP_YAW.STL",
+      "controlled_loft_mesh_sha256": "490399da7a65a7ec66e6d1de7560f4a5834f7235519e667033a688d28c9f8d1a",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_yaw.step",
+      "generated_step_sha256": "b0ac0d33ef2c4ee89c7d575634549e6e0b9b260e9f33edfd7f743f1db691b654",
+      "height": 402,
+      "link": "LEFT_HIP_YAW",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_left_hip_yaw.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_HIP_YAW.STL",
+      "stddev_rgb": [
+        93.201,
+        70.179,
+        59.815
+      ],
+      "surface_symmetric_hausdorff_m": 0.007559374798365361,
+      "width": 1080
+    },
+    {
+      "bytes": 22493,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_HIP_YAW.STL",
+      "controlled_loft_mesh_sha256": "dd7d6caabe4c47f244a2ea2cac0f9ce1eeb5c701c813f7d9f1b52dac37fd76dc",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_yaw.step",
+      "generated_step_sha256": "b27164b825f49af5504eadc99a9f1e7cc382232f793c566d12d7565e5ca9373a",
+      "height": 402,
+      "link": "RIGHT_HIP_YAW",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_right_hip_yaw.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_HIP_YAW.STL",
+      "stddev_rgb": [
+        93.227,
+        70.204,
+        59.84
+      ],
+      "surface_symmetric_hausdorff_m": 0.0075415229816850095,
+      "width": 1080
+    },
+    {
+      "bytes": 20865,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_KNEE.STL",
+      "controlled_loft_mesh_sha256": "25caf91ea33c3fc34079c24d34419a974e1b057bfacc63c93b7e832af6d49a61",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_knee.step",
+      "generated_step_sha256": "9a31c865c87284e8d2a558cd17b7b924607abb6dbc4802cf8a6040ce0403697e",
+      "height": 402,
+      "link": "LEFT_KNEE",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_left_knee.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_KNEE.STL",
+      "stddev_rgb": [
+        81.672,
+        61.591,
+        52.572
+      ],
+      "surface_symmetric_hausdorff_m": 0.007038235590321816,
+      "width": 1080
+    },
+    {
+      "bytes": 21772,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_KNEE.STL",
+      "controlled_loft_mesh_sha256": "705139be80b341d5c4180058aa2db3dce27a61fbf20aa7cb6d140f8b11984798",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_knee.step",
+      "generated_step_sha256": "9eabf3fd3f6e79713a2c46237152aa693e12e16e04f52b74e1138f7e44367ee4",
+      "height": 402,
+      "link": "RIGHT_KNEE",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_right_knee.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_KNEE.STL",
+      "stddev_rgb": [
+        81.367,
+        61.37,
+        52.39
+      ],
+      "surface_symmetric_hausdorff_m": 0.007361702345670598,
+      "width": 1080
+    },
+    {
+      "bytes": 33473,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_ANKLE_A.STL",
+      "controlled_loft_mesh_sha256": "17d8b9afb206ed1121a398b26809e2e5b565cd63f45512bf55b3656e32b700ee",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_ankle_a.step",
+      "generated_step_sha256": "43fa589b35d064507e721326361a5e5da76dc8d69b82f63c9cad3fb4ce9971c3",
+      "height": 402,
+      "link": "LEFT_ANKLE_A",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_left_ankle_a.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_ANKLE_A.STL",
+      "stddev_rgb": [
+        84.074,
+        63.385,
+        54.088
+      ],
+      "surface_symmetric_hausdorff_m": 0.0017296672288391326,
+      "width": 1080
+    },
+    {
+      "bytes": 33437,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_ANKLE_A.STL",
+      "controlled_loft_mesh_sha256": "71c496512fdc956d094f79f51c46f206eba1fbe414dfefd4bec225f1d9663bf7",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_ankle_a.step",
+      "generated_step_sha256": "071c26fd321b4489f584ff80b703f26985674cb62f4c1e8d41d56b37a4b06a7b",
+      "height": 402,
+      "link": "RIGHT_ANKLE_A",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_right_ankle_a.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_ANKLE_A.STL",
+      "stddev_rgb": [
+        83.945,
+        63.295,
+        54.017
+      ],
+      "surface_symmetric_hausdorff_m": 0.0017304831179640718,
+      "width": 1080
+    },
+    {
+      "bytes": 31989,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_ANKLE_B.STL",
+      "controlled_loft_mesh_sha256": "2c88d8b0f814442b0c26495633eae75a026826b5e04c77d9ea593ab30201d737",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_ankle_b.step",
+      "generated_step_sha256": "1c1fb8535efc20040721c4462e0bf966993cecae3fc77bab14d6ea7e48f23f26",
+      "height": 402,
+      "link": "LEFT_ANKLE_B",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_left_ankle_b.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_ANKLE_B.STL",
+      "stddev_rgb": [
+        92.599,
+        69.734,
+        59.443
+      ],
+      "surface_symmetric_hausdorff_m": 0.018724291988278807,
+      "width": 1080
+    },
+    {
+      "bytes": 31827,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_ANKLE_B.STL",
+      "controlled_loft_mesh_sha256": "710de2865258ce16aeabfa482ba0136f9a591965391e9b2c6e733ac77c3c6a4b",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_ankle_b.step",
+      "generated_step_sha256": "d5f0e244d3468fc181d485e730e7678aef0abd09c381f2043cff992d28904e11",
+      "height": 402,
+      "link": "RIGHT_ANKLE_B",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_right_ankle_b.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_ANKLE_B.STL",
+      "stddev_rgb": [
+        92.911,
+        69.971,
+        59.646
+      ],
+      "surface_symmetric_hausdorff_m": 0.018474036788222174,
+      "width": 1080
+    },
+    {
+      "bytes": 34627,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_TOE.STL",
+      "controlled_loft_mesh_sha256": "0857cf90b40ce5337ef8713da4226ba6ae67fb1e3caa5b78bc232b2ff6252fe4",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_toe.step",
+      "generated_step_sha256": "ec07b6f8ec3a29bcfe99a1bdea79660c3f0424041d5bad8f8c01e977cb4913cf",
+      "height": 402,
+      "link": "LEFT_TOE",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_left_toe.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_TOE.STL",
+      "stddev_rgb": [
+        85.274,
+        64.266,
+        54.822
+      ],
+      "surface_symmetric_hausdorff_m": 0.0022897270648383696,
+      "width": 1080
+    },
+    {
+      "bytes": 34999,
+      "controlled_loft_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_TOE.STL",
+      "controlled_loft_mesh_sha256": "75ab916806daadd3c718c1b87a5092a0b161f893634eb63b5a0441b28eb26f13",
+      "exists": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_toe.step",
+      "generated_step_sha256": "5d8ac964278db3f929430c533a955a54f25a8d220946507dbde606fded75a9f6",
+      "height": 402,
+      "link": "RIGHT_TOE",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_right_toe.png",
+      "shape_family": "source_fitted_controlled_loft",
+      "source_mesh": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_TOE.STL",
+      "stddev_rgb": [
+        85.124,
+        64.16,
+        54.737
+      ],
+      "surface_symmetric_hausdorff_m": 0.0023677404940105765,
+      "width": 1080
+    }
+  ],
   "verification": {
     "acceptance_blocker": "visual media generated; engineering acceptance still requires manual review and measured hardware calibration",
     "constraint_policy": "values clipped to each MuJoCo joint range every frame",
@@ -416,7 +1006,7 @@
     "video_encoder": "opencv VideoWriter mp4v"
   },
   "video": {
-    "bytes": 3518621,
+    "bytes": 2288541,
     "exists": true,
     "fps": 24,
     "frame_count": 144,

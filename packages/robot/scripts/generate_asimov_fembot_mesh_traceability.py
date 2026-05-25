@@ -45,7 +45,11 @@ def main() -> int:
     write_fembot_mesh_parametric_traceability_proof(report, args.output)
     print(dump_fembot_mesh_parametric_traceability_proof_json(report), end="")
     if args.require_exact_step_ready:
-        return 0 if report["accepted"] else 2
+        exact_ready = (
+            report.get("summary", {}).get("exact_brep_source_ready_links")
+            == report.get("summary", {}).get("mesh_files")
+        )
+        return 0 if exact_ready else 2
     if args.require_controlled_loft_ready:
         return 0 if report["ok"] else 2
     return 0

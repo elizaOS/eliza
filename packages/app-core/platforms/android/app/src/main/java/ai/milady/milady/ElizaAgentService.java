@@ -1076,27 +1076,27 @@ public class ElizaAgentService extends Service {
                         && !env.containsKey("ELIZA_SPECULATIVE_TYPE")) {
                     // Prefer the in-process MTP path when the bundled
                     // llama.cpp fork supports it. This is intentionally not
-                    // required: current mobile Eliza-1 bundles ship DFlash
-                    // drafter GGUFs, and the adapter falls back to DFlash when
+                    // required: current mobile Eliza-1 bundles ship MTP
+                    // drafter GGUFs, and the adapter falls back to MTP when
                     // the target model lacks NextN/MTP tensors.
                     agentEnv.put("ELIZA_SPEC_TYPE", "mtp");
                     Log.i(TAG, "agent/" + abiDir.getName()
-                        + "/libeliza-llama-speculative-shim.so present; preferring MTP speculative decode with DFlash fallback");
+                        + "/libeliza-llama-speculative-shim.so present; preferring MTP speculative decode with MTP fallback");
                 }
-                if (abiSpeculativeShim.isFile() && brandedAospBuild && !env.containsKey("ELIZA_DFLASH")) {
-                    agentEnv.put("ELIZA_DFLASH", "1");
+                if (abiSpeculativeShim.isFile() && brandedAospBuild && !env.containsKey("ELIZA_MTP")) {
+                    agentEnv.put("ELIZA_MTP", "1");
                     Log.i(TAG, "agent/" + abiDir.getName()
-                        + "/libeliza-llama-speculative-shim.so present on branded AOSP build; enabling in-process DFlash (ELIZA_DFLASH=1)");
+                        + "/libeliza-llama-speculative-shim.so present on branded AOSP build; enabling in-process MTP (ELIZA_MTP=1)");
                 } else if (abiSpeculativeShim.isFile() && !brandedAospBuild) {
                     // Ship the speculative shim in stock APKs so explicit
-                    // ELIZA_DFLASH diagnostics still work, but do not make
-                    // DFlash the default merely because the .so is present.
+                    // ELIZA_MTP diagnostics still work, but do not make
+                    // MTP the default merely because the .so is present.
                     // Pixel APK validation showed the current 2B drafter path
                     // is functional but slower than target-only decode for
                     // short chat turns, so stock Android stays target-only
                     // until benchmark gating or a faster drafter path lands.
                     Log.i(TAG, "agent/" + abiDir.getName()
-                        + "/libeliza-llama-speculative-shim.so present; leaving DFlash opt-in for stock APK");
+                        + "/libeliza-llama-speculative-shim.so present; leaving MTP opt-in for stock APK");
                 }
                 if (BuildConfig.DEBUG && !env.containsKey("ELIZA_AOSP_LLAMA_DEBUG_LOG")) {
                     File debugLog = new File(agentStateDir(), "aosp-llama-debug.log");

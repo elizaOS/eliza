@@ -1,20 +1,20 @@
 /**
- * Thin OpenAI-compatible client adapter for the dflash llama-cpp fork.
+ * Thin OpenAI-compatible client adapter for the mtp llama-cpp fork.
  *
- * The dflash fork (built locally under
- * `~/.cache/eliza-dflash/eliza-llama-cpp`) exposes the standard
+ * The mtp fork (built locally under
+ * `~/.cache/eliza-mtp/eliza-llama-cpp`) exposes the standard
  * `llama-server` OpenAI-compatible HTTP endpoint at `/v1`. This module
  * provides:
  *
- * - `probeDflashFork()`           — locate the binary on disk, return its
+ * - `probeMtpFork()`           — locate the binary on disk, return its
  *                                   absolute path or `null`.
  * - `startLocalServer(...)`       — spawn `llama-server` against a GGUF
  *                                   bundle and wait for `/v1/models`.
- * - `resolveLocalBaseUrl(...)`    — choose between the dflash spawn URL and
+ * - `resolveLocalBaseUrl(...)`    — choose between the mtp spawn URL and
  *                                   the Ollama fallback exposed via
  *                                   `ELIZA_OPENCODE_BASE_URL`.
  *
- * Higher-level callers should treat the dflash fork as the primary local
+ * Higher-level callers should treat the mtp fork as the primary local
  * provider for `MODEL_TIER=small|mid` and fall back to Ollama only when the
  * fork is not built.
  */
@@ -24,21 +24,21 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
-const DFLASH_FORK_ROOT = path.join(
+const MTP_FORK_ROOT = path.join(
   homedir(),
   ".cache",
-  "eliza-dflash",
+  "eliza-mtp",
   "eliza-llama-cpp",
 );
-const DFLASH_BINARY_RELATIVE = path.join("build", "bin", "llama-server");
+const MTP_BINARY_RELATIVE = path.join("build", "bin", "llama-server");
 
-/** Absolute filesystem path to where the dflash fork is expected to live. */
-export const DFLASH_FORK_PATH = DFLASH_FORK_ROOT;
+/** Absolute filesystem path to where the mtp fork is expected to live. */
+export const MTP_FORK_PATH = MTP_FORK_ROOT;
 
 /** Absolute filesystem path to the expected `llama-server` binary. */
-export const DFLASH_BINARY_PATH = path.join(
-  DFLASH_FORK_ROOT,
-  DFLASH_BINARY_RELATIVE,
+export const MTP_BINARY_PATH = path.join(
+  MTP_FORK_ROOT,
+  MTP_BINARY_RELATIVE,
 );
 
 /**
@@ -53,11 +53,11 @@ export function expandHome(p: string): string {
 }
 
 /**
- * Return the absolute path to the dflash `llama-server` binary if it
+ * Return the absolute path to the mtp `llama-server` binary if it
  * exists on disk, otherwise `null`.
  */
-export function probeDflashFork(): string | null {
-  return existsSync(DFLASH_BINARY_PATH) ? DFLASH_BINARY_PATH : null;
+export function probeMtpFork(): string | null {
+  return existsSync(MTP_BINARY_PATH) ? MTP_BINARY_PATH : null;
 }
 
 export interface StartLocalServerOptions {
@@ -83,7 +83,7 @@ export interface LocalServerHandle {
 }
 
 /**
- * Spawn a dflash `llama-server` instance against the requested bundle and
+ * Spawn a mtp `llama-server` instance against the requested bundle and
  * wait for the OpenAI-compatible endpoint to respond.
  *
  * Throws if the binary cannot be located, the bundle is missing, or the
@@ -92,11 +92,11 @@ export interface LocalServerHandle {
 export async function startLocalServer(
   options: StartLocalServerOptions,
 ): Promise<LocalServerHandle> {
-  const binary = options.binaryPath ?? probeDflashFork();
+  const binary = options.binaryPath ?? probeMtpFork();
   if (!binary) {
     throw new Error(
-      `dflash llama-server binary not found at ${DFLASH_BINARY_PATH}. ` +
-        "Build the fork at ~/.cache/eliza-dflash/eliza-llama-cpp or set " +
+      `mtp llama-server binary not found at ${MTP_BINARY_PATH}. ` +
+        "Build the fork at ~/.cache/eliza-mtp/eliza-llama-cpp or set " +
         "ELIZA_OPENCODE_BASE_URL to point at a local OpenAI-compatible endpoint.",
     );
   }
@@ -104,7 +104,7 @@ export async function startLocalServer(
   const bundlePath = expandHome(options.bundlePath);
   if (!existsSync(bundlePath)) {
     throw new Error(
-      `dflash bundle path does not exist: ${bundlePath}. Set MODEL_BUNDLE_OVERRIDE ` +
+      `mtp bundle path does not exist: ${bundlePath}. Set MODEL_BUNDLE_OVERRIDE ` +
         "or place the GGUF bundle at the default location.",
     );
   }
@@ -195,7 +195,7 @@ export interface ResolvedLocalBaseUrl {
   /** OpenAI-compatible base URL, e.g. `http://127.0.0.1:11434/v1`. */
   baseUrl: string;
   /** Where the URL came from. */
-  source: "dflash-running" | "ollama-env" | "ollama-default";
+  source: "mtp-running" | "ollama-env" | "ollama-default";
 }
 
 /**
@@ -206,7 +206,7 @@ export interface ResolvedLocalBaseUrl {
  *    same env Eliza's OpenCode fallback reads).
  * 2. Ollama default `http://localhost:11434/v1`.
  *
- * This function does **not** spawn the dflash fork — callers that want to
+ * This function does **not** spawn the mtp fork — callers that want to
  * spawn it should call `startLocalServer` first and pass that handle
  * forward. `resolveLocalBaseUrl` is for the "already running" case (Ollama,
  * LM Studio, an externally-managed `llama-server`).

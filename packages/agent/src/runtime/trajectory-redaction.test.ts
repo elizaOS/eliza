@@ -13,7 +13,7 @@ describe("redactTrajectoryText", () => {
     const out = redactTrajectoryText(input);
     expect(out).not.toContain("user@example.com");
     expect(out).not.toContain("sk-abcdefghijklmnopqrstuv");
-    expect(out).not.toContain("0x" + "a".repeat(40));
+    expect(out).not.toContain(`0x${"a".repeat(40)}`);
     expect(out).toContain("<EMAIL>");
     expect(out).toContain("<API_KEY>");
     expect(out).toContain("<ETH_ADDR>");

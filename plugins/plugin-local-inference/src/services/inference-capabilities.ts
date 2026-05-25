@@ -8,21 +8,17 @@
  * surface the bits.
  *
  * Consumed by:
- *   - the AOSP local-inference bootstrap, to choose between the
- *     in-process FFI streaming path and the (now-removed) child-process
- *     `llama-server` path,
- *   - the desktop voice lifecycle service, to decide whether to wire
- *     the FFI streaming runner factory or fall back to the HTTP
- *     `dflash-server.ts`,
+ *   - the AOSP local-inference bootstrap, to choose the in-process FFI
+ *     streaming path,
+ *   - the desktop voice lifecycle service, to decide whether to wire the
+ *     FFI streaming runner factory,
  *   - UI surfaces (model picker, voice toggle) that hide options the
  *     loaded build cannot honour.
  *
  * Naming:
  *   - `streamingLlm` — `eliza_inference_llm_stream_*` symbols are
  *     resolved and the build reports `_supported() === 1`.
- *   - `dflashSupported` — speculative decoding can actually run
- *     (requires `streamingLlm` AND the drafter weights resident; mobile
- *     phases this in — see `docs/eliza-1-mobile-streaming-llm.md`).
+ *   - `mtpSupported` — native MTP speculative decoding can actually run.
  *   - `omnivoiceStreaming` — `eliza_inference_tts_synthesize_stream` is
  *     present and supported.
  *   - `mmprojSupported` — the build carries the multi-modal projector
@@ -38,7 +34,7 @@ export type ThermalState = "nominal" | "fair" | "serious" | "critical";
 
 export interface InferenceCapabilities {
 	streamingLlm: boolean;
-	dflashSupported: boolean;
+	mtpSupported: boolean;
 	omnivoiceStreaming: boolean;
 	mmprojSupported: boolean;
 	thermalState: ThermalState;
@@ -52,8 +48,8 @@ export interface CapabilityProbes {
 	llmStreamSupported(): boolean;
 	/** True only when `eliza_inference_tts_stream_supported()` returns 1. */
 	ttsStreamSupported(): boolean;
-	/** True only when the drafter GGUF is resident in the bundle + mapped. */
-	drafterResident(): boolean;
+	/** True only when the native MTP path is available for the loaded model. */
+	mtpResident(): boolean;
 	/** True only when the mmproj weights are present in the bundle. */
 	mmprojResident(): boolean;
 	/** Current thermal snapshot.  May return `nominal` on platforms without a thermal API. */
@@ -66,11 +62,8 @@ export interface CapabilityProbes {
  * Build a capability struct from a set of probes.
  *
  * Policy decisions encoded here:
- *   - DFlash speculative decoding only fires when `llmStreamSupported`
- *     AND the drafter is resident AND the thermal state is at most
- *     `fair`.  Phone budgets cannot afford the extra weights map and a
- *     serious / critical thermal state already means the OS is going to
- *     start clock-gating us.
+ *   - Native MTP only fires when `llmStreamSupported` and the thermal state is
+ *     at most `fair`.
  *   - mmproj is gated entirely on the bundle carrying it.  Devices
  *     short on RAM can still load the chat model — they just lose the
  *     vision path; the picker UI uses this bit to grey out vision
@@ -83,20 +76,19 @@ export function probeCapabilities(
 ): InferenceCapabilities {
 	const streamingLlm = probes.llmStreamSupported();
 	const omnivoiceStreaming = probes.ttsStreamSupported();
-	const drafterResident = probes.drafterResident();
+	const mtpResident = probes.mtpResident();
 	const mmprojResident = probes.mmprojResident();
 	const thermalState = probes.thermalState();
 	const platform = probes.platform();
 
-	const thermalBlocksDflash =
+	const thermalBlocksMtp =
 		thermalState === "serious" || thermalState === "critical";
 
-	const dflashSupported =
-		streamingLlm && drafterResident && !thermalBlocksDflash;
+	const mtpSupported = streamingLlm && mtpResident && !thermalBlocksMtp;
 
 	return {
 		streamingLlm,
-		dflashSupported,
+		mtpSupported,
 		omnivoiceStreaming,
 		mmprojSupported: mmprojResident,
 		thermalState,
@@ -113,7 +105,7 @@ export function probeCapabilities(
 export function defaultsForNoBinding(): InferenceCapabilities {
 	return {
 		streamingLlm: false,
-		dflashSupported: false,
+		mtpSupported: false,
 		omnivoiceStreaming: false,
 		mmprojSupported: false,
 		thermalState: "nominal",

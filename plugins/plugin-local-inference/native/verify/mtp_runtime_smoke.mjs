@@ -18,7 +18,7 @@ const DEFAULT_BIN = path.join(
   process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza"),
   "local-inference",
   "bin",
-  "dflash",
+  "mtp",
   process.platform === "darwin" ? "darwin-arm64-metal" : "linux-x64-cuda",
   "llama-cli",
 );

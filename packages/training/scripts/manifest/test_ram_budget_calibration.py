@@ -5,7 +5,7 @@ is what the 30-turn endurance gate (`thirtyTurnOk`) compares the fused
 llama-server's peak RSS against. The 2026-05-11 e2e voice-loop benchmark
 (`packages/inference/verify/bench_results/e2e_loop_2026-05-11.json`) measured
 ~3132 MB (0_8b) and ~4828 MB (2b) server peak RSS in voice-on mode — the
-fused process keeps text + DFlash drafter + OmniVoice (base/tokenizer/DAC/
+fused process keeps text + MTP drafter + OmniVoice (base/tokenizer/DAC/
 HuBERT/sem-enc) + Qwen3-ASR + mmproj all resident. The budgets in
 `DEFAULT_RAM_BUDGET_MB` must therefore (a) be identical across the three
 staging entry points that emit a manifest, and (b) leave headroom above the

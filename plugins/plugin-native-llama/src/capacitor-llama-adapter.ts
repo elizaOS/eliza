@@ -84,7 +84,7 @@ interface LlamaCppPluginLike {
     cacheTypeV: string;
   }) => Promise<void>;
   /**
-   * Optional - exposed only by the buun-llama-cpp fork (DFlash spec
+   * Optional - exposed only by the buun-llama-cpp fork (MTP spec
    * decode bridge).
    */
   setSpecType?: (options: {
@@ -284,8 +284,8 @@ function fallbackHardwareInfo(
     cpuCores: nav?.hardwareConcurrency ?? 0,
     gpu,
     gpuSupported: platform === "ios",
-    dflashSupported: false,
-    dflashReason: reason,
+    mtpSupported: false,
+    mtpReason: reason,
     source: "adapter-fallback",
     nativeKernels: [],
     forkVariant: null,
@@ -379,12 +379,12 @@ function normalizeHardwareInfo(
     value.thermalState === "unknown"
       ? { thermalState: value.thermalState }
       : {}),
-    dflashSupported: Boolean(value.dflashSupported),
-    dflashReason:
-      stringFromUnknown(value.dflashReason) ??
-      (value.dflashSupported
+    mtpSupported: Boolean(value.mtpSupported),
+    mtpReason:
+      stringFromUnknown(value.mtpReason) ??
+      (value.mtpSupported
         ? undefined
-        : "native plugin did not report DFlash support"),
+        : "native plugin did not report MTP support"),
     source: value.source === "native" ? "native" : "adapter-fallback",
     nativeKernels: stringArrayFromUnknown(value.nativeKernels) ?? [],
     forkVariant: normalizeForkVariant(value.forkVariant) ?? null,
@@ -622,7 +622,7 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     });
 
     // Fork builds expose a separate `setSpecType` bridge that configures
-    // the DFlash drafter after the main context is up. Stock builds lack
+    // the MTP drafter after the main context is up. Stock builds lack
     // the method and the setter is a warn-no-op. We auto-call here so
     // callers only need to pass `draftModelPath` once via load() — the
     // adapter then handles both the params-bag path (stock fallback) and
@@ -632,7 +632,7 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
         await plugin.setSpecType({
           target: options.modelPath,
           drafter: options.draftModelPath,
-          specType: "dflash",
+          specType: "mtp",
           draftMin: options.draftMin ?? 1,
           draftMax: options.draftMax ?? 3,
         });

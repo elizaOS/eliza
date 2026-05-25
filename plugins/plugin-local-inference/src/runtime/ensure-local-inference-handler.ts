@@ -484,12 +484,12 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 				u.cache_hit_rate !== undefined
 					? `${Math.round(u.cache_hit_rate * 100)}%`
 					: "n/a";
-			const dflashRate =
-				typeof u.dflash_acceptance_rate === "number"
-					? ` dflash=${Math.round(u.dflash_acceptance_rate * 100)}%`
+			const mtpRate =
+				typeof u.mtp_acceptance_rate === "number"
+					? ` mtp=${Math.round(u.mtp_acceptance_rate * 100)}%`
 					: "";
 			logger.info(
-				`[local-inference] usage conv=${conversationId} slot=${result.slotId} in=${u.input_tokens} out=${u.output_tokens} cache_read=${u.cache_read_input_tokens} cache_create=${u.cache_creation_input_tokens} hit=${hitRate}${dflashRate}`,
+				`[local-inference] usage conv=${conversationId} slot=${result.slotId} in=${u.input_tokens} out=${u.output_tokens} cache_read=${u.cache_read_input_tokens} cache_create=${u.cache_creation_input_tokens} hit=${hitRate}${mtpRate}`,
 			);
 			// Auto-tune signal — emits a one-line warn if the high-water mark
 			// outgrew the configured slot count this turn. Cheap to call,

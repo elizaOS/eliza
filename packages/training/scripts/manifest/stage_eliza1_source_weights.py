@@ -2,11 +2,11 @@
 """Stage upstream source text / drafter weights for Eliza-1 conversion.
 
 This script acquires the best currently available upstream GGUF payloads that
-can seed Eliza-1 training/quantization plus upstream DFlash drafter sources
+can seed Eliza-1 training/quantization plus upstream MTP drafter sources
 where a license-clear source exists. It deliberately writes them under
 ``source/`` and records blockers. These files are not final Eliza-1 release
 weights until the training/eval/publish gates emit the required ``text/`` and
-``dflash/`` artifacts listed by ``eliza1_platform_plan.py``.
+``mtp/`` artifacts listed by ``eliza1_platform_plan.py``.
 """
 
 from __future__ import annotations
@@ -139,39 +139,39 @@ DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
     "0_8b": None,
     "2b": None,
     "4b": SourceArtifact(
-        kind="dflash",
-        repo="z-lab/Qwen3.5-4B-DFlash",
+        kind="mtp",
+        repo="z-lab/Qwen3.5-4B-MTP",
         filename="model.safetensors",
-        destination="source/dflash/qwen3.5-4b-dflash.safetensors",
+        destination="source/mtp/qwen3.5-4b-mtp.safetensors",
         license="mit",
         status="source-safetensors",
         notes=(
-            "Official upstream DFlash drafter source for Qwen/Qwen3.5-4B.",
-            "Final Eliza-1 4B still needs tokenizer merge, GGUF conversion, quantization, and DFlash acceptance against the Eliza-1 text checkpoint.",
+            "Official upstream MTP drafter source for Qwen/Qwen3.5-4B.",
+            "Final Eliza-1 4B still needs tokenizer merge, GGUF conversion, quantization, and MTP acceptance against the Eliza-1 text checkpoint.",
         ),
     ),
     "9b": SourceArtifact(
-        kind="dflash",
-        repo="z-lab/Qwen3.5-9B-DFlash",
+        kind="mtp",
+        repo="z-lab/Qwen3.5-9B-MTP",
         filename="model.safetensors",
-        destination="source/dflash/qwen3.5-9b-dflash.safetensors",
+        destination="source/mtp/qwen3.5-9b-mtp.safetensors",
         license="mit",
         status="source-safetensors",
         notes=(
-            "Official upstream DFlash drafter source for Qwen/Qwen3.5-9B.",
-            "Final Eliza-1 9B still needs tokenizer merge, GGUF conversion, quantization, and DFlash acceptance against the Eliza-1 text checkpoint.",
+            "Official upstream MTP drafter source for Qwen/Qwen3.5-9B.",
+            "Final Eliza-1 9B still needs tokenizer merge, GGUF conversion, quantization, and MTP acceptance against the Eliza-1 text checkpoint.",
         ),
     ),
     "27b": SourceArtifact(
-        kind="dflash",
-        repo="spiritbuun/Qwen3.6-27B-DFlash-GGUF",
-        filename="dflash-draft-3.6-q8_0.gguf",
-        destination="source/dflash/qwen3.6-27b-dflash-q8_0.gguf",
+        kind="mtp",
+        repo="spiritbuun/Qwen3.6-27B-MTP-GGUF",
+        filename="mtp-draft-3.6-q8_0.gguf",
+        destination="source/mtp/qwen3.6-27b-mtp-q8_0.gguf",
         license="mit",
         status="source-gguf",
         notes=(
-            "GGUF quantization of z-lab/Qwen3.6-27B-DFlash; Q8_0 is the upstream recommended quant for the Qwen3.6 drafter.",
-            "Final Eliza-1 27B still needs DFlash acceptance against the Eliza-1 text checkpoint before publish.",
+            "GGUF quantization of z-lab/Qwen3.6-27B-MTP; Q8_0 is the upstream recommended quant for the Qwen3.6 drafter.",
+            "Final Eliza-1 27B still needs MTP acceptance against the Eliza-1 text checkpoint before publish.",
         ),
     ),
 }
@@ -456,15 +456,15 @@ def stage_sources(args: argparse.Namespace) -> dict[str, Any]:
     drafter_source = DRAFTER_SOURCES[args.tier]
     if drafter_source is None:
         blockers.append(
-            f"No upstream DFlash drafter source found for tier {args.tier}; final dflash/drafter-{args.tier}.gguf remains missing."
+            f"No upstream MTP drafter source found for tier {args.tier}; final mtp/drafter-{args.tier}.gguf remains missing."
         )
     elif not drafter_source.filename.lower().endswith(".gguf"):
         blockers.append(
-            f"Upstream DFlash source for tier {args.tier} is {drafter_source.repo}/{drafter_source.filename}, not a final GGUF; final dflash/drafter-{args.tier}.gguf still needs tokenizer merge, GGUF conversion, quantization, and acceptance."
+            f"Upstream MTP source for tier {args.tier} is {drafter_source.repo}/{drafter_source.filename}, not a final GGUF; final mtp/drafter-{args.tier}.gguf still needs tokenizer merge, GGUF conversion, quantization, and acceptance."
         )
     else:
         blockers.append(
-            f"Upstream DFlash GGUF source is staged for tier {args.tier}; final dflash/drafter-{args.tier}.gguf still needs acceptance against the Eliza-1 text checkpoint."
+            f"Upstream MTP GGUF source is staged for tier {args.tier}; final mtp/drafter-{args.tier}.gguf still needs acceptance against the Eliza-1 text checkpoint."
         )
     blockers.extend(
         [

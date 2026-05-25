@@ -941,7 +941,7 @@ export type { Eliza1EotScoreResult, Eliza1EotScorerOptions };
 
 /**
  * Eliza-1 EOT classifier. Reuses the already-loaded text model (typically
- * the eliza-1 drafter — same model DFlash keeps warm for speculative
+ * the eliza-1 drafter — same model MTP keeps warm for speculative
  * decoding) to compute P(`<|im_end|>` | partial transcript). Optionally
  * loads a fine-tuned EOT LoRA adapter on top of the base weights — see
  * `packages/training/scripts/turn_detector/` for the training recipe.

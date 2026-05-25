@@ -33,7 +33,7 @@
 # Tiers (informational for kernel-verify; sizes the model for bench/train):
 #   0_8b | 2b | 4b | 9b | 27b
 # The legacy Qwen3 tiers (0_6b / 1_7b) were dropped 2026-05-12 — those bases
-# don't work with the eliza-1 dflash spec-decode path.
+# don't work with the eliza-1 mtp spec-decode path.
 #
 # Required env per provider:
 #   vast    VAST_API_KEY            (or `vastai set api-key <key>` beforehand)
@@ -59,7 +59,7 @@ TIER="0_8b"
 PAY=0
 DRYRUN=0
 SSH_PUBKEY="${SSH_PUBKEY:-$HOME/.ssh/id_ed25519.pub}"
-SMOKE_MODEL="${ELIZA_DFLASH_SMOKE_MODEL:-}"     # optional GGUF for the graph smoke
+SMOKE_MODEL="${ELIZA_MTP_SMOKE_MODEL:-}"     # optional GGUF for the graph smoke
 
 die() { echo "[run-on-cloud] ERROR: $*" >&2; exit 1; }
 log() { echo "[run-on-cloud] $*" >&2; }
@@ -111,7 +111,7 @@ gpu_to_train_vast_token() {
 tier_to_registry_key() {
   # Keys must match scripts/training/model_registry.py REGISTRY. The canonical
   # eliza-1 fused-model line uses Qwen3.5 for 0_8b/2b/4b/9b and Qwen3.6 for
-  # 27B. Qwen3 doesn't work with dflash — the dflash kernels are validated
+  # 27B. Qwen3 doesn't work with mtp — the mtp kernels are validated
   # against the Qwen3.5/3.6 architecture + 248320 tokenizer; a Qwen3 base has
   # the wrong vocab + attention shape for the fused QJL/Polar paths. The
   # 0_6b/1_7b legacy tier ids in the runtime
@@ -169,7 +169,7 @@ git clone --filter=blob:none "$GIT_REMOTE" eliza
 cd eliza
 git checkout "$GIT_SHA"
 bun install --frozen-lockfile || bun install
-ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda
+ELIZA_MTP_SKIP_SERVER_STRUCTURED_OUTPUT=1 node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cuda
 make -C packages/inference/verify kernel-contract reference-test
 REMOTE
 )"
@@ -180,14 +180,14 @@ case "$TASK" in
     REMOTE_TASK="$(cat <<REMOTE
 make -C packages/inference/verify cuda-verify
 make -C packages/inference/verify cuda-verify-fused
-${SMOKE_MODEL:+export ELIZA_DFLASH_SMOKE_MODEL=/workspace/smoke.gguf}
+${SMOKE_MODEL:+export ELIZA_MTP_SMOKE_MODEL=/workspace/smoke.gguf}
 ${SMOKE_MODEL:+packages/inference/verify/cuda_runner.sh --report /tmp/cuda-report.json} \
   ${SMOKE_MODEL:+|| true}
 ${SMOKE_MODEL:+test -f /tmp/cuda-report.json && cp /tmp/cuda-report.json /workspace/cuda-report.json}
 # No smoke model → still emit a fixture-parity-only evidence stub.
 ${SMOKE_MODEL:+:} || cat > /workspace/cuda-report.json <<'JSON'
 {"schemaVersion":1,"runner":"run-on-cloud kernel-verify","status":"pass","passRecordable":false,
- "exitCode":0,"note":"cuda-verify + cuda-verify-fused fixture parity only; no ELIZA_DFLASH_SMOKE_MODEL → graph smoke skipped, so this is NOT a runtime-ready record. Pass --smoke-model to upgrade."}
+ "exitCode":0,"note":"cuda-verify + cuda-verify-fused fixture parity only; no ELIZA_MTP_SMOKE_MODEL → graph smoke skipped, so this is NOT a runtime-ready record. Pass --smoke-model to upgrade."}
 JSON
 REMOTE
 )"

@@ -480,52 +480,52 @@ fetch() {
   rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/reports/" "$ROOT/reports/" || true
 }
 
-# --- DFlash drafter distillation (distill_dflash_drafter.py) ----------------
+# --- MTP drafter distillation (distill_mtp_drafter.py) ----------------
 # Env knobs (defaults frugal — a small KD job, not a full pipeline):
-#   DFLASH_TIER              tier the drafter ships for. Active tiers (per
-#                            distill_dflash_drafter.py::ACTIVE_TIERS): 0_8b,
+#   MTP_TIER              tier the drafter ships for. Active tiers (per
+#                            distill_mtp_drafter.py::ACTIVE_TIERS): 0_8b,
 #                            2b, 4b, 9b, 27b. Default: 2b.
-#   DFLASH_TARGET_CHECKPOINT remote path (relative to $REMOTE_TRAIN_DIR) to the
+#   MTP_TARGET_CHECKPOINT remote path (relative to $REMOTE_TRAIN_DIR) to the
 #                            SFT'd target text HF checkpoint directory. The
 #                            distiller loads the target via
 #                            AutoModelForCausalLM.from_pretrained(<this>).
 #                            Required for a real run.
-#   DFLASH_TARGET_GGUF       (optional) remote path to the final shipped target
+#   MTP_TARGET_GGUF       (optional) remote path to the final shipped target
 #                            text GGUF; its sha256 is stamped into the drafter
-#                            GGUF metadata (`dflash-draft.target_checkpoint_sha256`).
+#                            GGUF metadata (`mtp-draft.target_checkpoint_sha256`).
 #                            Strongly recommended — without it the script falls
 #                            back to hashing model.safetensors[.index.json].
-#   DFLASH_TARGET_MODEL_ID   (optional) canonical Eliza-1 target model id.
+#   MTP_TARGET_MODEL_ID   (optional) canonical Eliza-1 target model id.
 #                            Defaults to the tier's entry in
-#                            distill_dflash_drafter.py::DEFAULT_TARGET_MODEL
+#                            distill_mtp_drafter.py::DEFAULT_TARGET_MODEL
 #                            (e.g. elizaos/eliza-1/bundles/2b for tier=2b).
-#   DFLASH_STUDENT_BASE      HF id of the student base. Defaults to
+#   MTP_STUDENT_BASE      HF id of the student base. Defaults to
 #                            Qwen/Qwen3.5-0.8B-Base (the Eliza-1 mandated
 #                            student for every active tier — keep this aligned
-#                            with model_registry.py::DFLASH_DRAFTER_BASE).
-#   DFLASH_DATASET           distillation corpus (default $TRAIN_FILE).
-#   DFLASH_EPOCHS / DFLASH_BATCH / DFLASH_GRAD_ACCUM / DFLASH_MAX_SEQ_LEN
+#                            with model_registry.py::MTP_DRAFTER_BASE).
+#   MTP_DATASET           distillation corpus (default $TRAIN_FILE).
+#   MTP_EPOCHS / MTP_BATCH / MTP_GRAD_ACCUM / MTP_MAX_SEQ_LEN
 #                            default 1 / 8 / 4 / 2048.
-#   DFLASH_MAX_SAMPLES       cap examples (default 0 = all; set e.g. 20000 for
+#   MTP_MAX_SAMPLES       cap examples (default 0 = all; set e.g. 20000 for
 #                            a short budget-bounded run).
-#   DFLASH_OUT_DIR           remote+local out dir name (default
-#                            out/dflash-drafter-${DFLASH_TIER}).
+#   MTP_OUT_DIR           remote+local out dir name (default
+#                            out/mtp-drafter-${MTP_TIER}).
 run_distill_remote() {
   local target; target="$(ssh_target)"
-  local tier="${DFLASH_TIER:-2b}"
-  local target_ckpt="${DFLASH_TARGET_CHECKPOINT:-}"
-  local target_gguf="${DFLASH_TARGET_GGUF:-}"
-  local target_model_id="${DFLASH_TARGET_MODEL_ID:-}"
-  local student_base="${DFLASH_STUDENT_BASE:-Qwen/Qwen3.5-0.8B-Base}"
-  local ds="${DFLASH_DATASET:-$TRAIN_FILE}"
-  local epochs="${DFLASH_EPOCHS:-1}" batch="${DFLASH_BATCH:-8}" ga="${DFLASH_GRAD_ACCUM:-4}"
-  local msl="${DFLASH_MAX_SEQ_LEN:-2048}" maxn="${DFLASH_MAX_SAMPLES:-0}"
-  local out_dir="${DFLASH_OUT_DIR:-out/dflash-drafter-${tier}}"
+  local tier="${MTP_TIER:-2b}"
+  local target_ckpt="${MTP_TARGET_CHECKPOINT:-}"
+  local target_gguf="${MTP_TARGET_GGUF:-}"
+  local target_model_id="${MTP_TARGET_MODEL_ID:-}"
+  local student_base="${MTP_STUDENT_BASE:-Qwen/Qwen3.5-0.8B-Base}"
+  local ds="${MTP_DATASET:-$TRAIN_FILE}"
+  local epochs="${MTP_EPOCHS:-1}" batch="${MTP_BATCH:-8}" ga="${MTP_GRAD_ACCUM:-4}"
+  local msl="${MTP_MAX_SEQ_LEN:-2048}" maxn="${MTP_MAX_SAMPLES:-0}"
+  local out_dir="${MTP_OUT_DIR:-out/mtp-drafter-${tier}}"
   local hf_tok="${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}"
   local log="$REMOTE_TRAIN_DIR/distill_${RUN_NAME}.log"
 
   if [ -z "$target_ckpt" ]; then
-    echo "[train_nebius][distill] ERROR: DFLASH_TARGET_CHECKPOINT is required (remote path to the SFT'd target text HF checkpoint, e.g. checkpoints/eliza-1-2b-apollo-.../final)" >&2
+    echo "[train_nebius][distill] ERROR: MTP_TARGET_CHECKPOINT is required (remote path to the SFT'd target text HF checkpoint, e.g. checkpoints/eliza-1-2b-apollo-.../final)" >&2
     return 2
   fi
   local target_gguf_arg=""
@@ -559,7 +559,7 @@ uv pip install --python .venv/bin/python -U 'transformers>=4.57.0' 'accelerate>=
   .venv/bin/python -c 'import torch; assert torch.cuda.is_available(); print("[remote][distill] torch", torch.__version__, "cuda OK on", torch.cuda.get_device_name(0))'
 }
 export UV_NO_SYNC=1 UV_FROZEN=1
-.venv/bin/python scripts/distill_dflash_drafter.py \\
+.venv/bin/python scripts/distill_mtp_drafter.py \\
   --tier $tier \\
   --target-checkpoint $target_ckpt $target_gguf_arg $target_model_id_arg \\
   --student-base $student_base \\
@@ -587,8 +587,8 @@ EOF
 
 fetch_distill() {
   local target; target="$(ssh_target)"
-  local tier="${DFLASH_TIER:-9b}"
-  local out_dir="${DFLASH_OUT_DIR:-out/dflash-drafter-${tier}}"
+  local tier="${MTP_TIER:-9b}"
+  local out_dir="${MTP_OUT_DIR:-out/mtp-drafter-${tier}}"
   echo "[train_nebius][fetch-distill] pulling $out_dir + the run log"
   mkdir -p "$ROOT/$out_dir"
   rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/$out_dir/" "$ROOT/$out_dir/" || true
@@ -613,25 +613,25 @@ teardown() {
 }
 
 sync_distill_dataset() {
-  # The distiller needs (a) the corpus file (DFLASH_DATASET / TRAIN_FILE) and
-  # (b) the SFT'd target HF checkpoint directory (DFLASH_TARGET_CHECKPOINT).
-  # Optionally (c) the final shipped target GGUF (DFLASH_TARGET_GGUF) so the
+  # The distiller needs (a) the corpus file (MTP_DATASET / TRAIN_FILE) and
+  # (b) the SFT'd target HF checkpoint directory (MTP_TARGET_CHECKPOINT).
+  # Optionally (c) the final shipped target GGUF (MTP_TARGET_GGUF) so the
   # drafter can stamp the exact checkpoint hash.
   local target; target="$(ssh_target)"
-  local ds="${DFLASH_DATASET:-$TRAIN_FILE}"
+  local ds="${MTP_DATASET:-$TRAIN_FILE}"
   local d; d="$(dirname "$ds")"
   ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/$d"
   echo "[train_nebius][sync] sending distillation corpus $ds"
   rsync -avhz --partial --info=progress2 "$ROOT/$ds" "$target:$REMOTE_TRAIN_DIR/$ds"
 
-  local target_ckpt="${DFLASH_TARGET_CHECKPOINT:-}"
+  local target_ckpt="${MTP_TARGET_CHECKPOINT:-}"
   if [ -n "$target_ckpt" ]; then
     local ckpt_dir; ckpt_dir="$(dirname "$target_ckpt")"
     ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/$ckpt_dir"
     echo "[train_nebius][sync] sending target HF checkpoint $target_ckpt (this is the SFT'd text model — multi-GB)"
     rsync -avhz --partial --info=progress2 "$ROOT/$target_ckpt/" "$target:$REMOTE_TRAIN_DIR/$target_ckpt/"
   fi
-  local target_gguf="${DFLASH_TARGET_GGUF:-}"
+  local target_gguf="${MTP_TARGET_GGUF:-}"
   if [ -n "$target_gguf" ]; then
     local gguf_dir; gguf_dir="$(dirname "$target_gguf")"
     ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/$gguf_dir"
@@ -666,7 +666,7 @@ case "$cmd" in
   distill-full)
     # Provision → sync training tree → sync the one corpus → distill → fetch
     # the drafter → teardown. Frugal: a single H200 for ~1-3 GPU-h on a small
-    # KD job. Set DFLASH_MAX_SAMPLES for a short budget-bounded pass.
+    # KD job. Set MTP_MAX_SAMPLES for a short budget-bounded pass.
     # Same fetch-then-teardown pattern as `full` — see v4 incident note above.
     trap 'echo "[train_nebius] distill-full: ensuring fetch + teardown on exit"; fetch_distill || true; teardown || true' EXIT
     provision

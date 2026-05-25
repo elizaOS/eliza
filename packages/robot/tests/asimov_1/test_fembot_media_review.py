@@ -33,10 +33,22 @@ def test_fembot_media_review_validates_screenshots_and_joint_video(tmp_path) -> 
                 "source": {"mjcf": "asimov_fembot.xml"},
                 "video": {"frame_count": 144},
                 "joint_motion": {"joint_count": 27, "joints": []},
+                "source_fitted_part_media": [
+                    {
+                        "link": "LEFT_TOE",
+                        "shape_family": "source_fitted_controlled_loft",
+                        "path": str(media_root / "fembot_source_fitted_left_toe.png"),
+                        "generated_step_path": "left_toe.step",
+                        "surface_symmetric_hausdorff_m": 0.002,
+                    }
+                ],
             }
         ),
         encoding="utf-8",
     )
+    source_fit_image = Image.new("RGB", (32, 24), (30, 100, 120))
+    source_fit_image.putpixel((3, 3), (230, 220, 70))
+    source_fit_image.save(media_root / "fembot_source_fitted_left_toe.png")
 
     report = build_fembot_media_review_proof(media_root=media_root, proof_path=proof_path)
 
@@ -48,6 +60,10 @@ def test_fembot_media_review_validates_screenshots_and_joint_video(tmp_path) -> 
     assert report["summary"]["blank_screenshots"] == []
     assert report["summary"]["video_frame_count"] == 144
     assert report["summary"]["joint_count"] == 27
+    assert report["summary"]["source_fitted_part_screenshot_count"] == 1
+    assert report["summary"]["source_fitted_part_links"] == ["LEFT_TOE"]
+    assert report["summary"]["missing_source_fitted_part_screenshots"] == []
+    assert report["summary"]["blank_source_fitted_part_screenshots"] == []
 
 
 def test_fembot_media_review_reports_missing_round_media(tmp_path) -> None:

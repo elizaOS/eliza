@@ -31,7 +31,7 @@ from scripts.eval import eliza1_eval_suite as suite
 
 def _make_standin_bundle(root: Path) -> Path:
     bundle = root / "eliza-1-0_8b.bundle"
-    for sub in ("text", "tts", "asr", "vad", "dflash", "cache", "evals"):
+    for sub in ("text", "tts", "asr", "vad", "mtp", "cache", "evals"):
         (bundle / sub).mkdir(parents=True, exist_ok=True)
     # Tiny stand-in artifacts (NOT real GGUFs).
     (bundle / "text" / "eliza-1-0_8b-32k.gguf").write_text("standin")
@@ -39,7 +39,7 @@ def _make_standin_bundle(root: Path) -> Path:
     (bundle / "tts" / "omnivoice-tokenizer.gguf").write_text("standin")
     (bundle / "asr" / "asr.gguf").write_text("standin")
     (bundle / "vad" / "silero-vad.onnx").write_text("standin")
-    (bundle / "dflash" / "drafter-0_8b.gguf").write_text("standin")
+    (bundle / "mtp" / "drafter-0_8b.gguf").write_text("standin")
     (bundle / "cache" / "voice-preset-default.bin").write_text("standin")
     return bundle
 
@@ -83,7 +83,7 @@ def test_writes_all_eval_blobs(tmp_path: Path, monkeypatch) -> None:
         "vad.json",
         "e2e-loop.json",
         "endurance.json",
-        "dflash-accept.json",
+        "mtp-accept.json",
         "dispatch.json",
         "cpu_dispatch.json",
         "cpu_reference.json",
@@ -133,7 +133,7 @@ def test_run_suite_writes_backend_verify_alias_for_metal(tmp_path: Path, monkeyp
 
 
 def test_discover_engine_honors_missing_preferred_backend(tmp_path: Path, monkeypatch) -> None:
-    root = tmp_path / "state" / "local-inference" / "bin" / "dflash"
+    root = tmp_path / "state" / "local-inference" / "bin" / "mtp"
     engine_dir = root / f"{suite._platform_tag()}-metal-fused"
     engine_dir.mkdir(parents=True)
     (engine_dir / "llama-cli").write_text("#!/bin/sh\n")
@@ -144,7 +144,7 @@ def test_discover_engine_honors_missing_preferred_backend(tmp_path: Path, monkey
 
 
 def test_discover_engine_prefers_fused_voice_capable_dir(tmp_path: Path, monkeypatch) -> None:
-    root = tmp_path / "state" / "local-inference" / "bin" / "dflash"
+    root = tmp_path / "state" / "local-inference" / "bin" / "mtp"
     plain_fused = root / f"{suite._platform_tag()}-metal-fused"
     voice_fused = root / f"{suite._platform_tag()}-metal-fused-with-voice"
     for engine_dir in (plain_fused, voice_fused):
@@ -264,14 +264,14 @@ def test_dispatch_targets_for_metal_include_runtime_smoke() -> None:
 def test_standin_bundle_records_not_run_not_fake_pass(tmp_path: Path, monkeypatch) -> None:
     bundle = _make_standin_bundle(tmp_path)
     agg = _run(bundle, monkeypatch)
-    # Voice / ASR / VAD / e2e / endurance / dflash have stand-in artifacts → not-run.
+    # Voice / ASR / VAD / e2e / endurance / mtp have stand-in artifacts → not-run.
     for name in (
         "voice-rtf.json",
         "asr-wer.json",
         "vad.json",
         "e2e-loop.json",
         "endurance.json",
-        "dflash-accept.json",
+        "mtp-accept.json",
     ):
         blob = json.loads((bundle / "evals" / name).read_text())
         assert blob["status"] in ("not-run", "needs-hardware"), name
@@ -324,7 +324,7 @@ def _make_real_bundle(root: Path) -> Path:
     exercise the not-run-vs-ok branching of the bench-bridge runners.
     """
     bundle = root / "eliza-1-0_8b.bundle"
-    for sub in ("text", "tts", "asr", "vad", "dflash", "cache", "evals"):
+    for sub in ("text", "tts", "asr", "vad", "mtp", "cache", "evals"):
         (bundle / sub).mkdir(parents=True, exist_ok=True)
     big = b"GGUF" + b"\0" * (2 * 1024 * 1024)
     drafter_big = b"GGUF" + b"\0" * (12 * 1024 * 1024)
@@ -333,7 +333,7 @@ def _make_real_bundle(root: Path) -> Path:
     (bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf").write_bytes(big)
     (bundle / "asr" / "eliza-1-asr.gguf").write_bytes(big)
     (bundle / "vad" / "silero-vad-v5.gguf").write_bytes(big)
-    (bundle / "dflash" / "drafter-0_8b.gguf").write_bytes(drafter_big)
+    (bundle / "mtp" / "drafter-0_8b.gguf").write_bytes(drafter_big)
     (bundle / "cache" / "voice-preset-default.bin").write_text("standin")
     return bundle
 
@@ -365,7 +365,7 @@ def _run_real(bundle: Path, monkeypatch, *, bench_report: dict | None, bench_rep
         lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "backend": "cpu", "status": "not-run", "runtimeReady": False, "passed": None, "reason": "skipped in test"},
     )
     monkeypatch.setattr(suite, "eval_text", lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "metric": "text_eval", "op": ">=", "status": "not-run", "score": None, "passed": None, "reason": "skipped in test"})
-    monkeypatch.setattr(suite, "eval_dflash_accept", lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "metric": "dflash_acceptance", "op": ">=", "status": "not-run", "acceptanceRate": None, "speedup": None, "passed": None, "reason": "skipped in test"})
+    monkeypatch.setattr(suite, "eval_mtp_accept", lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "metric": "mtp_acceptance", "op": ">=", "status": "not-run", "acceptanceRate": None, "speedup": None, "passed": None, "reason": "skipped in test"})
     monkeypatch.setattr(suite, "eval_vad", lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "metric": "vad_latency_ms", "op": "<=", "status": "not-run", "median": None, "passed": None, "reason": "skipped in test"})
 
     def _fake_bench(ctx, turns):
@@ -445,7 +445,7 @@ def test_precomputed_e2e_reports_feed_eval_blobs(tmp_path: Path, monkeypatch) ->
         lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "backend": "cpu", "status": "not-run", "runtimeReady": False, "passed": None, "reason": "skipped in test"},
     )
     monkeypatch.setattr(suite, "eval_text", lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "metric": "text_eval", "op": ">=", "status": "not-run", "score": None, "passed": None, "reason": "skipped in test"})
-    monkeypatch.setattr(suite, "eval_dflash_accept", lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "metric": "dflash_acceptance", "op": ">=", "status": "not-run", "acceptanceRate": None, "speedup": None, "passed": None, "reason": "skipped in test"})
+    monkeypatch.setattr(suite, "eval_mtp_accept", lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "metric": "mtp_acceptance", "op": ">=", "status": "not-run", "acceptanceRate": None, "speedup": None, "passed": None, "reason": "skipped in test"})
     monkeypatch.setattr(suite, "eval_vad", lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "metric": "vad_latency_ms", "op": "<=", "status": "not-run", "median": None, "passed": None, "reason": "skipped in test"})
     monkeypatch.setattr(suite, "_BUN", "/bin/false")
     monkeypatch.setattr(suite.subprocess, "run", _no_bench)

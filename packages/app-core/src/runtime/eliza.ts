@@ -502,7 +502,9 @@ async function repairRuntimeAfterBoot(
   if (autonomyLoopEnabled) {
     await ensureAutonomyBootstrapContext(runtime);
   } else {
-    logger.info("[eliza] Autonomy bootstrap deferred — autonomous loop disabled");
+    logger.info(
+      "[eliza] Autonomy bootstrap deferred — autonomous loop disabled",
+    );
   }
 
   // ── Register app-specific route plugins ─────────────────────────────

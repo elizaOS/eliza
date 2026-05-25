@@ -62,7 +62,7 @@ function simulatorSnapshot(): ModelHubSnapshot {
         availableRamGb: 5,
         freeStorageGb: 64,
         gpuSupported: true,
-        dflashSupported: true,
+        mtpSupported: true,
         source: "native",
       },
     },

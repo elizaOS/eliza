@@ -11,7 +11,7 @@
  * structured error, not silently serve a slow session.
  *
  * This module is the policy core. It is pure arithmetic — no llama-server
- * process management, no native binding. `dflash-server.ts` consults
+ * process management, no native binding. `ffi-streaming-backend.ts` consults
  * `planKvSpill()` at activation time:
  *   - `mode: "resident"`  → no spill needed; load normally.
  *   - `mode: "spill"`     → pass the resulting `residentPages` /

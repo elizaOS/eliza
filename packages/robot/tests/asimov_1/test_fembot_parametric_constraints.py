@@ -30,12 +30,15 @@ def test_fembot_parametric_constraints_manifest_links_parameters_to_proofs() -> 
     assert report["summary"]["missing_links"] == []
     assert report["summary"]["parameters"] == 84
     assert report["summary"]["dimension_parameters_per_link"] == 3
-    assert report["summary"]["constraints"] == 202
-    assert report["summary"]["verified_constraints"] == 141
-    assert report["summary"]["production_blockers"] == 153
+    assert report["summary"]["constraints"] == 228
+    assert report["summary"]["verified_constraints"] == 174
+    assert report["summary"]["production_blockers"] == 170
     assert report["summary"]["links_with_height_preserved"] == 28
     assert report["summary"]["links_with_keepout_adjusted_clearance"] == 28
-    assert report["summary"]["links_with_topology_accepted"] == 19
+    assert report["summary"]["links_with_topology_accepted"] == 28
+    assert report["summary"]["links_with_promoted_topology_accepted"] == 28
+    assert report["summary"]["links_with_full_cavity_clearance_candidate"] == 26
+    assert report["summary"]["links_with_full_cavity_clearance_verified"] == 25
     assert report["summary"]["links_with_supplier_vendor_keepout_growth"] == 8
     assert report["summary"]["links_with_supplier_vendor_adjusted_bbox_fit"] == 8
     assert report["summary"]["supplier_vendor_adjusted_fit_fail"] == 0
@@ -48,7 +51,7 @@ def test_fembot_parametric_constraints_manifest_links_parameters_to_proofs() -> 
     links = {record["link"]: record for record in report["links"]}
     imu = links["IMU_ORIGIN"]
     assert imu["parameter_count"] == 3
-    assert imu["constraint_count"] == 7
+    assert imu["constraint_count"] == 8
     assert {parameter["name"] for parameter in imu["parameters"]} == {
         "x_extent_m",
         "y_extent_m",
@@ -65,6 +68,7 @@ def test_fembot_parametric_constraints_manifest_links_parameters_to_proofs() -> 
         "surface_intent",
         "topology_or_repair_preview",
         "internal_cavity_clearance",
+        "full_cavity_clearance_candidate",
         "mold_draft_or_vacuform_process",
     }
 
@@ -127,6 +131,18 @@ def test_fembot_inventory_surfaces_parametric_constraints_status() -> None:
             "links_with_supplier_vendor_adjusted_bbox_fit"
         ]
         == 8
+    )
+    assert (
+        report["parametric_constraints"]["summary"][
+            "links_with_promoted_topology_accepted"
+        ]
+        == 28
+    )
+    assert (
+        report["parametric_constraints"]["summary"][
+            "links_with_full_cavity_clearance_verified"
+        ]
+        == 25
     )
     assert report["parametric_constraints"]["summary"]["supplier_vendor_adjusted_fit_fail"] == 0
 

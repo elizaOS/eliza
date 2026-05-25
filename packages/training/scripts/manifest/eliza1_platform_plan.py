@@ -16,7 +16,7 @@ from typing import Final, Mapping, Sequence
 
 try:
     from scripts.manifest.eliza1_manifest import (
-        ELIZA_1_DFLASH_TIERS,
+        ELIZA_1_MTP_TIERS,
         ELIZA_1_HF_REPO,
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
@@ -30,7 +30,7 @@ try:
     )
 except ImportError:  # pragma: no cover - script execution path
     from eliza1_manifest import (
-        ELIZA_1_DFLASH_TIERS,
+        ELIZA_1_MTP_TIERS,
         ELIZA_1_HF_REPO,
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
@@ -91,7 +91,7 @@ IMAGEGEN_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "27b-256k": ("imagegen/z-image-turbo-Q4_K_M.gguf", *Z_IMAGE_COMPANION_ARTIFACTS),
 }
 VISION_TIERS: Final[frozenset[str]] = ELIZA_1_VISION_TIERS
-DFLASH_TIERS: Final[frozenset[str]] = ELIZA_1_DFLASH_TIERS
+MTP_TIERS: Final[frozenset[str]] = ELIZA_1_MTP_TIERS
 
 COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     tier: (
@@ -99,10 +99,10 @@ COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "licenses/LICENSE.voice",
         "licenses/LICENSE.asr",
         "licenses/LICENSE.vad",
-        # Even tiers without a drafter ship DFlash release-policy metadata.
+        # Even tiers without a drafter ship MTP release-policy metadata.
         # Keep the component license in every bundle so the orchestrator and
         # evidence finalizer validate the same layout.
-        "licenses/LICENSE.dflash",
+        "licenses/LICENSE.mtp",
         "licenses/LICENSE.eliza-1",
         *(("licenses/LICENSE.vision",) if tier in VISION_TIERS else ()),
     )
@@ -218,12 +218,12 @@ def required_files_for_tier(tier: str) -> tuple[str, ...]:
     dispatch_reports = tuple(
         f"evals/{backend}_dispatch.json" for backend in SUPPORTED_BACKENDS_BY_TIER[tier]
     )
-    dflash_files = (
-        *((f"dflash/drafter-{tier}.gguf",) if tier in DFLASH_TIERS else ()),
-        "dflash/target-meta.json",
-        *(("dflash/validation-real.json",) if tier in DFLASH_TIERS else ()),
-        *(("dflash/runtime-smoke-native.json",) if tier in DFLASH_TIERS else ()),
-        *(("evals/dflash-tuning-report.json",) if tier in DFLASH_TIERS else ()),
+    mtp_files = (
+        *((f"mtp/drafter-{tier}.gguf",) if tier in MTP_TIERS else ()),
+        "mtp/target-meta.json",
+        *(("mtp/validation-real.json",) if tier in MTP_TIERS else ()),
+        *(("mtp/runtime-smoke-native.json",) if tier in MTP_TIERS else ()),
+        *(("evals/mtp-tuning-report.json",) if tier in MTP_TIERS else ()),
     )
     vision_files = (
         (f"vision/mmproj-{tier}.gguf",)
@@ -237,7 +237,7 @@ def required_files_for_tier(tier: str) -> tuple[str, ...]:
         *VAD_ARTIFACTS,
         *IMAGEGEN_ARTIFACTS_BY_TIER[tier],
         *vision_files,
-        *dflash_files,
+        *mtp_files,
         VOICE_PRESET_CACHE_PATH,
         "evals/aggregate.json",
         *backend_reports,
@@ -332,7 +332,7 @@ _WEIGHT_PAYLOAD_DIRS: Final[frozenset[str]] = frozenset(
         "vad",
         "imagegen",
         "vision",
-        "dflash",
+        "mtp",
         "embedding",
         "wakeword",
     }
@@ -525,7 +525,7 @@ def render_readiness(
         "",
         "Important caveats:",
         "",
-        "- Text, ASR, DFlash, vision mmproj, and OmniVoice TTS payloads are "
+        "- Text, ASR, MTP, vision mmproj, and OmniVoice TTS payloads are "
         "GGUF artifacts when a tier ships them. 0.8B/2B/4B/9B carry Kokoro "
         "plus OmniVoice; Kokoro is ONNX by design. "
         "27B-class tiers ship OmniVoice GGUF only.",
@@ -551,7 +551,7 @@ def render_readiness(
         "kernelDispatchReports,platformEvidence,sizeFirstRepoIds}` must all be "
         "`true`, and the runnable-on-base evals (text perplexity vs the upstream "
         "GGUF, voice RTF, ASR WER, VAD latency/boundary/endpoint/false-barge-in, "
-        "dflash acceptance, e2e loop, 30-turn) must pass — but NOT a "
+        "mtp acceptance, e2e loop, 30-turn) must pass — but NOT a "
         "fine-tuned-text-quality eval. Fine-tuning "
         "ships in v2 (`releaseState=finetuned-v2`).",
         "- Release evidence must use real final hashes, evals, "

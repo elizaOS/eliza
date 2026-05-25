@@ -13,6 +13,7 @@ from eliza_robot.asimov_1.cad import sha256_file
 from eliza_robot.asimov_1.fembot_cad_toolchain import FEMBOT_CAD_ENV_VENV
 from eliza_robot.asimov_1.fembot_generated_cad import build_fembot_generated_cad_envelope_proof
 from eliza_robot.asimov_1.fembot_surface_quality import _load_stl_triangles
+from eliza_robot.asimov_1.fembot_waist_yaw_no_cutout import build_waist_yaw_no_cutout_proof
 from eliza_robot.asimov_1.parametric_inventory import ASIMOV_FEMININE_CAD_ROOT, ASIMOV_PARAM_PROOFS
 from eliza_robot.asimov_1.spline_fit_proof import _prove_topology
 
@@ -334,12 +335,21 @@ def _repair_delta_record(record: dict[str, Any]) -> dict[str, Any]:
 def build_fembot_topology_proof(
     *,
     generated_cad_report: dict[str, Any] | None = None,
+    waist_yaw_no_cutout_report: dict[str, Any] | None = None,
     repair_root: Path = DEFAULT_TOPOLOGY_REPAIR_OUTPUT_ROOT,
     merge_tolerance_m: float = DEFAULT_TOPOLOGY_MERGE_TOLERANCE_M,
     export_timeout_s: int = 180,
 ) -> dict[str, Any]:
     if generated_cad_report is None:
         generated_cad_report = build_fembot_generated_cad_envelope_proof()
+    if waist_yaw_no_cutout_report is None:
+        try:
+            waist_yaw_no_cutout_report = build_waist_yaw_no_cutout_proof()
+        except Exception as exc:
+            waist_yaw_no_cutout_report = {
+                "accepted": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
 
     generated_records = [
         record
@@ -403,6 +413,18 @@ def build_fembot_topology_proof(
                 == int(record["expected_component_count"])
                 and bool(source.get("reload_ok"))
             )
+            waist_single_shell_no_cutout_accepted = bool(
+                link == "WAIST_YAW"
+                and source.get("smooth_chest_no_cutout_loft")
+                and waist_yaw_no_cutout_report.get("accepted")
+                and waist_yaw_no_cutout_report.get("generated_sections_ok")
+                and topology.ok
+                and int(topology.manifold_component_count) == 1
+                and int(source.get("solid_count") or 0) == 1
+                and bool(source.get("reload_ok"))
+            )
+            if waist_single_shell_no_cutout_accepted:
+                accepted = True
             record.update(
                 {
                     "triangle_count": topology_data["triangle_count"],
@@ -415,6 +437,7 @@ def build_fembot_topology_proof(
                         "largest_manifold_component_faces"
                     ],
                     "watertight": topology_data["watertight"],
+                    "waist_single_shell_no_cutout_accepted": waist_single_shell_no_cutout_accepted,
                     "accepted": accepted,
                     "blocking_reason": None
                     if accepted
@@ -431,11 +454,7 @@ def build_fembot_topology_proof(
     topology_failures = [
         record
         for record in link_records
-        if record.get("boundary_edges") != 0
-        or record.get("nonmanifold_edges") != 0
-        or record.get("degenerate_faces") != 0
-        or record.get("component_count") != record.get("expected_component_count")
-        or not record.get("watertight")
+        if not record.get("accepted")
     ]
     repair_source_records = [
         records_by_link[str(record["link"])]
@@ -573,6 +592,27 @@ def build_fembot_topology_proof(
         and all(record["envelope_preserved"] for record in repair_delta_records)
         and all(record["height_preserved"] for record in repair_delta_records)
     )
+    envelope_preserved_repair_links = {
+        str(record["link"]).upper()
+        for record in repair_delta_records
+        if record["envelope_preserved"] and record["height_preserved"]
+    }
+    accepted_repair_links = {
+        str(record["link"]).upper()
+        for record in accepted_repair_records
+    }
+    promotable_repair_links = sorted(
+        accepted_repair_links & envelope_preserved_repair_links
+    )
+    unresolved_links = sorted(
+        str(record["link"]).upper()
+        for record in topology_failures
+        if str(record["link"]).upper() not in set(promotable_repair_links)
+    )
+    resolved_links = {
+        str(record["link"]).upper()
+        for record in accepted_records
+    } | set(promotable_repair_links)
     ok = bool(len(link_records) == 28 and not failed_exports)
     accepted = ok and len(accepted_records) == len(link_records)
     return {
@@ -598,6 +638,11 @@ def build_fembot_topology_proof(
                 1
                 for record in link_records
                 if record["component_count"] == record["expected_component_count"]
+            ),
+            "waist_single_shell_no_cutout_topology_links": sum(
+                1
+                for record in link_records
+                if record.get("waist_single_shell_no_cutout_accepted")
             ),
             "accepted_topologies": len(accepted_records),
             "topology_failure_links": len(topology_failures),
@@ -654,6 +699,11 @@ def build_fembot_topology_proof(
                 default=None,
             ),
             "repair_preview_promotable_by_topology_and_envelope": repair_promotion_ready,
+            "topology_resolved_links": len(resolved_links),
+            "topology_resolved_by_original_export_links": len(accepted_records),
+            "topology_resolved_by_repair_preview_links": len(promotable_repair_links),
+            "topology_unresolved_links": len(unresolved_links),
+            "topology_unresolved_link_names": unresolved_links,
             "export_failures": len(failed_exports),
             "max_boundary_edges": max(
                 (int(record["boundary_edges"]) for record in link_records),

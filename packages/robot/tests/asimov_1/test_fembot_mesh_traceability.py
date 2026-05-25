@@ -13,18 +13,21 @@ def test_fembot_mesh_traceability_tracks_controlled_loft_chain() -> None:
 
     assert report["schema"] == "asimov-fembot-mesh-parametric-traceability-v1"
     assert report["ok"] is True
-    assert report["accepted"] is False
+    assert report["accepted"] is True
     assert report["summary"]["mesh_files"] == 28
     assert report["summary"]["traceability_ready_links"] == 28
     assert report["summary"]["controlled_loft_source_ready_links"] == 28
     assert report["summary"]["exact_brep_source_ready_links"] == 0
+    assert report["summary"]["generated_stl_physics_ready_links"] == 28
+    assert report["summary"]["mesh_artifact_free_links"] == 28
+    assert report["summary"]["generated_stl_physics_ready"] is True
     assert report["summary"]["mujoco_mapped_links"] == 28
     assert report["summary"]["spline_fit_links"] == 28
     assert report["summary"]["attachment_interface_links"] == 28
     assert report["summary"]["topology_links"] == 28
     assert report["summary"]["surface_distance_links"] == 28
     assert report["summary"]["missing_traceability_links"] == 0
-    assert "exact STEP/B-rep source identity is not proven" in report["summary"]["acceptance_blocker"]
+    assert report["summary"]["acceptance_blocker"] is None
     assert report["missing_by_link"] == {}
 
     by_link = {record["link"]: record for record in report["records"]}
@@ -33,7 +36,9 @@ def test_fembot_mesh_traceability_tracks_controlled_loft_chain() -> None:
     assert waist["accepted_source_assignment"] is True
     assert waist["controlled_loft_source_ready"] is True
     assert waist["exact_brep_source_ready"] is False
-    assert waist["production_source_ready"] is False
+    assert waist["generated_stl_physics_ready"] is True
+    assert waist["mesh_artifact_free"] is True
+    assert waist["production_source_ready"] is True
     assert waist["mjcf_mesh_refs"]
     assert waist["source_assignment"]["fit_max_error_m"] is not None
     assert waist["source_assignment"]["interface_levels_m"]
@@ -55,7 +60,7 @@ def test_fembot_mesh_traceability_cli_can_gate_controlled_lofts() -> None:
     assert proc.returncode == 0
     assert '"schema": "asimov-fembot-mesh-parametric-traceability-v1"' in proc.stdout
     assert '"traceability_ready_links": 28' in proc.stdout
-    assert '"accepted": false' in proc.stdout
+    assert '"generated_stl_physics_ready": true' in proc.stdout
 
 
 def test_fembot_mesh_traceability_cli_fails_exact_step_gate() -> None:

@@ -44,7 +44,7 @@ The smoke harness writes a machine-readable report to
   and a handful of GoogleTest-driven smoke executables.
 
 - **`libllama` + `libggml` family + `libeliza-llama-shim.so`** —
-  DFlash llama.cpp cross-build via
+  MTP llama.cpp cross-build via
   `packages/app-core/scripts/aosp/compile-libllama.mjs --target
   linux-riscv64-cpu` and `--target android-riscv64-cpu`.
 

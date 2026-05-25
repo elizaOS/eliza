@@ -3387,7 +3387,7 @@ function looksLikeCompleteDirectReply(replyText: string): boolean {
 	);
 }
 
-function isSimpleMessageHandlerShortcut(
+function _isSimpleMessageHandlerShortcut(
 	messageHandler: MessageHandlerResult,
 ): boolean {
 	if (messageHandler.processMessage !== "RESPOND") return false;

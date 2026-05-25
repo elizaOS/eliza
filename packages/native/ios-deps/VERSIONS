@@ -14,7 +14,7 @@ brotli=PLACEHOLDER-FILL-IN-AT-M02
 # llama.cpp pin for on-device inference. Tracks the elizaOS fork at
 # https://github.com/elizaOS/llama.cpp (branch `main`), not upstream
 # ggml-org. The fork carries the elizaOS kernels (Q4_POLAR / QJL1_256 /
-# TBQ4_0 / TBQ3_0 GGML types + Metal/Vulkan/CUDA kernels) and DFlash
+# TBQ4_0 / TBQ3_0 GGML types + Metal/Vulkan/CUDA kernels) and MTP
 # spec-decode, which on-device inference relies on. Bump deliberately,
 # not on every commit; pick a commit SHA that's known to build a green
 # llama-server on macOS arm64.

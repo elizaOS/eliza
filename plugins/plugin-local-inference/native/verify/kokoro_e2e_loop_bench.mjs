@@ -75,7 +75,7 @@ function parseArgs(argv) {
     audioDir: process.env.ELIZA_KOKORO_E2E_AUDIO_DIR || "",
     saveAudio: process.env.ELIZA_KOKORO_E2E_SAVE_AUDIO !== "0",
     skipEmbedding: process.env.ELIZA_KOKORO_E2E_SKIP_EMBEDDING === "1",
-    disableDflash: process.env.ELIZA_KOKORO_E2E_DISABLE_DFLASH === "1",
+    disableMtp: process.env.ELIZA_KOKORO_E2E_DISABLE_MTP === "1",
     draftNgl: process.env.ELIZA_KOKORO_E2E_DRAFT_NGL || "",
     kokoroRuntime: process.env.ELIZA_KOKORO_E2E_RUNTIME || "onnx",
     preflightOnly: false,
@@ -109,7 +109,7 @@ function parseArgs(argv) {
     else if (a === "--report") args.report = next();
     else if (a === "--audio-dir") args.audioDir = next();
     else if (a === "--skip-embedding") args.skipEmbedding = true;
-    else if (a === "--disable-dflash") args.disableDflash = true;
+    else if (a === "--disable-mtp") args.disableMtp = true;
     else if (a === "--draft-ngl") args.draftNgl = next();
     else if (a === "--kokoro-runtime") args.kokoroRuntime = next();
     else if (a === "--no-save-audio") args.saveAudio = false;
@@ -135,7 +135,7 @@ Options:
   --wav a.wav[,b.wav]     External mic WAV(s). Pair with --ref "text|text".
   --ref "text|text"       References for WER. Without --wav, used as Kokoro mic seed text.
   --skip-embedding        Do not run the optional embedding probe.
-  --disable-dflash        Do not attach the DFlash drafter; records optimization as inactive.
+  --disable-mtp        Do not attach the MTP drafter; records optimization as inactive.
   --draft-ngl N           Override draft model GPU layers (e.g. 0 to keep BF16 draft on CPU).
   --batch N               llama-server logical batch size. Default: 256.
   --ubatch N              llama-server physical batch size. Default: 128.
@@ -187,7 +187,7 @@ function libName() {
 }
 
 function discoverEngine(args) {
-  const root = path.join(stateRoot(), "local-inference", "bin", "dflash");
+  const root = path.join(stateRoot(), "local-inference", "bin", "mtp");
   const candidates = [];
   if (args.binDir) candidates.push(path.resolve(args.binDir));
   const plat = platformTag();
@@ -271,7 +271,7 @@ function resolveBundleFiles(bundleDir, tier) {
   const text = ggufsIn(path.join(bundleDir, "text")).sort(
     (a, b) => contextRank(a) - contextRank(b) || a.localeCompare(b),
   )[0] || null;
-  const drafter = ggufsIn(path.join(bundleDir, "dflash"))[0] || null;
+  const drafter = ggufsIn(path.join(bundleDir, "mtp"))[0] || null;
   const asrDir = path.join(bundleDir, "asr");
   const ttsRoot = path.join(bundleDir, "tts", "kokoro");
   const voicesDir = path.join(ttsRoot, "voices");
@@ -325,29 +325,29 @@ function resolveBundleFiles(bundleDir, tier) {
       model: dedicatedEmbedding || text,
       mode: dedicatedEmbedding ? "dedicated" : text ? "pooled-text" : "missing",
     },
-    dflashPolicy: resolveDflashPolicy(bundleDir),
+    mtpPolicy: resolveMtpPolicy(bundleDir),
   };
 }
 
-function resolveDflashPolicy(bundleDir) {
-  const dflashDir = path.join(bundleDir, "dflash");
-  const targetMetaPath = path.join(dflashDir, "target-meta.json");
+function resolveMtpPolicy(bundleDir) {
+  const mtpDir = path.join(bundleDir, "mtp");
+  const targetMetaPath = path.join(mtpDir, "target-meta.json");
   const targetMeta = readJson(targetMetaPath);
   let disabledPolicyPath = null;
   if (targetMeta?.disabledPolicy?.path) {
     disabledPolicyPath = path.join(bundleDir, targetMeta.disabledPolicy.path);
-  } else if (fs.existsSync(dflashDir)) {
+  } else if (fs.existsSync(mtpDir)) {
     const disabledName = fs
-      .readdirSync(dflashDir)
-      .find((name) => /^dflash-disabled-.*\.json$/i.test(name));
-    if (disabledName) disabledPolicyPath = path.join(dflashDir, disabledName);
+      .readdirSync(mtpDir)
+      .find((name) => /^mtp-disabled-.*\.json$/i.test(name));
+    if (disabledName) disabledPolicyPath = path.join(mtpDir, disabledName);
   }
   const disabledPolicy = disabledPolicyPath ? readJson(disabledPolicyPath) : null;
   return {
     status: targetMeta?.status ?? disabledPolicy?.status ?? null,
-    dflashEnabled:
-      typeof targetMeta?.dflashEnabled === "boolean"
-        ? targetMeta.dflashEnabled
+    mtpEnabled:
+      typeof targetMeta?.mtpEnabled === "boolean"
+        ? targetMeta.mtpEnabled
         : disabledPolicy?.status === "disabled"
           ? false
           : null,
@@ -1006,7 +1006,7 @@ async function startTextServer(engine, files, args, log) {
     ...process.env,
     LD_LIBRARY_PATH: [engine.dir, process.env.LD_LIBRARY_PATH || ""].filter(Boolean).join(path.delimiter),
     DYLD_LIBRARY_PATH: [engine.dir, process.env.DYLD_LIBRARY_PATH || ""].filter(Boolean).join(path.delimiter),
-    ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT: "1",
+    ELIZA_MTP_SKIP_SERVER_STRUCTURED_OUTPUT: "1",
   };
   const serverArgs = [
     "-m",
@@ -1028,13 +1028,13 @@ async function startTextServer(engine, files, args, log) {
     "--no-warmup",
     "--metrics",
   ];
-  const drafterReady = !args.disableDflash && isRealGguf(files.drafter, 10_000_000);
+  const drafterReady = !args.disableMtp && isRealGguf(files.drafter, 10_000_000);
   if (drafterReady) {
     serverArgs.push(
       "-md",
       files.drafter,
       "--spec-type",
-      "dflash",
+      "mtp",
       "--spec-draft-n-min",
       "2",
       "--spec-draft-n-max",
@@ -1057,7 +1057,7 @@ async function startTextServer(engine, files, args, log) {
       files.kokoro.voicesDir,
     );
   }
-  log(`starting text server port=${port} text=${path.basename(files.text)} dflash=${drafterReady}`);
+  log(`starting text server port=${port} text=${path.basename(files.text)} mtp=${drafterReady}`);
   const child = spawn(engine.server, serverArgs, {
     cwd: engine.dir,
     env,
@@ -1267,7 +1267,7 @@ async function runTurn(opts, turnIndex) {
     before.drafted != null && after.drafted != null ? Math.max(0, after.drafted - before.drafted) : null;
   const accepted =
     before.accepted != null && after.accepted != null ? Math.max(0, after.accepted - before.accepted) : null;
-  const dflashAcceptance =
+  const mtpAcceptance =
     drafted != null && accepted != null && drafted > 0 ? accepted / drafted : null;
   const generatedText = gen.content.trim();
   const ttsText = generatedText || asr.transcript || mic.refText || "hello there";
@@ -1305,10 +1305,10 @@ async function runTurn(opts, turnIndex) {
       content: generatedText,
       textGeneratedOk: generatedText.length > 0 && gen.firstTokenMs != null,
     },
-    dflash: {
+    mtp: {
       drafted,
       accepted,
-      acceptanceRate: round4(dflashAcceptance),
+      acceptanceRate: round4(mtpAcceptance),
     },
     tts: stripSamples(tts),
     firstAudioFromMicMs: round1(firstAudioFromMicMs),
@@ -1316,10 +1316,10 @@ async function runTurn(opts, turnIndex) {
   };
 }
 
-function summarize(turns, embedding, drafterReady, dflashPolicy, rss, bargeIn) {
-  const dflashDraftedTotal = turns.reduce((sum, turn) => sum + (turn.dflash.drafted || 0), 0);
-  const dflashAcceptedTotal = turns.reduce((sum, turn) => sum + (turn.dflash.accepted || 0), 0);
-  const dflashRequired = dflashPolicy?.requiresDrafter === false ? false : true;
+function summarize(turns, embedding, drafterReady, mtpPolicy, rss, bargeIn) {
+  const mtpDraftedTotal = turns.reduce((sum, turn) => sum + (turn.mtp.drafted || 0), 0);
+  const mtpAcceptedTotal = turns.reduce((sum, turn) => sum + (turn.mtp.accepted || 0), 0);
+  const mtpRequired = mtpPolicy?.requiresDrafter === false ? false : true;
   const flowCompletedOk =
     turns.length > 0 &&
     turns.every(
@@ -1342,10 +1342,10 @@ function summarize(turns, embedding, drafterReady, dflashPolicy, rss, bargeIn) {
     ttsRtfMedian: round4(median(turns.map((turn) => turn.tts.rtf))),
     ttsRtfMean: round4(mean(turns.map((turn) => turn.tts.rtf))),
     totalTurnMsMedian: round1(median(turns.map((turn) => turn.totalTurnMs))),
-    dflashDraftedTotal,
-    dflashAcceptedTotal,
-    dflashAcceptanceRateOverall:
-      dflashDraftedTotal > 0 ? round4(dflashAcceptedTotal / dflashDraftedTotal) : null,
+    mtpDraftedTotal,
+    mtpAcceptedTotal,
+    mtpAcceptanceRateOverall:
+      mtpDraftedTotal > 0 ? round4(mtpAcceptedTotal / mtpDraftedTotal) : null,
     bargeInCancelMs: bargeIn?.bargeInCancelMs ?? null,
     serverPeakRssMb: rss?.serverPeakRssMb ?? null,
     harnessPeakRssMb: rss?.harnessPeakRssMb ?? null,
@@ -1354,19 +1354,19 @@ function summarize(turns, embedding, drafterReady, dflashPolicy, rss, bargeIn) {
     ramWithinBudget: rss?.ramWithinBudget ?? null,
     leakSuspected: rss?.leakSuspected ?? false,
     requiredOptimizations: {
-      dflashDraftingActive: dflashRequired
-        ? drafterReady && dflashDraftedTotal > 0
+      mtpDraftingActive: mtpRequired
+        ? drafterReady && mtpDraftedTotal > 0
         : null,
-      dflashRequired,
+      mtpRequired,
       streamingTtsActive: true,
     },
-    dflashPolicy: dflashPolicy
+    mtpPolicy: mtpPolicy
       ? {
-          status: dflashPolicy.status,
-          dflashEnabled: dflashPolicy.dflashEnabled,
-          requiresDrafter: dflashPolicy.requiresDrafter,
-          releaseMode: dflashPolicy.releaseMode,
-          reason: dflashPolicy.reason,
+          status: mtpPolicy.status,
+          mtpEnabled: mtpPolicy.mtpEnabled,
+          requiresDrafter: mtpPolicy.requiresDrafter,
+          releaseMode: mtpPolicy.releaseMode,
+          reason: mtpPolicy.reason,
         }
       : null,
     embedding,
@@ -1486,7 +1486,7 @@ function baseReport(args, bundleDir, files, engine) {
       wavs: args.wavs.length,
       refs: args.refs.length,
       skipEmbedding: args.skipEmbedding,
-      disableDflash: args.disableDflash,
+      disableMtp: args.disableMtp,
       kokoroRuntime: args.kokoroRuntime,
       audioDir: args.audioDir || null,
     },
@@ -1504,13 +1504,13 @@ function baseReport(args, bundleDir, files, engine) {
       kokoroVoiceCount: files.kokoro.voices.length,
       embeddingModel: relative(files.embedding.model),
       embeddingMode: files.embedding.mode,
-      dflashPolicy: files.dflashPolicy
+      mtpPolicy: files.mtpPolicy
         ? {
-            status: files.dflashPolicy.status,
-            requiresDrafter: files.dflashPolicy.requiresDrafter,
-            releaseMode: files.dflashPolicy.releaseMode,
-            targetMeta: relative(files.dflashPolicy.targetMetaPath),
-            disabledPolicy: relative(files.dflashPolicy.disabledPolicyPath),
+            status: files.mtpPolicy.status,
+            requiresDrafter: files.mtpPolicy.requiresDrafter,
+            releaseMode: files.mtpPolicy.releaseMode,
+            targetMeta: relative(files.mtpPolicy.targetMetaPath),
+            disabledPolicy: relative(files.mtpPolicy.disabledPolicyPath),
           }
         : null,
     },
@@ -1708,14 +1708,14 @@ async function run() {
       turns,
       embedding,
       textServer?.drafterReady ?? isRealGguf(files.drafter, 10_000_000),
-      files.dflashPolicy,
+      files.mtpPolicy,
       rss,
       bargeIn,
     );
     const e2eLoopOk = summary.flowCompletedOk;
     const optimizationReadyOk =
       summary.requiredOptimizations.streamingTtsActive === true &&
-      (summary.requiredOptimizations.dflashDraftingActive !== false);
+      (summary.requiredOptimizations.mtpDraftingActive !== false);
     const report = writeReport(
       {
         ...pre,
@@ -1723,7 +1723,7 @@ async function run() {
         reason: e2eLoopOk
           ? optimizationReadyOk
             ? null
-            : "Kokoro loop completed, but DFlash drafting was not active where a drafter was present"
+            : "Kokoro loop completed, but MTP drafting was not active where a drafter was present"
           : "Kokoro ASR/text/TTS loop did not complete",
         e2eLoopOk,
         thirtyTurnOk:

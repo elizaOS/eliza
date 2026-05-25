@@ -4,10 +4,10 @@
  * talking-endlessly path.
  *
  * Runs `packages/app-core/scripts/voice-duet.mjs --turns N --report …` across
- * a grid of the latency knobs (DFlash `--parallel` / `--draft-max` /
+ * a grid of the latency knobs (MTP `--parallel` / `--draft-max` /
  * `--ctx-size-draft`, the phrase-chunker word threshold, `--prewarm-lead-ms`,
  * the cross-ring size `--ring-ms`, the KV-cache type, the backend), collects
- * the headline percentiles + the DFlash accept-rate + the structured-decode
+ * the headline percentiles + the MTP accept-rate + the structured-decode
  * token-savings % + tok/s + RSS-over-N into one CSV, and emits a before/after
  * table. The grind methodology:
  *
@@ -115,8 +115,8 @@ const USAGE = `Usage: bun packages/inference/verify/voice_duet_sweep.mjs [option
   --cell-timeout-ms <ms>  per-cell hard cap (default 600000)
 
 Grid axes (comma-separated; one value = a fixed axis):
-  --parallel 1,2          DFlash llama-server slots
-  --draft-max 8,16        DFlash draft window
+  --parallel 1,2          MTP llama-server slots
+  --draft-max 8,16        MTP draft window
   --ctx-size-draft 1024   drafter context size
   --chunk-words 6,12      phrase-chunker words per phrase
   --prewarm-lead-ms 0,80  prewarm-ahead lead
@@ -224,7 +224,7 @@ const CSV_HEADER = [
   "ttfaMs_p50",
   "envelopeToReplyTextMs_p50",
   "ttsFirstChunkMs_p50",
-  "dflashAcceptRate",
+  "mtpAcceptRate",
   "structuredDecodeTokenSavingsPct_p50",
   "tokensPerSecond_p50",
   "rssFirstMb",
@@ -275,7 +275,7 @@ function rowFor(cellIdx, cell, result) {
     pick("ttfaMs", "p50"),
     pick("envelopeToReplyTextMs", "p50"),
     pick("ttsFirstChunkMs", "p50"),
-    m?.dflashAcceptRate ?? null,
+    m?.mtpAcceptRate ?? null,
     m?.structuredDecodeTokenSavingsPct?.p50 ?? null,
     m?.tokensPerSecond?.p50 ?? null,
     m?.rss?.firstMb ?? null,
@@ -404,14 +404,14 @@ async function main() {
     `| config | parallel=${fmt(baseline, "parallel")} draftMax=${fmt(baseline, "draftMax")} ringMs=${fmt(baseline, "ringMs")} chunkWords=${fmt(baseline, "chunkWords")} backend=${fmt(baseline, "backend")} | parallel=${fmt(best, "parallel")} draftMax=${fmt(best, "draftMax")} ringMs=${fmt(best, "ringMs")} chunkWords=${fmt(best, "chunkWords")} backend=${fmt(best, "backend")} |`,
     `| ttftFromUtteranceEndMs.p50 | ${fmt(baseline, "ttftFromUtteranceEndMs_p50")} | ${fmt(best, "ttftFromUtteranceEndMs_p50")} |`,
     `| duetRoundTripMs.p50 | ${fmt(baseline, "duetRoundTripMs_p50")} | ${fmt(best, "duetRoundTripMs_p50")} |`,
-    `| dflashAcceptRate | ${fmt(baseline, "dflashAcceptRate")} | ${fmt(best, "dflashAcceptRate")} |`,
+    `| mtpAcceptRate | ${fmt(baseline, "mtpAcceptRate")} | ${fmt(best, "mtpAcceptRate")} |`,
     `| structuredDecodeTokenSavingsPct.p50 | ${fmt(baseline, "structuredDecodeTokenSavingsPct_p50")} | ${fmt(best, "structuredDecodeTokenSavingsPct_p50")} |`,
     `| tokensPerSecond.p50 | ${fmt(baseline, "tokensPerSecond_p50")} | ${fmt(best, "tokensPerSecond_p50")} |`,
     `| rssMaxMb | ${fmt(baseline, "rssMaxMb")} | ${fmt(best, "rssMaxMb")} |`,
     "",
     ok.length === 0
       ? "_No cell completed — every `voice-duet.mjs` invocation exited non-zero (missing bundle / fused lib / kernels). See the CSV `note` column for the exit code + stderr tail of each cell. This is recorded, not faked._"
-      : "Methodology: profile the dominant per-stage span from each cell's tracer histogram (`latency.histograms`), sweep that stage's knob, pick the config minimising `ttftFromUtteranceEndMs.p50` without regressing `dflashAcceptRate`, re-run, repeat until the round-trip plateaus. On a CPU build TTS dominates (~6–10× RTF) so this is the harness/methodology baseline; the headline grind needs a GPU-fused build (WS-2) + the W7 streaming decoders (WS-4).",
+      : "Methodology: profile the dominant per-stage span from each cell's tracer histogram (`latency.histograms`), sweep that stage's knob, pick the config minimising `ttftFromUtteranceEndMs.p50` without regressing `mtpAcceptRate`, re-run, repeat until the round-trip plateaus. On a CPU build TTS dominates (~6–10× RTF) so this is the harness/methodology baseline; the headline grind needs a GPU-fused build (WS-2) + the W7 streaming decoders (WS-4).",
   ];
   fs.writeFileSync(mdPath, `${md.join("\n")}\n`);
   process.stdout.write(

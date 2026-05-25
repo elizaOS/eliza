@@ -62,7 +62,7 @@
         "LEFT_WRIST_YAW",
         "RIGHT_WRIST_YAW"
       ],
-      "volume_adjusted_blockers": 10,
+      "volume_adjusted_blockers": 8,
       "wall_thickness_failures": 0
     },
     {
@@ -96,7 +96,7 @@
         "LEFT_ANKLE_A",
         "RIGHT_ANKLE_A"
       ],
-      "volume_adjusted_blockers": 6,
+      "volume_adjusted_blockers": 4,
       "wall_thickness_failures": 0
     },
     {
@@ -207,13 +207,13 @@
           "accepted": true,
           "allowable_stress_pa": 18000000.0,
           "blocking_reason": null,
-          "load_n": 4.613312549439708,
-          "max_deflection_m": 6.651557827080876e-05,
-          "max_moment_nm": 1.7607490502129428,
-          "max_stress_pa": 39685.13435785455,
+          "load_n": 33.734267212170565,
+          "max_deflection_m": 0.0004863867919445492,
+          "max_moment_nm": 12.875255755362348,
+          "max_stress_pa": 290192.5487232269,
           "model": "3g generated-part self-weight at link tip using conservative bbox section",
           "name": "preliminary_3g_self_weight_cantilever_bending",
-          "safety_factor": 453.5703429321365
+          "safety_factor": 62.02778148231374
         },
         {
           "accepted": true,
@@ -243,7 +243,7 @@
       "manufacturing_adjusted_thickness_increase_m": 0.0,
       "manufacturing_adjusted_wall_thickness_m": 0.0012,
       "manufacturing_adjusted_wall_thickness_ok": true,
-      "mass_estimate_kg": 0.15680898673994034,
+      "mass_estimate_kg": 1.1466459736393353,
       "material": "PA12 nylon",
       "material_class": "MJF_PA12",
       "max_deflection_m": 0.0007209090816845604,
@@ -347,7 +347,7 @@
       "topology_repair_preview_envelope_preserved": true,
       "topology_repair_preview_height_preserved": true,
       "topology_repair_preview_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-repair-preview-step/neck_yaw.step",
-      "topology_repair_preview_step_sha256": "9eba8ebef345bd81ebe637a85efdb58cb0ca245870a3aec729a9df28e13f1638",
+      "topology_repair_preview_step_sha256": "28ebe910faa8c82c59690fe3e1e32bb01dd252c5b613c4b5a4ba08faabe0138d",
       "topology_repair_preview_volume_delta_fraction": 0.17968970234253745,
       "volume_adjusted_violation_count": 2,
       "wall_thickness_ok": true
@@ -505,7 +505,7 @@
       "topology_repair_preview_step_path": null,
       "topology_repair_preview_step_sha256": null,
       "topology_repair_preview_volume_delta_fraction": null,
-      "volume_adjusted_violation_count": 1,
+      "volume_adjusted_violation_count": 0,
       "wall_thickness_ok": true
     },
     {
@@ -583,7 +583,7 @@
       "topology_repair_preview_step_path": null,
       "topology_repair_preview_step_sha256": null,
       "topology_repair_preview_volume_delta_fraction": null,
-      "volume_adjusted_violation_count": 1,
+      "volume_adjusted_violation_count": 0,
       "wall_thickness_ok": true
     },
     {
@@ -832,7 +832,7 @@
       "topology_repair_preview_envelope_preserved": true,
       "topology_repair_preview_height_preserved": true,
       "topology_repair_preview_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-repair-preview-step/left_shoulder_yaw.step",
-      "topology_repair_preview_step_sha256": "9cd470209aadf255d178a275d0942bb031fd5a5232ec0fff93020c329214aa33",
+      "topology_repair_preview_step_sha256": "d18bdbe6a7bec0062899f27df286f7bac07fe946a84e2cc084136a6c2d5dad41",
       "topology_repair_preview_volume_delta_fraction": 0.1796897023422413,
       "volume_adjusted_violation_count": 2,
       "wall_thickness_ok": true
@@ -927,7 +927,7 @@
       "topology_repair_preview_envelope_preserved": true,
       "topology_repair_preview_height_preserved": true,
       "topology_repair_preview_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-repair-preview-step/right_shoulder_yaw.step",
-      "topology_repair_preview_step_sha256": "584c1a3ca64f4de55a92fb590ff96aef0d10ce23e20588174ccbc5cc28918e96",
+      "topology_repair_preview_step_sha256": "d515dfb3ab960ba4517e40e47fec4620fe5e5668cd73ac80387a72247bb409e4",
       "topology_repair_preview_volume_delta_fraction": 0.17968970234216972,
       "volume_adjusted_violation_count": 2,
       "wall_thickness_ok": true
@@ -1161,7 +1161,7 @@
       "topology_repair_preview_envelope_preserved": true,
       "topology_repair_preview_height_preserved": true,
       "topology_repair_preview_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-repair-preview-step/left_wrist_yaw.step",
-      "topology_repair_preview_step_sha256": "d62cb0fbeaaf48d4ab4a436edbcf13ba44ff9ca0bbd20757a2bea5028aad30d5",
+      "topology_repair_preview_step_sha256": "bf0e7cce1f0ebed98cdc1663bbab30f0e942848ed43946c03b9e11195d0df82c",
       "topology_repair_preview_volume_delta_fraction": 0.1796897023424917,
       "volume_adjusted_violation_count": 1,
       "wall_thickness_ok": true
@@ -1239,7 +1239,7 @@
       "topology_repair_preview_envelope_preserved": true,
       "topology_repair_preview_height_preserved": true,
       "topology_repair_preview_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-repair-preview-step/right_wrist_yaw.step",
-      "topology_repair_preview_step_sha256": "f01ae562bbec62b8f72a5c62e230373936a80c8e7dc80b137a1de5e46598d223",
+      "topology_repair_preview_step_sha256": "130464e677b8a89aae4b1fd96b14009ad6ab4c937d365830e5b75c6ab3f2e178",
       "topology_repair_preview_volume_delta_fraction": 0.17968970234244955,
       "volume_adjusted_violation_count": 1,
       "wall_thickness_ok": true
@@ -1475,7 +1475,7 @@
       "topology_repair_preview_step_path": null,
       "topology_repair_preview_step_sha256": null,
       "topology_repair_preview_volume_delta_fraction": null,
-      "volume_adjusted_violation_count": 1,
+      "volume_adjusted_violation_count": 0,
       "wall_thickness_ok": true
     },
     {
@@ -1553,7 +1553,7 @@
       "topology_repair_preview_step_path": null,
       "topology_repair_preview_step_sha256": null,
       "topology_repair_preview_volume_delta_fraction": null,
-      "volume_adjusted_violation_count": 1,
+      "volume_adjusted_violation_count": 0,
       "wall_thickness_ok": true
     },
     {
@@ -1837,7 +1837,7 @@
       "topology_repair_preview_envelope_preserved": true,
       "topology_repair_preview_height_preserved": true,
       "topology_repair_preview_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-repair-preview-step/left_knee.step",
-      "topology_repair_preview_step_sha256": "9ee61c5c43e156d5e19ced240531c39d583c0e8159ca394399b5833cd0800c69",
+      "topology_repair_preview_step_sha256": "00590c1ba423414ac71078d6e56cd7dd99019266bc2b630849164ace4157da6e",
       "topology_repair_preview_volume_delta_fraction": 0.17968970234250112,
       "volume_adjusted_violation_count": 0,
       "wall_thickness_ok": true
@@ -1933,7 +1933,7 @@
       "topology_repair_preview_envelope_preserved": true,
       "topology_repair_preview_height_preserved": true,
       "topology_repair_preview_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-repair-preview-step/right_knee.step",
-      "topology_repair_preview_step_sha256": "bbc95a10ba31e836125d7a54692c3e74b0b96ff6be7ee34ec9dd0d6e309a5b87",
+      "topology_repair_preview_step_sha256": "b68f89a4495aafcb46da2b4458ec5ef608470ae9ba897901d0ef60c7c96dfe36",
       "topology_repair_preview_volume_delta_fraction": 0.17968970234244214,
       "volume_adjusted_violation_count": 0,
       "wall_thickness_ok": true
@@ -2011,7 +2011,7 @@
       "topology_repair_preview_envelope_preserved": true,
       "topology_repair_preview_height_preserved": true,
       "topology_repair_preview_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-repair-preview-step/left_ankle_a.step",
-      "topology_repair_preview_step_sha256": "76cd0b4ad0bfacf21db719aee58bbce86efcd61f1c741babccac1346e058f119",
+      "topology_repair_preview_step_sha256": "aa7932864a75931dcb828c30bd9d2d682179e8f0bd6b751ef25060845692156b",
       "topology_repair_preview_volume_delta_fraction": 0.17968970234273296,
       "volume_adjusted_violation_count": 1,
       "wall_thickness_ok": true
@@ -2089,7 +2089,7 @@
       "topology_repair_preview_envelope_preserved": true,
       "topology_repair_preview_height_preserved": true,
       "topology_repair_preview_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-repair-preview-step/right_ankle_a.step",
-      "topology_repair_preview_step_sha256": "658fc62ebdc0ecf80e89bf3daacbc208b2ecfa99b90531a04596ea8e0877f365",
+      "topology_repair_preview_step_sha256": "b45e84b1f0f6f1f27592c4e0bcfc06dcc6ff3c55509e752dc7d3c16f61633721",
       "topology_repair_preview_volume_delta_fraction": 0.17968970234273296,
       "volume_adjusted_violation_count": 1,
       "wall_thickness_ok": true
@@ -2293,7 +2293,7 @@
         }
       ],
       "manufacturing_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/manufacturing-adjusted-plate-step/left_toe.step",
-      "manufacturing_adjusted_step_sha256": "02a4006c89f2fcb30ea9a1761d935bca95e1290a2e03309c3db0346fcaf53366",
+      "manufacturing_adjusted_step_sha256": "4fe22b907dbb5efe4850748ba444617584c5d8d6897c78e442079c7c6caffeb7",
       "manufacturing_adjusted_thickness_increase_m": 0.0007,
       "manufacturing_adjusted_wall_thickness_m": 0.0015,
       "manufacturing_adjusted_wall_thickness_ok": true,
@@ -2371,7 +2371,7 @@
         }
       ],
       "manufacturing_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/manufacturing-adjusted-plate-step/right_toe.step",
-      "manufacturing_adjusted_step_sha256": "5d3794e021675a9fe17b0565637fe522f683f0d108f24dfb16ded3dbb3c84c9e",
+      "manufacturing_adjusted_step_sha256": "fde730aaa10fcd1d4eebd8c2e38cfd02c1968fdab19c495474a9759aa9c99d6a",
       "manufacturing_adjusted_thickness_increase_m": 0.0007,
       "manufacturing_adjusted_wall_thickness_m": 0.0015,
       "manufacturing_adjusted_wall_thickness_ok": true,
@@ -3442,7 +3442,7 @@
         "solid_count": 1,
         "solid_count_ok": true,
         "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/structural-remediation-preview-step/left_knee.step",
-        "step_sha256": "b48d415ef9fb0601a0ba2e2ad1e29a7583b29e1be7f2d9841dac476aff4a7340",
+        "step_sha256": "04210379cf0d414feb153b140d7adb93dd68d139fe7cfecbedc1d6611cb62fbc",
         "step_size_bytes": 16891
       },
       {
@@ -3492,7 +3492,7 @@
         "solid_count": 1,
         "solid_count_ok": true,
         "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/structural-remediation-preview-step/right_knee.step",
-        "step_sha256": "a0fb4be963834f327723c18807499c95c874a4c497507e8e6a986532665f7793",
+        "step_sha256": "85e465fd8e00141bd4408ee8127705b7c50280a0cf1ffc294ca2b9ad25852910",
         "step_size_bytes": 16900
       },
       {
@@ -3541,7 +3541,7 @@
         "solid_count": 1,
         "solid_count_ok": true,
         "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/structural-remediation-preview-step/right_hip_yaw.step",
-        "step_sha256": "bd1176548f643be3578c94f83b4c77d9d7fb5cf200f8afdc775ae5212362f65f",
+        "step_sha256": "a85f0da3f4e39be9acacb1b405d21b19a7d104ff6202c6059942474792183c3b",
         "step_size_bytes": 16883
       },
       {
@@ -3590,7 +3590,7 @@
         "solid_count": 1,
         "solid_count_ok": true,
         "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/structural-remediation-preview-step/left_hip_yaw.step",
-        "step_sha256": "e0d07b6bc2bd928f9725846c6943ee3593d749820266515097d546d03ed05b93",
+        "step_sha256": "59f9e3bf2ecbc2f56698f2b6a97431cebe130d38b6b7773565d5f16fbe51e515",
         "step_size_bytes": 16891
       },
       {
@@ -3639,7 +3639,7 @@
         "solid_count": 1,
         "solid_count_ok": true,
         "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/structural-remediation-preview-step/right_shoulder_yaw.step",
-        "step_sha256": "a8e300c8421e8b48fd05f43d753920fc3c6b45e2a113b8d4893070d090fa15cb",
+        "step_sha256": "35de4c7f77239ee02883f7ea91762df72eb14321856d92717dc79eb205958156",
         "step_size_bytes": 16900
       },
       {
@@ -3688,7 +3688,7 @@
         "solid_count": 1,
         "solid_count_ok": true,
         "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/structural-remediation-preview-step/left_shoulder_yaw.step",
-        "step_sha256": "781745b76fff2a5b18d8179fe7fcdbed56963b4c78e1e76074db074bfd6b8e3c",
+        "step_sha256": "d1140ca2e72f8d30c8de5cd36e131944681a2dce332509c57e42b7cbec5a2aab",
         "step_size_bytes": 16883
       }
     ]
@@ -4179,7 +4179,7 @@
     "topology_repair_preview_height_preserved_links": 9,
     "topology_repair_preview_links": 9,
     "topology_repair_preview_max_abs_volume_delta_fraction": 0.17968970234273296,
-    "volume_adjusted_blocker_links": 20,
+    "volume_adjusted_blocker_links": 16,
     "wall_thickness_failures": 2
   }
 }

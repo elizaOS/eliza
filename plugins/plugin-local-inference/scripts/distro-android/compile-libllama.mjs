@@ -81,7 +81,7 @@ function failUnsupportedTarget(target) {
   throw new Error(
     `[compile-libllama] unsupported --target ${target}. ` +
       `This legacy distro-android script only builds CPU libllama.so via ` +
-      `--abi <arm64-v8a|x86_64>. It does not wire DFlash/OmniVoice fused ` +
+      `--abi <arm64-v8a|x86_64>. It does not wire MTP/OmniVoice fused ` +
       `artifacts or Android Vulkan backend shared objects, so refusing to ` +
       `produce a CPU-only/basic libllama build for a requested target. Use ` +
       `packages/app-core/scripts/aosp/compile-libllama.mjs for supported ` +

@@ -31,7 +31,7 @@
  *
  * Usage:
  *   bun packages/inference/verify/asr_bench.ts \
- *     --dylib ~/.eliza/local-inference/bin/dflash/linux-x64-cpu-fused/libelizainference.so \
+ *     --dylib ~/.eliza/local-inference/bin/mtp/linux-x64-cpu-fused/libelizainference.so \
  *     --bundle ~/.eliza/local-inference/models/eliza-1-0_8b.bundle \
  *     --backend cpu --out packages/inference/verify/bench_results/asr_2026-05-11.json
  */
@@ -81,7 +81,7 @@ function dylibName(): string {
   return "libelizainference.so";
 }
 function defaultDylib(backend: string): string {
-  return `${HOME}/.eliza/local-inference/bin/dflash/${PLATFORM}-${ARCH}-${backend}-fused/${dylibName()}`;
+  return `${HOME}/.eliza/local-inference/bin/mtp/${PLATFORM}-${ARCH}-${backend}-fused/${dylibName()}`;
 }
 const backend = arg("--backend", DEFAULT_BACKEND);
 const dylib = arg(

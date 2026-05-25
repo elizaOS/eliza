@@ -25,13 +25,13 @@ def test_build_queue_expands_grouped_audit_failures() -> None:
             "other": [
                 {
                     "name": "4b manifest files cover required runtime artifacts",
-                    "detail": "dflash/validation-real.json, evals/dflash-tuning-report.json",
+                    "detail": "mtp/validation-real.json, evals/mtp-tuning-report.json",
                 }
             ],
             "checksumIntegrity": [
                 {
                     "name": "4b checksums cover required release files",
-                    "detail": "dflash/validation-real.json",
+                    "detail": "mtp/validation-real.json",
                 }
             ],
             "backendVerification": [
@@ -67,8 +67,8 @@ def test_build_queue_expands_grouped_audit_failures() -> None:
     assert manifest.requires_hardware is False
     assert manifest.category == "manifestIntegrity"
     assert "bundles/4b/eliza-1.manifest.json" in manifest.evidence
-    assert "bundles/4b/dflash/validation-real.json" in manifest.evidence
-    assert "bundles/4b/evals/dflash-tuning-report.json" in manifest.evidence
+    assert "bundles/4b/mtp/validation-real.json" in manifest.evidence
+    assert "bundles/4b/evals/mtp-tuning-report.json" in manifest.evidence
     checksum = items[2]
     assert checksum.requires_hardware is False
     assert checksum.category == "checksumIntegrity"

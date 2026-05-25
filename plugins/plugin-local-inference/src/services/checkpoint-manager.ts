@@ -47,10 +47,7 @@
  */
 
 import { logger } from "@elizaos/core";
-import {
-	CheckpointClient,
-	type CheckpointFetch,
-} from "./checkpoint-client";
+import { CheckpointClient, type CheckpointFetch } from "./checkpoint-client";
 import {
 	type CheckpointHandle,
 	type CheckpointManagerLike,

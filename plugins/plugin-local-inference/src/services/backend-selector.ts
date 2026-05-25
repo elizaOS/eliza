@@ -21,7 +21,7 @@
  *
  * The selector intentionally does NOT inspect the live process to detect
  * mobile — callers pass that information in. The mobile bootstrap
- * (`aosp-dflash-adapter.ts` / the iOS bridge) knows what it is; tests
+ * (`aosp-mtp-adapter.ts` / the iOS bridge) knows what it is; tests
  * pass synthetic values. Keeping detection out of the selector matches
  * AGENTS.md §7 (single source of truth for inputs) and lets the
  * decision be replayed offline.

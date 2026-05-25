@@ -31,6 +31,8 @@
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
       "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/platform": ["../../packages/ui/src/platform/index.ts"],
+      "@elizaos/ui/platform/*": ["../../packages/ui/src/platform/*"],
       "@elizaos/ui/*": ["../../packages/ui/dist/*"],
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],

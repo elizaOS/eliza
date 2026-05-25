@@ -69,9 +69,9 @@ function firstExisting(...candidates) {
 function resolveBinary(opts) {
   if (opts.bin) return fs.existsSync(opts.bin) ? opts.bin : null;
   const cacheRoots = [
-    path.join(os.homedir(), ".cache", "eliza-dflash", "eliza-llama-cpp", "build"),
-    path.join(os.homedir(), ".cache", "eliza-dflash", "buun-llama-cpp", "build"),
-    path.join(os.homedir(), ".eliza", "local-inference", "bin", "dflash"),
+    path.join(os.homedir(), ".cache", "eliza-mtp", "eliza-llama-cpp", "build"),
+    path.join(os.homedir(), ".cache", "eliza-mtp", "buun-llama-cpp", "build"),
+    path.join(os.homedir(), ".eliza", "local-inference", "bin", "mtp"),
   ];
   const platform = `${process.platform}-${process.arch}`.replace("darwin", "darwin").replace("linux", "linux");
   const backends = opts.backend ? [opts.backend] : ["cuda", "vulkan", "cpu"];
@@ -232,7 +232,7 @@ async function main() {
       ...baseReport,
       status: "skipped",
       reason: !bin
-        ? "no llama-server binary found (build one: node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cpu)"
+        ? "no llama-server binary found (build one: node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cpu)"
         : "no embedding GGUF found (point --model at an embedding/ GGUF or an Eliza-1 pooled-text backbone such as Qwen3.5-0.8B)",
       resolved: { bin, model },
     };

@@ -1,12 +1,12 @@
-# vast-pyworker — GGUF / DFlash on Vast Serverless
+# vast-pyworker — GGUF / MTP on Vast Serverless
 
 PyWorker that fronts a `llama.cpp` `llama-server` hosting a Q4_K_M / Q6_K
 GGUF from the canonical Eliza-1 bundle repo
 [`elizaos/eliza-1`][1] (subpath `bundles/27b/text/`) on a single RTX 5090
 worker. Deployed by Vast.ai Serverless; the template defines the image and
 the on-start script, both committed in this repo. The same worker can serve
-Eliza-1/3.6 DFlash target+drafter pairs when the template image provides a
-DFlash-capable `llama-server` fork.
+Eliza-1/3.6 MTP target+drafter pairs when the template image provides a
+MTP-capable `llama-server` fork.
 
 [1]: https://huggingface.co/elizaos/eliza-1
 
@@ -45,15 +45,15 @@ slots.
 
 A Vast template (managed by `cloud/scripts/vast/upsert-template.ts`) declares:
 
-- `image = ghcr.io/ggml-org/llama.cpp:server-cuda` for stock GGUF. DFlash and
+- `image = ghcr.io/ggml-org/llama.cpp:server-cuda` for stock GGUF. MTP and
   TurboQuant KV-cache flags require a fork image, for example one built from
   `spiritbuun/buun-llama-cpp`, and can be selected with `VAST_IMAGE` plus
   `LLAMA_SERVER_BIN`.
 - `disk = 60 GB` (room for the GGUF + HF cache + a swap-in alternate quant).
 - `onstart = <inline contents of onstart.sh>`.
 - `env = { PYWORKER_REPO, PYWORKER_REF, MODEL_REPO, MODEL_FILE, MODEL_ALIAS,
-  LLAMA_CONTEXT, LLAMA_PARALLEL, LLAMA_NGL, DFLASH_DRAFTER_REPO,
-  DFLASH_DRAFTER_FILE, LLAMA_CACHE_TYPE_K, LLAMA_CACHE_TYPE_V }` — all
+  LLAMA_CONTEXT, LLAMA_PARALLEL, LLAMA_NGL, MTP_DRAFTER_REPO,
+  MTP_DRAFTER_FILE, LLAMA_CACHE_TYPE_K, LLAMA_CACHE_TYPE_V }` — all
   overridable per-template.
 
 On every cold start the on-start script:
@@ -107,26 +107,26 @@ wrangler secret put VAST_BASE_URL_ELIZA_1_27B
 wrangler secret put VAST_API_KEY     # endpoint-specific token, NOT the CLI key
 ```
 
-## DFlash Template
+## MTP Template
 
-Use a fork image that understands `--spec-type dflash`, then set the target
+Use a fork image that understands `--spec-type mtp`, then set the target
 and drafter artifacts:
 
 ```bash
 # Build/push once. Use --build-arg BASE_IMAGE=rocm/dev-ubuntu-22.04:6.3
 # --build-arg BACKEND=rocm for AMD hosts.
-docker build -f cloud/services/vast-pyworker/Dockerfile.dflash \
+docker build -f cloud/services/vast-pyworker/Dockerfile.mtp \
   --build-arg BACKEND=cuda \
-  -t ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash .
-docker push ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash
+  -t ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-mtp .
+docker push ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-mtp
 
 VAST_TEMPLATE_NAME=eliza-cloud-eliza-1-27b \
-VAST_IMAGE=ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash \
+VAST_IMAGE=ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-mtp \
 MODEL_REPO=elizaos/eliza-1 \
 MODEL_FILE=bundles/27b/text/eliza-1-27b-128k.gguf \
 MODEL_ALIAS=vast/eliza-1-27b \
-DFLASH_DRAFTER_REPO=spiritbuun/Eliza-1-27B-DFlash-GGUF \
-DFLASH_DRAFTER_FILE=dflash-draft-3.6-q8_0.gguf \
+MTP_DRAFTER_REPO=spiritbuun/Eliza-1-27B-MTP-GGUF \
+MTP_DRAFTER_FILE=mtp-draft-3.6-q8_0.gguf \
 LLAMA_CONTEXT=8192 \
 LLAMA_DRAFT_CONTEXT=256 \
 LLAMA_DRAFT_MAX=16 \
@@ -135,14 +135,14 @@ bun cloud/scripts/vast/upsert-template.ts
 
 For smaller tiers, use the canonical `elizaos/eliza-1` repo with the
 appropriate `bundles/<tier>/text/...` subpath and the corresponding Eliza-1
-DFlash drafter (also under `bundles/<tier>/dflash/`). Those drafters are
+MTP drafter (also under `bundles/<tier>/mtp/`). Those drafters are
 repaired on startup
 when they are missing `tokenizer.ggml.merges`; bundle llama.cpp's `gguf-py`
 next to `llama-server` or set `GGUF_PYTHONPATH` in the template image.
 `LLAMA_CACHE_TYPE_K/V` can be set for TurboQuant-capable forks; stock upstream
 images will reject those cache types.
 The worker also disables thinking mode with
-`--chat-template-kwargs '{"enable_thinking":false}'`; the DFlash drafter was
+`--chat-template-kwargs '{"enable_thinking":false}'`; the MTP drafter was
 not trained on think-wrapped text and acceptance/throughput collapse when it is
 left on.
 
@@ -181,11 +181,11 @@ vLLM's `turboquant_k8v4` preset. Use `VLLM_TURBOQUANT_PRESET=4bit` or
 `KV_CACHE_DTYPE=turboquant_4bit_nc` only after a regression run.
 
 vLLM speculative decoding can be enabled with either raw
-`SPECULATIVE_CONFIG_JSON` or DFlash helpers:
+`SPECULATIVE_CONFIG_JSON` or MTP helpers:
 
 ```bash
-DFLASH_MODEL=org/model-dflash \
-ELIZA_VLLM_DFLASH=1 \
+MTP_MODEL=org/model-mtp \
+ELIZA_VLLM_MTP=1 \
 SPECULATIVE_TOKENS=15 \
 DRAFT_TENSOR_PARALLEL_SIZE=1 \
 bun cloud/scripts/vast/upsert-template.ts

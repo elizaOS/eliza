@@ -4,7 +4,7 @@
  *
  *   mic / file → ASR → text tokens
  *                      ↓
- *                    scheduler ──→ DFlash drafter (proposes N tokens)
+ *                    scheduler ──→ MTP drafter (proposes N tokens)
  *                                         ∥  (overlap, not sequential)
  *                                  target verifier (text model)
  *                                         ↓
@@ -17,7 +17,7 @@
  *                                    PCM ring buffer → audio out
  *
  * The headline contract: **the moment ASR emits its last token, the
- * DFlash drafter starts drafting AND the target starts verifying — they
+ * MTP drafter starts drafting AND the target starts verifying — they
  * overlap.** Drafter speculation N tokens ahead happens concurrently
  * with the target verifying the previous window; accepted tokens are
  * handed to the phrase chunker within the same scheduler tick.
@@ -89,7 +89,7 @@ export function splitTranscriptToTokens(
 }
 
 /**
- * DFlash drafter. `propose` returns up to `maxDraft` candidate
+ * MTP drafter. `propose` returns up to `maxDraft` candidate
  * continuation tokens given the accepted prefix. N=1 command buffers —
  * the implementation MUST keep its GPU dispatch short enough to cancel
  * at the next kernel boundary (no command-buffer batching for voice).
@@ -140,7 +140,7 @@ export interface VoicePipelineDeps {
 
 export interface VoicePipelineConfig {
 	/**
-	 * Max tokens DFlash drafts per round. Per-tier; small (≤8) so a
+	 * Max tokens MTP drafts per round. Per-tier; small (≤8) so a
 	 * rollback is cheap. The drafter and verifier overlap one round: while
 	 * the verifier checks round k, the drafter speculates round k+1.
 	 */
@@ -340,7 +340,7 @@ export class VoicePipeline {
 		//   5. if a reject happened, the next draft we kicked is stale — drop
 		//      it and re-draft from the corrected prefix.
 		// The drafter and verifier passes for a round overlap; that is the
-		// whole point ("the moment ASR emits its last token the DFlash
+		// whole point ("the moment ASR emits its last token the MTP
 		// drafter starts drafting AND the target starts verifying").
 		const prefix: TextToken[] = [...asrTokens];
 		let nextIndex =

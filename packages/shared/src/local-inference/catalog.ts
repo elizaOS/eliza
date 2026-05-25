@@ -455,6 +455,12 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       `vision/mmproj-${tierSlug(id)}.gguf`,
     );
   }
+  if (mtpSupportedForTier(id)) {
+    components.mtp = bundleComponent(
+      id,
+      `mtp/eliza-1-${tierSlug(id)}-drafter.gguf`,
+    );
+  }
 
   return { finetuned: false, components };
 }
@@ -490,6 +496,7 @@ function runtimeForTier(
   if (mtpSupportedForTier(id)) {
     runtime.mtp = {
       specType: "draft-mtp",
+      drafterFile: `mtp/eliza-1-${tierSlug(id)}-drafter.gguf`,
       draftMin: 1,
       draftMax: contextLength >= 65536 ? 6 : 4,
       gpuLayers: "auto",

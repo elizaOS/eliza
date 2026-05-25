@@ -30,10 +30,7 @@
  * llama.cpp merge lands and the feature flag flips.
  */
 
-import type {
-	CheckpointClient,
-	CheckpointHandle,
-} from "../checkpoint-client";
+import type { CheckpointClient, CheckpointHandle } from "../checkpoint-client";
 import type { VadEvent, VadEventSource } from "./types";
 
 /**

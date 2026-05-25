@@ -5,9 +5,9 @@
  *   libllama.<ext>             — shared-lib variant of llama.cpp (NOT static)
  *   libeliza-llama-shim.<ext>  — our pointer-style wrappers, NEEDED-links libllama
  *
- * Output layout (mirrors the existing dflash bin dirs):
+ * Output layout (mirrors the existing mtp bin dirs):
  *
- *   $ELIZA_STATE_DIR/local-inference/bin/dflash/<platform>-<arch>-<backend>/
+ *   $ELIZA_STATE_DIR/local-inference/bin/mtp/<platform>-<arch>-<backend>/
  *     libllama.<ext>
  *     libeliza-llama-shim.<ext>
  *     include/llama.h           (for downstream debug + future header-driven binders)
@@ -58,9 +58,9 @@ const CACHE_DIR = path.join(
 
 /**
  * Per-target build recipe. cmakeFlags are the platform-specific CMake
- * args layered on top of the common base. backend is the dflash-style
+ * args layered on top of the common base. backend is the mtp-style
  * suffix the output dir gets (matches existing `<platform>-<arch>-<backend>`
- * pattern from the dflash builder).
+ * pattern from the mtp builder).
  */
 const TARGETS = {
   "darwin-arm64": {
@@ -186,7 +186,7 @@ function buildTarget(targetKey) {
     STATE_DIR,
     "local-inference",
     "bin",
-    "dflash",
+    "mtp",
     outDirName,
   );
   fs.mkdirSync(outDir, { recursive: true });

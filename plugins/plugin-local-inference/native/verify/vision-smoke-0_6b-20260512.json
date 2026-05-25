@@ -31,7 +31,7 @@
     "spawnArg": "--mmproj",
     "envOverride": "ELIZA_LOCAL_MMPROJ",
     "optimizationField": "runtime.optimizations.mmproj",
-    "note": "packages/app-core/src/services/local-inference/dflash-server.ts only enables image inputs when a tier-compatible mmproj path is provided."
+    "note": "packages/app-core/src/services/local-inference/ffi-streaming-backend.ts only enables image inputs when a tier-compatible mmproj path is provided."
   },
   "imageAnalysis": {
     "attempted": false,

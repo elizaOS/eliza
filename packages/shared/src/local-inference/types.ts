@@ -97,18 +97,13 @@ export interface InstalledModel {
    * must not be auto-selected as the recommended default.
    */
   bundleVerifiedAt?: string;
-  runtimeRole?: "chat" | "dflash-drafter";
+  runtimeRole?: "chat" | "mtp-drafter";
   companionFor?: string;
 }
 
 export type ModelBucket = "small" | "mid" | "large" | "xl";
 
-export type ModelCategory =
-  | "chat"
-  | "code"
-  | "tools"
-  | "tiny"
-  | "reasoning";
+export type ModelCategory = "chat" | "code" | "tools" | "tiny" | "reasoning";
 
 export type LocalRuntimeBackend = "capacitor-llama" | "llama-cpp";
 
@@ -171,7 +166,6 @@ export type LocalRuntimeKernel =
   | "turbo3_tcq"
   | "qjl_full"
   | "polarquant"
-  | "dflash"
   | "openvino";
 
 /**
@@ -237,8 +231,8 @@ export interface LocalRuntimeOptimizations {
   alias?: string;
   /** Flash attention. */
   flashAttention?: boolean;
-  /** Use native DFlash verifier events when the runtime advertises support. */
-  nativeDflashEvents?: boolean;
+  /** Use native MTP verifier events when the runtime advertises support. */
+  nativeMtpEvents?: boolean;
   /**
    * Specialised kernels this model requires from optimized llama.cpp.
    * The dispatcher uses this to pick `llama-cpp` over `capacitor-llama`
@@ -265,26 +259,13 @@ export interface LocalRuntimeAcceleration {
   mtp?: {
     /** Native llama.cpp MTP speculative mode. */
     specType: "draft-mtp";
+    /** Bundle-relative path to the MTP drafter GGUF. */
+    drafterFile: string;
     /** Default draft range passed to the native MTP runner. */
     draftMin: number;
     draftMax: number;
     /** GPU layer placement for MTP heads when the runtime exposes it. */
     gpuLayers: number | "auto";
-  };
-  dflash?: {
-    /** Hidden companion model id containing the DFlash drafter GGUF. */
-    drafterModelId: string;
-    specType: "dflash";
-    /** Target and drafter context sizes passed to llama-server. */
-    contextSize: number;
-    draftContextSize: number;
-    draftMin: number;
-    draftMax: number;
-    gpuLayers: number | "auto";
-    draftGpuLayers: number | "auto";
-    disableThinking: boolean;
-    /** Catalog-side rollout gate for tiers that are intentionally disabled. */
-    disabledReason?: string;
   };
   kvCache?: {
     /**
@@ -396,7 +377,7 @@ export interface CatalogModel {
    */
   hiddenFromCatalog?: boolean;
   /** Runtime role for non-standard entries. */
-  runtimeRole?: "chat" | "dflash-drafter";
+  runtimeRole?: "chat" | "mtp-drafter";
   /** Parent chat model id when this entry is a hidden companion. */
   companionForModelId?: string;
   /** Extra catalog model ids to download alongside this model. */
@@ -431,7 +412,7 @@ export interface CatalogModel {
     finetuned: false;
     components: Partial<
       Record<
-        "text" | "voice" | "asr" | "vad" | "embedding" | "vision",
+        "text" | "voice" | "asr" | "vad" | "embedding" | "vision" | "mtp",
         { repo: string; file?: string }
       >
     >;
@@ -469,8 +450,8 @@ export interface MobileHardwareProbe {
   lowPowerMode?: boolean;
   thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
   gpuSupported?: boolean;
-  dflashSupported?: boolean;
-  dflashReason?: string;
+  mtpSupported?: boolean;
+  mtpReason?: string;
   source?: "native" | "adapter-fallback";
 }
 

@@ -193,7 +193,9 @@ export interface MtpDraftHandle extends RefCountedResource {
 	readonly modelId: string;
 }
 
-export function createMtpDraftHandle(args: { modelId: string }): MtpDraftHandle {
+export function createMtpDraftHandle(args: {
+	modelId: string;
+}): MtpDraftHandle {
 	return {
 		id: `mtp:${args.modelId}`,
 		modelId: args.modelId,

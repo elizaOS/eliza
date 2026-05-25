@@ -470,6 +470,30 @@ export function resolveMmprojPath(
 	return candidate;
 }
 
+function resolveMtpDrafterPath(
+	installed: InstalledModel,
+	catalog: CatalogModel | undefined,
+	manifestLoader: ManifestLoader,
+): string | undefined {
+	const bundleRoot = installed.bundleRoot;
+	if (!bundleRoot) return undefined;
+
+	const manifest = manifestLoader(installed.id, installed);
+	for (const entry of manifest?.files.mtp ?? []) {
+		const candidate = pathJoin(bundleRoot, entry.path);
+		if (existsSync(candidate)) return candidate;
+	}
+
+	const catalogFile =
+		catalog?.runtime?.mtp?.drafterFile ??
+		catalog?.sourceModel?.components?.mtp?.file;
+	if (!catalogFile) return undefined;
+	const local = stripBundlePrefix(catalogFile, installed.id);
+	const candidate = pathJoin(bundleRoot, local);
+	if (!existsSync(candidate)) return undefined;
+	return candidate;
+}
+
 /**
  * Strip the `bundles/<tier-slug>/` prefix the catalog uses for HF
  * paths so the remaining string is bundle-root-relative. When the
@@ -512,7 +536,18 @@ export async function resolveLocalInferenceLoadArgs(
 		// Native MTP launch defaults. Do NOT replace catalog `contextLength`
 		// here; `applyCatalogDefaults` owns the chat-side context. The MTP
 		// block only owns the speculative draft window.
+		const drafterPath = resolveMtpDrafterPath(
+			installed,
+			catalog,
+			manifestLoader,
+		);
+		if (installed.bundleRoot && !drafterPath) {
+			throw new Error(
+				`[local-inference] ${installed.id} declares mandatory MTP but no bundled drafter GGUF was found under ${installed.bundleRoot}`,
+			);
+		}
 		args.useGpu = true;
+		args.draftModelPath = drafterPath;
 		args.draftMin = mtp.draftMin;
 		args.draftMax = mtp.draftMax;
 		args.speculativeSamples = mtp.draftMax;
@@ -643,7 +678,7 @@ export class VoiceBundleDoesNotFitError extends Error {
 
 /**
  * Cross-model admission gate for the local-voice session. Sums the whole
- * co-resident bundle (LM + drafter + ASR + TTS + embedding + VAD +
+ * co-resident bundle (LM + ASR + TTS + embedding + VAD +
  * wake-word + turn-detector + emotion + speaker-encoder + transient TTS
  * peak) and refuses entry when the host can't fit it.
  *
@@ -794,7 +829,6 @@ function collectFailedEvalNames(manifest: Eliza1Manifest): string[] {
 	if (evals.expressive && evals.expressive.passed !== true) {
 		failed.push("expressive");
 	}
-	if (evals.dflash && evals.dflash.passed !== true) failed.push("dflash");
 	if (evals.turnDetector && evals.turnDetector.passed !== true) {
 		failed.push("turnDetector");
 	}

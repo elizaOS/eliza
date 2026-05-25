@@ -239,7 +239,7 @@ describe("CapacitorLlamaAdapter context-id allocation (issue #7681)", () => {
   });
 });
 
-describe("CapacitorLlamaAdapter DFlash + cache type wiring", () => {
+describe("CapacitorLlamaAdapter MTP + cache type wiring", () => {
   it("forwards draftModelPath / draftMin / draftMax through initContext params on stock builds", async () => {
     vi.resetModules();
     const state = installMockPlugin({ forkBuild: false });
@@ -276,7 +276,7 @@ describe("CapacitorLlamaAdapter DFlash + cache type wiring", () => {
     expect(state.setSpecTypeCalls[0]).toMatchObject({
       target: "/tmp/target.gguf",
       drafter: "/tmp/drafter.gguf",
-      specType: "dflash",
+      specType: "mtp",
       draftMin: 1,
       draftMax: 4,
     });
@@ -348,7 +348,7 @@ describe("CapacitorLlamaAdapter DFlash + cache type wiring", () => {
       adapter.setSpecType({
         target: "/tmp/target.gguf",
         drafter: "/tmp/drafter.gguf",
-        specType: "dflash",
+        specType: "mtp",
         draftMin: 1,
         draftMax: 3,
       }),

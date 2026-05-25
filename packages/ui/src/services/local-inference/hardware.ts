@@ -18,6 +18,7 @@ import {
   type DiskSpaceWarning,
   probeDiskSpace,
 } from "./disk-space";
+import type { Eliza1Backend, Eliza1DeviceCaps } from "./manifest";
 import type {
   HardwareProbe,
   ModelBucket,
@@ -65,6 +66,11 @@ interface LlamaBinding {
 
 interface LlamaBindingModule {
   getLlama(options?: { gpu?: "auto" | false }): Promise<LlamaBinding>;
+}
+
+export function hasUsableArmCpuBackend(probe: HardwareProbe): boolean {
+  if (probe.arch !== "arm64" && probe.arch !== "arm") return true;
+  return probe.cpuFeatures?.neon !== false;
 }
 
 async function loadLlamaBinding(): Promise<LlamaBindingModule | null> {
@@ -292,6 +298,25 @@ export async function probeHardware(): Promise<HardwareProbe> {
     recommendedBucket: recommendBucket(totalRamGb, totalVramGb, appleSilicon),
     source: "capacitor-llama",
     openvino,
+  };
+}
+
+export function deviceCapsFromProbe(probe: HardwareProbe): Eliza1DeviceCaps {
+  const backends: Eliza1Backend[] = hasUsableArmCpuBackend(probe)
+    ? ["cpu"]
+    : [];
+  const gpuBackend = probe.gpu?.backend;
+  if (
+    gpuBackend === "metal" ||
+    gpuBackend === "cuda" ||
+    gpuBackend === "vulkan"
+  ) {
+    backends.unshift(gpuBackend);
+  }
+  return {
+    availableBackends: backends,
+    ramMb: Math.round(probe.totalRamGb * 1024),
+    cpuFeatures: probe.cpuFeatures,
   };
 }
 

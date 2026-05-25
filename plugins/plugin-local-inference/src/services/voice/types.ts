@@ -499,7 +499,7 @@ export interface MicSource {
 
 /**
  * Cancellation token threaded from the barge-in controller down through the
- * voice scheduler (TTS) *and* the engine layer (in-flight LLM / DFlash
+ * voice scheduler (TTS) *and* the engine layer (in-flight LLM / MTP
  * drafter generation). `cancelled` is a plain boolean so the synthesis loop
  * and the SSE-consuming generate loop can both poll it cheaply at a kernel
  * boundary; `reason` records *why* for diagnostics; `signal` is the standard

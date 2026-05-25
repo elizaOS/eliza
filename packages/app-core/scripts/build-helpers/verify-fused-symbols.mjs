@@ -245,7 +245,7 @@ export const REQUIRED_ELIZA_INFERENCE_SYMBOLS = Object.freeze([
   "eliza_inference_asr_stream_partial",
   "eliza_inference_asr_stream_finish",
   "eliza_inference_asr_stream_close",
-  // ABI v2 — streaming TTS + native DFlash verifier callback.
+  // ABI v2 — streaming TTS + native MTP verifier callback.
   "eliza_inference_tts_stream_supported",
   "eliza_inference_tts_synthesize_stream",
   "eliza_inference_cancel_tts",

@@ -76,8 +76,6 @@
     "dev:desktop:watch": "ELIZA_DEV_SOURCE=1 ELIZA_NAMESPACE=eliza ELIZA_DESKTOP_VITE_WATCH=1 bun packages/app-core/scripts/dev-platform.mjs",
     "dev:harness": "bun packages/scripts/dev-harness.mjs",
     "dev:all": "node packages/scripts/dev-all.mjs",
-    "local-inference:dflash:build": "node packages/app-core/scripts/build-llama-cpp-dflash.mjs",
-    "local-inference:dflash:bench": "node plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs --bench",
     "local-inference:ablation": "node plugins/plugin-local-inference/scripts/local-inference-ablation.mjs",
     "local-inference:ablation:quick": "node plugins/plugin-local-inference/scripts/local-inference-ablation.mjs --quick",
     "voice:latency-report": "node packages/app-core/scripts/voice-latency-report.mjs",

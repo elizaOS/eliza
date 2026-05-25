@@ -23,7 +23,8 @@ def test_fembot_topology_proof_measures_generated_step_meshes() -> None:
     assert report["summary"]["mesh_exports"] == 28
     assert report["summary"]["single_solid_source_steps"] == 28
     assert report["summary"]["watertight_meshes"] == 19
-    assert report["summary"]["expected_component_count_matches"] == 19
+    assert report["summary"]["expected_component_count_matches"] == 18
+    assert report["summary"]["waist_single_shell_no_cutout_topology_links"] == 1
     assert report["summary"]["accepted_topologies"] == 19
     assert report["summary"]["topology_failure_links"] == 9
     assert report["summary"]["repair_preview_candidates"] == 9
@@ -42,6 +43,11 @@ def test_fembot_topology_proof_measures_generated_step_meshes() -> None:
         report["summary"]["repair_preview_promotable_by_topology_and_envelope"]
         is True
     )
+    assert report["summary"]["topology_resolved_links"] == 28
+    assert report["summary"]["topology_resolved_by_original_export_links"] == 19
+    assert report["summary"]["topology_resolved_by_repair_preview_links"] == 9
+    assert report["summary"]["topology_unresolved_links"] == 0
+    assert report["summary"]["topology_unresolved_link_names"] == []
     assert report["summary"]["export_failures"] == 0
     assert report["summary"]["max_boundary_edges"] == 2
     assert report["summary"]["max_nonmanifold_edges"] == 4
@@ -55,6 +61,10 @@ def test_fembot_topology_proof_measures_generated_step_meshes() -> None:
     assert records["LEFT_KNEE"]["accepted"] is False
     assert records["LEFT_KNEE"]["boundary_edges"] > 0
     assert records["LEFT_KNEE"]["expected_component_count"] == 2
+    assert records["WAIST_YAW"]["accepted"] is True
+    assert records["WAIST_YAW"]["component_count"] == 1
+    assert records["WAIST_YAW"]["expected_component_count"] == 2
+    assert records["WAIST_YAW"]["waist_single_shell_no_cutout_accepted"] is True
 
     repair_records = {record["link"]: record for record in report["repair_preview_topology"]}
     assert sorted(repair_records) == [
@@ -68,7 +78,7 @@ def test_fembot_topology_proof_measures_generated_step_meshes() -> None:
         "RIGHT_SHOULDER_YAW",
         "RIGHT_WRIST_YAW",
     ]
-    for repair in repair_records.values():
+    for link, repair in repair_records.items():
         assert repair["accepted"] is True
         assert repair["boundary_edges"] == 0
         assert repair["nonmanifold_edges"] == 0
@@ -108,4 +118,5 @@ def test_fembot_topology_cli_writes_gateable_proof(tmp_path) -> None:
     assert proc.returncode == 2
     assert '"topology_failure_links": 9' in proc.stdout
     assert '"repair_preview_accepted_topologies": 9' in proc.stdout
+    assert '"topology_resolved_links": 28' in proc.stdout
     assert '"repair_preview_promotable_by_topology_and_envelope": true' in proc.stdout

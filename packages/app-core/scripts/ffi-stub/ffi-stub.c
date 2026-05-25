@@ -127,7 +127,7 @@ static int valid_region(const char * name) {
     return (strcmp(name, "tts") == 0
          || strcmp(name, "asr") == 0
          || strcmp(name, "text") == 0
-         || strcmp(name, "dflash") == 0
+         || strcmp(name, "mtp") == 0
          || strcmp(name, "vad") == 0
          || strcmp(name, "wakeword") == 0);
 }
@@ -144,7 +144,7 @@ int eliza_inference_mmap_acquire(
     }
     if (!valid_region(region_name)) {
         set_error(out_error,
-            "[libelizainference-stub] mmap_acquire: invalid region_name (expected tts|asr|text|dflash|vad|wakeword)");
+            "[libelizainference-stub] mmap_acquire: invalid region_name (expected tts|asr|text|mtp|vad|wakeword)");
         return ELIZA_ERR_INVALID_ARG;
     }
     set_error(out_error,
@@ -164,7 +164,7 @@ int eliza_inference_mmap_evict(
     }
     if (!valid_region(region_name)) {
         set_error(out_error,
-            "[libelizainference-stub] mmap_evict: invalid region_name (expected tts|asr|text|dflash|vad|wakeword)");
+            "[libelizainference-stub] mmap_evict: invalid region_name (expected tts|asr|text|mtp|vad|wakeword)");
         return ELIZA_ERR_INVALID_ARG;
     }
     set_error(out_error,

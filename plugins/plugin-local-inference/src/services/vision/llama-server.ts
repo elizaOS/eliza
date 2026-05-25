@@ -22,7 +22,7 @@
  *     "timings": { "prompt_ms": 180.4, "predicted_ms": 423.1 } }
  *
  * Server-side mmproj is loaded via the `--mmproj <path>` flag on
- * llama-server startup. The dflash-server wrapper passes this flag
+ * llama-server startup. The FFI runtime wrapper passes this flag
  * already for tiers with vision enabled; this backend assumes the
  * server has been started with the right mmproj for the active model.
  *
@@ -33,7 +33,7 @@
  *   - Honour AbortSignal by passing it through to the fetch call.
  *
  * Backend explicitly does NOT:
- *   - Start / stop the server. That's the dflash-server wrapper's job.
+ *   - Start / stop the server. That's the FFI runtime wrapper's job.
  *   - Resolve the mmproj path — the server already has it. The arbiter's
  *     `--mmproj` was set when the text model loaded.
  *   - Implement projector-token reuse. llama-server has no API to
@@ -58,7 +58,7 @@ import type {
 
 export interface LlamaServerVisionBackendOptions {
 	/**
-	 * Base URL of the llama-server. The dflash-server wrapper exposes
+	 * Base URL of the llama-server. The FFI runtime wrapper exposes
 	 * this via `currentBaseUrl()`; pass the resolved URL here at load
 	 * time. The backend keeps it as-is across calls.
 	 */
@@ -86,7 +86,7 @@ export function createLlamaServerVisionBackend(
 
 	if (!baseUrl) {
 		throw new Error(
-			"[vision/llama-server] baseUrl is required; pass dflash-server's currentBaseUrl()",
+			"[vision/llama-server] baseUrl is required; pass FFI runtime's currentBaseUrl()",
 		);
 	}
 
@@ -144,7 +144,7 @@ export function createLlamaServerVisionBackend(
 			});
 		},
 		async dispose() {
-			// llama-server lifetime is owned by the dflash-server wrapper.
+			// llama-server lifetime is owned by the FFI runtime wrapper.
 			// This backend just holds the baseUrl; nothing to free.
 			baseUrl = "";
 		},

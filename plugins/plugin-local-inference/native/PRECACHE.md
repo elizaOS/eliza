@@ -30,7 +30,7 @@ the current user message) dropped.
 
 This string is what the local engine pre-warms with: a `max_tokens: 1`,
 `temperature: 0`, `cache_prompt: true` chat completion against the
-deterministic slot the conversation pins to (`DflashLlamaServer.
+deterministic slot the conversation pins to (`MtpLlamaServer.
 prewarmConversation` → `localInferenceEngine.prewarmConversation` →
 `prewarmResponseHandler` in `ensure-local-inference-handler.ts`). When the
 real Stage-1 request lands it appends the user turn to the same prefix, so
@@ -46,11 +46,11 @@ because llama-server's radix KV is shared across slots, every per-room
 conversation that opens later inherits the common prefix tokens.
 
 ### 3. Drafter co-residency (cross-ref `packages/inference/AGENTS.md` §3)
-The DFlash drafter is mmapped alongside the target by `llama-server`
-itself (`-md <drafter> --spec-type dflash …`) — there is no separate
+The MTP drafter is mmapped alongside the target by `llama-server`
+itself (`-md <drafter> --spec-type mtp …`) — there is no separate
 "load drafter" step, so it is "precached" by construction the moment the
-server starts. Owned by `dflash-server.ts` startup + the
-`DflashDrafterHandle` in `voice/shared-resources.ts`.
+server starts. Owned by `ffi-streaming-backend.ts` startup + the
+`MtpDrafterHandle` in `voice/shared-resources.ts`.
 
 ### 4. First-audio filler (cross-ref the voice phrase cache)
 Pre-generating a short acknowledgement audio chunk ("one sec", "got it",
@@ -66,7 +66,7 @@ and the turn controller; not part of this module.
 | ------------------------------------ | ---------------------------------------------- | --------- |
 | **Model load / runtime boot**        | system prefix on `conv:__system_prefix__`      | `ensureLocalInferenceHandler` → `prewarmSystemPrefix` (fire-and-forget) |
 | **Voice session open / `speech-start`** | Stage-1 stable prefix on `conv:<roomId>`     | the voice turn controller → `prewarmResponseHandler(runtime, roomId)` |
-| **Keep-alive sweep** (~4 min, < short TTL) | re-issues the last pre-warm prefix for slots untouched ≥ 80% of the short TTL | `DflashLlamaServer` keep-alive timer (`startKeepAliveTimer`) |
+| **Keep-alive sweep** (~4 min, < short TTL) | re-issues the last pre-warm prefix for slots untouched ≥ 80% of the short TTL | `MtpLlamaServer` keep-alive timer (`startKeepAliveTimer`) |
 | **First real Stage-1 request**       | (no extra work) appends the user turn to the warm prefix | `runV5MessageRuntimeStage1` → `useModel(RESPONSE_HANDLER)` with `conversationId: roomId` |
 
 `prewarmConversation` is best-effort by definition: a failure (server not
@@ -161,7 +161,7 @@ event-driven:
 | ----------------------------------- | ------- | ------ |
 | `ELIZA_LOCAL_EVICTION_INTERVAL_MS`  | 300000  | eviction + `evictIdle` sweep interval (clamped ≥ 60 s) |
 | `ELIZA_LOCAL_KEEPALIVE_INTERVAL_MS` | 240000  | keep-alive re-warm sweep interval (clamped ≥ 30 s) |
-| `ELIZA_DFLASH_HOST` / port          | loopback | the `llama-server` the pre-warm requests hit |
+| `ELIZA_MTP_HOST` / port          | loopback | the `llama-server` the pre-warm requests hit |
 
 The short / long / extended cache-TTL windows (`DEFAULT_CACHE_TTLS` —
 5 min / 60 min / 24 h) mirror the cloud ephemeral-cache semantics and are

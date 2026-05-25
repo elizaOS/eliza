@@ -28,7 +28,7 @@ def test_fembot_structural_sanity_proof_quantifies_current_blockers() -> None:
     assert report["summary"]["manufacturing_adjusted_plate_max_thickness_increase_m"] > 0.0006
     assert report["summary"]["manufacturing_adjusted_plate_max_height_delta_m"] == 0.0
     assert report["summary"]["internal_cavity_blocker_links"] == 26
-    assert report["summary"]["volume_adjusted_blocker_links"] == 20
+    assert report["summary"]["volume_adjusted_blocker_links"] == 16
     assert report["summary"]["ribbed_bulged_preview_candidates"] == 4
     assert report["summary"]["ribbed_bulged_preview_residual_structural_risk_links"] == 0
     assert report["summary"]["topology_repair_preview_links"] == 9

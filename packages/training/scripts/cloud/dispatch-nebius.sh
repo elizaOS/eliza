@@ -26,7 +26,7 @@
 #   HUGGING_FACE_HUB_TOKEN  forwarded by train_nebius.sh for gated repos
 #   NEBIUS_VM_PRESET        gpu-h200x1 (default for 0_8b/2b/4b/9b) | gpu-h200x2 (27b)
 #   SSH_PUBKEY              path to your ssh pubkey (default ~/.ssh/id_ed25519.pub)
-#   ELIZA_DFLASH_SMOKE_MODEL  optional GGUF for the kernel-verify graph smoke
+#   ELIZA_MTP_SMOKE_MODEL  optional GGUF for the kernel-verify graph smoke
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,7 +43,7 @@ TIER="0_8b"
 PAY=0
 DRYRUN=0
 SSH_PUBKEY="${SSH_PUBKEY:-$HOME/.ssh/id_ed25519.pub}"
-SMOKE_MODEL="${ELIZA_DFLASH_SMOKE_MODEL:-}"
+SMOKE_MODEL="${ELIZA_MTP_SMOKE_MODEL:-}"
 
 die() { echo "[dispatch-nebius] ERROR: $*" >&2; exit 1; }
 log() { echo "[dispatch-nebius] $*" >&2; }
@@ -195,18 +195,18 @@ case "$TASK" in
   build)
     log "running build on $SSH_TARGET..."
     ssh -o StrictHostKeyChecking=no "$SSH_TARGET" "cd /opt/training && \
-      ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 \
-      node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda && \
+      ELIZA_MTP_SKIP_SERVER_STRUCTURED_OUTPUT=1 \
+      node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cuda && \
       printf '{\"schemaVersion\":1,\"runner\":\"dispatch-nebius build\",\"status\":\"pass\",\"gpu\":\"$GPU\"}\n' > /opt/training/cuda-report.json"
     ;;
   kernel-verify)
     log "running kernel-verify on $SSH_TARGET..."
     ssh -o StrictHostKeyChecking=no "$SSH_TARGET" "cd /opt/training && \
       make -C packages/inference/verify cuda-verify cuda-verify-fused && \
-      ${SMOKE_MODEL:+ELIZA_DFLASH_SMOKE_MODEL=/opt/training/smoke.gguf packages/inference/verify/cuda_runner.sh --report /opt/training/cuda-report.json ||} \
+      ${SMOKE_MODEL:+ELIZA_MTP_SMOKE_MODEL=/opt/training/smoke.gguf packages/inference/verify/cuda_runner.sh --report /opt/training/cuda-report.json ||} \
       cat > /opt/training/cuda-report.json <<'JSON'
 {\"schemaVersion\":1,\"runner\":\"dispatch-nebius kernel-verify\",\"status\":\"pass\",\"passRecordable\":false,
- \"exitCode\":0,\"note\":\"cuda-verify + cuda-verify-fused fixture parity only; no ELIZA_DFLASH_SMOKE_MODEL -> graph smoke skipped, so this is NOT a runtime-ready record.\"}
+ \"exitCode\":0,\"note\":\"cuda-verify + cuda-verify-fused fixture parity only; no ELIZA_MTP_SMOKE_MODEL -> graph smoke skipped, so this is NOT a runtime-ready record.\"}
 JSON"
     ;;
   bench)

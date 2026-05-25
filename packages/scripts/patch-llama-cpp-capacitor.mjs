@@ -11,11 +11,11 @@
  * system `patch` utility instead, targeting all installed
  * llama-cpp-capacitor copies in node_modules.
  *
- * The patch rewrites android/build.gradle (per-ABI DFlash lib dirs, riscv64
+ * The patch rewrites android/build.gradle (per-ABI MTP lib dirs, riscv64
  * added to abiFilters), android/src/main/CMakeLists.txt (drop vendored
- * llama.cpp sources, link against DFlash .so via the Eliza JNI bridge) and
+ * llama.cpp sources, link against MTP .so via the Eliza JNI bridge) and
  * android/src/main/java/.../LlamaCpp.java (riscv64 library mapping and
- * DFlash dependency preload). It also repairs partially-applied installs so a
+ * MTP dependency preload). It also repairs partially-applied installs so a
  * half-patched package cannot silently reach Android CI.
  */
 
@@ -82,31 +82,31 @@ function writeIfChanged(filePath, current, next) {
   return true;
 }
 
-function ensureGradleDflashContract(pkgDir) {
+function ensureGradleMtpContract(pkgDir) {
   const gradlePath = join(pkgDir, "android", "build.gradle");
   if (!existsSync(gradlePath)) return false;
   const current = readFileSync(gradlePath, "utf8");
   let next = current;
 
-  const dflashHelpers =
+  const mtpHelpers =
     `def resolveElizaRepoRoot = { ->\n` +
     `    return rootProject.projectDir.toPath().resolve('../../../..').normalize().toFile().absolutePath\n` +
     `}\n` +
     `\n` +
-    `// Per-ABI resolver for the DFlash cross-compile output produced by\n` +
-    `// \`packages/app-core/scripts/build-llama-cpp-dflash.mjs\` and\n` +
+    `// Per-ABI resolver for the MTP cross-compile output produced by\n` +
+    `// \`packages/app-core/scripts/build-llama-cpp-mtp.mjs\` and\n` +
     `// \`packages/app-core/scripts/aosp/compile-libllama.mjs\`. Each ABI has\n` +
-    `// its own gradle property (\`eliza.dflash.android.libdir.<abi>\`) and env\n` +
-    `// var (\`ELIZA_DFLASH_ANDROID_LIBDIR_<ABI>\`). For arm64-v8a the legacy\n` +
+    `// its own gradle property (\`eliza.mtp.android.libdir.<abi>\`) and env\n` +
+    `// var (\`ELIZA_MTP_ANDROID_LIBDIR_<ABI>\`). For arm64-v8a the legacy\n` +
     `// unsuffixed names are still honored for backwards compatibility.\n` +
     `// riscv64 has no Vulkan path yet (Wave 2 ships CPU-only), so only the\n` +
     `// \`cpu\` backend is searched on that ABI.\n` +
-    `def resolveElizaDflashAndroidLibDir = { String abi ->\n` +
+    `def resolveElizaMtpAndroidLibDir = { String abi ->\n` +
     `    def propSuffix = abi == 'arm64-v8a' ? '' : ".\${abi}"\n` +
     `    def envSuffix = abi == 'arm64-v8a' ? '' : "_\${abi.replace('-', '_').toUpperCase()}"\n` +
-    `    def fromProp = project.findProperty("eliza.dflash.android.libdir\${propSuffix}")\n` +
+    `    def fromProp = project.findProperty("eliza.mtp.android.libdir\${propSuffix}")\n` +
     `    if (fromProp) return fromProp.toString()\n` +
-    `    def fromEnv = System.getenv("ELIZA_DFLASH_ANDROID_LIBDIR\${envSuffix}")\n` +
+    `    def fromEnv = System.getenv("ELIZA_MTP_ANDROID_LIBDIR\${envSuffix}")\n` +
     `    if (fromEnv) return fromEnv\n` +
     `    def stateDir = System.getenv('ELIZA_STATE_DIR') ?: "\${System.getProperty('user.home')}/.eliza"\n` +
     `    def abiToken = [\n` +
@@ -117,12 +117,12 @@ function ensureGradleDflashContract(pkgDir) {
     `    if (abiToken == null) return ''\n` +
     `    def backends = abi == 'riscv64' ? ['cpu'] : ['vulkan', 'cpu']\n` +
     `    def candidates = backends.collect { backend ->\n` +
-    `        "\${stateDir}/local-inference/bin/dflash/\${abiToken}-\${backend}"\n` +
+    `        "\${stateDir}/local-inference/bin/mtp/\${abiToken}-\${backend}"\n` +
     `    }\n` +
     `    return candidates.find { new File(it).isDirectory() } ?: ''\n` +
     `}\n` +
     `\n` +
-    `def resolveElizaSkipDflashAndroidLib = { ->\n` +
+    `def resolveElizaSkipMtpAndroidLib = { ->\n` +
     `    return project.findProperty('elizaSkipForkLlamaLib') == 'true' ||\n` +
     `        System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1'\n` +
     `}\n`;
@@ -138,17 +138,17 @@ function ensureGradleDflashContract(pkgDir) {
   if (repoRootCount > 1) {
     next = next.replace(
       /(ext\s*\{[\s\S]*?\n\}\n)[\s\S]*?(\nbuildscript \{)/,
-      `$1\n${dflashHelpers}$2`,
+      `$1\n${mtpHelpers}$2`,
     );
   } else if (!next.includes("def resolveElizaRepoRoot")) {
-    next = next.replace(/(ext\s*\{[\s\S]*?\n\}\n)/, `$1\n${dflashHelpers}\n`);
+    next = next.replace(/(ext\s*\{[\s\S]*?\n\}\n)/, `$1\n${mtpHelpers}\n`);
   } else if (
-    !next.includes("def resolveElizaDflashAndroidLibDir = { String abi ->") ||
-    !next.includes("def resolveElizaSkipDflashAndroidLib")
+    !next.includes("def resolveElizaMtpAndroidLibDir = { String abi ->") ||
+    !next.includes("def resolveElizaSkipMtpAndroidLib")
   ) {
     next = next.replace(
       /def resolveElizaRepoRoot = \{ ->[\s\S]*?\n\}\n\nbuildscript \{/,
-      `${dflashHelpers}\nbuildscript {`,
+      `${mtpHelpers}\nbuildscript {`,
     );
   }
 
@@ -177,9 +177,9 @@ function ensureGradleDflashContract(pkgDir) {
     `\n\n        externalNativeBuild {\n` +
     `            cmake {\n` +
     `                arguments "-DELIZA_REPO_ROOT=\${resolveElizaRepoRoot()}",\n` +
-    `                    "-DELIZA_DFLASH_ANDROID_LIBDIR_ARM64_V8A=\${resolveElizaDflashAndroidLibDir('arm64-v8a')}",\n` +
-    `                    "-DELIZA_DFLASH_ANDROID_LIBDIR_RISCV64=\${resolveElizaDflashAndroidLibDir('riscv64')}",\n` +
-    `                    "-DELIZA_SKIP_DFLASH_ANDROID_LIB=\${resolveElizaSkipDflashAndroidLib() ? 'ON' : 'OFF'}"\n` +
+    `                    "-DELIZA_MTP_ANDROID_LIBDIR_ARM64_V8A=\${resolveElizaMtpAndroidLibDir('arm64-v8a')}",\n` +
+    `                    "-DELIZA_MTP_ANDROID_LIBDIR_RISCV64=\${resolveElizaMtpAndroidLibDir('riscv64')}",\n` +
+    `                    "-DELIZA_SKIP_MTP_ANDROID_LIB=\${resolveElizaSkipMtpAndroidLib() ? 'ON' : 'OFF'}"\n` +
     `            }\n` +
     `        }`;
 
@@ -188,49 +188,49 @@ function ensureGradleDflashContract(pkgDir) {
       /(\n\s*ndk\s*\{\s*\n\s*abiFilters 'arm64-v8a'(?:,\s*'riscv64')?\s*\n\s*\})/,
       `$1${cmakeArgsBlock}`,
     );
-  } else if (!next.includes("-DELIZA_DFLASH_ANDROID_LIBDIR_ARM64_V8A=")) {
+  } else if (!next.includes("-DELIZA_MTP_ANDROID_LIBDIR_ARM64_V8A=")) {
     next = next.replace(
-      /"-DELIZA_DFLASH_ANDROID_LIBDIR=\$\{resolveElizaDflashAndroidLibDir\(\)\}",?\n\s*(?:"-DELIZA_SKIP_DFLASH_ANDROID_LIB=\$\{resolveElizaSkipDflashAndroidLib\(\) \? 'ON' : 'OFF'\}")?/,
-      `"-DELIZA_DFLASH_ANDROID_LIBDIR_ARM64_V8A=\${resolveElizaDflashAndroidLibDir('arm64-v8a')}",\n                    "-DELIZA_DFLASH_ANDROID_LIBDIR_RISCV64=\${resolveElizaDflashAndroidLibDir('riscv64')}",\n                    "-DELIZA_SKIP_DFLASH_ANDROID_LIB=\${resolveElizaSkipDflashAndroidLib() ? 'ON' : 'OFF'}"`,
+      /"-DELIZA_MTP_ANDROID_LIBDIR=\$\{resolveElizaMtpAndroidLibDir\(\)\}",?\n\s*(?:"-DELIZA_SKIP_MTP_ANDROID_LIB=\$\{resolveElizaSkipMtpAndroidLib\(\) \? 'ON' : 'OFF'\}")?/,
+      `"-DELIZA_MTP_ANDROID_LIBDIR_ARM64_V8A=\${resolveElizaMtpAndroidLibDir('arm64-v8a')}",\n                    "-DELIZA_MTP_ANDROID_LIBDIR_RISCV64=\${resolveElizaMtpAndroidLibDir('riscv64')}",\n                    "-DELIZA_SKIP_MTP_ANDROID_LIB=\${resolveElizaSkipMtpAndroidLib() ? 'ON' : 'OFF'}"`,
     );
-  } else if (!next.includes("-DELIZA_SKIP_DFLASH_ANDROID_LIB=")) {
+  } else if (!next.includes("-DELIZA_SKIP_MTP_ANDROID_LIB=")) {
     next = next.replace(
-      /("-DELIZA_DFLASH_ANDROID_LIBDIR_RISCV64=\$\{resolveElizaDflashAndroidLibDir\('riscv64'\)\}")/,
-      `$1,\n                    "-DELIZA_SKIP_DFLASH_ANDROID_LIB=\${resolveElizaSkipDflashAndroidLib() ? 'ON' : 'OFF'}"`,
+      /("-DELIZA_MTP_ANDROID_LIBDIR_RISCV64=\$\{resolveElizaMtpAndroidLibDir\('riscv64'\)\}")/,
+      `$1,\n                    "-DELIZA_SKIP_MTP_ANDROID_LIB=\${resolveElizaSkipMtpAndroidLib() ? 'ON' : 'OFF'}"`,
     );
   }
 
   return writeIfChanged(gradlePath, current, next);
 }
 
-function ensureCmakeDflashContract(pkgDir) {
+function ensureCmakeMtpContract(pkgDir) {
   const cmakePath = join(pkgDir, "android", "src", "main", "CMakeLists.txt");
   if (!existsSync(cmakePath)) return false;
   const current = readFileSync(cmakePath, "utf8");
   let next = current.replace(
-    /\$\{ELIZA_REPO_ROOT\}\/packages\/native-plugins\/llama\/android\/eliza-dflash-jni\.cpp/g,
+    /\$\{ELIZA_REPO_ROOT\}\/packages\/native-plugins\/llama\/android\/eliza-mtp-jni\.cpp/g,
     "$" +
-      "{ELIZA_REPO_ROOT}/packages/native/plugins/llama/android/eliza-dflash-jni.cpp",
+      "{ELIZA_REPO_ROOT}/packages/native/plugins/llama/android/eliza-mtp-jni.cpp",
   );
 
   if (
     next.includes("ELIZA_REPO_ROOT is required") &&
-    !next.includes("ELIZA_SKIP_DFLASH_ANDROID_LIB")
+    !next.includes("ELIZA_SKIP_MTP_ANDROID_LIB")
   ) {
     const smokeStubBlock =
-      `\noption(ELIZA_SKIP_DFLASH_ANDROID_LIB "Build a no-op JNI library for Android smoke builds without DFlash libs" OFF)\n` +
+      `\noption(ELIZA_SKIP_MTP_ANDROID_LIB "Build a no-op JNI library for Android smoke builds without MTP libs" OFF)\n` +
       `\n` +
       `find_library(LOG_LIB log)\n` +
       `find_library(ANDROID_LIB android)\n` +
       `\n` +
-      `if(ELIZA_SKIP_DFLASH_ANDROID_LIB)\n` +
+      `if(ELIZA_SKIP_MTP_ANDROID_LIB)\n` +
       `    if(ANDROID_ABI STREQUAL "riscv64")\n` +
       `        set(ELIZA_STUB_OUTPUT_NAME "llama-cpp-riscv64")\n` +
       `    else()\n` +
       `        set(ELIZA_STUB_OUTPUT_NAME "llama-cpp-arm64")\n` +
       `    endif()\n` +
-      `    file(WRITE "\${CMAKE_CURRENT_BINARY_DIR}/eliza-dflash-stub.cpp" "extern \\"C\\" int eliza_dflash_stub() { return 0; }\\n")\n` +
-      `    add_library(\${ELIZA_STUB_OUTPUT_NAME} SHARED "\${CMAKE_CURRENT_BINARY_DIR}/eliza-dflash-stub.cpp")\n` +
+      `    file(WRITE "\${CMAKE_CURRENT_BINARY_DIR}/eliza-mtp-stub.cpp" "extern \\"C\\" int eliza_mtp_stub() { return 0; }\\n")\n` +
+      `    add_library(\${ELIZA_STUB_OUTPUT_NAME} SHARED "\${CMAKE_CURRENT_BINARY_DIR}/eliza-mtp-stub.cpp")\n` +
       `    target_link_libraries(\${ELIZA_STUB_OUTPUT_NAME} PRIVATE \${LOG_LIB} \${ANDROID_LIB})\n` +
       `    set_target_properties(\n` +
       `        \${ELIZA_STUB_OUTPUT_NAME}\n` +
@@ -238,7 +238,7 @@ function ensureCmakeDflashContract(pkgDir) {
       `        OUTPUT_NAME "\${ELIZA_STUB_OUTPUT_NAME}"\n` +
       `        LIBRARY_OUTPUT_DIRECTORY "\${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/\${ANDROID_ABI}"\n` +
       `    )\n` +
-      `    message(STATUS "Building Eliza DFlash JNI smoke stub for Android \${ANDROID_ABI}")\n` +
+      `    message(STATUS "Building Eliza MTP JNI smoke stub for Android \${ANDROID_ABI}")\n` +
       `    return()\n` +
       `endif()\n`;
     next = next.replace(
@@ -261,8 +261,8 @@ function ensureCmakeDflashContract(pkgDir) {
 
 function repairPatchedPackage(pkgDir) {
   let changed = false;
-  changed = ensureGradleDflashContract(pkgDir) || changed;
-  changed = ensureCmakeDflashContract(pkgDir) || changed;
+  changed = ensureGradleMtpContract(pkgDir) || changed;
+  changed = ensureCmakeMtpContract(pkgDir) || changed;
   return changed;
 }
 
@@ -271,7 +271,7 @@ function isPatchAlreadyApplied(pkgDir) {
   const gradlePath = join(pkgDir, "android", "build.gradle");
   if (
     existsSync(cmakePath) &&
-    readFileSync(cmakePath, "utf8").includes("llama-cpp-capacitor-eliza-dflash")
+    readFileSync(cmakePath, "utf8").includes("llama-cpp-capacitor-eliza-mtp")
   ) {
     return true;
   }

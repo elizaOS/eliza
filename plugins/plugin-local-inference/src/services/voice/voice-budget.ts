@@ -29,7 +29,7 @@
  * `release()` on unload.
  *
  * Wire-up plan (handed to follow-up commits, NOT done by I9):
- *   - `dflash-server.ts`     → `reserve(role="text-target")` + `reserve(role="drafter")` at spawn.
+ *   - `ffi-streaming-backend.ts`     → `reserve(role="text-target")` + `reserve(role="drafter")` at spawn.
  *   - `voice/pipeline.ts`    → `reserve(role="tts", bytes=transientPeakMb*MB)` per synth.
  *   - `voice/wake-word.ts`, `vad.ts`, `eot-classifier.ts` → reserve at session arm.
  *   - I2/I3 add `emotion` + `speaker-id` reservations when those models register.

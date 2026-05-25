@@ -108,7 +108,6 @@ interface IosBundleManifest {
     voice: IosBundleFileEntry[];
     asr: IosBundleFileEntry[];
     vision: IosBundleFileEntry[];
-    dflash: IosBundleFileEntry[];
     cache: IosBundleFileEntry[];
     vad: IosBundleFileEntry[];
     embedding?: IosBundleFileEntry[];
@@ -194,8 +193,8 @@ type CapacitorLlamaAdapter = {
     gpuSupported?: boolean;
     lowPowerMode?: boolean;
     thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
-    dflashSupported?: boolean;
-    dflashReason?: string;
+    mtpSupported?: boolean;
+    mtpReason?: string;
     source?: "native" | "adapter-fallback";
   }>;
   isLoaded?: () => Promise<{ loaded: boolean; modelPath: string | null }>;
@@ -1350,7 +1349,6 @@ function parseIosBundleManifest(
     "voice",
     "asr",
     "vision",
-    "dflash",
     "cache",
     "vad",
   ] as const) {
@@ -1358,14 +1356,7 @@ function parseIosBundleManifest(
       throw new Error(`Invalid Eliza-1 manifest files.${kind}`);
     }
   }
-  for (const kind of [
-    "text",
-    "voice",
-    "asr",
-    "dflash",
-    "cache",
-    "vad",
-  ] as const) {
+  for (const kind of ["text", "voice", "asr", "cache", "vad"] as const) {
     if (raw.files[kind].length === 0) {
       throw new Error(
         `Invalid Eliza-1 manifest files.${kind} must be non-empty`,
@@ -1374,14 +1365,6 @@ function parseIosBundleManifest(
   }
   if (!raw.files.text.some((entry) => entry.path === model.ggufFile)) {
     throw new Error(`Eliza-1 manifest missing text file ${model.ggufFile}`);
-  }
-  const drafterId = model.runtime?.dflash?.drafterModelId;
-  const drafter = drafterId ? findCatalogModel(drafterId) : undefined;
-  if (
-    drafter &&
-    !raw.files.dflash.some((entry) => entry.path === drafter.ggufFile)
-  ) {
-    throw new Error(`Eliza-1 manifest missing DFlash file ${drafter.ggufFile}`);
   }
   return raw as IosBundleManifest;
 }
@@ -1395,7 +1378,6 @@ function collectIosBundleFiles(
     manifest.files.voice,
     manifest.files.asr,
     manifest.files.vision,
-    manifest.files.dflash,
     manifest.files.cache,
     manifest.files.embedding ?? [],
     manifest.files.vad ?? [],
@@ -1469,7 +1451,7 @@ function mobileContextSize(
   hardware: HardwareProbe,
   catalog: CatalogModel | undefined,
 ): number {
-  const target = catalog?.runtime?.dflash?.contextSize ?? 4096;
+  const target = catalog?.contextLength ?? 4096;
   if (hardware.totalRamGb >= 12) return Math.min(target, 8192);
   if (hardware.totalRamGb >= 8) return Math.min(target, 6144);
   return Math.min(target, 4096);
@@ -1480,7 +1462,7 @@ function mobileThreadCount(hardware: HardwareProbe): number {
   return Math.max(2, Math.min(Math.floor(hardware.cpuCores) - 1, 6));
 }
 
-function companionInstalled(
+function _companionInstalled(
   installed: InstalledModel[],
   modelId: string,
 ): InstalledModel | undefined {
@@ -1500,11 +1482,7 @@ async function listInstalledModels(): Promise<InstalledModel[]> {
       const id =
         catalog?.id ??
         (model.name || model.path || randomId("model")).replace(/\.gguf$/i, "");
-      const bundle = catalog?.companionForModelId
-        ? bundles[catalog.companionForModelId]
-        : catalog
-          ? bundles[catalog.id]
-          : undefined;
+      const bundle = catalog ? bundles[catalog.id] : undefined;
       return {
         id,
         displayName: catalog?.displayName ?? model.name ?? id,
@@ -1526,9 +1504,6 @@ async function listInstalledModels(): Promise<InstalledModel[]> {
         lastUsedAt: activeState.modelId === id ? activeState.loadedAt : null,
         source: catalog ? "eliza-download" : "external-scan",
         ...(catalog?.runtimeRole ? { runtimeRole: catalog.runtimeRole } : {}),
-        ...(catalog?.companionForModelId
-          ? { companionFor: catalog.companionForModelId }
-          : {}),
       };
     });
 }
@@ -1580,10 +1555,8 @@ async function hardwareProbe(): Promise<HardwareProbe> {
         ? { thermalState: hardware.thermalState }
         : {}),
       gpuSupported: hardware?.gpuSupported ?? Boolean(gpu),
-      dflashSupported: hardware?.dflashSupported ?? false,
-      dflashReason:
-        hardware?.dflashReason ??
-        "native runtime has not reported DFlash drafter support",
+      mtpSupported: hardware?.mtpSupported ?? true,
+      mtpReason: hardware?.mtpReason ?? "native MTP is catalog-enabled",
       source: hardware?.source ?? "adapter-fallback",
     },
   };
@@ -1594,31 +1567,26 @@ function buildMobileLoadOptions(
   installed: InstalledModel[],
   hardware: HardwareProbe,
 ): CapacitorLlamaLoadOptions {
+  void installed;
   const catalog = findCatalogModel(model.id);
+  const mtp = catalog?.runtime?.mtp;
   const options: CapacitorLlamaLoadOptions = {
     modelPath: model.path,
     contextSize: mobileContextSize(hardware, catalog),
     useGpu: hardware.mobile?.gpuSupported !== false,
     maxThreads: mobileThreadCount(hardware),
   };
-  const dflash = catalog?.runtime?.dflash;
-  if (!dflash) return options;
-  if (hardware.mobile?.dflashSupported !== true) return options;
-
-  const drafter = companionInstalled(installed, dflash.drafterModelId);
-  if (!drafter) return options;
-
   return {
     ...options,
-    draftModelPath: drafter.path,
-    draftContextSize: dflash.draftContextSize,
-    draftMin: dflash.draftMin,
-    draftMax: dflash.draftMax,
-    speculativeSamples: Math.min(dflash.draftMax, 4),
+    draftModelPath: undefined,
+    draftContextSize: options.contextSize,
+    draftMin: mtp?.draftMin ?? 1,
+    draftMax: mtp?.draftMax ?? 4,
+    speculativeSamples: Math.min(mtp?.draftMax ?? 4, 4),
     mobileSpeculative: true,
-    cacheTypeK: catalog.runtime?.kvCache?.typeK,
-    cacheTypeV: catalog.runtime?.kvCache?.typeV,
-    disableThinking: dflash.disableThinking,
+    cacheTypeK: catalog?.runtime?.kvCache?.typeK,
+    cacheTypeV: catalog?.runtime?.kvCache?.typeV,
+    disableThinking: true,
   };
 }
 
@@ -1637,7 +1605,6 @@ function runtimeSignature(options: CapacitorLlamaLoadOptions): string {
 async function validateMobileModelFit(
   model: CatalogModel,
 ): Promise<string | null> {
-  if (model.runtimeRole === "dflash-drafter") return null;
   const hardware = await hardwareProbe();
   const fit = assessCatalogModelFit(hardware, model, MODEL_CATALOG);
   if (fit === "wontfit") {
@@ -2249,7 +2216,7 @@ function formatGb(bytes: number): string {
 }
 
 function aggregateDownloadJobs(model: CatalogModel): DownloadJob[] {
-  const ids = [model.id, ...(model.companionModelIds ?? [])];
+  const ids = [model.id];
   return ids.flatMap((id) => {
     const job = downloads.get(id);
     return job ? [job] : [];
@@ -2380,24 +2347,7 @@ function statusLine(
 }
 
 async function queueCompanionDownloads(model: CatalogModel): Promise<void> {
-  if (!model.companionModelIds?.length) return;
-  const installed: InstalledModel[] = await listInstalledModels().catch(
-    () => [],
-  );
-  for (const companionId of model.companionModelIds) {
-    const companion = findCatalogModel(companionId);
-    if (!companion) continue;
-    if (installed.some((entry) => entry.id === companionId)) continue;
-    const existing = downloads.get(companionId);
-    if (
-      existing &&
-      existing.state !== "failed" &&
-      existing.state !== "cancelled"
-    ) {
-      continue;
-    }
-    startDownload(companion);
-  }
+  void model;
 }
 
 async function downloadNativeModelFile(
@@ -2520,7 +2470,7 @@ function startDownload(model: CatalogModel): DownloadJob {
 
   void (async () => {
     try {
-      if (model.runtimeRole !== "dflash-drafter" && !model.bundleManifestFile) {
+      if (!model.bundleManifestFile) {
         void queueCompanionDownloads(model);
       }
       updateDownload(job, { state: "downloading" });
@@ -2528,7 +2478,7 @@ function startDownload(model: CatalogModel): DownloadJob {
       if (!llama?.downloadModel) {
         throw new Error("Native Eliza-1 downloader is unavailable.");
       }
-      if (model.bundleManifestFile && model.runtimeRole !== "dflash-drafter") {
+      if (model.bundleManifestFile) {
         const textPath = await downloadIosBundle(model, llama, job);
         updateDownload(job, {
           state: "completed",
@@ -2596,15 +2546,6 @@ function startDownload(model: CatalogModel): DownloadJob {
         received: job.total,
         etaMs: 0,
       });
-      if (model.runtimeRole === "dflash-drafter") {
-        if (
-          model.companionForModelId &&
-          activeState.modelId === model.companionForModelId
-        ) {
-          await activateModel(model.companionForModelId).catch(() => undefined);
-        }
-        return;
-      }
       if (activeState.status === "idle" || !activeState.modelId) {
         await activateModel(model.id, path).catch(() => undefined);
       }
@@ -2624,16 +2565,6 @@ async function activateModel(
   knownPath?: string,
 ): Promise<ActiveModelState> {
   const catalog = findCatalogModel(modelId);
-  if (catalog?.runtimeRole === "dflash-drafter") {
-    const state: ActiveModelState = {
-      modelId,
-      loadedAt: null,
-      status: "error",
-      error: `${catalog.displayName} is a DFlash drafter companion, not a standalone chat model.`,
-    };
-    writeActiveModelState(state);
-    return state;
-  }
   const installed = await listInstalledModels();
   const model =
     installed.find((entry) => entry.id === modelId) ??

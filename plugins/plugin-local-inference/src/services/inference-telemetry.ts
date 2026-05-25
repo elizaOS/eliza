@@ -3,7 +3,7 @@
  *
  * This module is intentionally small: it is a logger-backed histogram with a
  * stable, call-site-friendly `record(name, value, tags?)` API so individual
- * backends (dflash-server, voice scheduler, …) can emit point-in-time
+ * backends (FFI runtime, voice scheduler, …) can emit point-in-time
  * observations without importing a heavy metrics framework.
  *
  * Design constraints
@@ -139,5 +139,5 @@ export class InferenceTelemetry {
 	}
 }
 
-/** Process-wide singleton used by dflash-server and voice scheduler. */
+/** Process-wide singleton used by FFI runtime and voice scheduler. */
 export const inferenceTelemetry = new InferenceTelemetry();

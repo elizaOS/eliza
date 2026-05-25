@@ -4,7 +4,7 @@ Per-step logit post-processor: picks one of {greedy, forced-clarifier,
 temp-bumped resample, mask-and-resample} from (entropy, varentropy) of the
 next-token distribution. Refs: https://github.com/xjdr-alt/entropix
 
-NOT compatible with vLLM spec-decode (EAGLE-3 / DFlash); launcher hard-errors.
+NOT compatible with vLLM spec-decode (EAGLE-3 / MTP); launcher hard-errors.
 """
 from __future__ import annotations
 

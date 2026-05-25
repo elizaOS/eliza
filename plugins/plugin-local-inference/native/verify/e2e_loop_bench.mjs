@@ -3,18 +3,18 @@
  * e2e_loop_bench.mjs — Eliza-1 end-to-end mic→speech voice-loop benchmark.
  *
  * Drives the *real* fused runtime — the omnivoice-grafted `llama-server`
- * (`/completion` + `/v1/audio/speech` + the in-process DFlash speculative
+ * (`/completion` + `/v1/audio/speech` + the in-process MTP speculative
  * loop) and `libelizainference.{so,dylib}`'s ASR FFI — through one or more
  * complete voice turns:
  *
- *     WAV (mic) → ASR transcribe (FFI) → text generate w/ DFlash spec decode
+ *     WAV (mic) → ASR transcribe (FFI) → text generate w/ MTP spec decode
  *       → phrase chunker → OmniVoice TTS (HTTP /v1/audio/speech) → PCM out
  *
  * It measures, per turn and aggregated:
  *   - ASR latency + WER (vs the reference text the WAV was synthesized from)
  *   - first-token latency (ASR-done → first decoded text token, SSE)
  *   - decode tokens/sec
- *   - DFlash acceptance rate (n_drafted_accepted / n_drafted from /metrics)
+ *   - MTP acceptance rate (n_drafted_accepted / n_drafted from /metrics)
  *   - first-audio latency (first text token → first PCM sample of the first phrase)
  *   - TTS RTF (wall-seconds / audio-seconds)
  *   - total turn latency (mic-in → last PCM sample)
@@ -26,7 +26,7 @@
  * manifest's `ramBudgetMb.recommended`.
  *
  * Hard requirements (per packages/inference/AGENTS.md §4 / §8): one process,
- * one llama.cpp build, one GGML pin — text + DFlash + TTS all in the fused
+ * one llama.cpp build, one GGML pin — text + MTP + TTS all in the fused
  * `llama-server`; ASR via the fused FFI library; no second model process.
  *
  * Honesty: a backend whose fused build is not installed, or a bundle whose
@@ -176,7 +176,7 @@ function libName() {
  * `/v1/audio/speech`.
  */
 function discoverEngine(backend, explicitBinDir) {
-  const root = path.join(stateRoot(), "local-inference", "bin", "dflash");
+  const root = path.join(stateRoot(), "local-inference", "bin", "mtp");
   if (explicitBinDir) {
     return validateEngineDir(explicitBinDir, backend);
   }
@@ -262,9 +262,9 @@ function bundleFiles(bundleDir, tier) {
   );
   const drafter = firstExisting(
     ...fs
-      .readdirSync(path.join(bundleDir, "dflash"))
+      .readdirSync(path.join(bundleDir, "mtp"))
       .filter((f) => f.endsWith(".gguf"))
-      .map((f) => path.join(bundleDir, "dflash", f)),
+      .map((f) => path.join(bundleDir, "mtp", f)),
   );
   const ttsDir = path.join(bundleDir, "tts");
   const ttsGgufs = fs.existsSync(ttsDir)
@@ -274,15 +274,15 @@ function bundleFiles(bundleDir, tier) {
   const ttsBase = ttsGgufs.find((f) => !/token/i.test(f)) || ttsGgufs[0];
   const manifestPath = path.join(bundleDir, "eliza-1.manifest.json");
   const manifest = readJsonIfPresent(manifestPath);
-  const dflashDisabledPolicy = firstExisting(
-    path.join(bundleDir, "dflash", `dflash-disabled-${tier}.release-policy.json`),
-    path.join(bundleDir, "dflash", "dflash-disabled.release-policy.json"),
+  const mtpDisabledPolicy = firstExisting(
+    path.join(bundleDir, "mtp", `mtp-disabled-${tier}.release-policy.json`),
+    path.join(bundleDir, "mtp", "mtp-disabled.release-policy.json"),
   );
   return {
     text,
     drafter,
-    dflashDisabledPolicy,
-    dflashDisabled: !!dflashDisabledPolicy,
+    mtpDisabledPolicy,
+    mtpDisabled: !!mtpDisabledPolicy,
     ttsModel: ttsBase ? path.join(ttsDir, ttsBase) : null,
     ttsCodec: ttsTok ? path.join(ttsDir, ttsTok) : null,
     asr: firstExisting(
@@ -781,12 +781,12 @@ async function runTurn(opts, turnIdx) {
   const wer = refText ? wordErrorRate(refText, transcript) : null;
   logFn(`turn ${turnIdx}: ASR ${asrMs.toFixed(0)}ms -> ${JSON.stringify(transcript)} (wer=${wer == null ? "n/a" : wer.toFixed(3)})`);
 
-  // 2) Text generation with DFlash spec decoding (counters reset by diffing /metrics).
+  // 2) Text generation with MTP spec decoding (counters reset by diffing /metrics).
   const before = await fetchSpecCounters(port);
   const prompt = transcript.length > 0 ? transcript : (refText || "Hello.");
   const gen = await streamCompletion(port, prompt, nPredict, turnTimeoutS);
   const after = await fetchSpecCounters(port);
-  let dflashAccept = null;
+  let mtpAccept = null;
   let dDrafted = null;
   let dAccepted = null;
   if (
@@ -797,10 +797,10 @@ async function runTurn(opts, turnIdx) {
   ) {
     dDrafted = after.drafted - before.drafted;
     dAccepted = after.accepted - before.accepted;
-    if (dDrafted > 0) dflashAccept = dAccepted / dDrafted;
+    if (dDrafted > 0) mtpAccept = dAccepted / dDrafted;
   }
   logFn(
-    `turn ${turnIdx}: gen firstTok=${gen.firstTokenMs == null ? "n/a" : gen.firstTokenMs.toFixed(0)}ms tok/s=${gen.decodeTokPerSec == null ? "n/a" : gen.decodeTokPerSec.toFixed(1)} n=${gen.predictedN} dflash=${dflashAccept == null ? "n/a" : `${dAccepted}/${dDrafted}=${dflashAccept.toFixed(3)}`}`,
+    `turn ${turnIdx}: gen firstTok=${gen.firstTokenMs == null ? "n/a" : gen.firstTokenMs.toFixed(0)}ms tok/s=${gen.decodeTokPerSec == null ? "n/a" : gen.decodeTokPerSec.toFixed(1)} n=${gen.predictedN} mtp=${mtpAccept == null ? "n/a" : `${dAccepted}/${dDrafted}=${mtpAccept.toFixed(3)}`}`,
   );
 
   // 3) Phrase chunker + 4) TTS per phrase. First-audio = ASR-done → first PCM
@@ -869,10 +869,10 @@ async function runTurn(opts, turnIdx) {
       promptTokPerSec: gen.promptTokPerSec == null ? null : round2(gen.promptTokPerSec),
       content: gen.content,
     },
-    dflash: {
+    mtp: {
       drafted: dDrafted,
       accepted: dAccepted,
-      acceptanceRate: dflashAccept == null ? null : round4(dflashAccept),
+      acceptanceRate: mtpAccept == null ? null : round4(mtpAccept),
     },
     tts: {
       phrases: phrases.length,
@@ -902,7 +902,7 @@ async function runTurn(opts, turnIdx) {
 //  (b) native TTS: use eliza_inference_tts_synthesize_stream and have the
 //      chunk callback request cancellation, measuring callback-request ->
 //      ELIZA_ERR_CANCELLED return. This is the gateable TTS cancel evidence.
-//  (c) LLM/DFlash: start a streaming /completion request and abort it, which
+//  (c) LLM/MTP: start a streaming /completion request and abort it, which
 //      is the assembled local server's stream-cancel path.
 // --------------------------------------------------------------------------
 
@@ -953,7 +953,7 @@ async function measureBargeIn(port, ffiCtx, ffi, s) {
     ttsStreamSupported,
     note:
       bargeInCancelMs != null
-        ? "native streaming TTS cancel and LLM/DFlash stream abort were both measured; bargeInCancelMs is max(ttsCancelMs, llmCancelMs, audioDrainMs)"
+        ? "native streaming TTS cancel and LLM/MTP stream abort were both measured; bargeInCancelMs is max(ttsCancelMs, llmCancelMs, audioDrainMs)"
         : ttsStreamSupported
           ? "native streaming TTS is advertised, but the harness did not get a complete native TTS + LLM cancel measurement"
           : "batch-only TTS build (eliza_inference_tts_stream_supported()==0); barge-in gate is not recordable until native streaming TTS cancel is available",
@@ -1172,7 +1172,7 @@ async function main() {
     const out = {
       ...baseReport,
       status: "needs-harness",
-      reason: "this tier is Kokoro-only for TTS; the fused OmniVoice+DFlash e2e harness is not applicable and the app-core Kokoro voice-loop harness must drive the full ASR->text->Kokoro path",
+      reason: "this tier is Kokoro-only for TTS; the fused OmniVoice+MTP e2e harness is not applicable and the app-core Kokoro voice-loop harness must drive the full ASR->text->Kokoro path",
       bundleArtifacts: {
         text: !!isRealGguf(files.text),
         drafter: files.drafter ? !!isRealGguf(files.drafter, 10_000_000) : null,
@@ -1185,7 +1185,7 @@ async function main() {
     };
     return finish(out, args, logFn);
   }
-  const drafterReady = files.dflashDisabled || isRealGguf(files.drafter, 10_000_000);
+  const drafterReady = files.mtpDisabled || isRealGguf(files.drafter, 10_000_000);
   if (!isRealGguf(files.text) || !drafterReady || !isRealGguf(files.ttsModel) || !isRealGguf(files.ttsCodec) || !isRealGguf(files.asr, 1_000_000)) {
     const out = {
       ...baseReport,
@@ -1193,7 +1193,7 @@ async function main() {
       reason: "bundle is missing one of text/drafter/tts-model/tts-codec/asr GGUFs (stand-in or incomplete)",
       bundleArtifacts: {
         text: !!isRealGguf(files.text),
-        drafter: files.dflashDisabled ? "disabled-by-policy" : !!isRealGguf(files.drafter, 10_000_000),
+        drafter: files.mtpDisabled ? "disabled-by-policy" : !!isRealGguf(files.drafter, 10_000_000),
         ttsModel: !!isRealGguf(files.ttsModel),
         ttsCodec: !!isRealGguf(files.ttsCodec),
         asr: !!isRealGguf(files.asr, 1_000_000),
@@ -1226,7 +1226,7 @@ async function main() {
       DYLD_LIBRARY_PATH: `${engine.dir}${path.delimiter}${process.env.DYLD_LIBRARY_PATH || ""}`,
       ELIZA_OMNIVOICE_MODEL: files.ttsModel,
       ELIZA_OMNIVOICE_CODEC: files.ttsCodec,
-      ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT: "1",
+      ELIZA_MTP_SKIP_SERVER_STRUCTURED_OUTPUT: "1",
     };
     const serverArgs = [
       "-m", files.text,
@@ -1237,16 +1237,16 @@ async function main() {
       "--no-warmup",
       "--metrics",
     ];
-    if (!files.dflashDisabled) {
+    if (!files.mtpDisabled) {
       serverArgs.splice(2, 0,
         "-md", files.drafter,
-        "--spec-type", "dflash",
+        "--spec-type", "mtp",
         "--spec-draft-n-min", "2", "--spec-draft-n-max", "6",
       );
     }
     logFn(
       `starting fused llama-server: ${path.basename(engine.dir)} port=${port} text=${path.basename(files.text)} ` +
-        (files.dflashDisabled ? `drafter=disabled (${path.basename(files.dflashDisabledPolicy)})` : `drafter=${path.basename(files.drafter)}`),
+        (files.mtpDisabled ? `drafter=disabled (${path.basename(files.mtpDisabledPolicy)})` : `drafter=${path.basename(files.drafter)}`),
     );
     const srvLog = fs.createWriteStream(path.join(tmpDir, "server.log"));
     serverChild = spawn(engine.server, serverArgs, { cwd: engine.dir, env, stdio: ["ignore", "pipe", "pipe"] });
@@ -1292,15 +1292,15 @@ async function main() {
         throw new Error(`eliza_inference_create failed: ${readErrAndFree(ffi, s, errBuf)}`);
       }
     }
-    // Acquire the ASR + TTS regions (voice-on). text/dflash are kept hot by
+    // Acquire the ASR + TTS regions (voice-on). text/mtp are kept hot by
     // the library itself; acquire is idempotent.
-    for (const region of ["text", "dflash", "asr", "tts"]) {
+    for (const region of ["text", "mtp", "asr", "tts"]) {
       const errBuf = Buffer.alloc(8);
       errBuf.fill(0);
       const rc = s.eliza_inference_mmap_acquire(ffiCtx, Buffer.from(`${region}\0`, "utf8"), ffi.ptr(errBuf));
       if (rc < 0) {
         const msg = readErrAndFree(ffi, s, errBuf);
-        // text/dflash on the library are best-effort warm hints; only asr is mandatory for this bench.
+        // text/mtp on the library are best-effort warm hints; only asr is mandatory for this bench.
         if (region === "asr") throw new Error(`mmap_acquire("asr") rc=${rc}: ${msg}`);
         logFn(`mmap_acquire("${region}") rc=${rc} (non-fatal): ${msg}`);
       }
@@ -1369,9 +1369,9 @@ async function main() {
       firstTokenMsMedian: round1(median(turnReports.map((r) => r.gen.firstTokenMs))),
       firstTokenMsP50: round1(median(turnReports.map((r) => r.gen.firstTokenMs))),
       decodeTokPerSecMedian: round2(median(turnReports.map((r) => r.gen.decodeTokPerSec))),
-      dflashAcceptanceRateMean: round4(mean(turnReports.map((r) => r.dflash.acceptanceRate))),
-      dflashDraftedTotal: turnReports.reduce((a, r) => a + (r.dflash.drafted || 0), 0),
-      dflashAcceptedTotal: turnReports.reduce((a, r) => a + (r.dflash.accepted || 0), 0),
+      mtpAcceptanceRateMean: round4(mean(turnReports.map((r) => r.mtp.acceptanceRate))),
+      mtpDraftedTotal: turnReports.reduce((a, r) => a + (r.mtp.drafted || 0), 0),
+      mtpAcceptedTotal: turnReports.reduce((a, r) => a + (r.mtp.accepted || 0), 0),
       firstAudioFromMicMsMedian: round1(median(turnReports.map((r) => r.firstAudioFromMicMs))),
       firstAudioFromTokenMsMedian: round1(median(turnReports.map((r) => r.firstAudioFromTokenMs))),
       ttsRtfMedian: round4(median(turnReports.map((r) => r.tts.rtf))),
@@ -1385,14 +1385,14 @@ async function main() {
       ramWithinBudget,
       leakSuspected,
     };
-    const dflashOverall =
-      summary.dflashDraftedTotal > 0 ? round4(summary.dflashAcceptedTotal / summary.dflashDraftedTotal) : null;
-    summary.dflashAcceptanceRateOverall = dflashOverall;
+    const mtpOverall =
+      summary.mtpDraftedTotal > 0 ? round4(summary.mtpAcceptedTotal / summary.mtpDraftedTotal) : null;
+    summary.mtpAcceptanceRateOverall = mtpOverall;
 
     const flowCompletedOk = turnReports.length > 0 &&
       turnReports.every((r) => r.gen.firstTokenMs != null && r.tts.audioSec != null && r.tts.audioSec > 0 && r.totalTurnMs != null);
     const requiredOptimizations = {
-      dflashDraftingActive: files.dflashDisabled ? null : summary.dflashDraftedTotal > 0,
+      mtpDraftingActive: files.mtpDisabled ? null : summary.mtpDraftedTotal > 0,
       streamingTtsActive: bargeIn?.ttsStreamSupported === true,
     };
     const optimizationReadyOk = Object.values(requiredOptimizations).filter((v) => v !== null).every(Boolean);
@@ -1487,7 +1487,7 @@ function finish(report, args, logFn) {
     logFn(
       `RESULT tier=${report.request.tier} backend=${report.request.backend} turns=${s.turns} ` +
         `asr=${s.asrLatencyMsMedian}ms/wer${s.asrWerMean} firstTok=${s.firstTokenMsMedian}ms ` +
-        `tok/s=${s.decodeTokPerSecMedian} dflash=${s.dflashAcceptanceRateOverall} ` +
+        `tok/s=${s.decodeTokPerSecMedian} mtp=${s.mtpAcceptanceRateOverall} ` +
         `firstAudio≈${s.firstAudioFromMicMsMedian}ms ttsRTF=${s.ttsRtfMedian} total=${s.totalTurnMsMedian}ms ` +
         `peakRSS=${s.serverPeakRssMb}MB bargeIn=${s.bargeInCancelMs}ms e2eOk=${report.e2eLoopOk}` +
         (report.thirtyTurnOk != null ? ` thirtyTurnOk=${report.thirtyTurnOk}` : ""),

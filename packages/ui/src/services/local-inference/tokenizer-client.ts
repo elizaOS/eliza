@@ -8,9 +8,9 @@
  * for a turn assembles in O(|active_actions|) ID array copies plus a single
  * /tokenize round-trip per cache miss (or a bulk one for cold-start).
  *
- * The class is intentionally small and decoupled from `DflashLlamaServer`:
+ * The class is intentionally small and decoupled from `MtpLlamaServer`:
  * the harness passes in the `baseUrl` (typically
- * `dflashLlamaServer["baseUrl"]` or the `LocalInferenceEngine`'s
+ * `mtpLlamaServer["baseUrl"]` or the `LocalInferenceEngine`'s
  * `currentBaseUrl()` once that landing is finalised). Production callers
  * should wire it through whatever service holds the live llama-server
  * reference; tests instantiate with a stub `fetch`.
@@ -207,7 +207,7 @@ export class TokenizerClient {
 }
 
 /**
- * Process-wide singleton — matches the pattern used by `dflashLlamaServer`
+ * Process-wide singleton — matches the pattern used by `mtpLlamaServer`
  * (one instance per process, multiple consumers). Tests should construct
  * their own `new TokenizerClient({...})` rather than reuse this.
  */

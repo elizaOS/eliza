@@ -154,7 +154,7 @@ serve = [
   # `vllm-flash-attn` is bundled with vLLM 0.20+; add explicitly so the
   # constraint solver doesn't pull a stale wheel from a transitive dep.
   "transformers>=4.46.0",
-  # OpenAI client used by scripts/inference/test_apc_dflash_tool_calls.py to
+  # OpenAI client used by scripts/inference/test_apc_mtp_tool_calls.py to
   # speak vLLM's OpenAI-compatible chat completions endpoint. The harness
   # is the production gate that unlocks `ELIZA_APC_DRAFTER_VERIFIED=1` on
   # any new vLLM build for the Qwen3.5/3.6 hybrid path (omlx#825).

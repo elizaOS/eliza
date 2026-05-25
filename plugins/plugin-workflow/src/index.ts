@@ -90,10 +90,11 @@ export const workflowPlugin: Plugin = {
     registerWorkflowDispatchService(runtime);
 
     // Schedule one-shot legacy migrations off the init critical path. Service
-    // start-order is not guaranteed at init: WorkflowService may not be in
-    // the registry yet. Poll up to 10 times (1s spacing) and bail quietly
-    // if it never appears. Each migration is idempotent so a duplicate run
-    // on a future boot is harmless.
+    // startup is intentionally blocked until the runtime's initialize() flow
+    // resolves, which can take longer than a fixed retry window on cold boot.
+    // Await the runtime service-load promise instead of polling getService().
+    // Each migration is idempotent so a duplicate run on a future boot is
+    // harmless if service startup genuinely fails.
     scheduleLegacyMigrations(runtime);
 
     logger.info(
@@ -103,30 +104,29 @@ export const workflowPlugin: Plugin = {
   },
 };
 
-const MIGRATION_RETRY_LIMIT = 10;
-const MIGRATION_RETRY_INTERVAL_MS = 1000;
-
 function scheduleLegacyMigrations(runtime: IAgentRuntime): void {
-  let attempts = 0;
-  const tick = (): void => {
-    attempts += 1;
-    const ready = runtime.getService(WORKFLOW_SERVICE_TYPE);
-    if (!ready) {
-      if (attempts >= MIGRATION_RETRY_LIMIT) {
-        logger.warn(
-          { src: 'plugin:workflow:plugin:migration' },
-          `WorkflowService still not registered after ${MIGRATION_RETRY_LIMIT} retries; legacy migrations will run on next boot`
-        );
-        return;
-      }
-      setTimeout(tick, MIGRATION_RETRY_INTERVAL_MS);
-      return;
-    }
-    void runLegacyMigrations(runtime);
-  };
-  // Defer the first attempt off the init stack so the host runtime can
-  // finish wiring before we probe the service registry.
-  setImmediate(tick);
+  // Defer off the init stack so this plugin's service declarations have been
+  // registered before getServiceLoadPromise() probes the service registry.
+  setImmediate(() => {
+    void runLegacyMigrationsWhenWorkflowServiceReady(runtime);
+  });
+}
+
+async function runLegacyMigrationsWhenWorkflowServiceReady(runtime: IAgentRuntime): Promise<void> {
+  try {
+    await runtime.getServiceLoadPromise(WORKFLOW_SERVICE_TYPE);
+  } catch (err) {
+    logger.warn(
+      {
+        src: 'plugin:workflow:plugin:migration',
+        err: err instanceof Error ? err.message : String(err),
+      },
+      'WorkflowService failed to start; legacy migrations will run on next boot'
+    );
+    return;
+  }
+
+  await runLegacyMigrations(runtime);
 }
 
 async function runLegacyMigrations(runtime: IAgentRuntime): Promise<void> {

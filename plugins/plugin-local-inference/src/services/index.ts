@@ -131,6 +131,12 @@ export {
 	nodeOsPressureSource,
 } from "./memory-pressure";
 export {
+	type MtpDoctorCheck,
+	type MtpDoctorCheckStatus,
+	type MtpDoctorReport,
+	runMtpDoctor,
+} from "./mtp-doctor";
+export {
 	buildPlanActionsSkeleton,
 	buildPlannerGuidedDecode,
 	type PlannerAction,
@@ -154,12 +160,6 @@ export {
 	selectRecommendedModelForSlot,
 	selectRecommendedModels,
 } from "./recommendation";
-export {
-	type DispatchGenerateInput,
-	dispatchGenerate,
-	type HttpStreamingAdapter,
-	type InferenceStreamEvent,
-} from "./runtime-dispatcher";
 export {
 	type InferenceRuntimeMode,
 	type InferenceRuntimeModeInput,
