@@ -265,7 +265,7 @@ function buildExtractionPrompt(args: {
       recentConversationBlock,
       currentMessageText: currentMessageText || "(empty)",
     },
-    template: extractActionParamsTemplate,
+    template: EXTRACT_ACTION_PARAMS_TEMPLATE,
   });
 }
 

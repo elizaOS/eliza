@@ -41,6 +41,31 @@ async function pathExists(filePath) {
   }
 }
 
+function isTransientWindowsFsError(error) {
+  return (
+    error?.code === "EPERM" ||
+    error?.code === "EBUSY" ||
+    error?.code === "ENOTEMPTY"
+  );
+}
+
+async function retryTransientFsOperation(operation) {
+  const attempts = 5;
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!isTransientWindowsFsError(error) || attempt === attempts - 1) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
 if (!(await pathExists(nestedSourceDir))) {
   console.error(`Compiled source directory not found: ${nestedSourceDir}`);
   process.exit(1);
@@ -52,9 +77,12 @@ for (const entry of entries) {
   if (!(await pathExists(nestedEntry))) {
     continue;
   }
-  await fs.rm(path.join(distDir, entry), { recursive: true, force: true });
+  const targetEntry = path.join(distDir, entry);
+  await retryTransientFsOperation(() =>
+    fs.rm(targetEntry, { recursive: true, force: true }),
+  );
   try {
-    await fs.rename(nestedEntry, path.join(distDir, entry));
+    await retryTransientFsOperation(() => fs.rename(nestedEntry, targetEntry));
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
   }

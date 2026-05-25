@@ -18,10 +18,10 @@ import type {
   StreamEventKind,
 } from "./protocol.ts";
 import {
-  FILE_REMOTE_PLUGIN_ID,
-  GIT_REMOTE_PLUGIN_ID,
-  MODEL_REMOTE_PLUGIN_ID,
-  TERMINAL_REMOTE_PLUGIN_ID,
+  FILE_REMOTE_ID,
+  GIT_REMOTE_ID,
+  MODEL_REMOTE_ID,
+  TERMINAL_REMOTE_ID,
 } from "./protocol.ts";
 import { ElizaRuntimeManager } from "./runtime-manager.ts";
 import { AgentStreamManager } from "./stream-manager.ts";
@@ -1028,28 +1028,28 @@ function remotePluginRouteFor(
 ): RemotePluginRoute | null {
   if (FILE_METHODS.has(request.method)) {
     return {
-      remotePluginId: FILE_REMOTE_PLUGIN_ID,
+      remotePluginId: FILE_REMOTE_ID,
       unavailableMessage: "File RemotePlugin eliza.fs is not available",
       params: request.params,
     };
   }
   if (PTY_METHODS.has(request.method)) {
     return {
-      remotePluginId: TERMINAL_REMOTE_PLUGIN_ID,
+      remotePluginId: TERMINAL_REMOTE_ID,
       unavailableMessage: "Terminal RemotePlugin eliza.pty is not available",
       params: request.params,
     };
   }
   if (GIT_METHODS.has(request.method)) {
     return {
-      remotePluginId: GIT_REMOTE_PLUGIN_ID,
+      remotePluginId: GIT_REMOTE_ID,
       unavailableMessage: "Git RemotePlugin eliza.git is not available",
       params: request.params,
     };
   }
   if (!MODEL_METHODS.has(request.method)) return null;
   return {
-    remotePluginId: MODEL_REMOTE_PLUGIN_ID,
+    remotePluginId: MODEL_REMOTE_ID,
     unavailableMessage: "Model RemotePlugin eliza.local-model is not available",
     params: withRuntimeApiBase(request.params),
   };

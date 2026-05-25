@@ -18,9 +18,9 @@ const requiredPaths = [
   "dist/index.js",
   "dist/entry.js",
   "dist/build-info.json",
-  "packages/app-core/scripts",
-  "packages/app-core/scripts/setup-upstreams.mjs",
-  "packages/app-core/scripts/init-submodules.mjs",
+  "eliza/packages/app-core/scripts",
+  "eliza/packages/app-core/scripts/setup-upstreams.mjs",
+  "eliza/packages/app-core/scripts/init-submodules.mjs",
 ];
 const forbiddenPrefixes = ["dist/Eliza.app/"];
 const orchestratorBrokenLifecycleTarget = "./scripts/ensure-node-pty.mjs";
@@ -120,15 +120,15 @@ const requiredWorkflowSnippets = [
   "for attempt in 1 2 3; do",
   `bun install failed on attempt \${attempt}; retrying in 15 seconds`,
   "name: Ensure avatar assets",
-  "node packages/app-core/scripts/ensure-avatars.mjs",
+  "node eliza/packages/app-core/scripts/ensure-avatars.mjs",
   "name: Prepare Whisper model artifact",
   "bash packages/app-core/platforms/electrobun/scripts/ensure-whisper-gguf.sh base.en",
   "name: Upload Whisper model artifact",
   "name: whisper-model-base-en",
   "Install quiet macOS packaging wrappers",
-  "packages/app-core/platforms/electrobun/scripts/hdiutil-wrapper.sh",
-  "packages/app-core/platforms/electrobun/scripts/xcrun-wrapper.sh",
-  "packages/app-core/platforms/electrobun/scripts/zip-wrapper.sh",
+  "eliza/packages/app-core/platforms/electrobun/scripts/hdiutil-wrapper.sh",
+  "eliza/packages/app-core/platforms/electrobun/scripts/xcrun-wrapper.sh",
+  "eliza/packages/app-core/platforms/electrobun/scripts/zip-wrapper.sh",
   "ELECTROBUN_REAL_HDIUTIL: /usr/bin/hdiutil",
   "ELECTROBUN_REAL_XCRUN: /usr/bin/xcrun",
   "ELECTROBUN_REAL_ZIP: /usr/bin/zip",
@@ -138,7 +138,7 @@ const requiredWorkflowSnippets = [
   "Inject version.json into bundle (macOS / Linux)",
   '"identifier":"ai.elizaos.Eliza"',
   "Stage standard macOS release app",
-  "packages/app-core/platforms/electrobun/scripts/stage-macos-release-artifacts.sh",
+  "eliza/packages/app-core/platforms/electrobun/scripts/stage-macos-release-artifacts.sh",
   "retry_stapler_validate()",
   "Smoke test packaged macOS app",
   "SMOKE_DIAGNOSTICS_DIR:",
@@ -157,9 +157,9 @@ const requiredWorkflowSnippets = [
   "packaging/inno/build-inno.ps1",
   '-BuildDir "C:\\e"',
   "Verify Windows public installer looks complete",
-  'Get-ChildItem -Path "packages/app-core/platforms/electrobun/artifacts" -File -Filter "ElizaOSApp-Setup-*.exe"',
+  'Get-ChildItem -Path "eliza/packages/app-core/platforms/electrobun/artifacts" -File -Filter "ElizaOSApp-Setup-*.exe"',
   "$minimumBytes = 50MB",
-  "packages/app-core/platforms/electrobun/artifacts/*.exe",
+  "eliza/packages/app-core/platforms/electrobun/artifacts/*.exe",
   "name: Prepare public canary Windows installer artifact",
   "needs.prepare.outputs.env == 'canary'",
   '$publicCanaryDir = Join-Path $artifactsDir "public-canary-installer"',
@@ -171,7 +171,7 @@ const requiredWorkflowSnippets = [
   "Prepared public canary installer artifact:",
   "name: Upload public canary installer artifact",
   "name: electrobun-$" + "{{ matrix.platform.artifact-name }}-public-installer",
-  "path: packages/app-core/platforms/electrobun/artifacts/public-canary-installer/ElizaOSApp-Setup-*.exe",
+  "path: eliza/packages/app-core/platforms/electrobun/artifacts/public-canary-installer/ElizaOSApp-Setup-*.exe",
   "name: Collect public release files",
   '-name "ElizaOSApp-Setup-*.exe" -o \\',
   '-name "ElizaOSApp-Setup-*.exe.zip" -o \\',
@@ -183,7 +183,7 @@ const requiredWorkflowSnippets = [
   "DMG attach attempt $attempt/5 failed",
   "name: Resolve electrobun package dir",
   "id: resolve-electrobun",
-  'const workspacePackageJson = path.resolve("packages/app-core/platforms/electrobun/package.json");',
+  'const workspacePackageJson = path.resolve("eliza/packages/app-core/platforms/electrobun/package.json");',
   'const entryPath = req.resolve("electrobun");',
   "Could not find electrobun package.json starting from",
   "Resolved unexpected package at",
@@ -191,10 +191,10 @@ const requiredWorkflowSnippets = [
   'echo "cache-dir=$package_dir/.cache"',
   "$" + "{{ steps.resolve-electrobun.outputs.cache-dir }}",
   "name: Build patched Electrobun CLI",
-  'node packages/app-core/scripts/build-patched-electrobun-cli.mjs "$' +
+  'node eliza/packages/app-core/scripts/build-patched-electrobun-cli.mjs "$' +
     '{{ steps.resolve-electrobun.outputs.package-dir }}"',
   '"${{ matrix.platform.artifact-name }}"',
-  "node packages/app-core/scripts/desktop-build.mjs package --env=$" +
+  "node eliza/packages/app-core/scripts/desktop-build.mjs package --env=$" +
     "{{ needs.prepare.outputs.env }}",
   "ELIZA_ELECTROBUN_NOTARIZE: 0",
   'ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1"',
@@ -202,9 +202,10 @@ const requiredWorkflowSnippets = [
   "ELIZA_TEST_WINDOWS_INSTALL_DIR: $" + "{{ runner.temp }}\\el",
   "name: Run Windows clean installer proof",
   "verify-windows-installer-proof.ps1",
-  "ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR: $" + "{{ runner.temp }}\\el-proof",
+  "ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR: $" +
+    "{{ runner.temp }}\\el-smoke-proof",
   "name: Upload Windows installer proof artifact",
-  "path: packages/app-core/platforms/electrobun/artifacts/windows-installer-proof/**",
+  "path: eliza/packages/app-core/platforms/electrobun/artifacts/windows-installer-proof/**",
   "if: always() && matrix.platform.os == 'windows'",
   "ANTHROPIC_API_KEY: $" + "{{ secrets.ANTHROPIC_API_KEY }}",
   "ELIZAOS_CLOUD_API_KEY: $" +
@@ -817,7 +818,7 @@ function assertOrchestratorVersionPinned() {
   }
   if (!isExactVersion(version)) {
     console.error(
-      `release-check: @elizaos/plugin-agent-orchestrator must either use workspace:* for the local checkout or be pinned to an exact version, but found "${version}".`,
+      `release-check: @elizaos/plugin-agent-orchestrator must either use workspace:* for the local checkout, use a release dist tag, or be pinned to an exact version, but found "${version}".`,
     );
     process.exit(1);
   }
@@ -886,7 +887,7 @@ function assertReleaseWorkflowHasNotaryWrapper() {
 
   if (missing.length > 0) {
     console.error(
-      "release-check: release workflow is missing notary wrapper wiring:",
+      "release-check: release workflow is missing required release wiring:",
     );
     for (const snippet of missing) {
       console.error(`  - ${snippet}`);
@@ -1377,7 +1378,10 @@ function assertStartApiServerCatchBlockSafety() {
     elizaSource.indexOf("// ── Server-only mode", catchIndex),
   );
   if (
-    !catchBlock.includes("opts?.serverOnly") ||
+    !(
+      catchBlock.includes("opts?.serverOnly") ||
+      catchBlock.includes("options?.serverOnly")
+    ) ||
     !catchBlock.includes("process.exit(1)")
   ) {
     console.error(
@@ -1443,7 +1447,7 @@ function assertHomepageReleaseDataUsesCurrentAssetRoot() {
     !releaseDataSource.includes("/packages/homepage/public/")
   ) {
     console.error(
-      "release-check: generated homepage release data must point homepageAssetBaseUrl at /packages/homepage/public/.",
+      "release-check: generated homepage release data must point homepageAssetBaseUrl at /apps/homepage/public/.",
     );
     process.exit(1);
   }
@@ -1453,7 +1457,7 @@ function assertHomepageReleaseDataUsesCurrentAssetRoot() {
     releaseDataSource.includes("/apps/homepage/public/")
   ) {
     console.error(
-      "release-check: generated homepage release data still points at legacy /apps/*/public/. Regenerate it with node scripts/write-homepage-release-data.mjs.",
+      "release-check: generated homepage release data still points at legacy /apps/web/public/. Regenerate it with node scripts/write-homepage-release-data.mjs.",
     );
     process.exit(1);
   }

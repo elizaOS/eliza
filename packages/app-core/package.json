@@ -81,6 +81,11 @@
       "import": "./dist/agent-bridge.js",
       "default": "./dist/agent-bridge.js"
     },
+    "./api/automation-node-contributors": {
+      "types": "./dist/api/automation-node-contributors.d.ts",
+      "import": "./dist/api/automation-node-contributors.js",
+      "default": "./dist/api/automation-node-contributors.js"
+    },
     "./api/auth": {
       "types": "./dist/api/auth.d.ts",
       "import": "./dist/api/auth.js",

@@ -41,11 +41,11 @@ export function parseReleaseVersion(raw) {
     throw new Error("Release version is required");
   }
   const match = normalized.match(
-    /^(\d+)\.(\d+)\.(\d+)(?:-(beta|rc|nightly)\.([0-9A-Za-z.-]+))?$/,
+    /^(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc|nightly)\.([0-9A-Za-z.-]+))?$/,
   );
   if (!match) {
     throw new Error(
-      `Unsupported Agent Browser Bridge release version "${raw}". Expected 1.2.3 or 1.2.3-beta.0 style semver.`,
+      `Unsupported Agent Browser Bridge release version "${raw}". Expected 1.2.3 or 1.2.3-alpha.0 style semver.`,
     );
   }
   const major = Number.parseInt(match[1], 10);
