@@ -12,8 +12,10 @@ import { VoiceWaveform } from "../voice/VoiceWaveform";
  *
  * Renders the clouds backdrop with a centered voice-avatar waveform as the
  * assistant's presence. Home suppresses the global assistant pill and exposes
- * its own composer/mic controls; the waveform mode is driven by the shared
- * shell controller phase.
+ * its own composer/mic controls. When the desktop overlay is enabled, the pill
+ * is hosted in a separate OS-level window so the main app stays focused on the
+ * home surface. The waveform mode is driven by the shared shell controller
+ * phase.
  */
 export function HomeView(): React.JSX.Element {
   const controller = useShellControllerContext();

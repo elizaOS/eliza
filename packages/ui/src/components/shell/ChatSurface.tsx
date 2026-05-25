@@ -30,6 +30,7 @@ export function ChatSurface({
   onToggleRecording,
 }: ChatSurfaceProps): React.JSX.Element {
   const [draft, setDraft] = React.useState("");
+  const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const trimmed = draft.trim();
   const canSendNow = canSend && trimmed.length > 0;
 
@@ -39,9 +40,15 @@ export function ChatSurface({
     setDraft("");
   }, [canSendNow, onSend, trimmed]);
 
+  React.useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, [messages]);
+
   return (
     <div className="flex h-full flex-col" data-testid="shell-chat-surface">
-      <div className="flex-1 overflow-y-auto p-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
         {messages.length === 0 ? (
           <p className="text-sm text-muted">
             {greeting ?? "Ask Eliza anything."}

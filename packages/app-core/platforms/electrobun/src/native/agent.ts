@@ -214,6 +214,24 @@ function applyDesktopChildStateEnv(childEnv: Record<string, string>): void {
   childEnv.ELIZA_STATE_DIR = stateDir;
 }
 
+export function applyWindowsNativeInferenceDefaults(
+  childEnv: Record<string, string>,
+  platform: NodeJS.Platform = process.platform,
+): void {
+  if (platform !== "win32") return;
+
+  // node-llama-cpp crashes Bun on Windows during packaged startup.
+  // Disable local embeddings until upstream fix lands.
+  childEnv.ELIZA_DISABLE_LOCAL_EMBEDDINGS = "1";
+
+  // The fused elizaOS llama.cpp / OmniVoice runtime can trip GGML's
+  // uncaught-exception backtrace guard inside packaged Bun unless this is set
+  // before any native GGML library is loaded.
+  if (!childEnv.GGML_NO_BACKTRACE?.trim()) {
+    childEnv.GGML_NO_BACKTRACE = "1";
+  }
+}
+
 function listStateEntries(stateDir: string): string[] {
   try {
     return fs
@@ -1458,11 +1476,7 @@ export class AgentManager {
         this.persistStartupDiagnostics();
       }
 
-      // node-llama-cpp crashes Bun on Windows during packaged startup.
-      // Disable local embeddings until upstream fix lands.
-      if (process.platform === "win32") {
-        childEnv.ELIZA_DISABLE_LOCAL_EMBEDDINGS = "1";
-      }
+      applyWindowsNativeInferenceDefaults(childEnv);
 
       if (nodePaths.length > 0) {
         childEnv.NODE_PATH = nodePaths.join(path.delimiter);
@@ -1478,9 +1492,13 @@ export class AgentManager {
       // Ensure bun's directory is on PATH so child_process.exec calls
       // (e.g. plugin-manager running `bun add ...`) can find it.
       const bunDir = path.dirname(bunExecutable);
-      const existingPath = childEnv.PATH;
+      const existingPathKey = childEnv.PATH !== undefined ? "PATH" : "Path";
+      const existingPath =
+        childEnv[existingPathKey] ?? process.env.PATH ?? process.env.Path ?? "";
       if (!existingPath.split(path.delimiter).includes(bunDir)) {
-        childEnv.PATH = bunDir + path.delimiter + existingPath;
+        childEnv[existingPathKey] = existingPath
+          ? bunDir + path.delimiter + existingPath
+          : bunDir;
         diagnosticLog(`[Agent] Prepended bun dir to child PATH: ${bunDir}`);
       }
 

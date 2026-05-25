@@ -97,7 +97,9 @@ import {
   installForceFreshOnboardingClientPatch,
 } from "@elizaos/ui/platform/onboarding-reset";
 import {
+  isChatOverlayWindowShell,
   isDetachedWindowShell,
+  isStandaloneWindowShell,
   resolveWindowShellRoute,
   shouldInstallMainWindowOnboardingPatches,
   syncDetachedShellLocation,
@@ -390,7 +392,7 @@ function getWindowUrlSearchParams(): URLSearchParams {
  */
 function shouldEnableElectrobunMacWindowDrag(): boolean {
   if (!isElectrobunRuntime() || typeof document === "undefined") return false;
-  if (isDetachedWindowShell(windowShellRoute)) return false;
+  if (isStandaloneWindowShell(windowShellRoute)) return false;
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent;
   return /Mac/i.test(ua) && !/(iPhone|iPad|iPod)/i.test(ua);
@@ -1565,6 +1567,10 @@ function setupPlatformStyles(): void {
     document.body.classList.add("native");
   }
 
+  const chatOverlayShell = isChatOverlayWindowShell(windowShellRoute);
+  root.classList.toggle("eliza-chat-overlay-shell", chatOverlayShell);
+  document.body.classList.toggle("eliza-chat-overlay-shell", chatOverlayShell);
+
   root.style.setProperty("--safe-area-top", "env(safe-area-inset-top, 0px)");
   root.style.setProperty(
     "--safe-area-bottom",
@@ -2176,10 +2182,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (isDetachedWindowShell(windowShellRoute)) {
+  if (isStandaloneWindowShell(windowShellRoute)) {
     injectDetachedShellApiBase();
     applyStoredDetachedShellTheme();
-    syncDetachedShellLocation(windowShellRoute);
+    if (isDetachedWindowShell(windowShellRoute)) {
+      syncDetachedShellLocation(windowShellRoute);
+    }
     await initializeStorageBridge();
     initializeCapacitorBridge();
     mountReactApp();

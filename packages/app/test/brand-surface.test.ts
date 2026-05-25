@@ -129,14 +129,17 @@ describe("brand surfaces", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("desktop pill shell mounts the minimal voice pill instead of the full app", () => {
-    const src = read("src/main.tsx");
-    expect(src).toContain('getWindowUrlSearchParams().get("shell") === "pill"');
-    expect(src).toMatch(
-      /if \(isVoicePillShellMode\(\)\) \{[\s\S]*?<VoicePill[\s\S]*?return;[\s\S]*?\}/,
+  it("desktop OS pill uses the transparent chat-overlay shell", () => {
+    const mainSrc = read("src/main.tsx");
+    const stylesSrc = read("../ui/src/styles/styles.css");
+    const pillSrc = read("../app-core/platforms/electrobun/src/pill-window.ts");
+
+    expect(pillSrc).toContain('url.search = "?shellMode=chat-overlay"');
+    expect(mainSrc).toContain("isChatOverlayWindowShell");
+    expect(mainSrc).toContain(
+      'root.classList.toggle("eliza-chat-overlay-shell", chatOverlayShell)',
     );
-    expect(src).toMatch(
-      /if \(isVoicePillShellMode\(\)\) \{[\s\S]*?setupPlatformStyles\(\);[\s\S]*?mountReactApp\(\);[\s\S]*?return;[\s\S]*?\}/,
-    );
+    expect(stylesSrc).toContain("html.eliza-chat-overlay-shell #root");
+    expect(stylesSrc).toContain("background: transparent");
   });
 });

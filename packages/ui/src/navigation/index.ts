@@ -418,7 +418,7 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   const normalized = normalizePathForLookup(pathname, basePath);
   // The root path "/" lands on the discovered main-tab app. Reads the
   // cached apps catalog synchronously and falls back to the assistant home
-  // launcher when no app declares elizaos.app.mainTab=true.
+  // (clouds/avatar surface) when no app declares elizaos.app.mainTab=true.
   if (normalized === "/") return resolveDefaultLandingTab();
 
   if (

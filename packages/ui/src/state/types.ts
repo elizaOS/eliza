@@ -933,9 +933,8 @@ export interface AppActions {
    * not collect provider/character info, so there is no submit payload.
    * Dispatches ONBOARDING_COMPLETE to the startup coordinator.
    *
-   * The full wizard passes `{ launchCompanionOverlay: true }` so first-time
-   * setup lands in `@elizaos/plugin-companion` at `/apps/companion`. RuntimeGate
-   * omits options and lands on chat only.
+   * The full wizard passes an explicit landing tab when needed. RuntimeGate
+   * omits options and lands on the default clouds/avatar home surface.
    */
   completeOnboarding: (
     landingTab?: Tab,

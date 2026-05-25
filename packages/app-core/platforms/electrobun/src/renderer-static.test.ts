@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   getRendererAssetContentType,
@@ -13,20 +14,20 @@ describe("renderer static assets", () => {
   });
 
   it("resolves the original MIME extension for precompressed assets", () => {
-    const files = new Set([
-      "/app/dist/index.html",
-      "/app/dist/assets/app.js.gz",
-    ]);
+    const rendererDir = path.join(path.sep, "app", "dist");
+    const indexPath = path.join(rendererDir, "index.html");
+    const gzPath = path.join(rendererDir, "assets", "app.js.gz");
+    const files = new Set([indexPath, gzPath]);
 
     const resolved = resolveRendererAsset({
-      rendererDir: "/app/dist",
+      rendererDir,
       urlPath: "/assets/app.js",
       existsSync: (filePath) => files.has(filePath),
       statSync: () => ({ isDirectory: () => false }),
     });
 
     expect(resolved).toEqual({
-      filePath: "/app/dist/assets/app.js.gz",
+      filePath: gzPath,
       isGzipped: true,
       mimeExt: ".js",
     });

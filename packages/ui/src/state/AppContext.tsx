@@ -164,9 +164,9 @@ export { AGENT_READY_TIMEOUT_MS } from "./types";
  * main-tab app; the wizard opens the companion overlay separately.
  *
  * Resolved synchronously from the cached apps catalog at module load.
- * Falls back to "chat" when no installed app declares
- * `elizaos.app.mainTab=true`, preserving pre-Phase-1 behavior. Phase 5
- * lands `app-chat` to claim the seam and drops the chat fallback.
+ * Falls back to "home" when no installed app declares
+ * `elizaos.app.mainTab=true`, keeping the clouds/avatar assistant surface as
+ * the default shell landing page.
  */
 const DEFAULT_LANDING_TAB: Tab = resolveDefaultLandingTab();
 
