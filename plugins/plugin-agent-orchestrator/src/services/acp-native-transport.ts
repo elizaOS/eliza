@@ -48,7 +48,20 @@ type TerminalRecord = {
 };
 
 const ACP_PROTOCOL_VERSION = 1;
-const DEFAULT_TIMEOUT_MS = 30_000;
+// Default ACP request timeout. 30 s was too short for real coding-sub-agent
+// work — a single `session/prompt` round-trip for non-trivial tasks (PDF
+// generation, multi-file refactors, dependency install + run) routinely
+// took 60-200 s in live trajectories on 2026-05-25, blowing the 30 s
+// budget. The framework then aborted via the timeout, the planner retried
+// the spawn, and the orchestrator accumulated 44 sub-agent trajectories
+// for one user prompt while leaving 20+ orphaned opencode processes.
+// 300 s (5 min) is the conservative new default that covers the observed
+// completion-time distribution (max ~14 s on `task_complete`, ~270 s tail
+// on what would otherwise have been timeouts) without letting genuinely
+// hung sessions linger forever. Deployments that want faster fail-fast or
+// longer waits can override via `ACPX_DEFAULT_TIMEOUT_MS` or
+// `ELIZA_ACP_PROMPT_TIMEOUT_MS` env vars.
+const DEFAULT_TIMEOUT_MS = 300_000;
 const TERMINAL_OUTPUT_LIMIT = 512 * 1024;
 const AGENT_CLOSE_TERM_GRACE_MS = 1_500;
 const TERMINAL_KILL_GRACE_MS = 1_500;
