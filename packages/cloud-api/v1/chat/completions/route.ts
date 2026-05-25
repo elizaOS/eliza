@@ -183,6 +183,7 @@ interface ChatRequest {
   tool_choice?:
     | "auto"
     | "none"
+    | "required"
     | { type: "function"; function: { name: string } };
   response_format?:
     | { type: "json_object" | "text" }
@@ -440,7 +441,9 @@ function mapToolChoice(
   | { type: "tool"; toolName: string }
   | undefined {
   if (!toolChoice) return undefined;
-  if (toolChoice === "auto" || toolChoice === "none") return toolChoice;
+  if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") {
+    return toolChoice;
+  }
   return { type: "tool", toolName: toolChoice.function.name };
 }
 
