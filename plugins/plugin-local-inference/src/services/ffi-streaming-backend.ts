@@ -246,16 +246,9 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		return true;
 	}
 
-	/**
-	 * Speculative-decoding accessors. Eliza-1 uses native MTP heads in the
-	 * target model; there is no companion drafter path.
-	 */
-	drafterEnabled(): boolean {
+	/** True when Eliza-1 native MTP is active for the loaded target model. */
+	mtpEnabled(): boolean {
 		return this.session?.mtp !== null && this.session?.mtp !== undefined;
-	}
-
-	loadedDrafterModelPath(): string | null {
-		return null;
 	}
 
 	/**

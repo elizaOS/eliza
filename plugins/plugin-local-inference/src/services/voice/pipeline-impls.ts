@@ -91,7 +91,7 @@ export interface MtpTextRunner {
 
 /** Adapt a local-inference backend onto `MtpTextRunner`. */
 export function mtpTextRunner(runner: {
-	drafterEnabled(): boolean;
+	mtpEnabled(): boolean;
 	generateWithUsage(
 		args: GenerateArgs & {
 			onVerifierEvent: (event: VerifierStreamEvent) => void | Promise<void>;
@@ -100,7 +100,7 @@ export function mtpTextRunner(runner: {
 }): MtpTextRunner {
 	return {
 		hasDrafter() {
-			return runner.drafterEnabled();
+			return runner.mtpEnabled();
 		},
 		async generateWithVerifierEvents(args) {
 			const { text } = await runner.generateWithUsage(args);
@@ -247,11 +247,6 @@ export class MtpTargetVerifier implements TargetVerifier {
 		return { accepted: produced, done };
 	}
 }
-
-export type MtpTextRunner = MtpTextRunner;
-export const mtpTextRunner = mtpTextRunner;
-export const MtpDraftProposer = MtpDraftProposer;
-export const MtpTargetVerifier = MtpTargetVerifier;
 
 /* ------------------------------------------------------------------ */
 /* helpers                                                            */

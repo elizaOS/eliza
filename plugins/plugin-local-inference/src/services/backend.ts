@@ -262,19 +262,11 @@ export interface LocalInferenceBackend {
 	 */
 	resizeParallel?(target: number): Promise<boolean>;
 
-	/**
-	 * Memory-pressure hook for speculative/runtime auxiliary state.
-	 */
-	restartWithoutDrafter?(): Promise<boolean>;
-
 	/** Active parallel slot count. Default `1` on backends without pooling. */
 	parallelSlots?(): number;
 
-	/** True when speculative decoding is wired against a loaded drafter. */
-	drafterEnabled?(): boolean;
-
-	/** Absolute path to the loaded drafter GGUF, or null. */
-	loadedDrafterModelPath?(): string | null;
+	/** True when native MTP speculative decoding is enabled. */
+	mtpEnabled?(): boolean;
 
 	/** Absolute path to the loaded mmproj (vision) GGUF, or null. */
 	currentMmprojPath?(): string | null;
@@ -686,22 +678,12 @@ export class BackendDispatcher implements LocalInferenceBackend {
 		return this.active?.resizeParallel(target);
 	}
 
-	async restartWithoutDrafter(): Promise<boolean> {
-		this.ensureLoaded();
-		if (!this.active?.restartWithoutDrafter) return false;
-		return this.active?.restartWithoutDrafter();
-	}
-
 	parallelSlots(): number {
 		return this.active?.parallelSlots?.() ?? 1;
 	}
 
-	drafterEnabled(): boolean {
-		return this.active?.drafterEnabled?.() ?? false;
-	}
-
-	loadedDrafterModelPath(): string | null {
-		return this.active?.loadedDrafterModelPath?.() ?? null;
+	mtpEnabled(): boolean {
+		return this.active?.mtpEnabled?.() ?? false;
 	}
 
 	currentMmprojPath(): string | null {

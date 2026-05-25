@@ -107,8 +107,6 @@ export interface LlmStreamConfig {
 	draftMax: number;
 	/** Reserved for separate draft-model speculation; null for Eliza-1 MTP. */
 	draftModelPath: string | null;
-	/** DFlash companion drafter path for runtimes that attach a separate drafter. */
-	dflashDrafterPath?: string | null;
 }
 
 /**
@@ -364,7 +362,7 @@ export interface ElizaInferenceFfi {
 	 * True when this build exports the streaming LLM symbols
 	 * (`eliza_inference_llm_stream_*`). Transitional builds may load
 	 * without them; the runner uses this to pick between the FFI streaming
-	 * path and the HTTP `llama-server` path.
+	 * path.
 	 */
 	llmStreamSupported?(): boolean;
 	/**
@@ -728,7 +726,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 	};
 	// Streaming LLM (additive on top of v3). Bound opportunistically — when
-	// absent the runner falls back to the HTTP `llama-server` path.
+	// absent the runner reports native streaming as unsupported.
 	let llmStreamSymbolsAvailable = true;
 	const llmStreamDefs = {
 		eliza_inference_llm_stream_open: {
