@@ -27,10 +27,6 @@ import { createManager, type SecretsManager, type Vault } from "@elizaos/vault";
 // container object dodges TDZ because the container is hoisted with its
 // `undefined` initializer in the var-environment phase, and the only access
 // path goes through `state.manager` which is just an object property read.
-// biome-ignore lint/style/noVar: see TDZ note above — `var` is the correct
-//   primitive here. Spec says module-top `var` hoists to `undefined` before
-//   any executable code runs, so circular partial-eval still sees a defined
-//   binding rather than entering TDZ.
 var state: { manager: SecretsManager | null } = { manager: null };
 
 export function sharedSecretsManager(): SecretsManager {

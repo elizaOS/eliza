@@ -61,10 +61,6 @@ interface AgentBridge {
   saveElizaConfig: typeof SaveElizaConfigFn;
 }
 
-// biome-ignore lint/style/noVar: see top-of-file circular-import note. `var`
-//   hoists this slot to `undefined` before any executable line runs, which
-//   keeps the lazy-getter pattern robust against any future caller that
-//   reaches into this module during partial evaluation.
 var bridgeCache: AgentBridge | null = null;
 
 async function agentBridge(): Promise<AgentBridge> {

@@ -78,9 +78,6 @@ function resolveEntriesDir(): string {
 // (observed: vault-bootstrap → sensitiveKeysFromRegistry → loadRegistry
 // during agent startup on the elizaOS live USB).
 //
-// biome-ignore lint/style/noVar: see TDZ note above — module-top `var`
-//   hoists the container to `undefined` before any executable line runs,
-//   keeping the slot accessible even during circular partial-eval.
 var cacheSlot: { value: LoadedRegistry | null } = { value: null };
 
 export function loadRegistry(): LoadedRegistry {
