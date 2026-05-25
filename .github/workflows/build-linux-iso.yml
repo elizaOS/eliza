@@ -91,8 +91,21 @@ jobs:
 
       - name: Build ISO (${{ matrix.arch }})
         working-directory: ${{ env.LINUX_DIR }}
+        # ELIZAOS_BUILD_APP=1 lets `just elizaos-app` (the dependency of
+        # `just build`) compile the Electrobun desktop artifact in-CI when
+        # no pre-staged ${ELIZAOS_APP_ARTIFACT} is provided. Without this
+        # flag the recipe exits before staging, so the chroot hook fails
+        # with "ERROR: /opt/elizaos-artifacts missing" — the root cause
+        # of 8+ days of nightly red on this workflow.
+        #
+        # NODE_OPTIONS lifts the V8 heap so the Vite renderer build can
+        # bundle the full elizaOS plugin graph; the default 4 GB heap
+        # OOMs on the renderer step (observed locally on a 30 GB host).
+        env:
+          ELIZAOS_BUILD_APP: 1
+          NODE_OPTIONS: --max-old-space-size=12288
         run: just build
-        timeout-minutes: 110
+        timeout-minutes: 180
 
       - name: Locate and rename ISO
         id: iso
