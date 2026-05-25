@@ -3,10 +3,63 @@
 set -eu
 
 interval="${ELIZAOS_KEEPER_INTERVAL:-5}"
+# Auto-leave a stale maintenance flag once its mtime is older than this
+# threshold AND the user-session persistence wizard is not active. The
+# only legitimate "no wizard, flag held" caller is
+# /etc/gdm3/PostLogin/Default, which calls `enter` once during boot and
+# expects the downstream `create-persistent-storage-session` (which has
+# `trap cleanup EXIT`) to call `leave`. If that downstream never runs —
+# wizard crash, user cancels at greeter without removing the persist
+# checkbox, session-restart mid-wizard, SIGKILL — the flag stays and
+# elizaos-{agent,renderer,pill}.service all stay disabled because their
+# `ConditionPathExists=!/run/elizaos/persistence-maintenance` fails.
+# Symptom is "I click the elizaOS app and nothing happens". 120 seconds
+# is well outside the legitimate wizard window (it covers GDM login,
+# user-session startup, autostart, and the wizard's own startup); a
+# flag still held past that is a stuck flag.
+stale_threshold="${ELIZAOS_KEEPER_STALE_FLAG_SECONDS:-120}"
+maintenance_helper=/usr/local/lib/elizaos/persistence-maintenance
 runtime_dir=/run/user/1000
 bus="unix:path=${runtime_dir}/bus"
 maintenance_flag=/run/elizaos/persistence-maintenance
 user_persistence_flag="${runtime_dir}/elizaos-persistence-setup"
+
+now_seconds() {
+    date +%s
+}
+
+flag_age_seconds() {
+    flag_path="$1"
+    flag_mtime=$(stat -c %Y "${flag_path}" 2>/dev/null || echo "")
+    if [ -z "${flag_mtime}" ]; then
+        echo ""
+        return
+    fi
+    echo $(( $(now_seconds) - flag_mtime ))
+}
+
+auto_leave_if_stale() {
+    # Only the maintenance_flag has the timeout semantics: it's the
+    # system-wide "skip elizaos units" gate. The user_persistence_flag is
+    # owned by an in-session script that handles its own cleanup, so we
+    # leave it alone — auto-leaving while a wizard is actually running
+    # would race against the wizard's own enter/leave dance.
+    [ -e "${maintenance_flag}" ] || return 0
+    [ -e "${user_persistence_flag}" ] && return 0
+
+    age=$(flag_age_seconds "${maintenance_flag}")
+    if [ -z "${age}" ]; then
+        return 0
+    fi
+    if [ "${age}" -lt "${stale_threshold}" ]; then
+        return 0
+    fi
+
+    logger -t elizaos-keeper \
+        "stale persistence-maintenance flag (age=${age}s, threshold=${stale_threshold}s, no wizard active); calling leave to recover the desktop" \
+        2>/dev/null || true
+    "${maintenance_helper}" leave >/dev/null 2>&1 || true
+}
 
 clear_user_unit_override() {
     runuser -u amnesia -- env HOME=/home/amnesia sh -eu <<'EOF'
@@ -40,7 +93,7 @@ EOF
 
 while :; do
     if [ -e "${maintenance_flag}" ] || [ -e "${user_persistence_flag}" ]; then
-        :
+        auto_leave_if_stale
     elif [ -S "${runtime_dir}/bus" ]; then
         clear_user_unit_override || true
         runuser -u amnesia -- env \

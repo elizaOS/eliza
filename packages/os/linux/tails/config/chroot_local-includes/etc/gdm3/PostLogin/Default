@@ -112,7 +112,20 @@ else
     # You might wonder why should the file be there at all:
     # if you are debugging, you might want to run systemctl restart gdm
     rm -f /var/lib/live/config/tails.create-persistence
-    rm -f /run/elizaos/persistence-maintenance
+    # Use `persistence-maintenance leave` instead of `rm -f` directly so
+    # the elizaos-{agent,renderer,milady}.service units get reset-failed
+    # and restarted if any previous boot left them in a stopped state.
+    # A bare `rm` clears the gate but leaves the units in whatever state
+    # the prior boot's enter had killed them into — symptom: "I click
+    # the elizaOS app and nothing happens" until the user manually runs
+    # `sudo persistence-maintenance leave` (verified 2026-05-25 in QEMU
+    # session-restart scenario). The helper is fail-soft (`|| true`) so
+    # this never blocks login.
+    if [ -x /usr/local/lib/elizaos/persistence-maintenance ]; then
+        /usr/local/lib/elizaos/persistence-maintenance leave || true
+    else
+        rm -f /run/elizaos/persistence-maintenance
+    fi
 fi
 
 ### Gather general configuration
