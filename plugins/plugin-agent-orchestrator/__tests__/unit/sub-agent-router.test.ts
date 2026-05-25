@@ -529,6 +529,61 @@ describe("SubAgentRouter", () => {
     expect(handleMessage).toHaveBeenCalledTimes(2);
   });
 
+  it("absorbs cross-session task_complete for the same origin message (cascade-retry dedup)", async () => {
+    // Live regression on 2026-05-25 (issue elizaOS/eliza#7967): a single
+    // user prompt ("what is the current stable python version") fanned
+    // out into 5 sub-agent sessions (1 blocked, 1 errored, 3 task_complete)
+    // because the orchestrator auto-respawned on state_lost and verify-
+    // retry. Each task_complete posted a separate Discord message — the
+    // user saw 3 overlapping replies including a junky analytics URL
+    // pulled from python.org's page sub-resources.
+    //
+    // The dedup is keyed on (originMessageId, sessionId): a second
+    // task_complete from a DIFFERENT session for the SAME parent
+    // prompt is absorbed silently. Same-session progressive
+    // task_completes are unaffected (covered by the test above).
+    const SESSION_ID_2 = "abcdef01-2345-6789-abcd-ef0123456789";
+    const session2 = makeSession({
+      id: SESSION_ID_2,
+      name: "demo-task-retry",
+      metadata: {
+        label: "fix-bug-42-retry",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+      },
+    });
+    const acp2: CapturedHandler = {};
+    const service = {
+      onSessionEvent: vi.fn((handler: typeof acp2.fn) => {
+        acp2.fn = handler;
+        return () => {
+          acp2.fn = undefined;
+        };
+      }),
+      getSession: vi.fn(async (id: string) => {
+        if (id === SESSION_ID) return session;
+        if (id === SESSION_ID_2) return session2;
+        return null;
+      }),
+      listSessions: vi.fn(async () => [session, session2]),
+    };
+    const { runtime, handleMessage } = makeRuntime({ acp: service });
+    await SubAgentRouter.start(runtime);
+
+    acp2.fn?.(SESSION_ID, "task_complete", { response: "first session done" });
+    await new Promise((r) => setImmediate(r));
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+
+    acp2.fn?.(SESSION_ID_2, "task_complete", {
+      response: "retry session also done with different text",
+    });
+    await new Promise((r) => setImmediate(r));
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+  });
+
   it("skips sessions without origin metadata (no roomId)", async () => {
     session = makeSession({ metadata: { label: "no-origin" } });
     acp = makeAcpService(session);

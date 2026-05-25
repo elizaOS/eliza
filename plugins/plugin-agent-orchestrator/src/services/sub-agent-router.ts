@@ -285,6 +285,42 @@ export class SubAgentRouter extends Service {
   private readonly roundTripCounts = new Map<string, number>();
   private readonly capExceededSessions = new Set<string>();
   private readonly verifyRetryHandedOffSessions = new Set<string>();
+  // Maps origin message id → the FIRST session id that posted a
+  // task_complete for it. When a later task_complete arrives for the
+  // same origin from a DIFFERENT session, we absorb it: that's a
+  // retry-cascade post (orchestrator dispatched a fresh sub-agent
+  // after the first one already shipped) and the user should see one
+  // reply, not 2-3+ overlapping messages with random page sub-
+  // resources from each retry. Issue elizaOS/eliza#7967.
+  //
+  // Same-session progressive task_completes (a sub-agent reports
+  // partial progress then completion) still post both — the dedupe
+  // key includes sessionId so it does not collapse them.
+  //
+  // The map is bounded (LRU via FIFO drop) to prevent unbounded growth
+  // across long-running sessions. 1024 origin messages is well above
+  // any reasonable workload — Discord channels typically see hundreds
+  // of message-events per hour at most.
+  private readonly originFirstPostedSession: Map<string, string> = new Map();
+  private originHasPostedFromOtherSession(
+    originMessageId: string,
+    sessionId: string,
+  ): boolean {
+    const firstSession = this.originFirstPostedSession.get(originMessageId);
+    return firstSession !== undefined && firstSession !== sessionId;
+  }
+  private markOriginCompletionPosted(
+    originMessageId: string,
+    sessionId: string,
+  ): void {
+    if (this.originFirstPostedSession.has(originMessageId)) return;
+    this.originFirstPostedSession.set(originMessageId, sessionId);
+    while (this.originFirstPostedSession.size > 1024) {
+      const oldestKey = this.originFirstPostedSession.keys().next().value;
+      if (!oldestKey) break;
+      this.originFirstPostedSession.delete(oldestKey);
+    }
+  }
   private started = false;
   private roundTripCap = DEFAULT_ROUND_TRIP_CAP;
   private bindRetryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -551,6 +587,37 @@ export class SubAgentRouter extends Service {
         return;
       }
     }
+    // Origin-message dedupe: if a DIFFERENT sub-agent session for the
+    // SAME user prompt has already posted a task_complete to the user,
+    // absorb this one silently. This catches the cascade case where the
+    // orchestrator dispatched a retry sub-agent for a different reason
+    // (state_lost, blocked, transient error) after the first task_complete
+    // already shipped — without this guard the user sees 2-3+ overlapping
+    // replies with random URL leakage (issue elizaOS/eliza#7967).
+    //
+    // Same-session progressive task_completes (a sub-agent reports
+    // partial progress, then full completion) still post both — the
+    // dedupe key includes sessionId. Only cross-session retries are
+    // suppressed.
+    if (event === "task_complete" && origin.parentMessageId) {
+      if (
+        this.originHasPostedFromOtherSession(
+          origin.parentMessageId,
+          sessionId,
+        )
+      ) {
+        this.log(
+          "debug",
+          "suppressing duplicate sub-agent task_complete for origin; another session already posted for this prompt",
+          {
+            sessionId,
+            originMessageId: origin.parentMessageId,
+            event,
+          },
+        );
+        return;
+      }
+    }
     if (event === "task_complete" && verifiedUrls.length > 0) {
       text = verifiedUrlCompletionFallback(text, verifiedUrls);
     }
@@ -690,6 +757,17 @@ export class SubAgentRouter extends Service {
           source: ACPX_ROUTER_SOURCE,
         });
       }
+    }
+
+    // Record this session as the "first poster" for this origin so any
+    // later retry sub-agent (different sessionId) for the same parent
+    // prompt is absorbed silently (issue elizaOS/eliza#7967). Same-
+    // session progressive task_completes are unaffected because the
+    // dedupe check compares sessionIds. Must run AFTER the handleMessage
+    // / createMemory loop so an early failure doesn't poison future
+    // retries that might actually succeed.
+    if (event === "task_complete" && origin.parentMessageId) {
+      this.markOriginCompletionPosted(origin.parentMessageId, sessionId);
     }
   }
 
