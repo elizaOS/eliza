@@ -88,6 +88,26 @@ def main():
         print(uri)
         return
 
+    # file:// URIs go to the elizaOS WebKit shell, not Tor Browser.
+    #
+    # Tor Browser runs inside a flatpak sandbox that has no read access to
+    # /usr/share/doc/, so routing offline help through it produces a
+    # "Access to the file was denied" error page (reproduced 2026-05-25 in
+    # QEMU: clicking the elizaOS Documentation launcher loads the URI in
+    # Tor Browser and the flatpak sandbox refuses the read). The fix is
+    # not to weaken the Tor Browser sandbox; it is to route local help
+    # through a different WebKit instance. elizaos-webkit-shell is the
+    # same WebKit2GTK widget the main Milady app uses, already runs as
+    # the amnesia user, and has full file:// access.
+    #
+    # Remote https:// URIs continue to go through Tor Browser so external
+    # documentation links keep their privacy guarantee.
+    if uri.startswith("file://"):
+        os.execv(
+            "/usr/local/lib/elizaos/elizaos-webkit-shell",
+            ["/usr/local/lib/elizaos/elizaos-webkit-shell", uri],
+        )
+
     os.environ["TOR_BROWSER_SKIP_OFFLINE_WARNING"] = "yes"
     # Some of our callers capture the stderr of the
     # tails-documentation command, which, if we did not use
