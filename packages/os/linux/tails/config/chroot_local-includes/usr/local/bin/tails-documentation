@@ -103,6 +103,14 @@ def main():
     # Remote https:// URIs continue to go through Tor Browser so external
     # documentation links keep their privacy guarantee.
     if uri.startswith("file://"):
+        # Distinguish the docs window from the main agent shell in the
+        # taskbar / Alt-Tab. ELIZAOS_SHELL_TITLE was added in PR #7972
+        # specifically for this — without it, both windows render as
+        # "elizaOS" and users cannot tell them apart (the wm_class stays
+        # "elizaOS" intentionally so GNOME keeps them grouped under the
+        # same .desktop icon). WebKit may replace this title from the
+        # loaded HTML <title> once the page renders; that is expected.
+        os.environ["ELIZAOS_SHELL_TITLE"] = "elizaOS — Documentation"
         os.execv(
             "/usr/local/lib/elizaos/elizaos-webkit-shell",
             ["/usr/local/lib/elizaos/elizaos-webkit-shell", uri],
