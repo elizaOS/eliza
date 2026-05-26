@@ -37,8 +37,8 @@
  */
 
 import { access } from "node:fs/promises";
-import { homedir } from "node:os";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 
 import type {
 	Eliza1EotScoreResult,
@@ -381,8 +381,7 @@ export interface LiveKitTurnDetectorOptions {
 }
 
 export const DEFAULT_LIVEKIT_TURN_DETECTOR_DIR = path.join(
-	homedir(),
-	".eliza",
+	resolveStateDir(),
 	"local-inference",
 	"models",
 	"turn-detector",
@@ -664,8 +663,7 @@ function softmaxProbability(
 export const TURNSENSE_HF_REPO = "latishab/turnsense";
 export const DEFAULT_TURNSENSE_ONNX = "model_quantized.onnx";
 export const DEFAULT_TURNSENSE_DIR = path.join(
-	homedir(),
-	".eliza",
+	resolveStateDir(),
 	"local-inference",
 	"models",
 	"turn-detector",

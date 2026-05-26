@@ -3,6 +3,34 @@ export interface LocalAsrRecorder {
   cancel(): void;
 }
 
+export interface LocalAsrAutoStopOptions {
+  startGraceMs?: number;
+  minSpeechMs?: number;
+  silenceMs?: number;
+  maxSpeechMs?: number;
+  speechRmsThreshold?: number;
+  speechPeakThreshold?: number;
+}
+
+export interface LocalAsrRecorderOptions {
+  autoStop?: LocalAsrAutoStopOptions;
+  onAutoStop?: () => void;
+}
+
+interface LocalAsrAutoStopConfig {
+  startGraceMs: number;
+  minSpeechMs: number;
+  silenceMs: number;
+  maxSpeechMs: number;
+  speechRmsThreshold: number;
+  speechPeakThreshold: number;
+}
+
+export interface LocalAsrAutoStopUpdate {
+  shouldBuffer: boolean;
+  shouldStop: boolean;
+}
+
 type AudioContextConstructor = typeof AudioContext;
 
 type WindowWithAudioContext = Window & {
@@ -46,6 +74,10 @@ function clampPcm16(value: number): number {
   return Math.max(-1, Math.min(1, value));
 }
 
+function nowMs(): number {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+
 export type PcmAudioStats = {
   rms: number;
   peak: number;
@@ -72,6 +104,70 @@ export function measurePcmAudio(pcm: Float32Array): PcmAudioStats {
 
 export function isSilentPcmAudio(pcm: Float32Array): boolean {
   return measurePcmAudio(pcm).peak < 0.0005;
+}
+
+const DEFAULT_LOCAL_ASR_AUTO_STOP: LocalAsrAutoStopConfig = {
+  startGraceMs: 250,
+  minSpeechMs: 180,
+  silenceMs: 900,
+  maxSpeechMs: 12_000,
+  speechRmsThreshold: 0.003,
+  speechPeakThreshold: 0.012,
+};
+
+export function createLocalAsrAutoStopDetector(
+  options: LocalAsrAutoStopOptions | undefined,
+  startedAtMs = nowMs(),
+): ((pcm: Float32Array, sampleTimeMs?: number) => LocalAsrAutoStopUpdate) | null {
+  if (!options) return null;
+
+  const config: LocalAsrAutoStopConfig = {
+    ...DEFAULT_LOCAL_ASR_AUTO_STOP,
+    ...options,
+  };
+  let firstSpeechAtMs: number | null = null;
+  let lastSpeechAtMs: number | null = null;
+  let stopped = false;
+
+  return (pcm: Float32Array, sampleTimeMs = nowMs()) => {
+    if (stopped) return { shouldBuffer: false, shouldStop: false };
+
+    const elapsedMs = Math.max(0, sampleTimeMs - startedAtMs);
+    if (elapsedMs < config.startGraceMs) {
+      return { shouldBuffer: false, shouldStop: false };
+    }
+
+    const stats = measurePcmAudio(pcm);
+    const speechDetected =
+      stats.rms >= config.speechRmsThreshold ||
+      stats.peak >= config.speechPeakThreshold;
+
+    if (speechDetected) {
+      if (firstSpeechAtMs === null) firstSpeechAtMs = sampleTimeMs;
+      lastSpeechAtMs = sampleTimeMs;
+      if (sampleTimeMs - firstSpeechAtMs >= config.maxSpeechMs) {
+        stopped = true;
+        return { shouldBuffer: true, shouldStop: true };
+      }
+      return { shouldBuffer: true, shouldStop: false };
+    }
+
+    if (firstSpeechAtMs === null || lastSpeechAtMs === null) {
+      return { shouldBuffer: false, shouldStop: false };
+    }
+
+    const speechDurationMs = lastSpeechAtMs - firstSpeechAtMs;
+    const silenceDurationMs = sampleTimeMs - lastSpeechAtMs;
+    if (
+      speechDurationMs >= config.minSpeechMs &&
+      silenceDurationMs >= config.silenceMs
+    ) {
+      stopped = true;
+      return { shouldBuffer: false, shouldStop: true };
+    }
+
+    return { shouldBuffer: true, shouldStop: false };
+  };
 }
 
 export function encodeMonoPcm16Wav(
@@ -109,7 +205,9 @@ export function encodeMonoPcm16Wav(
   return new Uint8Array(buffer);
 }
 
-export async function startLocalAsrRecorder(): Promise<LocalAsrRecorder> {
+export async function startLocalAsrRecorder(
+  options: LocalAsrRecorderOptions = {},
+): Promise<LocalAsrRecorder> {
   const AudioContextCtor = getAudioContextCtor();
   if (!AudioContextCtor) {
     throw new Error("AudioContext is not available for local ASR capture");
@@ -135,6 +233,8 @@ export async function startLocalAsrRecorder(): Promise<LocalAsrRecorder> {
   const processor = context.createScriptProcessor(4096, 1, 1);
   const chunks: Float32Array[] = [];
   let stopped = false;
+  let autoStopRequested = false;
+  const autoStopDetector = createLocalAsrAutoStopDetector(options.autoStop);
 
   processor.onaudioprocess = (event) => {
     if (stopped) return;
@@ -150,7 +250,21 @@ export async function startLocalAsrRecorder(): Promise<LocalAsrRecorder> {
       }
     }
 
-    chunks.push(mono);
+    const autoStopUpdate = autoStopDetector?.(mono) ?? {
+      shouldBuffer: true,
+      shouldStop: false,
+    };
+    if (autoStopUpdate.shouldBuffer) {
+      chunks.push(mono);
+    }
+    if (
+      autoStopUpdate.shouldStop &&
+      !autoStopRequested &&
+      options.onAutoStop
+    ) {
+      autoStopRequested = true;
+      window.setTimeout(options.onAutoStop, 0);
+    }
   };
 
   source.connect(processor);

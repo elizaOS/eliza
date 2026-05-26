@@ -7,6 +7,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 import {
   parseFrontmatter,
   resolveSkillInvocationPolicy,
@@ -27,7 +28,7 @@ import type {
 const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
 const CONFIG_DIR_NAME = ".elizaos";
-const DEFAULT_AGENT_DIR = join(homedir(), CONFIG_DIR_NAME);
+const DEFAULT_AGENT_DIR = resolveStateDir();
 
 function validateName(name: string, parentDirName: string): string[] {
   const errors: string[] = [];
@@ -222,7 +223,7 @@ function isUnderPath(target: string, root: string): boolean {
  *
  * Sources are loaded in precedence order (later sources override earlier):
  * 1. Bundled skills (from this package)
- * 2. User/managed skills (~/.elizaos/skills)
+ * 2. User/managed skills (<stateDir>/skills)
  * 3. Project skills (<cwd>/.elizaos/skills)
  * 4. Explicit skill paths
  *

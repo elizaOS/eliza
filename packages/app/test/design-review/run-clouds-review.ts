@@ -3,14 +3,14 @@
  *
  * Boots a tiny Vite harness that mounts the REAL `CloudVideoBackground`
  * (poster-first, then the streamed HQ cloud loop) full-screen, with the
- * onboarding and home surfaces layered above it in Z — exactly how the app
+ * first-run and home surfaces layered above it in Z — exactly how the app
  * stacks them. Serves the synced brand assets from `packages/app/public` so
  * the real `clouds_background.jpg` + `Clouds_Loop_HQ_1080p.mp4` are used.
  *
  * Captures, per scene × viewport:
  *   - `<scene>-poster.png`  the immediate jpeg-first paint
  *   - `<scene>-video.png`   after the cloud loop has streamed in
- * and records a short video of the onboarding→home transition.
+ * and records a short video of the first-run-to-home transition.
  *
  * Output: packages/app/test-results/design-review/clouds/
  *
@@ -27,7 +27,7 @@ import { createServer as createViteServer, type ViteDevServer } from "vite";
 import { getFreePort } from "../utils/get-free-port.mjs";
 
 type ViewportId = "desktop" | "mobile";
-type SceneId = "onboarding" | "home";
+type SceneId = "first-run" | "home";
 
 interface ViewportSpec {
   id: ViewportId;
@@ -61,7 +61,7 @@ function buildHarnessMain(): string {
     import { CloudVideoBackground } from "/@fs/${cloudPath}";
 
     const params = new URLSearchParams(window.location.search);
-    const scene = params.get("scene") || "onboarding";
+    const scene = params.get("scene") || "first-run";
 
     const glass = {
       background: "rgba(255,255,255,0.36)",
@@ -81,7 +81,7 @@ function buildHarnessMain(): string {
       ]);
     }
 
-    function Onboarding() {
+    function FirstRun() {
       return React.createElement("div", {
         style: { minHeight: "100%", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "64px 16px" },
       },
@@ -123,9 +123,9 @@ function buildHarnessMain(): string {
 
     createRoot(document.getElementById("root")).render(
       React.createElement(CloudVideoBackground, {
-        scrim: scene === "onboarding" ? 0.05 : 0.08,
+        scrim: scene === "first-run" ? 0.05 : 0.08,
         style: { position: "fixed", inset: 0 },
-      }, scene === "home" ? React.createElement(Home) : React.createElement(Onboarding))
+      }, scene === "home" ? React.createElement(Home) : React.createElement(FirstRun))
     );
   `;
 }
@@ -205,7 +205,7 @@ async function main(): Promise<void> {
       });
       const page = await context.newPage();
 
-      for (const scene of ["onboarding", "home"] as SceneId[]) {
+      for (const scene of ["first-run", "home"] as SceneId[]) {
         await page.goto(`${url}/?scene=${scene}`, {
           waitUntil: "domcontentloaded",
         });
@@ -231,13 +231,13 @@ async function main(): Promise<void> {
       await context.close();
       if (video) {
         const saved = await video.path();
-        await rm(path.join(videoRoot, `${vp.id}-onboarding-to-home.webm`), {
+        await rm(path.join(videoRoot, `${vp.id}-first-run-to-home.webm`), {
           force: true,
         }).catch(() => {});
         const fs = await import("node:fs/promises");
         await fs.rename(
           saved,
-          path.join(videoRoot, `${vp.id}-onboarding-to-home.webm`),
+          path.join(videoRoot, `${vp.id}-first-run-to-home.webm`),
         );
       }
       console.log(`[clouds-review] captured ${vp.id}`);

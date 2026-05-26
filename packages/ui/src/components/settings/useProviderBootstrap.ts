@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import { client } from "../../api";
-import { getOnboardingProviderOption } from "../../providers";
+import { getFirstRunProviderOption } from "../../providers";
 import type { useCloudModelConfig } from "./useCloudModelConfig";
 import type { useProviderSelection } from "./useProviderSelection";
 
@@ -52,7 +52,7 @@ export function useProviderBootstrap(
     void loadSubscriptionStatus();
     void (async () => {
       try {
-        const opts = await client.getOnboardingOptions();
+        const opts = await client.getFirstRunOptions();
         cloudModel.setModelOptions({
           nano: opts.models?.nano ?? [],
           small: opts.models?.small ?? [],
@@ -61,12 +61,12 @@ export function useProviderBootstrap(
           mega: opts.models?.mega ?? [],
         });
       } catch {
-        // onboarding options are best-effort
+        // first-run options are best-effort
       }
       try {
         const cfg = await client.getConfig();
         const llmText = resolveServiceRoutingInConfig(cfg)?.llmText;
-        const providerId = getOnboardingProviderOption(llmText?.backend)?.id;
+        const providerId = getFirstRunProviderOption(llmText?.backend)?.id;
         const elizaCloudEnabledCfg =
           llmText?.transport === "cloud-proxy" && providerId === "elizacloud";
         cloudModel.initializeFromConfig(cfg, elizaCloudEnabledCfg);

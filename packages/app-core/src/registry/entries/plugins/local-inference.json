@@ -23,7 +23,7 @@
       "required": false,
       "sensitive": false,
       "label": "Models Dir",
-      "help": "Filesystem path to the directory where GGUF models are stored. Defaults to ~/.eliza/models.",
+      "help": "Filesystem path to the directory where GGUF models are stored. Defaults to <stateDir>/models.",
       "advanced": false
     },
     "CACHE_DIR": {

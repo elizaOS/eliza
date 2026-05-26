@@ -1,5 +1,5 @@
 /**
- * No-op `CloudOnboardingObserver` for tests and headless runs.
+ * No-op `CloudSetupObserver` for tests and headless runs.
  *
  * - All event methods are no-ops.
  * - All prompt methods resolve to `null` (i.e. "user cancelled"), which
@@ -12,13 +12,13 @@
  * @module cloud/null-observer
  */
 import type {
-  CloudOnboardingObserver,
+  CloudSetupObserver,
   ConfirmPrompt,
   ProvisionSuccessInfo,
   SelectChoicePrompt,
-} from "./onboarding-observer.js";
+} from "./setup-observer.js";
 
-export class NullCloudOnboardingObserver implements CloudOnboardingObserver {
+export class NullCloudSetupObserver implements CloudSetupObserver {
   onAvailabilityChecked(_result: { ok: boolean; reason?: string }): void {}
   onAuthStart(_loginUrl: string): void {}
   onAuthBrowserOpenFailed(_loginUrl: string, _error: Error): void {}

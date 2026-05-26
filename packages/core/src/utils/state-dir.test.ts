@@ -23,26 +23,52 @@ describe("resolveStateDir", () => {
 		).toBe("/tmp/canonical");
 	});
 
+	it("honors MILADY_STATE_DIR as an alias", () => {
+		expect(
+			resolveStateDir({ MILADY_STATE_DIR: "/tmp/milady" }, fakeHomedir),
+		).toBe("/tmp/milady");
+	});
+
 	it("uses the namespace default when ELIZA_STATE_DIR is unset", () => {
 		expect(resolveStateDir({ ELIZA_NAMESPACE: "eliza" }, fakeHomedir)).toBe(
-			join(FAKE_HOME, ".eliza"),
+			join(FAKE_HOME, ".local", "state", "eliza"),
 		);
 	});
 
-	it("derives ~/.<namespace> from ELIZA_NAMESPACE when no override is set", () => {
+	it("derives ~/.local/state/<namespace> from ELIZA_NAMESPACE when no override is set", () => {
 		expect(resolveStateDir({ ELIZA_NAMESPACE: "custom" }, fakeHomedir)).toBe(
-			join(FAKE_HOME, ".custom"),
+			join(FAKE_HOME, ".local", "state", "custom"),
 		);
 	});
 
 	it("defaults the namespace to 'eliza' when nothing is set", () => {
-		expect(resolveStateDir({}, fakeHomedir)).toBe(join(FAKE_HOME, ".eliza"));
+		expect(resolveStateDir({}, fakeHomedir)).toBe(
+			join(FAKE_HOME, ".local", "state", "eliza"),
+		);
 	});
 
 	it("treats whitespace-only env values as unset, falling through to the default", () => {
 		expect(resolveStateDir({ ELIZA_STATE_DIR: "   " }, fakeHomedir)).toBe(
-			join(FAKE_HOME, ".eliza"),
+			join(FAKE_HOME, ".local", "state", "eliza"),
 		);
+	});
+
+	it("honors XDG_STATE_HOME when ELIZA_STATE_DIR is unset", () => {
+		expect(
+			resolveStateDir(
+				{ XDG_STATE_HOME: "/tmp/state", ELIZA_NAMESPACE: "custom" },
+				fakeHomedir,
+			),
+		).toBe("/tmp/state/custom");
+	});
+
+	it("resolves a relative XDG_STATE_HOME under the user home", () => {
+		expect(
+			resolveStateDir(
+				{ XDG_STATE_HOME: ".state", ELIZA_NAMESPACE: "custom" },
+				fakeHomedir,
+			),
+		).toBe(join(FAKE_HOME, ".state", "custom"));
 	});
 
 	it("expands a leading ~ in env overrides via the real homedir", () => {

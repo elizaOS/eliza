@@ -838,8 +838,16 @@ export function configureLocalEmbeddingPlugin(
     detectedPreset.gpuLayers === "auto" ? "false" : "true",
   );
 
-  // Set default models directory if not present
-  setEnvIfMissing("MODELS_DIR", path.join(os.homedir(), ".eliza", "models"));
+  setEnvIfMissing("MODELS_DIR", path.join(resolveStateDir(), "models"));
+  const documentEmbeddingProvider = process.env.EMBEDDING_PROVIDER?.trim();
+  if (
+    !documentEmbeddingProvider ||
+    !["local", "openai", "google"].includes(
+      documentEmbeddingProvider.toLowerCase(),
+    )
+  ) {
+    process.env.EMBEDDING_PROVIDER = "local";
+  }
 
   // Normalize Google AI API key aliases — the elizaOS plugin and @google/genai
   // SDK expect different env var names. Canonicalize to the long form that
@@ -1718,7 +1726,7 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   if (!cloud && !isCloudContainer) return;
   const topology = resolveElizaCloudTopology(config as Record<string, unknown>);
 
-  // Cloud inference is selected from the canonical onboarding connection, not
+  // Cloud inference is selected from the canonical first-run connection, not
   // just from raw cloud flags. This keeps linked cloud auth from re-enabling
   // Eliza Cloud after the user has switched to a local or remote provider.
   const effectivelyEnabled = topology.services.inference || isCloudContainer;
@@ -1899,7 +1907,7 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
  * credentials (or use the explicit `connectionString` field) and set
  * `POSTGRES_URL`. When the provider is "pglite" (the default), we set
  * `PGLITE_DATA_DIR` to either the configured value or the resolved default
- * workspace (`<workspace>/.eliza/.elizadb`) and remove any stale
+ * workspace (`<workspace>/.elizadb`) and remove any stale
  * `POSTGRES_URL`.
  */
 /** @internal Exported for testing. */
@@ -1918,7 +1926,7 @@ export function applyX402ConfigToEnv(config: ElizaConfig): void {
 function resolveDefaultPgliteDataDir(config: ElizaConfig): string {
   const workspaceDir =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
-  return path.join(resolveUserPath(workspaceDir), ".eliza", ".elizadb");
+  return path.join(resolveUserPath(workspaceDir), ".elizadb");
 }
 
 /**
@@ -3019,9 +3027,9 @@ export interface StartElizaOptions {
 
 export interface BootElizaRuntimeOptions {
   /**
-   * When true, require an existing ~/.eliza/eliza.json config file.
+   * When true, require an existing state-dir config file.
    * This is used by non-CLI UIs (like the @elizaos/tui interface) where interactive
-   * onboarding prompts would break the alternate screen.
+   * first-run prompts would break the alternate screen.
    */
   requireConfig?: boolean;
 }
@@ -3123,7 +3131,7 @@ export async function startEliza(
   // Register log listener for chat mirroring
   addLogListener(logToChatListener);
 
-  // 1. Load Eliza config from ~/.eliza/eliza.json
+  // 1. Load Eliza config from the resolved state dir.
   let config: ElizaConfig;
   try {
     config = loadElizaConfig();
@@ -3138,10 +3146,10 @@ export async function startEliza(
     }
   }
 
-  // 1b. First-run onboarding — ask for agent name if not configured.
-  //     In headless mode (GUI) the onboarding is handled by the web UI,
+  // 1b. First-run setup — ask for agent name if not configured.
+  //     In headless mode (GUI) the first-run setup is handled by the web UI,
   //     so we skip the interactive CLI prompt and let the runtime start
-  //     with defaults.  The GUI will restart the agent after onboarding.
+  //     with defaults.  The GUI will restart the agent after first-run setup.
   if (!opts?.headless) {
     config = await runFirstTimeSetup(config);
   }
@@ -3415,7 +3423,7 @@ export async function startEliza(
     );
   }
 
-  // 2h. Cloud mode — if the user chose cloud during onboarding (or on a
+  // 2h. Cloud mode — if the user chose cloud during first-run setup (or on a
   //     subsequent start with cloud config), skip local runtime setup and
   //     connect via the thin client instead.
   const deploymentTarget = resolveDeploymentTargetInConfig(
@@ -3425,7 +3433,7 @@ export async function startEliza(
   // 2h-pre. Store-variant build: macOS App Sandbox / MAS / MS Store / Flathub
   // policy is incompatible with running an embedded local AgentRuntime, so
   // store builds must route to Eliza Cloud. If the cloud config is missing,
-  // fail loudly and route the user to onboarding.
+  // fail loudly and route the user to first-run setup.
   const { isStoreBuild, getBuildVariant } = await importAppCoreRuntime();
 
   // Boot-time observability: print the resolved (buildVariant, deploymentTarget,
@@ -3443,13 +3451,13 @@ export async function startEliza(
     if (deploymentTarget.runtime === "local") {
       throw new Error(
         "[eliza] Store-variant builds cannot run a local agent. " +
-          "Pair an Eliza Cloud account in onboarding, or switch to the direct download build.",
+          "Pair an Eliza Cloud account in first-run setup, or switch to the direct download build.",
       );
     }
     if (!config.cloud?.apiKey?.trim() || !config.cloud?.agentId?.trim()) {
       throw new Error(
         "[eliza] Store-variant build requires a paired Eliza Cloud account. " +
-          "Run onboarding to link Eliza Cloud, or switch to the direct download build.",
+          "Run first-run setup to link Eliza Cloud, or switch to the direct download build.",
       );
     }
     return startInCloudMode(config, config.cloud.agentId, opts);
@@ -3557,7 +3565,7 @@ export async function startEliza(
   });
 
   // 6. Resolve and load plugins
-  // In headless (GUI) mode before onboarding, the user hasn't configured a
+  // In headless (GUI) mode before first-run setup, the user hasn't configured a
   // provider yet.  Downgrade diagnostics so the expected "no AI provider"
   // state doesn't appear as a scary Error in the terminal.
   const preOnboarding = opts?.headless && !config.agents;
@@ -3568,7 +3576,7 @@ export async function startEliza(
   if (resolvedPlugins.length === 0) {
     if (preOnboarding) {
       logger.info(
-        "[eliza] No plugins loaded yet — the onboarding wizard will configure a model provider",
+        "[eliza] No plugins loaded yet — the first-run setup will configure a model provider",
       );
     } else {
       logger.error(
@@ -3893,7 +3901,7 @@ export async function startEliza(
       ...(config.skills?.denyBundled
         ? { SKILLS_DENYLIST: config.skills.denyBundled.join(",") }
         : {}),
-      // Managed skills are stored in the Eliza state dir (~/.eliza/skills).
+      // Managed skills are stored in the Eliza state dir.
       SKILLS_DIR: managedSkillsDir,
       // Tell plugin-agent-skills where to find bundled + workspace skills
       ...(bundledSkillsDir ? { BUNDLED_SKILLS_DIRS: bundledSkillsDir } : {}),
@@ -4534,7 +4542,7 @@ export async function startEliza(
           // (especially plugin-elizacloud) can discover them.  The initial
           // startup does this in startEliza(); the hot-reload must repeat it
           // because the config may have changed (e.g. cloud enabled during
-          // onboarding).
+          // first-run setup).
           applyConnectorSecretsToEnv(freshConfig);
           await autoResolveDiscordAppId();
           applyCloudConfigToEnv(freshConfig);
@@ -4568,7 +4576,7 @@ export async function startEliza(
           }
 
           // Apply subscription-based credentials (Claude Max, Codex Max)
-          // that may have been set up during onboarding.
+          // that may have been set up during first-run setup.
           try {
             const { applySubscriptionCredentials } = await import(
               "../auth/index.ts"
@@ -4583,7 +4591,7 @@ export async function startEliza(
           // Resolve plugins using same function as startup
           const resolvedPlugins = await resolvePlugins(freshConfig);
 
-          // Rebuild character from the fresh config so onboarding changes
+          // Rebuild character from the fresh config so first-run changes
           // (name, bio, style, etc.) are picked up on restart.
           const freshCharacter = buildCharacterFromConfig(freshConfig);
 
@@ -4840,7 +4848,7 @@ export async function startEliza(
       metadata: { ownership: { ownerId: userId } },
     });
     // Ensure the world has ownership metadata so the settings
-    // provider can locate it via findWorldsForOwner during onboarding.
+    // provider can locate it via findWorldsForOwner during first-run setup.
     // This also handles worlds that already exist from a prior session
     // but were created without ownership metadata.
     const world = await runtime.getWorld(worldId);

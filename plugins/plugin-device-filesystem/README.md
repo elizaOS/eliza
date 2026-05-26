@@ -22,7 +22,8 @@ The bridge picks one of two backends at startup:
   This is the path used when the agent is hosted in Eliza Cloud and a Capacitor
   shell on the user's device proxies storage calls.
 - **Node** — when not on Capacitor. Uses `fs/promises` rooted at
-  `resolveStateDir() + "/workspace"` (default `~/.eliza/workspace`).
+  `resolveStateDir() + "/workspace"` (default
+  `~/.local/state/eliza/workspace` unless XDG or env overrides it).
 
 Both backends reject absolute paths, `..` traversal, NUL bytes, and (on Node)
 any resolution that escapes the workspace root.

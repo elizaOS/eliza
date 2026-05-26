@@ -8,8 +8,8 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type { AgentStatus } from "../api";
 import {
-  loadPersistedOnboardingComplete,
-  savePersistedOnboardingComplete,
+  loadPersistedFirstRunComplete,
+  savePersistedFirstRunComplete,
 } from "./persistence";
 import type {
   ActionNotice,
@@ -24,9 +24,9 @@ import type {
 export interface LifecycleState {
   connected: boolean;
   agentStatus: AgentStatus | null;
-  onboardingComplete: boolean;
-  onboardingUiRevealNonce: number;
-  onboardingLoading: boolean;
+  firstRunComplete: boolean;
+  firstRunUiRevealNonce: number;
+  firstRunLoading: boolean;
   startupPhase: StartupPhase;
   startupError: StartupErrorState | null;
   startupRetryNonce: number;
@@ -45,9 +45,9 @@ export interface LifecycleState {
 const INITIAL_LIFECYCLE_STATE: LifecycleState = {
   connected: false,
   agentStatus: null,
-  onboardingComplete: loadPersistedOnboardingComplete(),
-  onboardingUiRevealNonce: 0,
-  onboardingLoading: true,
+  firstRunComplete: loadPersistedFirstRunComplete(),
+  firstRunUiRevealNonce: 0,
+  firstRunLoading: true,
   startupPhase: "starting-backend",
   startupError: null,
   startupRetryNonce: 0,
@@ -73,9 +73,9 @@ const INITIAL_LIFECYCLE_STATE: LifecycleState = {
 type LifecycleAction_ =
   | { type: "SET_CONNECTED"; value: boolean }
   | { type: "SET_AGENT_STATUS"; value: AgentStatus | null }
-  | { type: "SET_ONBOARDING_COMPLETE"; value: boolean }
-  | { type: "INCREMENT_ONBOARDING_REVEAL_NONCE" }
-  | { type: "SET_ONBOARDING_LOADING"; value: boolean }
+  | { type: "SET_FIRST_RUN_COMPLETE"; value: boolean }
+  | { type: "INCREMENT_FIRST_RUN_REVEAL_NONCE" }
+  | { type: "SET_FIRST_RUN_LOADING"; value: boolean }
   | { type: "SET_STARTUP_PHASE"; value: StartupPhase }
   | { type: "SET_STARTUP_ERROR"; value: StartupErrorState | null }
   | { type: "RETRY_STARTUP" }
@@ -105,15 +105,15 @@ function lifecycleReducer(
       return { ...state, connected: action.value };
     case "SET_AGENT_STATUS":
       return { ...state, agentStatus: action.value };
-    case "SET_ONBOARDING_COMPLETE":
-      return { ...state, onboardingComplete: action.value };
-    case "INCREMENT_ONBOARDING_REVEAL_NONCE":
+    case "SET_FIRST_RUN_COMPLETE":
+      return { ...state, firstRunComplete: action.value };
+    case "INCREMENT_FIRST_RUN_REVEAL_NONCE":
       return {
         ...state,
-        onboardingUiRevealNonce: state.onboardingUiRevealNonce + 1,
+        firstRunUiRevealNonce: state.firstRunUiRevealNonce + 1,
       };
-    case "SET_ONBOARDING_LOADING":
-      return { ...state, onboardingLoading: action.value };
+    case "SET_FIRST_RUN_LOADING":
+      return { ...state, firstRunLoading: action.value };
     case "SET_STARTUP_PHASE":
       return { ...state, startupPhase: action.value };
     case "SET_STARTUP_ERROR":
@@ -123,7 +123,7 @@ function lifecycleReducer(
         ...state,
         startupError: null,
         authRequired: false,
-        onboardingLoading: true,
+        firstRunLoading: true,
         startupPhase: "starting-backend",
         startupRetryNonce: state.startupRetryNonce + 1,
       };
@@ -206,9 +206,9 @@ export interface LifecycleStateHook {
   setAgentStatus: (v: AgentStatus | null) => void;
   /** Only calls setAgentStatus when the payload has materially changed. */
   setAgentStatusIfChanged: (next: AgentStatus | null) => void;
-  setOnboardingComplete: (v: boolean) => void;
-  incrementOnboardingRevealNonce: () => void;
-  setOnboardingLoading: (v: boolean) => void;
+  setFirstRunComplete: (v: boolean) => void;
+  incrementFirstRunRevealNonce: () => void;
+  setFirstRunLoading: (v: boolean) => void;
   setStartupPhase: (v: StartupPhase) => void;
   setStartupError: (v: StartupErrorState | null) => void;
   retryStartup: () => void;
@@ -290,16 +290,16 @@ export function useLifecycleState(): LifecycleStateHook {
     dispatch({ type: "SET_AGENT_STATUS", value: next });
   }, []);
 
-  const setOnboardingComplete = useCallback((v: boolean) => {
-    savePersistedOnboardingComplete(v);
-    dispatch({ type: "SET_ONBOARDING_COMPLETE", value: v });
+  const setFirstRunComplete = useCallback((v: boolean) => {
+    savePersistedFirstRunComplete(v);
+    dispatch({ type: "SET_FIRST_RUN_COMPLETE", value: v });
   }, []);
-  const incrementOnboardingRevealNonce = useCallback(
-    () => dispatch({ type: "INCREMENT_ONBOARDING_REVEAL_NONCE" }),
+  const incrementFirstRunRevealNonce = useCallback(
+    () => dispatch({ type: "INCREMENT_FIRST_RUN_REVEAL_NONCE" }),
     [],
   );
-  const setOnboardingLoading = useCallback(
-    (v: boolean) => dispatch({ type: "SET_ONBOARDING_LOADING", value: v }),
+  const setFirstRunLoading = useCallback(
+    (v: boolean) => dispatch({ type: "SET_FIRST_RUN_LOADING", value: v }),
     [],
   );
   const setStartupPhase = useCallback(
@@ -411,14 +411,14 @@ export function useLifecycleState(): LifecycleStateHook {
   const startupStatus = useMemo<AppState["startupStatus"]>(() => {
     if (state.startupError) return "recoverable-error";
     if (state.authRequired) return "auth-blocked";
-    if (state.onboardingLoading || state.startupPhase !== "ready")
+    if (state.firstRunLoading || state.startupPhase !== "ready")
       return "loading";
-    if (!state.onboardingComplete) return "onboarding";
+    if (!state.firstRunComplete) return "first-run";
     return "ready";
   }, [
     state.authRequired,
-    state.onboardingComplete,
-    state.onboardingLoading,
+    state.firstRunComplete,
+    state.firstRunLoading,
     state.startupError,
     state.startupPhase,
   ]);
@@ -429,9 +429,9 @@ export function useLifecycleState(): LifecycleStateHook {
     setConnected,
     setAgentStatus,
     setAgentStatusIfChanged,
-    setOnboardingComplete,
-    incrementOnboardingRevealNonce,
-    setOnboardingLoading,
+    setFirstRunComplete,
+    incrementFirstRunRevealNonce,
+    setFirstRunLoading,
     setStartupPhase,
     setStartupError,
     retryStartup,

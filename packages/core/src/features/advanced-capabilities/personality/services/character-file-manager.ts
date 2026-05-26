@@ -10,6 +10,7 @@ import type {
 import { Service } from "../../../../types/service.ts";
 import { getCharacterPersistenceService } from "../character-persistence.ts";
 import { PersonalityServiceType } from "../types.ts";
+import { resolveStateDir } from "../../../../utils/state-dir";
 
 // Validation schema for character modifications
 const CharacterModificationSchema = z.object({
@@ -67,7 +68,7 @@ export class CharacterFileManager extends Service {
 
 	constructor(runtime?: IAgentRuntime) {
 		super(runtime);
-		this.backupDir = path.join(process.cwd(), ".eliza", "character-backups");
+		this.backupDir = path.join(resolveStateDir(), "character-backups");
 		this.setupValidationRules();
 	}
 

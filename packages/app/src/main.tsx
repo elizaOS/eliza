@@ -72,18 +72,18 @@ import {
   SHARE_TARGET_EVENT,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui/events";
-import {
-  getWindowNavigationPath,
-  isAppWindowRoute,
-} from "@elizaos/ui/navigation/index";
-import { routeOnboardingDeepLink } from "@elizaos/ui/onboarding/deep-link-handler";
+import { routeFirstRunDeepLink } from "@elizaos/ui/first-run/deep-link-handler";
 import {
   IOS_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_API_BASE,
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
   normalizeMobileRuntimeMode,
-} from "@elizaos/ui/onboarding/mobile-runtime-mode";
-import { preSeedAndroidLocalRuntimeIfFresh } from "@elizaos/ui/onboarding/pre-seed-local-runtime";
+} from "@elizaos/ui/first-run/mobile-runtime-mode";
+import { preSeedAndroidLocalRuntimeIfFresh } from "@elizaos/ui/first-run/pre-seed-local-runtime";
+import {
+  getWindowNavigationPath,
+  isAppWindowRoute,
+} from "@elizaos/ui/navigation/index";
 import type { ShareTargetPayload } from "@elizaos/ui/platform";
 import {
   applyLaunchConnection,
@@ -91,17 +91,17 @@ import {
 } from "@elizaos/ui/platform/browser-launch";
 import { installLocalProviderCloudPreferencePatch } from "@elizaos/ui/platform/cloud-preference-patch";
 import { installDesktopPermissionsClientPatch } from "@elizaos/ui/platform/desktop-permissions-client";
-import { isElizaOS } from "@elizaos/ui/platform/init";
 import {
-  applyForceFreshOnboardingReset,
-  installForceFreshOnboardingClientPatch,
-} from "@elizaos/ui/platform/onboarding-reset";
+  applyForceFreshFirstRunReset,
+  installForceFreshFirstRunClientPatch,
+} from "@elizaos/ui/platform/first-run-reset";
+import { isElizaOS } from "@elizaos/ui/platform/init";
 import {
   isChatOverlayWindowShell,
   isDetachedWindowShell,
   isStandaloneWindowShell,
   resolveWindowShellRoute,
-  shouldInstallMainWindowOnboardingPatches,
+  shouldInstallMainWindowFirstRunPatches,
   syncDetachedShellLocation,
 } from "@elizaos/ui/platform/window-shell";
 import { AppProvider } from "@elizaos/ui/state";
@@ -328,7 +328,7 @@ const APP_BRANDING: Partial<BrandingConfig> = {
   theme: ELIZA_DEFAULT_THEME,
   // The hosted web bundle stays cloud-only in production. Desktop shells and
   // other hosts inject an explicit API base before React boots, and that host
-  // backend should control onboarding capabilities instead.
+  // backend should control first-run capabilities instead.
   cloudOnly: shouldUseCloudOnlyBranding({
     isDev: import.meta.env.DEV ?? false,
     injectedApiBase:
@@ -371,10 +371,11 @@ function isDesktopPlatform(): boolean {
 
 const windowShellRoute = resolveWindowShellRoute();
 
-function hasRuntimePickerOverride(): boolean {
+function hasFirstRunRuntimeOverride(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    return getWindowUrlSearchParams().get("runtime") === "picker";
+    const runtime = getWindowUrlSearchParams().get("runtime");
+    return runtime === "first-run";
   } catch {
     return false;
   }
@@ -406,16 +407,16 @@ if (shouldEnableElectrobunMacWindowDrag()) {
   );
 }
 
-// Dev escape hatch: ?reset forces a truly fresh onboarding session by clearing
+// Dev escape hatch: ?reset forces a truly fresh first-run session by clearing
 // persisted state and temporarily suppressing stale backend resume config.
-if (shouldInstallMainWindowOnboardingPatches(windowShellRoute)) {
-  applyForceFreshOnboardingReset();
-  installForceFreshOnboardingClientPatch(client);
+if (shouldInstallMainWindowFirstRunPatches(windowShellRoute)) {
+  applyForceFreshFirstRunReset();
+  installForceFreshFirstRunClientPatch(client);
 }
 installLocalProviderCloudPreferencePatch(client);
 installDesktopPermissionsClientPatch(client);
 
-if (isElizaOS() && !hasRuntimePickerOverride()) {
+if (isElizaOS() && !hasFirstRunRuntimeOverride()) {
   preSeedAndroidLocalRuntimeIfFresh();
 }
 
@@ -457,7 +458,7 @@ function buildAppBootConfig({
       undefined,
     cloudApiBase: IOS_RUNTIME_ENV_CONFIG.cloudApiBase,
     vrmAssets: APP_VRM_ASSETS,
-    onboardingStyles: APP_STYLE_PRESETS,
+    firstRunStyles: APP_STYLE_PRESETS,
     characterEditor: CharacterEditor,
     companionShell: CompanionShell,
     resolveCompanionInferenceNotice,
@@ -480,8 +481,8 @@ function buildAppBootConfig({
     appBlockerSettingsCard: AppBlockerSettingsCard,
     websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
     clientMiddleware: {
-      forceFreshOnboarding:
-        shouldInstallMainWindowOnboardingPatches(windowShellRoute),
+      forceFreshFirstRun:
+        shouldInstallMainWindowFirstRunPatches(windowShellRoute),
       preferLocalProvider: true,
       desktopPermissions: isDesktopPlatform(),
     },
@@ -1364,7 +1365,7 @@ async function initializeNetworkListener(): Promise<void> {
 }
 
 function handleDeepLink(url: string): void {
-  if (routeOnboardingDeepLink(url, APP_URL_SCHEME)) {
+  if (routeFirstRunDeepLink(url, APP_URL_SCHEME)) {
     return;
   }
 

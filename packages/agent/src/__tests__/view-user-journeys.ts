@@ -518,7 +518,7 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
   },
 
   {
-    id: "onboarding-to-view",
+    id: "first-run-to-view",
     description:
       "New user sees the chat interface, asks what the agent can do, and agent opens the view manager",
     userMessage: "what can you do?",

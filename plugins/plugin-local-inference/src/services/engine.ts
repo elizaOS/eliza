@@ -1536,7 +1536,7 @@ export class LocalInferenceEngine {
 					if (!kokoro) {
 						throw new VoiceStartupError(
 							"missing-bundle-root",
-							"[voice] Kokoro was selected but its model artifacts are not staged under ~/.eliza/local-inference/models/kokoro/.",
+							"[voice] Kokoro was selected but its model artifacts are not staged under <stateDir>/local-inference/models/kokoro/.",
 						);
 					}
 					bridge = this.startVoice({
@@ -1593,7 +1593,7 @@ export class LocalInferenceEngine {
 				if (!kokoro) {
 					throw new VoiceStartupError(
 						"missing-bundle-root",
-						"[voice] Cannot start local voice: no active Eliza-1 bundle is loaded and no Kokoro artifacts are staged under ~/.eliza/local-inference/models/kokoro/. Install an Eliza-1 bundle, or stage the Kokoro ONNX + at least one voice .bin to enable local TTS.",
+						"[voice] Cannot start local voice: no active Eliza-1 bundle is loaded and no Kokoro artifacts are staged under <stateDir>/local-inference/models/kokoro/. Install an Eliza-1 bundle, or stage the Kokoro ONNX + at least one voice .bin to enable local TTS.",
 					);
 				}
 				bridge = this.startVoice({

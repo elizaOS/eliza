@@ -6,11 +6,7 @@
  */
 
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
-import type {
-  CodingAgentSession,
-  Conversation,
-  OnboardingOptions,
-} from "../api";
+import type { CodingAgentSession, Conversation, FirstRunOptions } from "../api";
 import {
   type AgentStatus,
   type ConversationMessage,
@@ -28,7 +24,7 @@ import {
   type LoadConversationMessagesResult,
   loadActiveConversationId,
 } from "./internal";
-import type { OnboardingMode, OnboardingStep } from "./types";
+import type { FirstRunMode, SetupStep } from "./types";
 
 import { useChatLifecycle } from "./useChatLifecycle";
 import { useChatSend } from "./useChatSend";
@@ -247,31 +243,31 @@ export interface UseChatCallbacksDeps {
   setElizaCloudStatusReason: (v: string | null) => void;
   setElizaCloudLoginError: (v: string | null) => void;
 
-  // Onboarding setters (used by completeResetLocalStateAfterServerWipe)
-  onboardingCompletionCommittedRef: MutableRefObject<boolean>;
-  setOnboardingUiRevealNonce: (fn: (n: number) => number) => void;
-  setOnboardingLoading: (v: boolean) => void;
-  setOnboardingComplete: (v: boolean) => void;
-  setOnboardingStep: (v: OnboardingStep) => void;
-  setOnboardingMode: (v: OnboardingMode) => void;
-  setOnboardingActiveGuide: (v: string | null) => void;
-  setOnboardingDeferredTasks: (v: string[]) => void;
-  setPostOnboardingChecklistDismissed: (v: boolean) => void;
-  setOnboardingName: (v: string) => void;
-  setOnboardingStyle: (v: string) => void;
-  setOnboardingServerTarget: (v: AppState["onboardingServerTarget"]) => void;
-  setOnboardingProvider: (v: string) => void;
-  setOnboardingApiKey: (v: string) => void;
-  setOnboardingVoiceProvider: (v: string) => void;
-  setOnboardingVoiceApiKey: (v: string) => void;
-  setOnboardingPrimaryModel: (v: string) => void;
-  setOnboardingOpenRouterModel: (v: string) => void;
-  setOnboardingRemoteConnected: (v: boolean) => void;
-  setOnboardingRemoteApiBase: (v: string) => void;
-  setOnboardingRemoteToken: (v: string) => void;
-  setOnboardingSmallModel: (v: string) => void;
-  setOnboardingLargeModel: (v: string) => void;
-  setOnboardingOptions: (v: OnboardingOptions | null) => void;
+  // First-run setters (used by completeResetLocalStateAfterServerWipe)
+  firstRunCompletionCommittedRef: MutableRefObject<boolean>;
+  setFirstRunUiRevealNonce: (fn: (n: number) => number) => void;
+  setFirstRunLoading: (v: boolean) => void;
+  setFirstRunComplete: (v: boolean) => void;
+  setSetupStep: (v: SetupStep) => void;
+  setFirstRunMode: (v: FirstRunMode) => void;
+  setFirstRunActiveGuide: (v: string | null) => void;
+  setFirstRunDeferredTasks: (v: string[]) => void;
+  setPostFirstRunChecklistDismissed: (v: boolean) => void;
+  setFirstRunName: (v: string) => void;
+  setFirstRunStyle: (v: string) => void;
+  setFirstRunRuntimeTarget: (v: AppState["firstRunRuntimeTarget"]) => void;
+  setFirstRunProvider: (v: string) => void;
+  setFirstRunApiKey: (v: string) => void;
+  setFirstRunVoiceProvider: (v: string) => void;
+  setFirstRunVoiceApiKey: (v: string) => void;
+  setFirstRunPrimaryModel: (v: string) => void;
+  setFirstRunOpenRouterModel: (v: string) => void;
+  setFirstRunRemoteConnected: (v: boolean) => void;
+  setFirstRunRemoteApiBase: (v: string) => void;
+  setFirstRunRemoteToken: (v: string) => void;
+  setFirstRunSmallModel: (v: string) => void;
+  setFirstRunLargeModel: (v: string) => void;
+  setFirstRunOptions: (v: FirstRunOptions | null) => void;
 
   // Character / avatar
   setSelectedVrmIndex: (v: number) => void;
@@ -356,30 +352,30 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     setElizaCloudUserId,
     setElizaCloudStatusReason,
     setElizaCloudLoginError,
-    onboardingCompletionCommittedRef,
-    setOnboardingUiRevealNonce,
-    setOnboardingLoading,
-    setOnboardingComplete,
-    setOnboardingStep,
-    setOnboardingMode,
-    setOnboardingActiveGuide,
-    setOnboardingDeferredTasks,
-    setPostOnboardingChecklistDismissed,
-    setOnboardingName,
-    setOnboardingStyle,
-    setOnboardingServerTarget,
-    setOnboardingProvider,
-    setOnboardingApiKey,
-    setOnboardingVoiceProvider,
-    setOnboardingVoiceApiKey,
-    setOnboardingPrimaryModel,
-    setOnboardingOpenRouterModel,
-    setOnboardingRemoteConnected,
-    setOnboardingRemoteApiBase,
-    setOnboardingRemoteToken,
-    setOnboardingSmallModel,
-    setOnboardingLargeModel,
-    setOnboardingOptions,
+    firstRunCompletionCommittedRef,
+    setFirstRunUiRevealNonce,
+    setFirstRunLoading,
+    setFirstRunComplete,
+    setSetupStep,
+    setFirstRunMode,
+    setFirstRunActiveGuide,
+    setFirstRunDeferredTasks,
+    setPostFirstRunChecklistDismissed,
+    setFirstRunName,
+    setFirstRunStyle,
+    setFirstRunRuntimeTarget,
+    setFirstRunProvider,
+    setFirstRunApiKey,
+    setFirstRunVoiceProvider,
+    setFirstRunVoiceApiKey,
+    setFirstRunPrimaryModel,
+    setFirstRunOpenRouterModel,
+    setFirstRunRemoteConnected,
+    setFirstRunRemoteApiBase,
+    setFirstRunRemoteToken,
+    setFirstRunSmallModel,
+    setFirstRunLargeModel,
+    setFirstRunOptions,
     setSelectedVrmIndex,
     setCustomVrmUrl,
     setCustomBackgroundUrl,
@@ -711,30 +707,30 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     setElizaCloudUserId,
     setElizaCloudStatusReason,
     setElizaCloudLoginError,
-    onboardingCompletionCommittedRef,
-    setOnboardingUiRevealNonce,
-    setOnboardingLoading,
-    setOnboardingComplete,
-    setOnboardingStep,
-    setOnboardingMode,
-    setOnboardingActiveGuide,
-    setOnboardingDeferredTasks,
-    setPostOnboardingChecklistDismissed,
-    setOnboardingName,
-    setOnboardingStyle,
-    setOnboardingServerTarget,
-    setOnboardingProvider,
-    setOnboardingApiKey,
-    setOnboardingVoiceProvider,
-    setOnboardingVoiceApiKey,
-    setOnboardingPrimaryModel,
-    setOnboardingOpenRouterModel,
-    setOnboardingRemoteConnected,
-    setOnboardingRemoteApiBase,
-    setOnboardingRemoteToken,
-    setOnboardingSmallModel,
-    setOnboardingLargeModel,
-    setOnboardingOptions,
+    firstRunCompletionCommittedRef,
+    setFirstRunUiRevealNonce,
+    setFirstRunLoading,
+    setFirstRunComplete,
+    setSetupStep,
+    setFirstRunMode,
+    setFirstRunActiveGuide,
+    setFirstRunDeferredTasks,
+    setPostFirstRunChecklistDismissed,
+    setFirstRunName,
+    setFirstRunStyle,
+    setFirstRunRuntimeTarget,
+    setFirstRunProvider,
+    setFirstRunApiKey,
+    setFirstRunVoiceProvider,
+    setFirstRunVoiceApiKey,
+    setFirstRunPrimaryModel,
+    setFirstRunOpenRouterModel,
+    setFirstRunRemoteConnected,
+    setFirstRunRemoteApiBase,
+    setFirstRunRemoteToken,
+    setFirstRunSmallModel,
+    setFirstRunLargeModel,
+    setFirstRunOptions,
     setSelectedVrmIndex,
     setCustomVrmUrl,
     setCustomBackgroundUrl,

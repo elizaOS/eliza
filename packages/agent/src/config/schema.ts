@@ -194,7 +194,7 @@ const GROUP_ORDER: Record<string, number> = {
 };
 
 const FIELD_LABELS: Record<string, string> = {
-  "meta.onboardingComplete": "Onboarding Complete",
+  "meta.firstRunComplete": "First Run Complete",
   "meta.lastTouchedVersion": "Config Last Touched Version",
   "meta.lastTouchedAt": "Config Last Touched At",
   "update.channel": "Update Channel",
@@ -512,8 +512,8 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 const FIELD_HELP: Record<string, string> = {
-  "meta.onboardingComplete":
-    "Explicit onboarding completion marker used to keep the app out of onboarding until reset.",
+  "meta.firstRunComplete":
+    "Explicit first-run completion marker used to keep the app out of setup until reset.",
   "meta.lastTouchedVersion": "Auto-set when Eliza writes the config.",
   "meta.lastTouchedAt": "ISO timestamp of the last config write (auto-set).",
   "update.channel":
@@ -632,7 +632,7 @@ const FIELD_HELP: Record<string, string> = {
   "tools.cache.memoryCapacity":
     "In-memory LRU capacity for the tool-call cache. Default 1000.",
   "tools.cache.diskRoot":
-    "Override the on-disk root for the tool-call cache. Default: ~/.eliza/tool-cache.",
+    "Override the on-disk root for the tool-call cache. Default: <stateDir>/tool-cache.",
   "tools.web.fetch.maxRedirects":
     "Maximum redirects allowed for web_fetch (default: 3).",
   "tools.web.fetch.userAgent":
@@ -723,7 +723,7 @@ const FIELD_HELP: Record<string, string> = {
   "agents.defaults.memorySearch.fallback":
     'Fallback provider when embeddings fail ("openai", "gemini", "local", or "none").',
   "agents.defaults.memorySearch.store.path":
-    "SQLite index path (default: ~/.eliza/memory/{agentId}.sqlite).",
+    "SQLite index path (default: <stateDir>/memory/{agentId}.sqlite).",
   "agents.defaults.memorySearch.store.vector.enabled":
     "Enable sqlite-vec extension for vector search (default: true).",
   "agents.defaults.memorySearch.store.vector.extensionPath":
@@ -820,7 +820,7 @@ const FIELD_HELP: Record<string, string> = {
   "plugins.installs.*.sourcePath":
     "Original archive/path used for install (if any).",
   "plugins.installs.*.installPath":
-    "Resolved install directory (usually ~/.eliza/plugins/<id>).",
+    "Resolved install directory (usually <stateDir>/plugins/<id>).",
   "plugins.installs.*.version":
     "Version recorded at install time (if available).",
   "plugins.installs.*.installedAt": "ISO timestamp of last install/update.",

@@ -17,7 +17,7 @@ import {
   type SkillMarketplaceResult,
   type SkillScanReportSummary,
 } from "../api";
-import { normalizeOnboardingProviderId } from "../providers";
+import { normalizeFirstRunProviderId } from "../providers";
 import { confirmDesktopAction } from "../utils";
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -279,8 +279,7 @@ export function usePluginsSkillsState({
         // When saving an AI provider's API key, also trigger a provider
         // switch so the runtime restarts with the new plugin loaded.
         if (isAiProvider) {
-          const providerId =
-            normalizeOnboardingProviderId(pluginId) ?? pluginId;
+          const providerId = normalizeFirstRunProviderId(pluginId) ?? pluginId;
           // Identify the primary credential field by its STRUCTURE, not
           // by iterating values. The plugin's parameter metadata
           // declares which fields are sensitive; the picker walks a

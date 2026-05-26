@@ -8,8 +8,6 @@ const appDir = path.resolve(scriptDir, "..");
 const publicDir = path.join(appDir, "public");
 const electrobunAssetsDir = path.join(appDir, "electrobun", "assets");
 const faviconSvgPath = path.join(publicDir, "favicon.svg");
-const splashSvgPath = path.join(publicDir, "splash-bg.svg");
-const splashJpgPath = path.join(publicDir, "splash-bg.jpg");
 const appIconPngPath = path.join(electrobunAssetsDir, "appIcon.png");
 const appIconIcoPath = path.join(electrobunAssetsDir, "appIcon.ico");
 const appIconsetDir = path.join(electrobunAssetsDir, "appIcon.iconset");
@@ -84,9 +82,6 @@ function main() {
   if (!fs.existsSync(faviconSvgPath)) {
     throw new Error(`Missing icon source: ${faviconSvgPath}`);
   }
-  if (!fs.existsSync(splashSvgPath)) {
-    throw new Error(`Missing splash source: ${splashSvgPath}`);
-  }
 
   for (const [filename, size] of ICONSET_SIZES) {
     renderSvgToRaster({
@@ -116,12 +111,6 @@ function main() {
     };
   });
   writeIco(appIconIcoPath, icoEntries);
-
-  renderSvgToRaster({
-    format: "jpeg",
-    outputPath: splashJpgPath,
-    sourcePath: splashSvgPath,
-  });
 }
 
 main();

@@ -16,7 +16,9 @@ export function registerConfigureCommand(program: Command) {
       console.log(
         `  ${theme.command("eliza config get <key>")}     Read a config value`,
       );
-      console.log(`  Edit ~/.eliza/eliza.json directly for full control.\n`);
+      console.log(
+        `  Edit ~/.local/state/eliza/eliza.json directly for full control.\n`,
+      );
       console.log("Common environment variables:");
       console.log(
         `  ${theme.command("ANTHROPIC_API_KEY")}    Anthropic (Claude)`,

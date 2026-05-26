@@ -7,7 +7,7 @@
 import {
   IOS_LOCAL_AGENT_IPC_BASE,
   isMobileLocalAgentIpcUrl,
-} from "@elizaos/ui/onboarding/mobile-runtime-mode";
+} from "@elizaos/ui/first-run/mobile-runtime-mode";
 
 export interface UrlTrustPolicyContext {
   isNative: boolean;

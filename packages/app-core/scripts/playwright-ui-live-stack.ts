@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { WebSocket, WebSocketServer } from "ws";
-import { buildOnboardingRuntimeConfig } from "../src/onboarding/onboarding-config.ts";
+import { buildFirstRunRuntimeConfig } from "../src/first-run/first-run-config.ts";
 import { selectLiveProvider } from "../test/helpers/live-provider.ts";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
@@ -489,14 +489,14 @@ async function ensureUiDistReady(): Promise<void> {
   }
 }
 
-async function submitOnboarding(apiBase: string): Promise<void> {
+async function submitFirstRun(apiBase: string): Promise<void> {
   if (!LIVE_PROVIDER) {
     throw new Error(
       "UI smoke needs a real provider. Set OPENAI_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OPENROUTER_API_KEY, or ELIZAOS_CLOUD_API_KEY.",
     );
   }
 
-  const runtimeConfig = buildOnboardingRuntimeConfig({
+  const runtimeConfig = buildFirstRunRuntimeConfig({
     onboardingServerTarget: "local",
     onboardingCloudApiKey: "",
     onboardingProvider: LIVE_PROVIDER.name,
@@ -512,7 +512,7 @@ async function submitOnboarding(apiBase: string): Promise<void> {
     onboardingLargeModel: LIVE_PROVIDER.largeModel,
   });
 
-  const response = await fetch(`${apiBase}/api/onboarding`, {
+  const response = await fetch(`${apiBase}/api/first-run`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -544,7 +544,7 @@ async function submitOnboarding(apiBase: string): Promise<void> {
   }
 
   await waitForJsonPredicate<{ complete: boolean }>(
-    `${apiBase}/api/onboarding/status`,
+    `${apiBase}/api/first-run/status`,
     (status) => status.complete === true,
     READY_TIMEOUT_MS,
   );
@@ -573,7 +573,7 @@ async function startStubStack(): Promise<StartedStack> {
     process.stdout.write(`[ui-smoke][stub-err] ${chunk}`);
   });
 
-  await waitForJson<{ complete: boolean }>(`${apiBase}/api/onboarding/status`);
+  await waitForJson<{ complete: boolean }>(`${apiBase}/api/first-run/status`);
   await waitForJsonPredicate<{ state?: string }>(
     `${apiBase}/api/status`,
     (status) => status.state === "running",
@@ -639,16 +639,16 @@ async function startRealStack(): Promise<StartedStack> {
     process.stdout.write(`[ui-smoke][api-err] ${chunk}`);
   });
 
-  await waitForJson<{ complete: boolean }>(`${apiBase}/api/onboarding/status`);
+  await waitForJson<{ complete: boolean }>(`${apiBase}/api/first-run/status`);
   const onboardingStatus = await fetchJson<{ complete: boolean }>(
-    `${apiBase}/api/onboarding/status`,
+    `${apiBase}/api/first-run/status`,
   );
   if (!onboardingStatus.complete) {
-    await submitOnboarding(apiBase);
+    await submitFirstRun(apiBase);
   }
 
   await waitForJsonPredicate<{ complete: boolean }>(
-    `${apiBase}/api/onboarding/status`,
+    `${apiBase}/api/first-run/status`,
     (status) => status.complete === true,
     READY_TIMEOUT_MS,
   );

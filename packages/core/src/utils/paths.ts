@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { resolveStateDir } from "./state-dir";
 
 function getCwd(): string {
 	if (typeof process !== "undefined" && process.cwd) {
@@ -61,7 +62,8 @@ class ElizaPaths {
 		const cached = this.cache.get("dataDir");
 		if (cached) return cached;
 
-		const dir = getEnvVar("ELIZA_DATA_DIR") || join(getCwd(), ".eliza");
+		const dir =
+			getEnvVar("ELIZA_DATA_DIR") || join(resolveStateDir(), "workspace");
 		this.cache.set("dataDir", dir);
 		return dir;
 	}

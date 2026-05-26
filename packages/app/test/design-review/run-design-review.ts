@@ -853,7 +853,7 @@ async function main(): Promise<void> {
   }
 
   await resetOutputDir();
-  const api = await startMockApiServer({ onboardingComplete: true, port: 0 });
+  const api = await startMockApiServer({ firstRunComplete: true, port: 0 });
   const { server, baseUrl: appBaseUrl } = await startAppServer(api.baseUrl);
   const browser = await chromium.launch({
     headless: process.env.ELIZA_DESIGN_REVIEW_HEADLESS === "1",

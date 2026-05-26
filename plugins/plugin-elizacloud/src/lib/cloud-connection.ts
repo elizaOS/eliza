@@ -9,7 +9,7 @@ import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
-  applyCanonicalOnboardingConfig,
+  applyCanonicalSetupConfig,
   type ElizaConfig,
   normalizeEnvValue,
 } from "./config-like";
@@ -608,7 +608,7 @@ export async function disconnectCloudConnection(args: {
   const nextCloud = { ...(config.cloud ?? {}) };
   delete nextCloud.apiKey;
   config.cloud = nextCloud;
-  applyCanonicalOnboardingConfig(config as ElizaConfig, {
+  applyCanonicalSetupConfig(config as ElizaConfig, {
     deploymentTarget: { runtime: "local" },
     linkedAccounts: {
       elizacloud: {

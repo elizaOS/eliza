@@ -5,10 +5,10 @@
 
 import type {
   AllPermissionsState,
-  OnboardingConnectorConfig as ConnectorConfig,
+  FirstRunConnectorConfig as ConnectorConfig,
+  FirstRunOptions,
   LinkedAccountConfig,
   LinkedAccountProviderId,
-  OnboardingOptions,
   PermissionId,
   PermissionState,
   ServiceRouteAccountStrategy,
@@ -454,7 +454,7 @@ declare module "./client-base" {
     ): Promise<{ ok: boolean; tradePermissionMode: string }>;
     playEmote(emoteId: string): Promise<{ ok: boolean }>;
     runTerminalCommand(command: string): Promise<{ ok: boolean }>;
-    getOnboardingStatus(): Promise<{
+    getFirstRunStatus(): Promise<{
       complete: boolean;
       cloudProvisioned?: boolean;
     }>;
@@ -488,8 +488,8 @@ declare module "./client-base" {
     }>;
     postBootstrapExchange(token: string): Promise<BootstrapExchangeResult>;
     pair(code: string): Promise<{ token: string }>;
-    getOnboardingOptions(): Promise<OnboardingOptions>;
-    submitOnboarding(data: Record<string, unknown>): Promise<void>;
+    getFirstRunOptions(): Promise<FirstRunOptions>;
+    submitFirstRun(data: Record<string, unknown>): Promise<void>;
     startAnthropicLogin(): Promise<{ authUrl: string }>;
     exchangeAnthropicCode(code: string): Promise<{
       success: boolean;
@@ -1200,22 +1200,22 @@ ElizaClient.prototype.runTerminalCommand = async function (
   });
 };
 
-ElizaClient.prototype.getOnboardingStatus = async function (this: ElizaClient) {
+ElizaClient.prototype.getFirstRunStatus = async function (this: ElizaClient) {
   // Prefer typed Electrobun RPC. The bun-side composer throws
   // AgentNotReadyError if the agent has no port yet; we catch and
   // fall through to HTTP so the renderer's polling loop sees the
   // same "transport not ready" semantic as before RPC was wired.
-  // Server contract: eliza/packages/agent/src/api/onboarding-routes.ts.
+  // Server contract: eliza/packages/agent/src/api/first-run-routes.ts.
   try {
     const viaRpc = await invokeDesktopBridgeRequest<{
       complete: boolean;
       cloudProvisioned?: boolean;
-    }>({ rpcMethod: "getOnboardingStatus", ipcChannel: "agent" });
+    }>({ rpcMethod: "getFirstRunStatus", ipcChannel: "agent" });
     if (viaRpc) return viaRpc;
   } catch {
     /* AgentNotReadyError or any RPC failure → fall through to HTTP */
   }
-  return this.fetch("/api/onboarding/status");
+  return this.fetch("/api/first-run/status");
 };
 
 ElizaClient.prototype.getWalletKeys = async function (this: ElizaClient) {
@@ -1345,26 +1345,24 @@ ElizaClient.prototype.pair = async function (this: ElizaClient, code) {
   return res;
 };
 
-ElizaClient.prototype.getOnboardingOptions = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getFirstRunOptions = async function (this: ElizaClient) {
   try {
-    const viaRpc = await invokeDesktopBridgeRequest<OnboardingOptions>({
-      rpcMethod: "getOnboardingOptions",
+    const viaRpc = await invokeDesktopBridgeRequest<FirstRunOptions>({
+      rpcMethod: "getFirstRunOptions",
       ipcChannel: "agent",
     });
     if (viaRpc) return viaRpc;
   } catch {
     /* AgentNotReadyError or any RPC failure → fall through to HTTP */
   }
-  return this.fetch("/api/onboarding/options");
+  return this.fetch("/api/first-run/options");
 };
 
-ElizaClient.prototype.submitOnboarding = async function (
+ElizaClient.prototype.submitFirstRun = async function (
   this: ElizaClient,
   data,
 ) {
-  await this.fetch("/api/onboarding", {
+  await this.fetch("/api/first-run", {
     method: "POST",
     body: JSON.stringify(data),
   });

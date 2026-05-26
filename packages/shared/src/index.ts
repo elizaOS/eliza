@@ -11,6 +11,9 @@ export * from "./api/route-helpers.js";
 export * from "./app-hero-art.js";
 // Awareness + themes barrels
 export * from "./awareness/index.js";
+export * from "./character-presets.characters.js";
+export * from "./character-presets.js";
+export * from "./character-presets.js";
 export * from "./cli/parse-duration.js";
 // Re-export moved app-core modules so consumers can import the package barrel.
 export * from "./config/allowed-hosts.js";
@@ -194,7 +197,7 @@ export * from "./config/zod-schema.core.js";
 export * from "./connector-cred-types.js";
 export * from "./connectors.js";
 // Contracts barrel — exposes apps/awareness/cloud-topology/config/content-pack/
-// drop/inbox/onboarding/permissions/service-routing/verification/wallet.
+// drop/inbox/first-run/permissions/service-routing/verification/wallet.
 // `contracts/theme` is intentionally NOT pulled in here; it reaches the public
 // surface through `./themes`, which already re-exports the same identifiers.
 export * from "./contracts/index.js";
@@ -223,9 +226,6 @@ export * from "./format-error.js";
 // Local-inference shared subset (types, paths, routing-preferences, verify).
 // Server runtime (KV cache, llama-server lifecycle, etc.) stays in @elizaos/app-core.
 export * from "./local-inference/index.js";
-export * from "./onboarding-presets.characters.js";
-export * from "./onboarding-presets.js";
-export * from "./onboarding-presets.js";
 export * from "./platform/is-native-server.js";
 export * from "./recent-messages-state.js";
 export * from "./restart.js";

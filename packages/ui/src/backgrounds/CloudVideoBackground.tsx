@@ -57,6 +57,7 @@ export function CloudVideoBackground({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [loadVideo, setLoadVideo] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
+  const [useMobileVideo, setUseMobileVideo] = useState(false);
 
   useEffect(() => {
     if (!preloadPoster || typeof document === "undefined" || !poster) return;
@@ -113,6 +114,18 @@ export function CloudVideoBackground({
       reduced.removeEventListener("change", begin);
     };
   }, [animated]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !videoSrcMobile) {
+      setUseMobileVideo(false);
+      return;
+    }
+    const media = window.matchMedia(`(max-width: ${mobileMaxWidth}px)`);
+    const update = () => setUseMobileVideo(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [mobileMaxWidth, videoSrcMobile]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -188,14 +201,10 @@ export function CloudVideoBackground({
             zIndex: 1,
           }}
         >
-          {videoSrcMobile ? (
-            <source
-              src={videoSrcMobile}
-              type="video/mp4"
-              media={`(max-width: ${mobileMaxWidth}px)`}
-            />
-          ) : null}
-          <source src={videoSrc} type="video/mp4" />
+          <source
+            src={useMobileVideo && videoSrcMobile ? videoSrcMobile : videoSrc}
+            type="video/mp4"
+          />
         </video>
       ) : null}
       {scrim > 0 ? (

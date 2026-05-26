@@ -1,5 +1,5 @@
 import {
-  getOnboardingProviderOption,
+  getFirstRunProviderOption,
   isElizaCloudLinkedInConfig,
   resolveDeploymentTargetInConfig,
   resolveElizaCloudTopology,
@@ -46,7 +46,7 @@ export function shouldPreferLocalProviderConfig(
   const llmText = resolveServiceRoutingInConfig(
     config as Record<string, unknown>,
   )?.llmText;
-  const directProvider = getOnboardingProviderOption(llmText?.backend)?.id;
+  const directProvider = getFirstRunProviderOption(llmText?.backend)?.id;
   if (llmText?.transport !== "direct" || !directProvider) {
     return false;
   }

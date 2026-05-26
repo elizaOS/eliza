@@ -3,13 +3,13 @@
  *
  * Native MIPRO/GEPA/bootstrap-fewshot optimizers (under
  * `plugins/plugin-training/src/optimizers/`) write a JSON artifact per task into
- * `~/.eliza/optimized-prompts/<task>/`. The runtime consults this service
+ * `<stateDir>/optimized-prompts/<task>/`. The runtime consults this service
  * before constructing the system prompt for one of the core decision
  * tasks and substitutes the optimized prompt (plus any few-shot
  * demonstrations) when an artifact is available.
  *
  * On-disk layout (per task):
- *   ~/.eliza/optimized-prompts/<task>/
+ *   <stateDir>/optimized-prompts/<task>/
  *     v1.json, v2.json, ..., vN.json   — concrete artifact files (last 5 retained)
  *     current   -> vN.json              — symlink; the live prompt
  *     previous  -> vN-1.json            — symlink; the immediate predecessor

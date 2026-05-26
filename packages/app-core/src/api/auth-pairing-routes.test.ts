@@ -56,7 +56,7 @@ vi.mock("@elizaos/shared", async (importOriginal) => {
         hostname.startsWith("127.")
       );
     },
-    normalizeOnboardingProviderId: (value: unknown) =>
+    normalizeFirstRunProviderId: (value: unknown) =>
       typeof value === "string" ? value.trim().toLowerCase() : null,
     resolveApiToken: (env: NodeJS.ProcessEnv) =>
       env.ELIZA_API_TOKEN?.trim() || null,
@@ -160,7 +160,7 @@ vi.mock("../services/auth-store", () => ({
   },
 }));
 
-vi.mock("./server-onboarding-helpers", () => ({
+vi.mock("./server-first-run-helpers", () => ({
   isCloudProvisioned: () => process.env.ELIZA_CLOUD_PROVISIONED === "1",
 }));
 

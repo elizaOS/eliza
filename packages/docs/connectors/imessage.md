@@ -22,7 +22,7 @@ Connect your agent to iMessage for private chats and group conversations on macO
 
 The connector auto-enables when `cliPath` is truthy in the connector config and `enabled` is not explicitly `false`.
 
-Configure in `~/.eliza/eliza.json`:
+Configure in `~/.local/state/eliza/eliza.json`:
 
 ```json
 {

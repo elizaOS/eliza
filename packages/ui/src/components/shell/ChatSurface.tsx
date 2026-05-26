@@ -1,3 +1,4 @@
+import { Send } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "../../lib/utils";
@@ -8,19 +9,10 @@ export interface ChatSurfaceProps {
   onSend: (text: string) => void;
   canSend: boolean;
   greeting?: string;
-  /** When defined, the mic button is interactive and reflects this state. */
   recording?: boolean;
-  /** Toggle voice capture. Enables the mic button when provided. */
   onToggleRecording?: () => void;
 }
 
-/**
- * Chat surface: scrollable bubble stack + input row.
- *
- * Text submits through `onSend`. When `onToggleRecording` is provided the mic
- * button drives voice capture (push-to-talk style); `recording` paints the
- * active state.
- */
 export function ChatSurface({
   messages,
   onSend,
@@ -92,70 +84,50 @@ export function ChatSurface({
           </ul>
         )}
       </div>
-      <div className="flex items-center gap-2 border-t border-border/30 p-2">
-        <input
-          type="text"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              handleSend();
-            }
-          }}
-          placeholder="Ask Eliza…"
-          disabled={!canSend}
-          aria-label="Message Eliza"
-          className="flex-1 rounded-full border border-border/40 bg-bg/60 px-3 py-2 text-sm text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50"
-        />
-        <button
-          type="button"
-          aria-label={recording ? "Stop voice input" : "Start voice input"}
-          aria-pressed={recording}
-          disabled={!onToggleRecording}
-          onClick={onToggleRecording}
-          className={cn(
-            "grid h-10 w-10 place-items-center rounded-full",
-            onToggleRecording ? "cursor-pointer" : "opacity-60",
-            recording
-              ? "bg-warn/30 text-txt animate-pulse"
-              : "bg-card/60 text-muted",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
-          )}
-        >
-          {/* Inline mic glyph — keep dependency-free */}
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            className="h-4 w-4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
+      <div className="border-t border-border/30 p-2">
+        <div className="mb-1 flex justify-center">
+          <button
+            type="button"
+            aria-label={recording ? "Stop voice input" : "Start voice input"}
+            aria-pressed={recording}
+            disabled={!onToggleRecording}
+            onClick={onToggleRecording}
+            className={cn(
+              "min-h-8 bg-transparent px-2 text-xs font-semibold transition-colors [text-shadow:0_2px_8px_rgba(0,0,0,0.55)]",
+              onToggleRecording ? "cursor-pointer" : "opacity-60",
+              recording ? "animate-pulse text-txt" : "text-muted",
+              "focus-visible:outline-none focus-visible:underline",
+            )}
           >
-            <rect x="9" y="3" width="6" height="12" rx="3" />
-            <path d="M5 11a7 7 0 0 0 14 0" />
-            <line x1="12" y1="18" x2="12" y2="22" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          aria-label="Send message"
-          disabled={!canSendNow}
-          onClick={handleSend}
-          className="grid h-10 w-10 place-items-center rounded-full bg-accent text-bg disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
-        >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            className="h-4 w-4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2}
+            {recording ? "Listening" : "Not listening"}
+          </button>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder="Ask Eliza…"
+            disabled={!canSend}
+            aria-label="Message Eliza"
+            className="flex-1 rounded-full border border-border/40 bg-bg/60 px-3 py-2 text-sm text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:opacity-50"
+          />
+          <button
+            type="button"
+            aria-label="Send message"
+            disabled={!canSendNow}
+            onClick={handleSend}
+            className="grid h-10 w-10 place-items-center rounded-full bg-accent text-bg disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
           >
-            <line x1="5" y1="12" x2="19" y2="12" />
-            <polyline points="13 6 19 12 13 18" />
-          </svg>
-        </button>
+            <Send className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
       </div>
     </div>
   );

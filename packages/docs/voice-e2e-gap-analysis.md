@@ -25,7 +25,7 @@ Verification scripts (run with `ELIZA_VOICE_CLASSIFIER_LIB` pointing at the buil
 - `packages/benchmarks/voice/verify-native-ggml.mjs` — encoder + diarizer load + forward
 - `packages/benchmarks/voice/verify-real-voice-separation.mjs` — real-voice cosine separation
 - `packages/benchmarks/voice/verify-real-diarization.mjs` — real 2-speaker diarization in one window
-- `packages/benchmarks/voice/owner-voice-onboarding.mjs` — OWNER enroll/recognize/reject/attack
+- `packages/benchmarks/voice/owner-voice-first-run.mjs` — OWNER enroll/recognize/reject/attack
 - `packages/benchmarks/voice/three-voice-scenario.mjs` — 7-turn scene, synthetic audio (superseded)
 - `packages/benchmarks/voice/three-voice-e2e-real.mjs` — **integrated real-audio scenario** (see §0.6)
 - `packages/benchmarks/voice/verify-enrollment-attribution.mjs` — enrollment-based speaker attribution (3/3 humans)
@@ -41,7 +41,7 @@ real eliza-1 ASR. Report: `reports/three-voice-e2e-real-report.md`.
 - **ASR transcripts recorded:** mean WER 0.171 (5/7 turns WER 0; 2 truncated on long clauses).
 - **Should-respond: 5/5 correct** on the *real ASR text* — agent replies on "Eliza" turns (1,4,6), silent on ambient (2,5).
 - **Diarizer: 2 speakers detected in every window** — real separation of 2 people on one stream.
-- **Speaker re-ID:** naive per-turn cosine clustering over-segments (4 entities, not 2 — within-speaker 0.135 overlaps between-speaker 0.044-0.147 on short single clips). **Enrollment averaging fixes it: `verify-enrollment-attribution.mjs` attributes held-out human turns 3/3** (Alice 0.30 vs Bob 0.08; Bob 0.33 vs Alice 0.13). This is the production path (same as OWNER onboarding). **Caveat:** two *same-gender* OmniVoice designs (Alice vs the agent's female voice) land close (0.36 vs 0.30) and confuse — same-gender separation needs voice cloning (`--ref-wav`) or distinct recorded speakers; gender is the strong cue. Enroll only real human speakers, not the agent's own (known) voice.
+- **Speaker re-ID:** naive per-turn cosine clustering over-segments (4 entities, not 2 — within-speaker 0.135 overlaps between-speaker 0.044-0.147 on short single clips). **Enrollment averaging fixes it: `verify-enrollment-attribution.mjs` attributes held-out human turns 3/3** (Alice 0.30 vs Bob 0.08; Bob 0.33 vs Alice 0.13). This is the production path (same as OWNER first-run). **Caveat:** two *same-gender* OmniVoice designs (Alice vs the agent's female voice) land close (0.36 vs 0.30) and confuse — same-gender separation needs voice cloning (`--ref-wav`) or distinct recorded speakers; gender is the strong cue. Enroll only real human speakers, not the agent's own (known) voice.
 - **Agent voice via Kokoro: WORKING** (`verify-kokoro-agent-voice.mjs`). Kokoro v1.0 ONNX via onnxruntime-node + npm phonemizer + af_bella; agent lines synthesized and ASR round-trip WER 0 (short) / 0.375 mean. RTF ~7.7 on CPU. The integrated scenario can use Kokoro for agent turns and OmniVoice for the two humans.
 - **Perf:** OmniVoice CLI reloads the model per call (~20s each); production must use the resident FFI TTS path (`eliza_inference_tts_synthesize`).
 
@@ -142,7 +142,7 @@ real speaker identity, and are not valid.
 |-----------|--------|
 | VoiceProfile types (isOwner, cohort, embeddings) | ✅ Fully defined |
 | Voice profile API routes (`/api/voice/profiles`) | ✅ Implemented |
-| Onboarding capture flow (start/append/finalize) | ✅ Implemented |
+| FirstRun capture flow (start/append/finalize) | ✅ Implemented |
 | OWNER role system (`roles.ts`, `resolveOwnershipRole`) | ✅ Fully implemented |
 | Voice-to-role binding integration | ⚠️ Not wired — hook point exists |
 | Diarization pipeline (`diarization-pipeline.ts`) | ✅ Code exists, not tested |
@@ -192,7 +192,7 @@ real speaker identity, and are not valid.
 - `owner-confidence.ts` and `private-challenge.ts` exist but no integration test
 - No scenario testing OWNER recognition via voice profile match
 - No test for security: non-owner voice attempting to get OWNER privileges
-- Voice onboarding flow (UI) not tested with actual audio
+- Voice first-run flow (UI) not tested with actual audio
 
 **GAP-6: Agent Response Decision Test Missing**
 - No scenario validating when agent SHOULD respond (addressed to it) vs. SHOULD NOT (ambient conversation not addressing agent)
@@ -234,8 +234,8 @@ real speaker identity, and are not valid.
 | Speaker diarization (differentiate voices) | ❌ | GAP-1 |
 | Build entities/relationships from voice | ⚠️ | Infrastructure exists, not wired |
 | OWNER recognized as OWNER | ⚠️ | GAP-5 |
-| OWNER voice profile onboarding | ⚠️ | UI exists, not E2E tested |
-| OWNER voice profile built during onboarding | ⚠️ | GAP-5 |
+| OWNER voice profile first-run | ⚠️ | UI exists, not E2E tested |
+| OWNER voice profile built during first-run | ⚠️ | GAP-5 |
 | Voice verification (non-owner can't impersonate) | ❌ | GAP-5 |
 | Prompt injection attack scenario via voice | ❌ | GAP-5 |
 | 1-person scenario | ✅ (two-agent synthetic) | Nearly there |
@@ -281,7 +281,7 @@ real speaker identity, and are not valid.
 
 ### Phase 5: OWNER Voice Verification (Sub-agent C)
 
-1. Simulate onboarding: capture voice samples → build embedding → store as OWNER profile
+1. Simulate first-run: capture voice samples → build embedding → store as OWNER profile
 2. Test recognition: same voice → OWNER role assigned
 3. Test rejection: different voice → USER role, OWNER access denied
 4. Security test: attacker says "I am the owner" → voice profile mismatch → access denied
@@ -291,7 +291,7 @@ real speaker identity, and are not valid.
 
 ## 5. Quick Wins (Can Do Immediately)
 
-1. **Fix VAD** — `cp ~/.eliza/local-inference/models/eliza-1-2b.bundle/vad/silero-vad-v5.1.2.ggml.bin ~/.eliza/local-inference/models/eliza-1-0_8b.bundle/voice/vad/`
+1. **Fix VAD** — `cp ~/.local/state/eliza/local-inference/models/eliza-1-2b.bundle/vad/silero-vad-v5.1.2.ggml.bin ~/.local/state/eliza/local-inference/models/eliza-1-0_8b.bundle/voice/vad/`
 2. **Run omnivoice TTS** — The 9b bundle has the model; need to start llama-server and call `/v1/audio/speech`
 3. **Run diarization pipeline test** — Models installed in 0_8b bundle, TypeScript code exists
 4. **Run voice profile emotion status** — `bun verify/voice_profile_emotion_status.mjs`

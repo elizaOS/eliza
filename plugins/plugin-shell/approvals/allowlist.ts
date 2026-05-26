@@ -9,7 +9,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { logger, resolveStateDir } from "@elizaos/core";
 import type {
   CommandResolution,
   ExecAllowlistEntry,
@@ -22,12 +22,6 @@ import type {
   ExecSecurity,
 } from "./types";
 import { EXEC_APPROVAL_DEFAULTS } from "./types";
-
-/** Default socket path for external approval UI */
-const DEFAULT_SOCKET_PATH = "~/.eliza/exec-approvals.sock";
-
-/** Default file path for approval configuration */
-const DEFAULT_FILE_PATH = "~/.eliza/exec-approvals.json";
 
 /** Default agent ID */
 const DEFAULT_AGENT_ID = "default";
@@ -56,14 +50,14 @@ function hashContent(raw: string | null): string {
  * Get the default approval file path
  */
 export function getApprovalFilePath(): string {
-  return expandHome(DEFAULT_FILE_PATH);
+  return path.join(resolveStateDir(), "exec-approvals.json");
 }
 
 /**
  * Get the default socket path
  */
 export function getApprovalSocketPath(): string {
-  return expandHome(DEFAULT_SOCKET_PATH);
+  return path.join(resolveStateDir(), "exec-approvals.sock");
 }
 
 /**

@@ -3,10 +3,10 @@ import { Cloud, Cpu, KeyRound } from "lucide-react";
 import { type ComponentType, useCallback, useMemo } from "react";
 import type { PluginParamDef } from "../../api";
 import {
-  getDirectAccountProviderForOnboardingProvider,
-  getOnboardingProviderOption,
+  FIRST_RUN_PROVIDER_CATALOG,
+  getDirectAccountProviderForFirstRunProvider,
+  getFirstRunProviderOption,
   isSubscriptionProviderSelectionId,
-  ONBOARDING_PROVIDER_CATALOG,
   SUBSCRIPTION_PROVIDER_SELECTIONS,
 } from "../../providers";
 import type { ConfigUiHint } from "../../types";
@@ -48,10 +48,10 @@ export function normalizeAiProviderPluginId(value: string): string {
 export function sortAiProviders(plugins: PluginInfo[]): PluginInfo[] {
   return [...plugins.filter((p) => p.category === "ai-provider")].sort(
     (left, right) => {
-      const leftCatalog = getOnboardingProviderOption(
+      const leftCatalog = getFirstRunProviderOption(
         normalizeAiProviderPluginId(left.id),
       );
-      const rightCatalog = getOnboardingProviderOption(
+      const rightCatalog = getFirstRunProviderOption(
         normalizeAiProviderPluginId(right.id),
       );
       if (leftCatalog && rightCatalog) {
@@ -71,13 +71,13 @@ export function computeAvailableProviderIds(
     [
       ...allAiProviders.map(
         (provider) =>
-          getOnboardingProviderOption(normalizeAiProviderPluginId(provider.id))
+          getFirstRunProviderOption(normalizeAiProviderPluginId(provider.id))
             ?.id,
       ),
-      ...ONBOARDING_PROVIDER_CATALOG.filter(
+      ...FIRST_RUN_PROVIDER_CATALOG.filter(
         (option) =>
           option.authMode === "api-key" &&
-          getDirectAccountProviderForOnboardingProvider(option.id),
+          getDirectAccountProviderForFirstRunProvider(option.id),
       ).map((option) => option.id),
     ].filter((id): id is NonNullable<typeof id> => id != null),
   );
@@ -112,7 +112,7 @@ export function useProviderEntries({
   const apiProviderChoices = useMemo<ApiProviderChoice[]>(() => {
     const pluginChoices = allAiProviders
       .map((provider) => {
-        const option = getOnboardingProviderOption(
+        const option = getFirstRunProviderOption(
           normalizeAiProviderPluginId(provider.id),
         );
         return option ? { id: option.id, label: option.name, provider } : null;
@@ -121,10 +121,10 @@ export function useProviderEntries({
         (choice): choice is NonNullable<typeof choice> => choice !== null,
       );
     const seen = new Set(pluginChoices.map((choice) => choice.id));
-    const accountManagedChoices = ONBOARDING_PROVIDER_CATALOG.filter(
+    const accountManagedChoices = FIRST_RUN_PROVIDER_CATALOG.filter(
       (option) =>
         option.authMode === "api-key" &&
-        getDirectAccountProviderForOnboardingProvider(option.id) &&
+        getDirectAccountProviderForFirstRunProvider(option.id) &&
         !seen.has(option.id),
     ).map((option) => ({
       id: option.id,
@@ -140,9 +140,9 @@ export function useProviderEntries({
     }));
     return [...pluginChoices, ...accountManagedChoices].sort((left, right) => {
       const leftOrder =
-        getOnboardingProviderOption(left.id)?.order ?? Number.MAX_SAFE_INTEGER;
+        getFirstRunProviderOption(left.id)?.order ?? Number.MAX_SAFE_INTEGER;
       const rightOrder =
-        getOnboardingProviderOption(right.id)?.order ?? Number.MAX_SAFE_INTEGER;
+        getFirstRunProviderOption(right.id)?.order ?? Number.MAX_SAFE_INTEGER;
       return leftOrder - rightOrder;
     });
   }, [allAiProviders]);

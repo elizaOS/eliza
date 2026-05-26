@@ -72,7 +72,7 @@ export function SqlEditorPanel({
           </Button>
           <kbd className="text-2xs text-muted font-mono bg-bg/50 px-2 py-1 rounded-md border border-border/30 shadow-inner tracking-wider">
             {navigator.platform.includes("Mac") ? "⌘" : "Ctrl"}{" "}
-            {t("onboarding.enter")}
+            {t("common.enter")}
           </kbd>
           {queryResult && (
             <div className="text-xs text-muted ml-auto bg-bg/50 px-3 py-1.5 rounded-lg border border-border/30 font-medium shadow-inner tracking-wide">

@@ -126,7 +126,7 @@ export interface OpenVinoHardwareProbe {
  * codified there by `ELIZA1_TO_RUNTIME_KERNEL` / `RUNTIME_TO_ELIZA1_KERNEL`.
  * `openvino` intentionally has no manifest-level Eliza-1 kernel equivalent.
  */
-export type LocalRuntimeKernel = "turbo3" | "turbo4" | "turbo3_tcq" | "qjl_full" | "polarquant" | "openvino";
+export type LocalRuntimeKernel = "turbo3" | "turbo4" | "turbo3_tcq" | "qjl_full" | "polarquant" | "dflash" | "openvino";
 /**
  * llama.cpp optimization knobs that the dispatcher can wire into the
  * FFI runtime. Values come from catalog metadata (per-model) and
@@ -228,6 +228,21 @@ export interface LocalRuntimeAcceleration {
         draftMax: number;
         /** GPU layer placement for MTP heads when the runtime exposes it. */
         gpuLayers: number | "auto";
+    };
+    dflash?: {
+        /** Hidden companion model id containing the DFlash drafter GGUF. */
+        drafterModelId: string;
+        specType: "dflash";
+        /** Target and drafter context sizes passed to llama-server. */
+        contextSize: number;
+        draftContextSize: number;
+        draftMin: number;
+        draftMax: number;
+        gpuLayers: number | "auto";
+        draftGpuLayers: number | "auto";
+        disableThinking: boolean;
+        /** Catalog-side rollout gate for tiers that are intentionally disabled. */
+        disabledReason?: string;
     };
     kvCache?: {
         /**

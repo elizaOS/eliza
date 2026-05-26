@@ -344,40 +344,40 @@ export function assessFit(
   return "fits";
 }
 
-export type OnboardingMemoryFit = "fits" | "tight" | "wontfit";
-export type OnboardingDiskFit = "fits" | "low-disk" | "critical-disk";
-export type OnboardingRecommendation =
+export type FirstRunMemoryFit = "fits" | "tight" | "wontfit";
+export type FirstRunDiskFit = "fits" | "low-disk" | "critical-disk";
+export type FirstRunRecommendation =
   | "local-ok"
   | "local-with-warning"
   | "cloud-only";
 
-export interface OnboardingHardwareAdvice {
-  memory: OnboardingMemoryFit;
-  disk: OnboardingDiskFit;
-  recommended: OnboardingRecommendation;
+export interface FirstRunHardwareAdvice {
+  memory: FirstRunMemoryFit;
+  disk: FirstRunDiskFit;
+  recommended: FirstRunRecommendation;
   reasons: string[];
 }
 
-export interface OnboardingHardwareModel {
+export interface FirstRunHardwareModel {
   sizeBytes: number;
   ramGbRequired: number;
 }
 
-export interface OnboardingHardwareOptions {
+export interface FirstRunHardwareOptions {
   workspacePath?: string;
 }
 
 function diskFitFromWarning(
   warning: DiskSpaceWarning | undefined,
-): OnboardingDiskFit {
+): FirstRunDiskFit {
   if (warning === "critical-disk") return "critical-disk";
   if (warning === "low-disk") return "low-disk";
   return "fits";
 }
 
 function memoryReason(
-  memory: OnboardingMemoryFit,
-  model: OnboardingHardwareModel,
+  memory: FirstRunMemoryFit,
+  model: FirstRunHardwareModel,
 ): string | null {
   if (memory === "wontfit") {
     return `Less than ${model.ramGbRequired} GB of usable memory for this model`;
@@ -389,7 +389,7 @@ function memoryReason(
 }
 
 function diskReason(
-  disk: OnboardingDiskFit,
+  disk: FirstRunDiskFit,
   probe: DiskSpace,
   modelSizeBytes: number,
 ): string | null {
@@ -408,18 +408,18 @@ function diskReason(
 }
 
 function recommendationFrom(
-  memory: OnboardingMemoryFit,
-  disk: OnboardingDiskFit,
-): OnboardingRecommendation {
+  memory: FirstRunMemoryFit,
+  disk: FirstRunDiskFit,
+): FirstRunRecommendation {
   if (memory === "wontfit" || disk === "critical-disk") return "cloud-only";
   if (memory === "tight" || disk === "low-disk") return "local-with-warning";
   return "local-ok";
 }
 
-export async function assessOnboardingHardware(
-  model: OnboardingHardwareModel,
-  opts: OnboardingHardwareOptions = {},
-): Promise<OnboardingHardwareAdvice> {
+export async function assessFirstRunHardware(
+  model: FirstRunHardwareModel,
+  opts: FirstRunHardwareOptions = {},
+): Promise<FirstRunHardwareAdvice> {
   const probe = await probeHardware();
   const modelSizeGb = model.sizeBytes / 1024 ** 3;
   const memory = assessFit(probe, modelSizeGb, model.ramGbRequired);

@@ -15,7 +15,7 @@ import {
   isRateLimitedError,
 } from "../../api";
 import { useBranding } from "../../config/branding";
-import { isElizaCloudRuntimeLocked } from "../../onboarding/mobile-runtime-mode";
+import { isElizaCloudRuntimeLocked } from "../../first-run/mobile-runtime-mode";
 import { useApp } from "../../state";
 import { openExternalUrl, preOpenWindow } from "../../utils";
 import { StripeEmbeddedCheckout } from "../cloud/StripeEmbeddedCheckout";

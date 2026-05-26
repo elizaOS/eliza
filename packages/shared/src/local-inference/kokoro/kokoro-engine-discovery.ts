@@ -1,6 +1,6 @@
 /**
  * On-disk discovery for the Kokoro-only voice mode. Probes
- * `~/.eliza/local-inference/models/kokoro/` (or `$ELIZA_KOKORO_MODEL_DIR`)
+ * `<stateDir>/local-inference/models/kokoro/` (or `$ELIZA_KOKORO_MODEL_DIR`)
  * for a GGUF model file plus at least one voice `.bin` under `voices/`.
  * Callers can pass an explicit model root to probe bundle-local Kokoro
  * artifacts first. Returns null when anything is missing — no auto-download

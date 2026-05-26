@@ -36,11 +36,11 @@ import {
 } from "./internal";
 import { shouldStartAtCharacterSelectOnLaunch } from "./shell-routing";
 import type { StartupEvent } from "./startup-coordinator";
-import type { OnboardingMode } from "./types";
+import type { FirstRunMode } from "./types";
 
 export interface HydratingDeps {
   setStartupError: (v: null) => void;
-  setOnboardingLoading: (v: boolean) => void;
+  setFirstRunLoading: (v: boolean) => void;
   hydrateInitialConversationState: () => Promise<string | null>;
   requestGreetingWhenRunningRef: React.RefObject<
     (convId: string) => Promise<void>
@@ -61,9 +61,9 @@ export interface HydratingDeps {
   setWalletAddresses: (v: WalletAddresses) => void;
   setTab: (t: Tab) => void;
   setTabRaw: (t: Tab) => void;
-  onboardingCompletionCommittedRef: React.MutableRefObject<boolean>;
+  firstRunCompletionCommittedRef: React.MutableRefObject<boolean>;
   initialTabSetRef: React.MutableRefObject<boolean>;
-  onboardingMode: OnboardingMode;
+  firstRunMode: FirstRunMode;
 }
 
 export interface ReadyPhaseDeps {
@@ -165,7 +165,7 @@ export async function runHydrating(
   // flows regain live updates without waiting for conversation restore.
   client.connectWs();
   const greetConvId = await deps.hydrateInitialConversationState();
-  deps.setOnboardingLoading(false);
+  deps.setFirstRunLoading(false);
   if (greetConvId) void deps.requestGreetingWhenRunningRef.current(greetConvId);
 
   void deps.loadWorkbench();
@@ -180,7 +180,7 @@ export async function runHydrating(
   }
 
   // Avatar / VRM selection — resolve from server config, then stream
-  // settings, then localStorage.  Cloud containers that skip onboarding
+  // settings, then localStorage.  Cloud containers that skip first-run setup
   // have their character defaults written server-side, so we must read
   // the config to pick up the correct avatarIndex.
   let resolvedIdx = loadAvatarIndex();
@@ -233,17 +233,17 @@ export async function runHydrating(
   const urlTab = tabFromPath(navPath);
   const isRoot = isRouteRootPath(navPath);
   const shouldCharSelect =
-    deps.onboardingCompletionCommittedRef.current ||
+    deps.firstRunCompletionCommittedRef.current ||
     shouldStartAtCharacterSelectOnLaunch({
-      onboardingNeedsOptions: false,
-      onboardingMode: deps.onboardingMode,
+      firstRunNeedsOptions: false,
+      firstRunMode: deps.firstRunMode,
       navPath,
       urlTab,
     });
   if (!deps.initialTabSetRef.current) {
     deps.initialTabSetRef.current = true;
     if (shouldCharSelect) {
-      deps.onboardingCompletionCommittedRef.current = false;
+      deps.firstRunCompletionCommittedRef.current = false;
       deps.setTab("character-select");
       void deps.loadCharacter();
     } else if (isRoot) deps.setTab(resolveDefaultLandingTab());

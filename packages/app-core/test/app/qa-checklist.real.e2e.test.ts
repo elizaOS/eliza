@@ -241,7 +241,7 @@ function isIgnorableQaRequestFailure(failure: QaRequestFailure): boolean {
   if (
     (failure.errorText === "net::ERR_FAILED" ||
       failure.errorText === "net::ERR_ABORTED") &&
-    ["/api/config", "/api/onboarding/status", "/api/vincent/status"].includes(
+    ["/api/config", "/api/first-run/status", "/api/vincent/status"].includes(
       pathname,
     )
   ) {
@@ -363,7 +363,7 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
         logQaStep(profile, "complete local provider onboarding");
         await completeLocalProviderOnboarding(page);
 
-        expect(await onboardingComplete()).toBe(true);
+        expect(await firstRunComplete()).toBe(true);
         logQaStep(profile, "enter companion mode");
         await enterCompanionMode(page);
         await waitForCompanionReady(page, 120_000);
@@ -598,7 +598,7 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
         await clickByText(page, "Reset Everything");
         await waitForOnboardingEntry(page, 180_000);
 
-        expect(await onboardingComplete()).toBe(false);
+        expect(await firstRunComplete()).toBe(false);
         expect((await listConversations()).length).toBe(0);
         expect((await listDocumentsAfterReset()).length).toBe(0);
         await saveScreenshot(page, profile, "reset-to-onboarding");
@@ -1119,7 +1119,7 @@ async function startRealStack(): Promise<StartedStack> {
   });
 
   const onboardingStatus = await waitForJson<{ complete: boolean }>(
-    `${apiBase}/api/onboarding/status`,
+    `${apiBase}/api/first-run/status`,
   );
   if (onboardingStatus.complete) {
     throw new Error("Fresh live QA stack unexpectedly started complete");
@@ -2218,7 +2218,7 @@ async function completeLocalProviderOnboarding(page: Page) {
   await clickAnyText(page, ["Confirm"]);
   await waitForAnyText(page, ["Enable features", "Skip for now"], 60_000);
   await clickAnyText(page, ["Skip for now", "Continue without features"]);
-  await waitFor(async () => (await onboardingComplete()) || null, 120_000);
+  await waitFor(async () => (await firstRunComplete()) || null, 120_000);
 }
 
 async function enterCompanionMode(page: Page) {
@@ -2370,8 +2370,8 @@ async function writeDocumentFile(profileId: string): Promise<string> {
   return fullPath;
 }
 
-async function onboardingComplete(): Promise<boolean> {
-  const result = await apiJson<{ complete: boolean }>("/api/onboarding/status");
+async function firstRunComplete(): Promise<boolean> {
+  const result = await apiJson<{ complete: boolean }>("/api/first-run/status");
   return result.complete;
 }
 
@@ -2380,7 +2380,7 @@ async function resetAgentViaApi() {
     console.log("[live-qa][setup] reset via live stack restart");
     await restartLiveStack();
     console.log("[live-qa][setup] reset via live stack restart complete");
-    if (await onboardingComplete()) {
+    if (await firstRunComplete()) {
       throw new Error(
         "Fresh QA stack unexpectedly reported onboarding complete after restart.",
       );
@@ -2389,7 +2389,7 @@ async function resetAgentViaApi() {
   }
 
   await apiJson("/api/agent/reset", { method: "POST" });
-  await waitFor(async () => !(await onboardingComplete()), 30_000);
+  await waitFor(async () => !(await firstRunComplete()), 30_000);
   const conversations = await listConversations();
   const documents = await listDocumentsAfterReset();
   if (conversations.length > 0 || documents.length > 0) {
@@ -2427,7 +2427,7 @@ async function listDocumentsAfterReset(): Promise<Array<{ filename: string }>> {
     return await listDocuments();
   } catch (error) {
     if (
-      !(await onboardingComplete()) ||
+      !(await firstRunComplete()) ||
       (error instanceof Error && /^(404|500)\b/.test(error.message))
     ) {
       return [];

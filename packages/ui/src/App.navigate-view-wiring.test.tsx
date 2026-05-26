@@ -108,7 +108,7 @@ vi.mock("./state", () => ({
     backendConnection: { state: "connected" },
     gameOverlayEnabled: false,
     loadDropStatus: vi.fn(async () => undefined),
-    onboardingComplete: true,
+    firstRunComplete: true,
     ownerName: "Test Owner",
     plugins: [],
     retryStartup: vi.fn(),

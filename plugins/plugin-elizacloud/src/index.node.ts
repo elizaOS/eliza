@@ -17,17 +17,17 @@ export {
 } from "./routes/cloud-coding-container-routes";
 export type { CloudConfigLike } from "./routes/cloud-routes-autonomous";
 export { handleCloudStatusRoutes } from "./routes/cloud-status-routes";
-export { runCloudOnboarding, type CloudOnboardingResult } from "./onboarding";
+export { runCloudSetup, type CloudSetupResult } from "./cloud-setup";
 export { ClackObserver } from "./cloud/clack-observer";
-export { NullCloudOnboardingObserver } from "./cloud/null-observer";
+export { NullCloudSetupObserver } from "./cloud/null-observer";
 export type {
   AvailabilityResult,
-  CloudOnboardingObserver,
+  CloudSetupObserver,
   ConfirmPrompt,
   ProvisionSuccessInfo,
   SelectChoiceOption,
   SelectChoicePrompt,
-} from "./cloud/onboarding-observer";
+} from "./cloud/setup-observer";
 export { CloudManager, type CloudManagerCallbacks } from "./cloud/cloud-manager";
 export {
   getOrCreateClientAddressKey,

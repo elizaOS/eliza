@@ -654,7 +654,7 @@ async function capacitorLlamaProviderStatus(): Promise<ProviderStatus> {
 
 function localConfig(): Record<string, unknown> {
   return {
-    meta: { onboardingComplete: true },
+    meta: { firstRunComplete: true },
     ui: {},
     cloud: {
       enabled: false,
@@ -2762,7 +2762,7 @@ export async function handleIosLocalAgentRequest(
     });
   }
 
-  if (method === "GET" && pathname === "/api/onboarding/status") {
+  if (method === "GET" && pathname === "/api/first-run/status") {
     return json({
       complete: true,
       cloudProvisioned: false,

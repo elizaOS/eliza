@@ -41,6 +41,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 
 import type {
 	LlmCtxHandle,
@@ -280,10 +281,7 @@ interface VisionShimSymbols {
 export function resolveDesktopBinDir(
 	env: NodeJS.ProcessEnv = process.env,
 ): string {
-	const stateDir =
-		env.ELIZA_STATE_DIR ??
-		env.ELIZA_STATE_DIR ??
-		path.join(os.homedir(), ".eliza");
+	const stateDir = env.ELIZA_STATE_DIR ?? resolveStateDir(env);
 	const platform =
 		process.platform === "darwin"
 			? "darwin"

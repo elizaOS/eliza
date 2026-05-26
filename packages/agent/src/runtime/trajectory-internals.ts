@@ -19,6 +19,7 @@ import {
   type IAgentRuntime,
   ModelType,
   observationExtractionTemplate,
+  resolveStateDir,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 
@@ -2035,7 +2036,7 @@ export function resolvePreferredTrajectoryArchiveRoot(): string {
   const workspaceRoot = process.env.ELIZA_WORKSPACE_ROOT?.trim();
   if (workspaceRoot) return workspaceRoot;
 
-  return path.join(os.homedir(), ".eliza", "workspace");
+  return path.join(resolveStateDir(), "workspace");
 }
 
 export async function ensureArchiveDirectory(dir: string): Promise<void> {

@@ -91,7 +91,7 @@ export interface CloudSsoSession {
 export interface SsoRedirectArgs {
   /**
    * Local URL the user should land on after the SSO round-trip
-   * (e.g. `/onboarding/setup`). The dashboard's callback route forwards
+   * (e.g. `/first-run/setup`). The dashboard's callback route forwards
    * to this once the session cookie is set; it is NOT sent to the cloud
    * issuer.
    */

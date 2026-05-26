@@ -15,7 +15,7 @@ This file maps every package under `packages/` to its docs-site coverage. Mainta
 | `packages/skills/`               | Runtime   | `plugins/skills.md`, `skills/streaming.md`                           |
 | `packages/prompts/`              | Runtime   | (consumed by `runtime/*`; no standalone page needed)                 |
 | `packages/app/`                  | App       | `tracks/agent-app/*.mdx`, `apps/*.md`                                |
-| `packages/app-core/`             | App       | `tracks/agent-app/*.mdx`, `apps/dashboard/*`, `guides/onboarding-*`  |
+| `packages/app-core/`             | App       | `tracks/agent-app/*.mdx`, `apps/dashboard/*`, `guides/first-run-*`  |
 | `packages/ui/`                   | App       | `apps/ui-library.md`                                                 |
 | `packages/tui/`                  | App       | (terminal UI; folded into `apps/*` desktop coverage)                 |
 | `packages/homepage/`             | App       | (marketing site; no in-docs coverage by design)                      |

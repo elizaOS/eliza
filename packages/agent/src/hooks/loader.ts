@@ -10,7 +10,7 @@ import { lstat, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { logger } from "@elizaos/core";
+import { logger, resolveStateDir } from "@elizaos/core";
 import type { InternalHooksConfig } from "../config/types.hooks.ts";
 import { type DiscoveryOptions, discoverHooks } from "./discovery.ts";
 import { checkEligibility, resolveHookConfig } from "./eligibility.ts";
@@ -24,7 +24,7 @@ function getSafeHookRoots(
   workspacePath?: string,
   bundledDir?: string,
 ): string[] {
-  const roots: string[] = [resolve(homedir(), ".eliza", "hooks")];
+  const roots: string[] = [resolve(resolveStateDir(), "hooks")];
   if (bundledDir) roots.push(resolve(bundledDir));
   if (workspacePath) {
     roots.push(resolve(workspacePath.replace(/^~/, homedir()), "hooks"));
@@ -158,17 +158,17 @@ export async function loadHooks(
   // Clear existing hooks (for reload)
   clearHooks();
 
-  // Validate config-supplied extraDirs: only allow paths under ~/.eliza/
+  // Validate config-supplied extraDirs: only allow paths under the state dir
   // to prevent config injection from scanning attacker-controlled directories.
   const safeExtraDirs = [...(options.extraDirs ?? [])];
-  const elizaHome = resolve(homedir(), ".eliza");
+  const elizaHome = resolve(resolveStateDir());
   for (const dir of internalConfig?.load?.extraDirs ?? []) {
     const resolved = resolve(dir.replace(/^~/, homedir()));
     if (resolved.startsWith(elizaHome + sep) || resolved === elizaHome) {
       safeExtraDirs.push(dir);
     } else {
       logger.warn(
-        `[hooks] Rejected config extraDir "${dir}": must be under ~/.eliza/`,
+        `[hooks] Rejected config extraDir "${dir}": must be under the state dir.`,
       );
     }
   }

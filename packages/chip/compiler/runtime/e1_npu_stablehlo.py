@@ -26,8 +26,16 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
+
+class YamlModule(Protocol):
+    YAMLError: type[Exception]
+
+    def safe_load(self, text: str) -> Any: ...
+
+
+_yaml: YamlModule | None
 try:  # PyYAML is part of the chip toolchain (see requirements.txt).
     import yaml as _yaml
 except ImportError:  # pragma: no cover - yaml is required by the chip env.

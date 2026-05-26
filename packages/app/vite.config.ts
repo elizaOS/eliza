@@ -1506,10 +1506,10 @@ export default defineConfig({
             replacement: path.join(uiSource, "$1"),
           },
           {
-            find: /^@elizaos\/app-core\/onboarding\/onboarding-config$/,
+            find: /^@elizaos\/app-core\/first-run\/first-run-config$/,
             replacement: path.join(
               appCoreSrcRoot,
-              "onboarding/onboarding-config.ts",
+              "first-run/first-run-config.ts",
             ),
           },
           {

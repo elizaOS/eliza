@@ -91,14 +91,13 @@ export function clearSkillsDirCache(): void {
 }
 
 /**
- * Default base directory for the curated learning loop. Lives alongside the
- * Eliza state dir (`~/.eliza/`) and holds two sibling namespaces:
+ * Default base directory for the curated learning loop. Lives under the
+ * elizaOS state dir and holds two sibling namespaces:
  *
  *   curated/active/    — auto-promoted or human-promoted skills (loaded)
  *   curated/proposed/  — staged drafts awaiting human review (NOT loaded)
  *
- * Honors the state directory resolved by @elizaos/core; falls back to
- * `~/.eliza`.
+ * Honors the state directory resolved by @elizaos/core.
  */
 function resolveCuratedBaseDir(): string {
   return join(resolveStateDir(), "skills", "curated");

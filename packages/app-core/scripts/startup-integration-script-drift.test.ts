@@ -61,7 +61,8 @@ describe("startup integration script drift", () => {
     );
 
     expect(devPlatform).toContain("sync-to-public.mjs");
-    expect(devPlatform).toContain('"--clouds"');
+    expect(devPlatform).toContain('"--background"');
+    expect(devPlatform).toContain('"--background-videos"');
     expect(syncIndex).toBeGreaterThanOrEqual(0);
     expect(staleIndex).toBeGreaterThan(syncIndex);
   });

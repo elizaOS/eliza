@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 import { type Dirent, existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { logger, type Plugin } from "@elizaos/core";
 import {
@@ -100,7 +100,7 @@ export function resolveRuntimePluginImportSpecifier(
   pluginName: string,
 ): string {
   if (pluginName.startsWith("@elizaos/plugin-")) {
-    return resolveElizaPluginImportSpecifier(pluginName);
+    return resolveRuntimeElizaPluginImportSpecifier(pluginName);
   }
 
   return runtimePluginImportSpecifier(pluginName);
@@ -589,6 +589,18 @@ function runtimePluginImportSpecifier(pluginName: string): string {
     : pluginName;
 }
 
+function resolveRuntimeElizaPluginImportSpecifier(pluginName: string): string {
+  const resolved = resolveElizaPluginImportSpecifier(pluginName);
+  if (!RUNTIME_APP_PLUGIN_SUBPATHS.has(pluginName)) return resolved;
+  if (resolved === pluginName) return runtimePluginImportSpecifier(pluginName);
+  if (!resolved.startsWith("file://")) return resolved;
+
+  const indexPath = fileURLToPath(resolved);
+  if (path.basename(indexPath) !== "index.js") return resolved;
+  const pluginPath = path.join(path.dirname(indexPath), "plugin.js");
+  return existsSync(pluginPath) ? pathToFileURL(pluginPath).href : resolved;
+}
+
 async function hasNonSymlinkWorkspaceNodeModulesPackage(
   pluginName: string,
 ): Promise<boolean> {
@@ -685,7 +697,7 @@ function wrapPluginWithErrorBoundary(
  *   1. npm layout:  <installPath>/node_modules/@scope/package/  (from `bun add`)
  *   2. git layout:  <installPath>/ is the package root directly  (from `git clone`)
  *
- * @param installPath  Root directory of the installation (e.g. ~/.eliza/plugins/installed/foo/).
+ * @param installPath  Root directory of the installation (e.g. <stateDir>/plugins/installed/foo/).
  * @param packageName  The npm package name (e.g. "@elizaos/plugin-discord") — used
  *                     to navigate directly into node_modules when present.
  */
@@ -1356,8 +1368,8 @@ async function discoverPluginCandidates(): Promise<PluginManifestCandidate[]> {
  *
  * Handles three categories of plugins:
  * 1. Built-in/npm plugins — imported by package name
- * 2. User-installed plugins — from ~/.eliza/plugins/installed/
- * 3. Custom/drop-in plugins — from ~/.eliza/plugins/custom/ and plugins.load.paths
+ * 2. User-installed plugins — from <stateDir>/plugins/installed/
+ * 3. Custom/drop-in plugins — from <stateDir>/plugins/custom/ and plugins.load.paths
  *
  * Each plugin is loaded inside an error boundary so a single failing plugin
  * cannot crash the entire agent startup.
@@ -1530,7 +1542,7 @@ export async function resolvePlugins(
     const importOfficialPluginFromNodeModules =
       async (): Promise<PluginModuleShape> =>
         (await import(
-          resolveElizaPluginImportSpecifier(pluginName)
+          resolveRuntimePluginImportSpecifier(pluginName)
         )) as PluginModuleShape;
 
     // Pre-flight: opportunistically prepare special plugin dependencies.
@@ -1810,8 +1822,8 @@ export async function resolvePlugins(
   const diagnostic = diagnoseNoAIProvider(loadedNames, failedPlugins);
   if (diagnostic) {
     if (opts?.quiet) {
-      // In headless/GUI mode before onboarding, this is expected — the user
-      // will configure a provider through the onboarding wizard and restart.
+      // In headless/GUI mode before first-run setup, this is expected — the user
+      // will configure a provider through first-run setup and restart.
       logger.info(`[eliza] ${diagnostic}`);
     } else {
       logger.error(`[eliza] ${diagnostic}`);

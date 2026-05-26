@@ -244,7 +244,7 @@ checks that could be bypassed.
 
 - The agent runtime, local inference, NPU runtime, and all model/user data live
   **inside** the confidential domain. `MILADY_STATE_DIR`/`ELIZA_STATE_DIR`
-  (default `~/.milady`) maps to a private, sealed-key-encrypted volume that only
+  (default `~/.local/state/milady`) maps to a private, sealed-key-encrypted volume that only
   mounts after attestation-gated key release.
 - **"Some stuff on a standard machine" split.** Allowed outside the TEE (untrusted
   by design): UI rendering surfaces, network transport, push/notification relays,

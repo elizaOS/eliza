@@ -16,10 +16,10 @@ The dashboard runs as a web application served by the Eliza agent runtime.
 | **CLI shortcut** | Run `eliza dashboard` to open the dashboard in your default browser |
 | **Desktop app** | The Electrobun desktop app embeds the dashboard directly (no browser required) |
 
-On first launch you will see the server chooser / startup flow. If the selected
-server still needs setup, Eliza continues into onboarding for that server
-before you reach the main dashboard. If authentication is required you will see
-the **Pairing View** before reaching the main dashboard.
+On first launch you will see first-run setup. If the selected server still
+needs setup, Eliza continues into onboarding for that server before you reach
+the main dashboard. If authentication is required you will see the **Pairing
+View** before reaching the main dashboard.
 
 <Info>
 The dashboard port defaults to `2138`. If this port is already in use, the runtime will log the actual port it binds to. Check the startup logs for the exact URL.

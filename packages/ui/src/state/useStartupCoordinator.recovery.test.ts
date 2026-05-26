@@ -7,7 +7,7 @@ import {
 
 const clientMock = vi.hoisted(() => ({
   getStatus: vi.fn(),
-  getOnboardingStatus: vi.fn(),
+  getFirstRunStatus: vi.fn(),
 }));
 
 vi.mock("../api", () => ({
@@ -19,9 +19,9 @@ function createDeps() {
     setAgentStatus: vi.fn(),
     setConnected: vi.fn(),
     setStartupError: vi.fn(),
-    setOnboardingLoading: vi.fn(),
-    setOnboardingComplete: vi.fn(),
-    onboardingCompletionCommittedRef: { current: false },
+    setFirstRunLoading: vi.fn(),
+    setFirstRunComplete: vi.fn(),
+    firstRunCompletionCommittedRef: { current: false },
   } as unknown as StartupCoordinatorDeps;
 }
 
@@ -37,7 +37,7 @@ describe("recoverTerminalStartupError", () => {
       startup: { phase: "running", attempt: 0 },
     };
     clientMock.getStatus.mockResolvedValue(status);
-    clientMock.getOnboardingStatus.mockResolvedValue({ complete: true });
+    clientMock.getFirstRunStatus.mockResolvedValue({ complete: true });
     const deps = createDeps();
     const dispatch = vi.fn();
 
@@ -48,18 +48,18 @@ describe("recoverTerminalStartupError", () => {
     expect(deps.setAgentStatus).toHaveBeenCalledWith(status);
     expect(deps.setConnected).toHaveBeenCalledWith(true);
     expect(deps.setStartupError).toHaveBeenCalledWith(null);
-    expect(deps.setOnboardingLoading).toHaveBeenCalledWith(false);
-    expect(deps.setOnboardingComplete).toHaveBeenCalledWith(true);
+    expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
+    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(true);
     expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
   });
 
-  it("routes a recovered but incomplete install back to onboarding", async () => {
+  it("routes a recovered but incomplete install back to first-run", async () => {
     clientMock.getStatus.mockResolvedValue({
       state: "running",
       agentName: "Eliza",
       startup: { phase: "running", attempt: 0 },
     });
-    clientMock.getOnboardingStatus.mockResolvedValue({ complete: false });
+    clientMock.getFirstRunStatus.mockResolvedValue({ complete: false });
     const deps = createDeps();
     const dispatch = vi.fn();
 
@@ -67,10 +67,10 @@ describe("recoverTerminalStartupError", () => {
       recoverTerminalStartupError(deps, dispatch, { current: false }),
     ).resolves.toBe(true);
 
-    expect(deps.setOnboardingComplete).toHaveBeenCalledWith(false);
+    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(false);
     expect(dispatch).toHaveBeenCalledWith({
       type: "BACKEND_REACHED",
-      onboardingComplete: false,
+      firstRunComplete: false,
     });
   });
 
@@ -86,7 +86,7 @@ describe("recoverTerminalStartupError", () => {
       recoverTerminalStartupError(deps, dispatch, { current: false }),
     ).resolves.toBe(false);
 
-    expect(clientMock.getOnboardingStatus).not.toHaveBeenCalled();
+    expect(clientMock.getFirstRunStatus).not.toHaveBeenCalled();
     expect(dispatch).not.toHaveBeenCalled();
     expect(deps.setStartupError).not.toHaveBeenCalled();
   });
@@ -107,7 +107,7 @@ describe("startupReducer stale error recovery transitions", () => {
     ).toEqual({ phase: "hydrating" });
   });
 
-  it("can return to onboarding when recovered backend is not yet onboarded", () => {
+  it("can return to first-run when recovered backend is not yet configured", () => {
     expect(
       startupReducer(
         {
@@ -116,8 +116,8 @@ describe("startupReducer stale error recovery transitions", () => {
           message: "transient",
           timedOut: true,
         },
-        { type: "BACKEND_REACHED", onboardingComplete: false },
+        { type: "BACKEND_REACHED", firstRunComplete: false },
       ),
-    ).toEqual({ phase: "onboarding-required", serverReachable: true });
+    ).toEqual({ phase: "first-run-required", serverReachable: true });
   });
 });

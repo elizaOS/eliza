@@ -19,10 +19,6 @@ import { client } from "../api";
 import { isElectrobunRuntime } from "../bridge";
 import { isAndroid, isElizaOS, isIOS, isNative } from "../platform";
 import {
-  loadPersistedOnboardingComplete,
-  ONBOARDING_COMPLETE_STORAGE_KEY,
-} from "./persistence";
-import {
   createAndroidPolicy,
   createDesktopPolicy,
   createElizaOSPolicy,
@@ -83,11 +79,10 @@ export async function recoverTerminalStartupError(
   }
   if (cancelled.current || status.state !== "running") return false;
 
-  let onboardingComplete = deps.onboardingCompletionCommittedRef.current;
+  let firstRunComplete = deps.firstRunCompletionCommittedRef.current;
   try {
-    const onboardingStatus = await client.getOnboardingStatus();
-    onboardingComplete =
-      onboardingComplete || onboardingStatus.complete === true;
+    const firstRunStatus = await client.getFirstRunStatus();
+    firstRunComplete = firstRunComplete || firstRunStatus.complete === true;
   } catch {
     return false;
   }
@@ -96,13 +91,13 @@ export async function recoverTerminalStartupError(
   deps.setAgentStatus(status);
   deps.setConnected(true);
   deps.setStartupError(null);
-  deps.setOnboardingLoading(false);
-  deps.setOnboardingComplete(onboardingComplete);
+  deps.setFirstRunLoading(false);
+  deps.setFirstRunComplete(firstRunComplete);
 
-  if (onboardingComplete) {
+  if (firstRunComplete) {
     dispatch({ type: "AGENT_RUNNING" });
   } else {
-    dispatch({ type: "BACKEND_REACHED", onboardingComplete: false });
+    dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
   }
   return true;
 }
@@ -130,7 +125,7 @@ export interface StartupCoordinatorHandle {
   retry: () => void;
   reset: () => void;
   pairingSuccess: () => void;
-  onboardingComplete: () => void;
+  firstRunComplete: () => void;
   policy: PlatformPolicy;
   legacyPhase: "starting-backend" | "initializing-agent" | "ready";
   loading: boolean;
@@ -177,40 +172,6 @@ export function useStartupCoordinator(
     if (!depsReady) return;
     depsRef.current?.setStartupPhase(legacyPhase);
   }, [legacyPhase, depsReady]);
-
-  // ── Phase: splash — auto-skip for returning users, mark loaded for new users
-  // Fresh installs stay on splash until the user explicitly continues.
-  useEffect(() => {
-    if (state.phase !== "splash") return;
-    if (!depsReady) return;
-
-    if (loadPersistedOnboardingComplete()) {
-      dispatch({ type: "SPLASH_CONTINUE" });
-      return;
-    }
-    dispatch({ type: "SPLASH_LOADED" });
-  }, [state.phase, depsReady]);
-
-  // Separate desktop shell windows, such as the OS chat-overlay pill, can be
-  // opened before the main app finishes onboarding. The `storage` event is how
-  // those windows learn that onboarding completed elsewhere and can continue
-  // their own startup coordinator without showing onboarding in the overlay.
-  useEffect(() => {
-    if (state.phase !== "splash") return;
-    if (!depsReady || typeof window === "undefined") return;
-
-    const onStorage = (event: StorageEvent) => {
-      if (
-        event.key === ONBOARDING_COMPLETE_STORAGE_KEY &&
-        event.newValue === "1"
-      ) {
-        dispatch({ type: "SPLASH_CONTINUE" });
-      }
-    };
-
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, [state.phase, depsReady]);
 
   // ── Phase: restoring-session ────────────────────────────────────
   useEffect(() => {
@@ -361,8 +322,8 @@ export function useStartupCoordinator(
     () => dispatch({ type: "PAIRING_SUCCESS" }),
     [],
   );
-  const onboardingCompleteFn = useCallback(
-    () => dispatch({ type: "ONBOARDING_COMPLETE" }),
+  const firstRunCompleteFn = useCallback(
+    () => dispatch({ type: "FIRST_RUN_COMPLETE" }),
     [],
   );
 
@@ -376,7 +337,7 @@ export function useStartupCoordinator(
     retry,
     reset,
     pairingSuccess,
-    onboardingComplete: onboardingCompleteFn,
+    firstRunComplete: firstRunCompleteFn,
     policy,
     legacyPhase: toLegacyStartupPhase(state),
     loading: isStartupLoading(state),

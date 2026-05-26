@@ -19,25 +19,25 @@ const bridgeMock = vi.hoisted(() => ({
   scanProviderCredentials: vi.fn(async () => []),
 }));
 
-const onboardingBootstrapMock = vi.hoisted(() => ({
-  detectExistingOnboardingConnection: vi.fn(async () => null),
+const firstRunBootstrapMock = vi.hoisted(() => ({
+  detectExistingFirstRunConnection: vi.fn(async () => null),
 }));
 
 vi.mock("../bridge", () => bridgeMock);
-vi.mock("./onboarding-bootstrap", () => onboardingBootstrapMock);
+vi.mock("./first-run-bootstrap", () => firstRunBootstrapMock);
 
 function makeDeps(): RestoringSessionDeps {
   return {
     setStartupError: vi.fn(),
     setAuthRequired: vi.fn(),
     setConnected: vi.fn(),
-    setOnboardingExistingInstallDetected: vi.fn(),
-    setOnboardingOptions: vi.fn(),
-    setOnboardingComplete: vi.fn(),
-    setOnboardingLoading: vi.fn(),
+    setFirstRunExistingInstallDetected: vi.fn(),
+    setFirstRunOptions: vi.fn(),
+    setFirstRunComplete: vi.fn(),
+    setFirstRunLoading: vi.fn(),
     applyDetectedProviders: vi.fn(),
     forceLocalBootstrapRef: { current: false },
-    onboardingCompletionCommittedRef: { current: false },
+    firstRunCompletionCommittedRef: { current: false },
     uiLanguage: "en",
   };
 }
@@ -70,7 +70,7 @@ describe("runRestoringSession desktop bridge startup calls", () => {
     );
     expect(dispatch).toHaveBeenCalledWith({
       type: "NO_SESSION",
-      hadPriorOnboarding: false,
+      hadPriorFirstRun: false,
     });
   });
 

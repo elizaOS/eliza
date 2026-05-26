@@ -2059,7 +2059,7 @@ public class ElizaAgentService extends Service {
     /**
      * Storage key for the persisted mobile runtime mode. Must match
      * MOBILE_RUNTIME_MODE_STORAGE_KEY in
-     * eliza/packages/app-core/src/onboarding/mobile-runtime-mode.ts.
+     * eliza/packages/app-core/src/first-run/mobile-runtime-mode.ts.
      */
     private static final String RUNTIME_MODE_KEY = "eliza:mobile-runtime-mode";
 

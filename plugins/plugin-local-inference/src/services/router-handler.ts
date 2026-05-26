@@ -62,7 +62,11 @@
  */
 
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import {
+	logger,
+	ModelType,
+	NoModelProviderConfiguredError,
+} from "@elizaos/core";
 import { readEffectiveAssignments } from "./assignments";
 import { localInferenceEngine } from "./engine";
 import type { HandlerRegistration } from "./handler-registry";
@@ -236,7 +240,7 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 				if (lastError) {
 					throw lastError;
 				}
-				throw new Error(
+				throw new NoModelProviderConfiguredError(
 					`[router] No provider registered for ${slot}. Configure a cloud provider, enable local inference, or pair a device.`,
 				);
 			}

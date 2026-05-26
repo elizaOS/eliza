@@ -53,9 +53,9 @@ export interface ElizaCloudStatusUpdatedDetail {
 // ── Avatar / VRM ─────────────────────────────────────────────────────────
 export const VRM_TELEPORT_COMPLETE_EVENT =
   "eliza:vrm-teleport-complete" as const;
-/** IdentityStep dispatches this after queuing a post-teleport voice preview; OnboardingWizard echoes {@link VRM_TELEPORT_COMPLETE_EVENT} when VRM is off. */
-export const ONBOARDING_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT =
-  "eliza:onboarding-voice-preview-await-teleport" as const;
+/** FirstRunShell dispatches this after queuing a post-teleport voice preview; FirstRunWizard echoes {@link VRM_TELEPORT_COMPLETE_EVENT} when VRM is off. */
+export const FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT =
+  "eliza:first-run-voice-preview-await-teleport" as const;
 
 // ── Sidebar sync ─────────────────────────────────────────────────────────
 export const SELF_STATUS_SYNC_EVENT = "eliza:self-status-refresh" as const;
@@ -93,7 +93,7 @@ export type ElizaWindowEventName =
   | typeof APP_EMOTE_EVENT
   | typeof ELIZA_CLOUD_STATUS_UPDATED_EVENT
   | typeof VRM_TELEPORT_COMPLETE_EVENT
-  | typeof ONBOARDING_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT
+  | typeof FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT
   | typeof SELF_STATUS_SYNC_EVENT;
 
 export type ElizaEventName = ElizaDocumentEventName | ElizaWindowEventName;

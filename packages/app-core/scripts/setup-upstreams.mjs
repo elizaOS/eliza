@@ -47,10 +47,51 @@ export const ELIZA_BUILD_STEPS = [
     label: "@elizaos/prompts",
   },
   {
+    check: path.join("packages", "shared", "dist", "index.js"),
+    cwd: path.join("packages", "shared"),
+    args: ["run", "build"],
+    label: "@elizaos/shared",
+    alwaysRun: true,
+  },
+  {
     check: path.join("packages", "skills", "dist", "index.js"),
     cwd: path.join("packages", "skills"),
     args: ["run", "build"],
     label: "@elizaos/skills",
+  },
+  {
+    check: path.join("packages", "vault", "dist", "index.js"),
+    cwd: path.join("packages", "vault"),
+    args: ["run", "build"],
+    label: "@elizaos/vault",
+  },
+  {
+    check: path.join("packages", "security", "dist", "index.js"),
+    cwd: path.join("packages", "security"),
+    args: ["run", "build"],
+    label: "@elizaos/security",
+  },
+  {
+    check: path.join(
+      "packages",
+      "plugin-remote-manifest",
+      "dist",
+      "index.js",
+    ),
+    cwd: path.join("packages", "plugin-remote-manifest"),
+    args: ["run", "build"],
+    label: "@elizaos/plugin-remote-manifest",
+  },
+  {
+    check: path.join(
+      "packages",
+      "plugin-worker-runtime",
+      "dist",
+      "index.js",
+    ),
+    cwd: path.join("packages", "plugin-worker-runtime"),
+    args: ["run", "build"],
+    label: "@elizaos/plugin-worker-runtime",
   },
   {
     // plugin-elizacloud imports types from @elizaos/cloud-sdk; without dist
@@ -718,7 +759,7 @@ async function ensureElizaDependencies(elizaRoot) {
 
 async function ensureElizaBuildOutputs(elizaRoot) {
   for (const step of ELIZA_BUILD_STEPS) {
-    if (existsSync(path.join(elizaRoot, step.check))) {
+    if (!step.alwaysRun && existsSync(path.join(elizaRoot, step.check))) {
       continue;
     }
 

@@ -10056,6 +10056,7 @@ export class DefaultMessageService implements IMessageService {
 		const responseContent: Content = {
 			thought: `No LLM provider configured during ${stage}.`,
 			actions: ["REPLY"],
+			failureKind: "no_provider",
 			providers: [],
 			text: replyText,
 			responseId,

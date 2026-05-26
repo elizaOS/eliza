@@ -132,4 +132,4 @@ dynamicViewPush("genui.patch")
   -> ElizaGenUiRenderer
 ```
 
-The demo starter setup spec lives in `starter-pack-demo.ts`. It is not a production onboarding wizard.
+The demo starter setup spec lives in `starter-pack-demo.ts`. It is not production first-run setup.

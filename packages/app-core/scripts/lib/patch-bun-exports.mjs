@@ -857,10 +857,10 @@ export function patchMissingLifecycleScript(
   return patched;
 }
 
-function loadElizaOnboardingPresetsSource(root, targetPath) {
+function loadElizaCharacterPresetsSource(root, targetPath) {
   const sourcePath = resolve(
     root,
-    "eliza/packages/app-core/src/onboarding-presets.ts",
+    "eliza/packages/shared/src/character-presets.ts",
   );
   const source = readFileSync(sourcePath, "utf8");
   if (!targetPath?.endsWith(".js")) {
@@ -877,12 +877,12 @@ function loadElizaOnboardingPresetsSource(root, targetPath) {
 }
 
 /**
- * Eliza owns the onboarding preset roster, but the published autonomous
+ * Eliza owns the character preset roster, but the published autonomous
  * package still serves upstream style presets. Replace the installed module
- * with Eliza's local preset source so the onboarding API and runtime expose
+ * with Eliza's local preset source so the first-run API and runtime expose
  * the same Eliza-specific characters that app-core is patched to display.
  */
-export function applyAutonomousElizaOnboardingPresetsPatch(filePath, source) {
+export function applyAutonomousElizaCharacterPresetsPatch(filePath, source) {
   if (!existsSync(filePath)) return false;
 
   // When writing to a .js file, strip TypeScript-only syntax so Bun can
@@ -903,7 +903,7 @@ export function applyAutonomousElizaOnboardingPresetsPatch(filePath, source) {
 /**
  * Naively strip TypeScript-only syntax from a source string so it can be
  * loaded as plain JavaScript by Bun. Handles the patterns used in
- * onboarding-presets.ts:
+ * character-presets.ts:
  *   - `] as const;`  →  `];`
  *   - `export const FOO: Type<...> = {`  →  `export const FOO = {`
  *   - Interface-style property lines inside a Record<> type block
@@ -923,7 +923,7 @@ function stripTypeScriptSyntax(src) {
   return src;
 }
 
-export function patchAutonomousElizaOnboardingPresets(
+export function patchAutonomousElizaCharacterPresets(
   root,
   log = console.log,
   source,
@@ -932,30 +932,22 @@ export function patchAutonomousElizaOnboardingPresets(
     ...findPackageFilePaths(
       root,
       "@elizaos/agent",
-      "eliza/agent/src/onboarding-presets.js",
+      "eliza/agent/src/character-presets.js",
     ),
-    ...findPackageFilePaths(
-      root,
-      "@elizaos/agent",
-      "src/onboarding-presets.js",
-    ),
-    ...findPackageFilePaths(
-      root,
-      "@elizaos/agent",
-      "src/onboarding-presets.ts",
-    ),
+    ...findPackageFilePaths(root, "@elizaos/agent", "src/character-presets.js"),
+    ...findPackageFilePaths(root, "@elizaos/agent", "src/character-presets.ts"),
   ];
 
   let patched = false;
   for (const filePath of candidates) {
     const nextSource =
-      source ?? loadElizaOnboardingPresetsSource(root, filePath);
-    if (!applyAutonomousElizaOnboardingPresetsPatch(filePath, nextSource)) {
+      source ?? loadElizaCharacterPresetsSource(root, filePath);
+    if (!applyAutonomousElizaCharacterPresetsPatch(filePath, nextSource)) {
       continue;
     }
     patched = true;
     log(
-      "[patch-deps] Patched @elizaos/agent eliza/agent/src/onboarding-presets.js: onboarding presets now derive from Eliza.",
+      "[patch-deps] Patched @elizaos/agent character presets: character presets now derive from Eliza.",
     );
   }
 

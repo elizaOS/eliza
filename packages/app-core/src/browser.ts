@@ -92,7 +92,3 @@ export async function readCompatJsonBody(): Promise<unknown> {
 export function sharedVault(): never {
   throw new Error("sharedVault is server-only");
 }
-
-// Noop stub for the removed desktop-onboarding runtime. The mobile/web
-// renderer does not mount it; it exists for legacy unconditional imports.
-export const DesktopOnboardingRuntime = (): null => null;

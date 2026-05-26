@@ -117,7 +117,8 @@ export interface NavigateBrowserWorkspaceTabRequest {
 export type ExistingElizaInstallSource =
   | "config-path-env"
   | "state-dir-env"
-  | "default-state-dir";
+  | "default-state-dir"
+  | "legacy-dot-state-dir";
 
 export interface ExistingElizaInstallInfo {
   detected: boolean;
@@ -896,26 +897,26 @@ export interface DesktopBugReportBundleInfo {
 }
 
 /**
- * Typed response for `getOnboardingStatus` — the renderer's first-boot
- * gate, currently fetched over HTTP at `/api/onboarding/status`. Server
- * source: `eliza/packages/agent/src/api/onboarding-routes.ts`.
+ * Typed response for `getFirstRunStatus` — the renderer's first-boot
+ * gate, currently fetched over HTTP at `/api/first-run/status`. Server
+ * source: `eliza/packages/agent/src/api/first-run-routes.ts`.
  */
-export interface OnboardingStatusSnapshot {
+export interface FirstRunStatusSnapshot {
   complete: boolean;
   cloudProvisioned?: boolean;
 }
 
 /**
- * Typed response for `getOnboardingOptions` — provider/model catalogs +
- * style presets used by the onboarding UI. Mirrors the OnboardingOptions
- * structure in `@elizaos/shared/contracts/onboarding`, narrowed to the
- * subset the server actually returns at `/api/onboarding/options`
- * (server source: `onboarding-routes.ts:328`). Fields are kept structural
+ * Typed response for `getFirstRunOptions` — provider/model catalogs +
+ * style presets used by the first-run UI. Mirrors the first-run options
+ * structure in `@elizaos/shared/contracts/firstRun`, narrowed to the
+ * subset the server actually returns at `/api/first-run/options`
+ * (server source: `first-run-routes.ts:328`). Fields are kept structural
  * (`unknown`/`Record<string, unknown>`) for items whose shape lives
  * deeper inside the shared contracts — the typed boundary lives at the
  * RPC envelope, the underlying option records pass through.
  */
-export interface OnboardingOptionsSnapshot {
+export interface FirstRunOptionsSnapshot {
   names: string[];
   styles: ReadonlyArray<Record<string, unknown>>;
   providers: ReadonlyArray<Record<string, unknown>>;
@@ -1341,24 +1342,24 @@ export type ElizaDesktopRPCSchema = {
         response: DatabaseResetPgliteResult;
       };
       /**
-       * Typed counterpart to `client.getOnboardingStatus()` — the
+       * Typed counterpart to `client.getFirstRunStatus()` — the
        * renderer's first-boot gate. Same data as
-       * `GET /api/onboarding/status`; same transitional carrier as
+       * `GET /api/first-run/status`; same transitional carrier as
        * bootProgress (in-process HTTP fetch today, in-process state
        * read once the agent runtime merges into this Bun process).
        */
-      getOnboardingStatus: {
+      getFirstRunStatus: {
         params: undefined;
-        response: OnboardingStatusSnapshot;
+        response: FirstRunStatusSnapshot;
       };
       /**
-       * Typed counterpart to `client.getOnboardingOptions()` — provider
-       * + model catalogs the onboarding UI hydrates from. Same data as
-       * `GET /api/onboarding/options`.
+       * Typed counterpart to `client.getFirstRunOptions()` — provider
+       * + model catalogs the first-run UI hydrates from. Same data as
+       * `GET /api/first-run/options`.
        */
-      getOnboardingOptions: {
+      getFirstRunOptions: {
         params: undefined;
-        response: OnboardingOptionsSnapshot;
+        response: FirstRunOptionsSnapshot;
       };
       /**
        * Typed counterpart to `client.getConfig()` — the agent's
@@ -2064,11 +2065,11 @@ export type ElizaDesktopRPCSchema = {
 
       // ---- Credentials Auto-Detection ----
       credentialsScanProviders: {
-        params: { context: "onboarding" | "tray-refresh" };
+        params: { context: "first-run" | "tray-refresh" };
         response: { providers: DetectedProvider[] };
       };
       credentialsScanAndValidate: {
-        params: { context: "onboarding" | "tray-refresh" };
+        params: { context: "first-run" | "tray-refresh" };
         response: { providers: DetectedProvider[] };
       };
 

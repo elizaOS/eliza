@@ -1,0 +1,258 @@
+import { describe, expect, it } from "vitest";
+import {
+	buildHuggingFaceResolveUrl,
+	DEFAULT_ELIGIBLE_MODEL_IDS,
+	ELIZA_1_MTP_TIER_IDS,
+	ELIZA_1_TIER_IDS,
+	FIRST_RUN_DEFAULT_MODEL_ID,
+	findCatalogModel,
+	MODEL_CATALOG,
+} from "./catalog";
+import { recommendForFirstRun } from "./recommendation";
+import { localInferenceService } from "./service";
+
+describe("local inference catalog", () => {
+	it("ships exactly the visible Eliza-1 tiers", () => {
+		const visible = MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog);
+		expect(visible.map((m) => m.id).sort()).toEqual(
+			[...ELIZA_1_TIER_IDS].sort(),
+		);
+	});
+
+	it("marks ONLY the Eliza-1 tiers as default-eligible", () => {
+		expect([...DEFAULT_ELIGIBLE_MODEL_IDS].sort()).toEqual(
+			[...ELIZA_1_TIER_IDS].sort(),
+		);
+		for (const id of ELIZA_1_TIER_IDS) {
+			expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(id), `${id} not eligible`).toBe(
+				true,
+			);
+		}
+		for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
+			expect(model.id.startsWith("eliza-1-")).toBe(true);
+		}
+	});
+
+	it("uses eliza-1 size ids as user-facing display names", () => {
+		for (const id of ELIZA_1_TIER_IDS) {
+			const model = findCatalogModel(id);
+			expect(model, `${id} missing`).toBeTruthy();
+			expect(model?.displayName).toMatch(/^(?:Eliza-1\b|eliza-1-)/);
+			expect(model?.blurb).toMatch(/^(?:Eliza-1\b|eliza-1-)/);
+			expect(`${model?.displayName} ${model?.blurb}`).not.toMatch(
+				/\b(?:Qwen|Llama)\b/i,
+			);
+		}
+	});
+
+	it("uses the single elizaOS HuggingFace repo for every visible Eliza-1 tier", () => {
+		for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
+			const tier = model.id.slice("eliza-1-".length);
+			expect(model.hfRepo).toBe("elizaos/eliza-1");
+			expect(model.hfPathPrefix).toBe(`bundles/${tier}`);
+			expect(buildHuggingFaceResolveUrl(model)).toContain(
+				`/elizaos/eliza-1/resolve/main/bundles/${tier}/`,
+			);
+		}
+	});
+
+	it("does not expose hidden companion entries in the hub", () => {
+		const visible = localInferenceService.getCatalog();
+		const visibleIds = new Set(visible.map((model) => model.id));
+		const hiddenCompanionIds = MODEL_CATALOG.filter(
+			(model) =>
+				model.hiddenFromCatalog || model.runtimeRole === "dflash-drafter",
+		).map((model) => model.id);
+		expect(hiddenCompanionIds.filter((id) => visibleIds.has(id))).toEqual([]);
+		expect(visible.flatMap((model) => model.companionModelIds ?? [])).toEqual(
+			[],
+		);
+	});
+
+	it("keeps the visible model hub focused on Eliza-1 only", () => {
+		const visible = localInferenceService.getCatalog();
+		expect(visible.map((model) => model.id).sort()).toEqual(
+			[...ELIZA_1_TIER_IDS].sort(),
+		);
+		expect(
+			visible.filter((model) => DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id))
+				.length,
+		).toBe(visible.length);
+	});
+
+	it("declares contextLength on every entry whose blurb claims a long window", () => {
+		const longContextRegex =
+			/\b(?:128k|256k|long.*context|long-context|128 ?k tokens?)\b/i;
+		const offenders: string[] = [];
+		for (const model of MODEL_CATALOG) {
+			if (!longContextRegex.test(model.blurb)) continue;
+			if (
+				typeof model.contextLength !== "number" ||
+				model.contextLength < 65536
+			) {
+				offenders.push(
+					`${model.id} claims long context in blurb but contextLength=${String(model.contextLength)}`,
+				);
+			}
+		}
+		expect(offenders).toEqual([]);
+	});
+
+	it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
+		const expected: Record<string, number> = {
+			"eliza-1-0_8b": 131072,
+			"eliza-1-2b": 131072,
+			"eliza-1-4b": 131072,
+			"eliza-1-9b": 131072,
+			"eliza-1-27b": 131072,
+			"eliza-1-27b-256k": 262144,
+		};
+		for (const [id, expectedLength] of Object.entries(expected)) {
+			const model = findCatalogModel(id);
+			expect(model, `${id} missing from catalog`).toBeTruthy();
+			expect(model?.contextLength, `${id} contextLength mismatch`).toBe(
+				expectedLength,
+			);
+		}
+	});
+
+	it("sets a tokenizerFamily on every chat/code/reasoning entry", () => {
+		const offenders: string[] = [];
+		for (const model of MODEL_CATALOG) {
+			if (!model.tokenizerFamily) {
+				offenders.push(model.id);
+			}
+		}
+		expect(offenders).toEqual([]);
+	});
+
+	it("declares native MTP on every Eliza-1 tier", () => {
+		for (const id of ELIZA_1_MTP_TIER_IDS) {
+			const model = findCatalogModel(id);
+			expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
+			expect(model?.runtime?.dflash, `${id} dflash`).toBeUndefined();
+			expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
+		}
+	});
+
+	it("declares the mandatory local runtime contract for every default tier", () => {
+		const baseKernels = ["turbo3", "turbo4", "qjl_full", "polarquant"];
+		for (const id of ELIZA_1_TIER_IDS) {
+			const model = findCatalogModel(id);
+			expect(model?.runtime?.preferredBackend, `${id} backend`).toBe(
+				"llama-cpp",
+			);
+			for (const kernel of baseKernels) {
+				expect(
+					model?.runtime?.optimizations?.requiresKernel,
+					`${id} kernel ${kernel}`,
+				).toContain(kernel);
+			}
+			expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
+			expect(model?.runtime?.dflash, `${id} dflash`).toBeUndefined();
+			expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
+			expect(model?.runtime?.optimizations?.requiresKernel).not.toContain(
+				"dflash",
+			);
+			if ((model?.contextLength ?? 0) >= 65536) {
+				expect(model?.runtime?.optimizations?.requiresKernel).toContain(
+					"turbo3_tcq",
+				);
+			}
+			expect(model?.runtime?.optimizations?.requiresKernel).not.toContain(
+				"openvino",
+			);
+		}
+	});
+
+	it("does not publish external drafter companions", () => {
+		const drafters = MODEL_CATALOG.filter(
+			(m) => m.runtimeRole === "dflash-drafter",
+		);
+		expect(drafters).toEqual([]);
+	});
+
+	it("declares the text quantization matrix and voice boundary by tier", () => {
+		for (const id of ELIZA_1_TIER_IDS) {
+			const model = findCatalogModel(id);
+			expect(model?.quantization?.defaultVariantId).toBe("q4_k_m");
+			expect(model?.quantization?.variants.map((v) => v.id)).toEqual([
+				"q3_k_m",
+				"q4_k_m",
+				"q5_k_m",
+				"q6_k",
+				"q8_0",
+			]);
+		}
+
+		// 0_8b/2b/4b/9b default to OmniVoice with Kokoro as the bundled
+		// low-latency fallback;
+		// large tiers are OmniVoice-only.
+		// See catalog.ts ELIZA_1_VOICE_BACKENDS for the policy rationale.
+		expect(findCatalogModel("eliza-1-0_8b")?.voiceBackends).toEqual([
+			"omnivoice",
+			"kokoro",
+		]);
+		expect(findCatalogModel("eliza-1-2b")?.voiceBackends).toEqual([
+			"omnivoice",
+			"kokoro",
+		]);
+		expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual([
+			"omnivoice",
+			"kokoro",
+		]);
+		expect(findCatalogModel("eliza-1-9b")?.voiceBackends).toEqual([
+			"omnivoice",
+			"kokoro",
+		]);
+		expect(findCatalogModel("eliza-1-27b")?.voiceBackends).toEqual([
+			"omnivoice",
+		]);
+		expect(findCatalogModel("eliza-1-27b-256k")?.voiceBackends).toEqual([
+			"omnivoice",
+		]);
+	});
+
+	it("does not leak implementation-family names in visible catalog copy", () => {
+		const banned = /\b(?:qwen|llama|turboquant|qjl|polarquant|dflash)\b/i;
+		for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
+			expect(model.displayName).not.toMatch(banned);
+			expect(model.quant).not.toMatch(banned);
+			expect(model.blurb).not.toMatch(banned);
+		}
+	});
+
+	it("does not ship non-Eliza local model entries", () => {
+		const offenders: string[] = [];
+		for (const model of MODEL_CATALOG) {
+			if (!model.id.startsWith("eliza-1-")) {
+				offenders.push(model.id);
+			}
+		}
+		expect(offenders).toEqual([]);
+	});
+
+	it("keeps external HF search-shaped ids custom-only", () => {
+		const externalId = "hf:some-org/custom-model::model.Q4_K_M.gguf";
+		expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(externalId)).toBe(false);
+		expect(externalId.startsWith("eliza-1-")).toBe(false);
+	});
+
+	it("FIRST_RUN_DEFAULT_MODEL_ID resolves to a default-eligible Eliza-1 tier", () => {
+		const defaultModel = findCatalogModel(FIRST_RUN_DEFAULT_MODEL_ID);
+		expect(defaultModel, `${FIRST_RUN_DEFAULT_MODEL_ID} missing`).toBeTruthy();
+		expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(FIRST_RUN_DEFAULT_MODEL_ID)).toBe(
+			true,
+		);
+		expect(defaultModel?.runtimeRole).not.toBe("dflash-drafter");
+	});
+
+	it("recommendForFirstRun resolves to a default-eligible Eliza-1 tier", () => {
+		const picked = recommendForFirstRun();
+		expect(picked).not.toBeNull();
+		if (!picked) throw new Error("missing first-run recommendation");
+		expect(picked.id).toBe(FIRST_RUN_DEFAULT_MODEL_ID);
+		expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(picked.id)).toBe(true);
+		expect(picked.displayName).toMatch(/^(?:Eliza-1\b|eliza-1-)/);
+	});
+});

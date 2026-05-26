@@ -1008,7 +1008,7 @@ function resolveManagedPgliteDataDir(): string | null {
 
   const workspaceDir =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
-  return path.join(resolveUserPath(workspaceDir), ".eliza", ".elizadb");
+  return path.join(resolveUserPath(workspaceDir), ".elizadb");
 }
 
 function isAutoResettablePgliteDir(dataDir: string | null): dataDir is string {

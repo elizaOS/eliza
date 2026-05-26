@@ -56,6 +56,7 @@ import { logger } from "../logger";
 import { recordStartupPhase, resolveStartupBundlePath } from "../startup-trace";
 import type { SendToWebview } from "../types.js";
 import { findFirstAvailableLoopbackPort } from "./loopback-port";
+import { applyBundledWhisperEnv } from "./whisper-env";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -178,17 +179,99 @@ function isStoreBuildVariant(env: NodeJS.ProcessEnv = process.env): boolean {
   return raw?.toLowerCase() === "store";
 }
 
+function resolveBrandAwareNamespace(
+  envNamespace: string | undefined,
+  brandNamespace = getBrandConfig().namespace || "eliza",
+): string {
+  const trimmed = envNamespace?.trim();
+  if (!trimmed) return brandNamespace;
+  if (trimmed === "eliza" && brandNamespace !== "eliza") return brandNamespace;
+  return trimmed;
+}
+
 function resolveStateNamespace(env: NodeJS.ProcessEnv = process.env): string {
-  return env.ELIZA_NAMESPACE?.trim() || getBrandConfig().namespace || "eliza";
+  return resolveBrandAwareNamespace(env.ELIZA_NAMESPACE);
+}
+
+export function resolveDesktopChildNamespace(
+  env: Record<string, string | undefined>,
+  brandNamespace?: string,
+): string {
+  return resolveBrandAwareNamespace(env.ELIZA_NAMESPACE, brandNamespace);
 }
 
 function resolveExplicitStateDir(env: NodeJS.ProcessEnv): string | null {
-  return normalizeEnvPath(env.ELIZA_STATE_DIR);
+  return (
+    normalizeEnvPath(env.ELIZA_STATE_DIR) ?? normalizeEnvPath(env.MILADY_STATE_DIR)
+  );
+}
+
+function isTruthyDesktopEnv(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
+export function applyPackagedStartupEmbeddingWarmupPolicy(
+  childEnv: Record<string, string>,
+  packagedRuntime: boolean,
+): void {
+  if (
+    !packagedRuntime ||
+    isTruthyDesktopEnv(childEnv.ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP)
+  ) {
+    return;
+  }
+  childEnv.ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP =
+    childEnv.ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP?.trim() || "1";
+}
+
+export function prependDesktopChildPathDirectory(
+  childEnv: Record<string, string | undefined>,
+  directory: string,
+): boolean {
+  const existingPath = childEnv.PATH?.trim();
+  if (!existingPath) {
+    childEnv.PATH = directory;
+    return true;
+  }
+  if (existingPath.split(path.delimiter).includes(directory)) {
+    return false;
+  }
+  childEnv.PATH = `${directory}${path.delimiter}${existingPath}`;
+  return true;
 }
 
 function resolveStoreUserDataStateDir(): string {
   const userData = Utils.paths.userData || resolveConfigDir();
   return path.join(userData, "state");
+}
+
+function resolveXdgStateHome(opts?: {
+  env?: NodeJS.ProcessEnv;
+  homedir?: string;
+}): string {
+  const env = opts?.env ?? process.env;
+  const explicit = normalizeEnvPath(env.XDG_STATE_HOME);
+  if (explicit) return explicit;
+  return joinPortable(opts?.homedir ?? os.homedir(), ".local", "state");
+}
+
+function resolveDefaultDesktopStateDir(opts?: {
+  env?: NodeJS.ProcessEnv;
+  homedir?: string;
+}): string {
+  const env = opts?.env ?? process.env;
+  return joinPortable(resolveXdgStateHome(opts), resolveStateNamespace(env));
+}
+
+function resolveLegacyDotStateDir(opts?: {
+  env?: NodeJS.ProcessEnv;
+  homedir?: string;
+}): string {
+  return joinPortable(
+    opts?.homedir ?? os.homedir(),
+    `.${resolveStateNamespace(opts?.env ?? process.env)}`,
+  );
 }
 
 export function resolveDesktopChildStateDir(opts?: {
@@ -199,19 +282,16 @@ export function resolveDesktopChildStateDir(opts?: {
   const explicit = resolveExplicitStateDir(env);
   if (explicit) return explicit;
   if (isStoreBuildVariant(env)) return resolveStoreUserDataStateDir();
-  return joinPortable(
-    opts?.homedir ?? os.homedir(),
-    `.${resolveStateNamespace(env)}`,
-  );
+  return resolveDefaultDesktopStateDir(opts);
 }
 
 function applyDesktopChildStateEnv(childEnv: Record<string, string>): void {
-  if (!isStoreBuildVariant(childEnv as NodeJS.ProcessEnv)) return;
   const stateDir = resolveDesktopChildStateDir({
     env: childEnv as NodeJS.ProcessEnv,
   });
   fs.mkdirSync(stateDir, { recursive: true });
   childEnv.ELIZA_STATE_DIR = stateDir;
+  childEnv.MILADY_STATE_DIR = stateDir;
 }
 
 export function applyWindowsNativeInferenceDefaults(
@@ -256,10 +336,8 @@ function buildExistingElizaInstallCandidates(opts?: {
   const homedir = opts?.homedir ?? os.homedir();
   const configPathFromEnv = normalizeEnvPath(env.ELIZA_CONFIG_PATH);
   const stateDirFromEnv = resolveExplicitStateDir(env);
-  const defaultStateDir = joinPortable(
-    homedir,
-    `.${resolveStateNamespace(env)}`,
-  );
+  const defaultStateDir = resolveDefaultDesktopStateDir({ env, homedir });
+  const legacyStateDir = resolveLegacyDotStateDir({ env, homedir });
 
   const candidates = [
     configPathFromEnv
@@ -281,6 +359,13 @@ function buildExistingElizaInstallCandidates(opts?: {
       stateDir: defaultStateDir,
       configPath: joinPortable(defaultStateDir, ELIZA_CONFIG_FILENAME),
     },
+    legacyStateDir !== defaultStateDir
+      ? {
+          source: "legacy-dot-state-dir" as const,
+          stateDir: legacyStateDir,
+          configPath: joinPortable(legacyStateDir, ELIZA_CONFIG_FILENAME),
+        }
+      : null,
   ].filter((candidate): candidate is NonNullable<typeof candidate> =>
     Boolean(candidate),
   );
@@ -322,15 +407,9 @@ export function inspectExistingElizaInstall(opts?: {
 
   const fallback = candidates[0] ?? {
     source: "default-state-dir" as const,
-    stateDir: joinPortable(
-      opts?.homedir ?? os.homedir(),
-      `.${resolveStateNamespace(opts?.env ?? process.env)}`,
-    ),
+    stateDir: resolveDefaultDesktopStateDir(opts),
     configPath: joinPortable(
-      joinPortable(
-        opts?.homedir ?? os.homedir(),
-        `.${resolveStateNamespace(opts?.env ?? process.env)}`,
-      ),
+      resolveDefaultDesktopStateDir(opts),
       ELIZA_CONFIG_FILENAME,
     ),
   };
@@ -938,8 +1017,11 @@ export function buildChildNodePaths(
   return [...nodePaths];
 }
 
-function resolveRuntimeEntryPath(runtimeDistPath: string): string | null {
-  const candidates = [joinPortable(runtimeDistPath, "entry.js")];
+export function resolveRuntimeEntryPath(runtimeDistPath: string): string | null {
+  const candidates = [
+    joinPortable(runtimeDistPath, "entry.js"),
+    joinPortable(runtimeDistPath, "runtime", "entry.js"),
+  ];
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
@@ -995,12 +1077,57 @@ async function waitForHealthy(
           return true;
         }
       }
+      if (await isStartupStatusReachable(port, headers)) {
+        return true;
+      }
     } catch {
-      // Server not ready yet
+      if (await isStartupStatusReachable(port, headers)) {
+        return true;
+      }
     }
     await Bun.sleep(HEALTH_POLL_INTERVAL_MS);
   }
   return false;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isNonFatalStartupStatus(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const startup = value.startup;
+  if (!isRecord(startup)) return false;
+  const phase = startup.phase;
+  if (
+    phase === "fatal" ||
+    phase === "startup_failed" ||
+    phase === "runtime_entry_missing"
+  ) {
+    return false;
+  }
+  return (
+    typeof phase === "string" ||
+    typeof startup.embeddingPhase === "string" ||
+    typeof startup.embeddingDetail === "string"
+  );
+}
+
+async function isStartupStatusReachable(
+  port: number,
+  headers: Record<string, string> | undefined,
+): Promise<boolean> {
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/status`, {
+      headers,
+      signal: AbortSignal.timeout(2_000),
+    });
+    const body = await response.json().catch(() => null);
+    if (response.ok) return true;
+    return isNonFatalStartupStatus(body);
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1139,15 +1266,19 @@ async function maybeReclaimPortWithSigkill(port: number): Promise<void> {
   }
 }
 
-function resolveDatabaseAppStateDir(): string {
-  return Utils.paths.userData || resolveConfigDir();
+function resolveDatabaseAppStateDir(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const stateDir = resolveDesktopChildStateDir({ env });
+  fs.mkdirSync(stateDir, { recursive: true });
+  return stateDir;
 }
 
 function resolveManagedPgliteDataDir(): string | null {
   const resolution = resolveDatabaseMode({
     env: process.env as Record<string, string | undefined>,
     packagedDesktop: isPackagedDesktopRuntime(),
-    appStateDir: resolveDatabaseAppStateDir(),
+    appStateDir: resolveDatabaseAppStateDir(process.env),
   });
   return resolution.mode === "pglite-persistent"
     ? (resolution.pgliteDataDir ?? null)
@@ -1369,10 +1500,7 @@ export class AgentManager {
         ELIZA_API_PORT: String(apiPort),
         ELIZA_PORT: String(apiPort),
       };
-      childEnv.ELIZA_NAMESPACE =
-        childEnv.ELIZA_NAMESPACE.trim() || getBrandConfig().namespace;
-      childEnv.ELIZA_NAMESPACE =
-        childEnv.ELIZA_NAMESPACE.trim() || childEnv.ELIZA_NAMESPACE;
+      childEnv.ELIZA_NAMESPACE = resolveDesktopChildNamespace(childEnv);
       applyDesktopChildStateEnv(childEnv);
       delete childEnv.ELIZA_PORT;
       delete childEnv.NODE_PATH;
@@ -1380,10 +1508,16 @@ export class AgentManager {
       const databaseResolution = resolveDatabaseMode({
         env: childEnv,
         packagedDesktop: packagedRuntime,
-        appStateDir: resolveDatabaseAppStateDir(),
+        appStateDir: childEnv.ELIZA_STATE_DIR,
         cwd: runtimeDistPath,
       });
       applyDatabaseResolutionToEnv(childEnv, databaseResolution);
+      const bundledWhisper = applyBundledWhisperEnv(childEnv, runtimeDistPath);
+      if (bundledWhisper) {
+        diagnosticLog(
+          `[Agent] Bundled Whisper ASR: ${bundledWhisper.libraryPath}`,
+        );
+      }
       const effectiveTarget =
         databaseResolution.mode === "postgres"
           ? redactDatabaseTarget(databaseResolution.postgresUrl)
@@ -1477,6 +1611,7 @@ export class AgentManager {
       }
 
       applyWindowsNativeInferenceDefaults(childEnv);
+      applyPackagedStartupEmbeddingWarmupPolicy(childEnv, packagedRuntime);
 
       if (nodePaths.length > 0) {
         childEnv.NODE_PATH = nodePaths.join(path.delimiter);
@@ -1492,13 +1627,7 @@ export class AgentManager {
       // Ensure bun's directory is on PATH so child_process.exec calls
       // (e.g. plugin-manager running `bun add ...`) can find it.
       const bunDir = path.dirname(bunExecutable);
-      const existingPathKey = childEnv.PATH !== undefined ? "PATH" : "Path";
-      const existingPath =
-        childEnv[existingPathKey] ?? process.env.PATH ?? process.env.Path ?? "";
-      if (!existingPath.split(path.delimiter).includes(bunDir)) {
-        childEnv[existingPathKey] = existingPath
-          ? bunDir + path.delimiter + existingPath
-          : bunDir;
+      if (prependDesktopChildPathDirectory(childEnv, bunDir)) {
         diagnosticLog(`[Agent] Prepended bun dir to child PATH: ${bunDir}`);
       }
 
@@ -1779,10 +1908,10 @@ export class AgentManager {
 
   /**
    * Used after `POST /api/agent/reset`: stop the child, delete local PGLite
-   * (conversations / agent memory under `~/.${getBrandConfig().namespace}/workspace/.eliza/.elizadb`),
+   * (conversations / agent memory under the active state-dir workspace),
    * then start fresh. Does not remove downloaded **GGUF** models (`MODELS_DIR`,
-   * default ~/.eliza/models), env-backed wallet keys, or eliza.json (the API
-   * reset already rewrote config on disk).
+   * env-backed wallet keys, or eliza.json (the API reset already rewrote
+   * config on disk).
    *
    * When `ELIZA_DESKTOP_API_BASE` points at an external dev API (e.g. :31337),
    * the embedded child is never used — this is a no-op so the renderer can

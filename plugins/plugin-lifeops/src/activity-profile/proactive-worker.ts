@@ -1,6 +1,7 @@
 import {
   getAgentEventService,
   loadOwnerContactsConfig,
+  loadElizaConfig,
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent";
 import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
@@ -62,6 +63,14 @@ const CALENDAR_PROACTIVE_CLASSIFICATION_HORIZON_DAYS = 21;
  * would dispatch on every tick of the worker (60s).
  */
 const STALE_ACTION_THRESHOLD_MS = 4 * 60 * 60 * 1000;
+
+export function isAppFirstRunComplete(): boolean {
+  try {
+    return loadElizaConfig().meta?.firstRunComplete === true;
+  } catch {
+    return false;
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -939,11 +948,13 @@ export function registerProactiveTaskWorker(runtime: IAgentRuntime): void {
     // restart — cycles just become cheap no-ops while disabled.
     shouldRun: async (rt) => {
       try {
+        if (!isAppFirstRunComplete()) return false;
+        if (!rt.getModel(ModelType.TEXT_SMALL)) return false;
         const state = await loadLifeOpsAppState(rt as IAgentRuntime);
         return state.enabled;
       } catch (error) {
         logger.warn(
-          `[proactive-worker] loadLifeOpsAppState failed; skipping proactive tick because LifeOps toggle state is unknown: ${
+          `[proactive-worker] proactive tick preflight failed; skipping because runtime readiness is unknown: ${
             error instanceof Error ? error.message : String(error)
           }`,
         );

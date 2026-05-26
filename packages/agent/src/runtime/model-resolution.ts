@@ -1,6 +1,6 @@
 import {
-  getOnboardingProviderOption,
-  normalizeOnboardingProviderId,
+  getFirstRunProviderOption,
+  normalizeFirstRunProviderId,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
@@ -18,8 +18,8 @@ function resolveProviderIdFromSelectionHint(
   if (!trimmed) return undefined;
 
   return (
-    normalizeOnboardingProviderId(trimmed) ??
-    normalizeOnboardingProviderId(trimmed.split("/", 1)[0]) ??
+    normalizeFirstRunProviderId(trimmed) ??
+    normalizeFirstRunProviderId(trimmed.split("/", 1)[0]) ??
     undefined
   );
 }
@@ -48,7 +48,7 @@ export function resolvePreferredProviderId(
   const llmText = resolveServiceRoutingInConfig(
     config as Record<string, unknown>,
   )?.llmText;
-  const backend = normalizeOnboardingProviderId(llmText?.backend);
+  const backend = normalizeFirstRunProviderId(llmText?.backend);
 
   if (llmText?.transport === "cloud-proxy" && backend === "elizacloud") {
     return "elizacloud";
@@ -79,6 +79,6 @@ export function resolvePreferredProviderPluginName(
 ): string | undefined {
   const providerId = resolvePreferredProviderId(config);
   return providerId
-    ? getOnboardingProviderOption(providerId)?.pluginName
+    ? getFirstRunProviderOption(providerId)?.pluginName
     : undefined;
 }

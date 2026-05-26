@@ -38,7 +38,7 @@ Check:
 - whether Ollama is running (if using local models): `curl http://127.0.0.1:11434/api/tags`
 - whether the selected model exists on the provider
 - whether a remote backend owns provider routing (`deploymentTarget` in config)
-- logs for specific errors: check `~/.eliza/logs/` or check `~/.eliza/logs/`
+- logs for specific errors: check `~/.local/state/eliza/logs/` or check `~/.local/state/eliza/logs/`
 
 ## Voice is silent
 
@@ -117,7 +117,7 @@ See [Chat Commands](/chat-commands) for the full reference.
 
 Quit Eliza, rename the state directory, and relaunch:
 
-- macOS / Linux: `~/.eliza`
+- macOS / Linux: `~/.local/state/eliza`
 - Windows: `%USERPROFILE%\\.eliza\\`
 
 ## File a bug

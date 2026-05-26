@@ -19,7 +19,7 @@ import { isRoutineCodingAgentMessage } from "../../chat";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
+import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { consumeAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import {
   CodingAgentControlChip,

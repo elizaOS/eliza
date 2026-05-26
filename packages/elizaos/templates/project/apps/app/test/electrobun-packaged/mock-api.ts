@@ -5,7 +5,7 @@ import { WebSocketServer } from "ws";
 
 export interface MockApiServerOptions {
   port?: number;
-  onboardingComplete?: boolean;
+  firstRunComplete?: boolean;
   auth?: {
     token: string;
     pairingCode?: string;
@@ -84,7 +84,7 @@ interface CustomActionRecord {
   updatedAt: string;
 }
 
-const onboardingOptions = {
+const firstRunOptions = {
   names: ["Eliza", "Lilypad", "Orbit", "Nova", "Echo"],
   styles: [
     {
@@ -256,8 +256,8 @@ export async function startMockApiServer(
   options: MockApiServerOptions = {},
 ): Promise<MockApiServer> {
   const requests: string[] = [];
-  let onboardingComplete = Boolean(options.onboardingComplete);
-  let agentState: AgentState = onboardingComplete ? "running" : "not_started";
+  let firstRunComplete = Boolean(options.firstRunComplete);
+  let agentState: AgentState = firstRunComplete ? "running" : "not_started";
   let permissionStates = mergePermissionsState(
     createDefaultPermissionsState(),
     options.permissions,
@@ -573,16 +573,16 @@ export async function startMockApiServer(
       json(res, 200, permissionStates[id]);
       return;
     }
-    if (method === "GET" && pathname === "/api/onboarding/status") {
-      json(res, 200, { complete: onboardingComplete });
+    if (method === "GET" && pathname === "/api/first-run/status") {
+      json(res, 200, { complete: firstRunComplete });
       return;
     }
-    if (method === "GET" && pathname === "/api/onboarding/options") {
-      json(res, 200, onboardingOptions);
+    if (method === "GET" && pathname === "/api/first-run/options") {
+      json(res, 200, firstRunOptions);
       return;
     }
-    if (method === "POST" && pathname === "/api/onboarding") {
-      onboardingComplete = true;
+    if (method === "POST" && pathname === "/api/first-run") {
+      firstRunComplete = true;
       agentState = "running";
       json(res, 200, { ok: true });
       return;
@@ -623,7 +623,7 @@ export async function startMockApiServer(
       return;
     }
     if (method === "POST" && pathname === "/api/agent/reset") {
-      onboardingComplete = false;
+      firstRunComplete = false;
       agentState = "not_started";
       json(res, 200, { ok: true });
       return;

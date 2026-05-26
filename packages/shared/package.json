@@ -72,10 +72,10 @@
       "import": "./dist/local-inference/index.js",
       "default": "./dist/local-inference/index.js"
     },
-    "./onboarding-presets": {
-      "types": "./dist/onboarding-presets.d.ts",
-      "import": "./dist/onboarding-presets.js",
-      "default": "./dist/onboarding-presets.js"
+    "./character-presets": {
+      "types": "./dist/character-presets.d.ts",
+      "import": "./dist/character-presets.js",
+      "default": "./dist/character-presets.js"
     },
     "./runtime-env": {
       "types": "./dist/runtime-env.d.ts",
