@@ -1,3 +1,4 @@
+import { actionToJsonSchema } from "../actions/action-schema";
 import { validateToolArgs } from "../actions/validate-tool-args";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { checkSenderRole } from "../roles";
@@ -112,7 +113,21 @@ export async function executePlannedToolCall(
 		action,
 		normalizeToolArgs(toolCall),
 	);
-	const validation = validateToolArgs(action, normalizedArgs);
+	// Drop top-level args whose keys aren't declared in the action's parameter
+	// schema. The Stage 2 PLAN_ACTIONS wrapper exposes its own protocol fields
+	// (e.g. `subaction` for router-style dispatch) and the unwrap layer in
+	// planner-loop.ts forwards them through alongside the action's real args.
+	// Actions whose schemas don't declare those wrapper-only fields would
+	// otherwise crash strict validation with "Unexpected argument 'subaction'"
+	// on every dispatch. The same guard absorbs any future LLM-hallucinated
+	// extra field without polluting per-action schemas. Action-parameter
+	// invariants stay strict for known fields.
+	const filteredArgs = filterUnknownTopLevelArgs(
+		runtime,
+		action,
+		normalizedArgs,
+	);
+	const validation = validateToolArgs(action, filteredArgs);
 	if (!validation.valid) {
 		return emitToolResult(
 			toolCall,
@@ -467,6 +482,53 @@ export function expandEnumShortForm(
 	}
 
 	return args;
+}
+
+/**
+ * Drop top-level args whose keys are not declared in the action's parameter
+ * schema. PLAN_ACTIONS exposes wrapper-only protocol fields (notably
+ * `subaction` for router-style actions) and the unwrap layer in
+ * planner-loop.ts forwards them through alongside the action's own
+ * parameters. For an action that does not model those fields, strict
+ * validation in validateToolArgs would otherwise reject the call with
+ * `Unexpected argument 'subaction'`. Schema-derivation failures fall through
+ * to the raw args so the original error path is preserved.
+ */
+function filterUnknownTopLevelArgs(
+	runtime: IAgentRuntime,
+	action: Action,
+	args: Record<string, unknown>,
+): Record<string, unknown> {
+	let schema: ReturnType<typeof actionToJsonSchema>;
+	try {
+		schema = actionToJsonSchema(action);
+	} catch {
+		return args;
+	}
+	if (schema.additionalProperties === true) {
+		return args;
+	}
+	const allowed = new Set(Object.keys(schema.properties ?? {}));
+	const filtered: Record<string, unknown> = {};
+	const dropped: string[] = [];
+	for (const key of Object.keys(args)) {
+		if (allowed.has(key)) {
+			filtered[key] = args[key];
+		} else {
+			dropped.push(key);
+		}
+	}
+	if (dropped.length > 0) {
+		runtime.logger?.debug?.(
+			{
+				src: "execute-planned-tool-call",
+				action: action.name,
+				droppedKeys: dropped,
+			},
+			`Dropped ${dropped.length} unknown top-level arg(s) before strict validation`,
+		);
+	}
+	return filtered;
 }
 
 function normalizeToolArgs(
