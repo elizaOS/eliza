@@ -43,8 +43,14 @@ export const actionStateProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
 	position: spec.position ?? 150,
-	contexts: ["general"],
-	contextGate: { anyOf: ["general"] },
+	// Previous action results are context-agnostic. Every planner turn that
+	// follows a tool execution needs to see what just ran, regardless of
+	// which context is engaged ("general", "code", "tasks", "automation",
+	// "agent_internal", etc.). Gating this on "general" alone caused
+	// multi-step action chains (e.g. orchestrator TASKS: provision_workspace
+	// → spawn_agent → submit_workspace) to enter a CONTINUE loop, because
+	// each next planner turn lost all memory of the just-executed step and
+	// kept re-picking the first op until the repeated-failure limit fired.
 	cacheStable: false,
 	cacheScope: "turn",
 	roleGate: { minRole: "USER" },
