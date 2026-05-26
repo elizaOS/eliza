@@ -176,10 +176,7 @@ export async function handleLocalInferenceAsrRoute(
 ): Promise<boolean> {
 	const method = req.method?.toUpperCase() ?? "GET";
 	const url = new URL(req.url ?? "/", "http://localhost");
-	if (
-		method === "GET" &&
-		url.pathname === "/api/asr/local-inference/status"
-	) {
+	if (method === "GET" && url.pathname === "/api/asr/local-inference/status") {
 		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		const whisper = resolveWhisperCppRuntime();
 		sendJson(res, 200, {

@@ -44,24 +44,22 @@
   <launchable type="desktop-id">ai.elizaos.App.desktop</launchable>
 
   <!--
-  Required for Flathub submission. URLs point at the marketing site asset
-  paths; the host serves PNGs at 1280x720 (Flathub's preferred size). Update
-  the URLs (and add real screenshots) when the marketing site lands the
-  /screenshots/ directory. Locally, `appstream-util validate-relax` will
-  pass even if the URLs 404 — Flathub fetches them at review time.
+  Required for Flathub submission. URLs point at repository-hosted PNG assets
+  so `appstream-util validate-relax` can verify them without depending on a
+  marketing host.
   -->
   <screenshots>
     <screenshot type="default">
-      <caption>elizaOS App web dashboard showing agent chat and plugins</caption>
-      <image type="source" width="1280" height="720">https://app.elizaos.ai/screenshots/dashboard.png</image>
+      <caption>elizaOS App agent chat dashboard</caption>
+      <image type="source" width="1920" height="1200">https://raw.githubusercontent.com/elizaOS/eliza/develop/packages/docs/images/shakespeare-screenshot.jpeg</image>
     </screenshot>
     <screenshot>
-      <caption>Onboarding: pick a name, personality, and AI provider</caption>
-      <image type="source" width="1280" height="720">https://app.elizaos.ai/screenshots/first-run.png</image>
+      <caption>Discord connector conversation</caption>
+      <image type="source" width="1920" height="1200">https://raw.githubusercontent.com/elizaOS/eliza/develop/packages/docs/images/shakespeare-discord-screenshot.jpeg</image>
     </screenshot>
     <screenshot>
-      <caption>Plugin marketplace with one-click install</caption>
-      <image type="source" width="1280" height="720">https://app.elizaos.ai/screenshots/plugins.png</image>
+      <caption>Voice channel connection flow</caption>
+      <image type="source" width="1920" height="1200">https://raw.githubusercontent.com/elizaOS/eliza/develop/packages/docs/images/ask-to-join-vc.jpeg</image>
     </screenshot>
   </screenshots>
 

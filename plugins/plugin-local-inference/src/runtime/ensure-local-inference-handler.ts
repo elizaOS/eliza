@@ -700,7 +700,9 @@ async function transcribeWithStandaloneAsr(
 }
 
 function shouldRetryWithStandaloneAsr(error: unknown): boolean {
-	return error instanceof VoiceStartupError || error instanceof AsrUnavailableError;
+	return (
+		error instanceof VoiceStartupError || error instanceof AsrUnavailableError
+	);
 }
 
 function makeTranscriptionHandler(): TranscriptionHandler {
@@ -711,7 +713,10 @@ function makeTranscriptionHandler(): TranscriptionHandler {
 		try {
 			await localInferenceEngine.ensureActiveBundleVoiceReady();
 			throwIfAborted(signal);
-			const transcript = await localInferenceEngine.transcribePcm(audio, signal);
+			const transcript = await localInferenceEngine.transcribePcm(
+				audio,
+				signal,
+			);
 			throwIfAborted(signal);
 			return transcript;
 		} catch (error) {

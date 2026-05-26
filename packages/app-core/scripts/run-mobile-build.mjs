@@ -1816,6 +1816,7 @@ function removeStaleAndroidJavaSourceRoots(
 ) {
   const candidates = [
     "ai.elizaos.app",
+    "ai.milady.milady",
     "com.elizaai.eliza",
     "com.elizaai.eliza",
     APP.appId,
@@ -2228,17 +2229,21 @@ function restoreAndroidManifestFromPlatformTemplateIfMissing() {
 }
 
 function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
-  const templateJava = path.join(
+  const templateJavaRoot = path.join(
     platformsDir,
     "android",
     "app",
     "src",
     "main",
     "java",
-    "ai",
-    "elizaos",
-    "app",
   );
+  const templateJava =
+    [
+      path.join(templateJavaRoot, "ai", "elizaos", "app"),
+      path.join(templateJavaRoot, "ai", "milady", "milady"),
+      path.join(templateJavaRoot, "app", "eliza"),
+    ].find((candidate) => fs.existsSync(candidate)) ??
+    path.join(templateJavaRoot, "ai", "elizaos", "app");
   const gradlePath = path.join(androidDir, "app", "build.gradle");
   const androidPackage = APP.appId;
   const dstJava = path.join(
@@ -2332,7 +2337,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       if (!fs.existsSync(src)) continue;
       let code = fs.readFileSync(src, "utf8");
       code = code.replace(
-        /^package\s+(?:ai\.elizaos\.app|app\.eliza);/m,
+        /^package\s+(?:ai\.elizaos\.app|ai\.milady\.milady|app\.eliza);/m,
         `package ${androidPackage};`,
       );
       code = code.replaceAll(
@@ -2343,7 +2348,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       // from either the legacy package or the default package so R/BuildConfig
       // resolve after the package overlay.
       code = code.replaceAll(
-        /\bimport\s+(?:ai\.elizaos\.app|app\.eliza)\.(BuildConfig|R)\s*;/g,
+        /\bimport\s+(?:ai\.elizaos\.app|ai\.milady\.milady|app\.eliza)\.(BuildConfig|R)\s*;/g,
         `import ${androidPackage}.$1;`,
       );
       code = code.replaceAll("ai.elizaos.app://", `${APP.urlScheme}://`);
@@ -2363,7 +2368,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
         const legacyCode = fs
           .readFileSync(src, "utf8")
           .replaceAll(
-            /\bimport\s+(?:ai\.elizaos\.app|app\.eliza)\.(BuildConfig|R)\s*;/g,
+            /\bimport\s+(?:ai\.elizaos\.app|ai\.milady\.milady|app\.eliza)\.(BuildConfig|R)\s*;/g,
             `import ${androidPackage}.$1;`,
           );
         fs.writeFileSync(src, legacyCode, "utf8");
@@ -5624,6 +5629,16 @@ function stripAndroidForCloud() {
       "java",
       packageNameToPath(androidPackage),
     ),
+    path.join(
+      androidDir,
+      "app",
+      "src",
+      "main",
+      "java",
+      "ai",
+      "milady",
+      "milady",
+    ),
     path.join(androidDir, "app", "src", "main", "java", "ai", "elizaos", "app"),
   ];
   let removedJavaCount = 0;
@@ -5714,6 +5729,16 @@ function stripAndroidForSmsGateway() {
       "main",
       "java",
       packageNameToPath(androidPackage),
+    ),
+    path.join(
+      androidDir,
+      "app",
+      "src",
+      "main",
+      "java",
+      "ai",
+      "milady",
+      "milady",
     ),
     path.join(androidDir, "app", "src", "main", "java", "ai", "elizaos", "app"),
   ];
