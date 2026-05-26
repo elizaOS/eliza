@@ -200,7 +200,7 @@ export async function runMainMenuResetAfterApiBaseResolved(
 
   if (firstRunComplete === true) {
     throw new Error(
-      "Reset verification failed: onboarding still marked complete",
+      "Reset verification failed: first-run setup still marked complete",
     );
   }
 
