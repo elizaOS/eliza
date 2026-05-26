@@ -45,9 +45,11 @@ export function runGit(repoRoot: string, args: string[]): string {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });
-  if (result.status !== 0) {
-    const stderr = result.stderr?.toString() ?? "";
-    throw new Error(`git ${args.join(" ")} failed: ${stderr}`);
+  // spawnSync sets `result.error` on ENOENT (git binary missing). The status
+  // is null in that case — checking status alone gives an opaque error.
+  if (result.error || result.status !== 0) {
+    const detail = result.error?.message ?? result.stderr?.toString() ?? "";
+    throw new Error(`git ${args.join(" ")} failed: ${detail}`);
   }
   return result.stdout.toString();
 }

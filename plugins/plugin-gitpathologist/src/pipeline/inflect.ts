@@ -82,9 +82,11 @@ export function findInflections(points: CommitHealthPoint[]): {
     const isMaxInWindow = window.every((p) => p.score <= point.score);
     const hasStrictlyLessNeighbour = window.some((p) => p.score < point.score);
     if (!isMaxInWindow || !hasStrictlyLessNeighbour) continue;
-    const tiedEarlier = peaks.some((existing, idx) => {
+    // Reject a tied score within the same window — we already picked an
+    // earlier peak with the same score, so this one would be a duplicate.
+    const tiedEarlier = peaks.some((existing) => {
       const prevIdx = points.findIndex((p) => p.sha === existing.sha);
-      return prevIdx >= 0 && prevIdx >= i - PEAK_WINDOW && existing.score === point.score && idx !== peaks.length;
+      return prevIdx >= 0 && prevIdx >= i - PEAK_WINDOW && existing.score === point.score;
     });
     if (tiedEarlier) continue;
     peaks.push(toInflection(point, reasonForPeak(point)));

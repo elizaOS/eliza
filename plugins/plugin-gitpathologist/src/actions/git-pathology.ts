@@ -217,7 +217,14 @@ export const gitPathologyAction: Action & { suppressPostActionContinuation: true
     const surface: SurfaceSpec = { path: surfacePath, repoRoot };
     const overrides = buildOptions(params);
 
-    const report = await service.runReport(surface, overrides);
+    let report: PathologyReport;
+    try {
+      report = await service.runReport(surface, overrides);
+    } catch (err) {
+      const text = `Git pathology analysis failed: ${(err as Error).message}`;
+      if (callback) await callback({ text });
+      return { success: false, text, error: "ANALYSIS_FAILED" };
+    }
     const result = reportResult(report);
     if (callback && typeof result.text === "string") {
       await callback({ text: result.text });
