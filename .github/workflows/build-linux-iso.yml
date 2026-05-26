@@ -37,10 +37,23 @@ jobs:
   build-iso:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    # arm64 builds run under qemu-user-static + binfmt_misc emulation on
+    # the amd64 runner. They are 3-5× slower than native, so they are
+    # gated behind `continue-on-error: true` while the path stabilizes —
+    # the amd64 nightly is the only required check today, so an arm64
+    # failure should not turn the workflow red. The per-arch experimental
+    # flag is read by `continue-on-error` below + by per-step `if:`s
+    # downstream that only run their amd64-only steps when arch == amd64.
+    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
-        arch: [amd64]
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            experimental: false
+          - arch: arm64
+            experimental: true
     permissions:
       # contents: write covers softprops/action-gh-release (release upload)
       #   and anchore/sbom-action (artifact attachment). The workflow-level
@@ -55,6 +68,11 @@ jobs:
     env:
       CHANNEL: ${{ inputs.channel || (github.event_name == 'release' && 'stable') || 'nightly' }}
       LINUX_DIR: packages/os/linux
+      # Picked up by packages/os/linux/build.sh + tails/auto/config to
+      # drive --platform / TARGETARCH / --architecture / --linux-flavours
+      # and the per-arch bootloader package set. Defaults to amd64 inside
+      # build.sh too, so a bare run still works.
+      ELIZAOS_ARCH: ${{ matrix.arch }}
 
     steps:
       - name: Checkout
@@ -81,6 +99,23 @@ jobs:
 
       - name: Install just
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends just
+
+      - name: Register qemu-user-static binfmt (non-amd64 only)
+        if: matrix.arch != 'amd64'
+        # tonistiigi/binfmt is the canonical container image for registering
+        # qemu-user-static handlers with the kernel's binfmt_misc on the
+        # GitHub Actions amd64 runner. After this step, `docker run
+        # --platform linux/${arch}` transparently emulates the target arch
+        # for everything in the container, which is what packages/os/linux/
+        # build.sh does via `docker build --platform linux/${ARCH}`.
+        # Emulated builds are 3-5× slower than native; that is why this
+        # job is gated on continue-on-error: true while it stabilizes.
+        run: |
+          docker run --rm --privileged tonistiigi/binfmt --install all
+          # Verify the handler we actually need is registered, fail fast
+          # if registration silently no-op'd.
+          test -e "/proc/sys/fs/binfmt_misc/qemu-${{ matrix.arch == 'arm64' && 'aarch64' || matrix.arch }}"
+          echo "✓ qemu-user-static registered for ${{ matrix.arch }}"
 
       - name: Verify riscv64 contract
         run: |
