@@ -688,16 +688,16 @@ function checkIfNeedsUsingClause(fromType: string, toType: string): boolean {
   // normalize to "varchar" so the pairs below (e.g. varchar→uuid) match.
   // Without this, an ALTER COLUMN id TYPE uuid is emitted without a USING
   // clause and Postgres rejects it ("cannot be cast automatically").
-  const normalizeType = (t: string) =>
-    t.split("(")[0].toLowerCase().trim() === "character varying"
-      ? "varchar"
-      : t.split("(")[0].toLowerCase().trim();
+  const normalizeType = (t: string) => {
+    const base = t.split("(")[0].toLowerCase().trim();
+    return base === "character varying" ? "varchar" : base;
+  };
   const fromBase = normalizeType(fromType);
   const toBase = normalizeType(toType);
 
   // Text/varchar to JSONB always needs USING
   if (
-    (fromBase === "text" || fromBase === "varchar" || fromBase === "character varying") &&
+    (fromBase === "text" || fromBase === "varchar") &&
     (toBase === "jsonb" || toBase === "json")
   ) {
     return true;
@@ -719,8 +719,6 @@ function checkIfNeedsUsingClause(fromType: string, toType: string): boolean {
     ["varchar", "uuid"],
     ["varchar", "jsonb"],
     ["varchar", "json"],
-    ["character varying", "jsonb"],
-    ["character varying", "json"],
     // Add more as needed based on PostgreSQL casting rules
   ];
 
