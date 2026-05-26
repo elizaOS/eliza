@@ -4700,6 +4700,7 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaBootReceiver.java",
   "ElizaNotificationListenerService.java",
   "ElizaVoiceCaptureService.java",
+  "VoiceCapturePlugin.java",
   "ElizaBrowserActivity.java",
   "ElizaCalendarActivity.java",
   "ElizaCameraActivity.java",

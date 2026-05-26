@@ -8,6 +8,7 @@ import {
   ANDROID_APP_ACTION_FORBIDDEN_MARKERS,
   ANDROID_APP_ACTION_REQUIRED_DEEP_LINKS,
   ANDROID_APP_ACTION_SHORTCUT_IDS,
+  ANDROID_CLOUD_STRIPPED_JAVA_FILES,
   androidAospRoleLauncherIntentFilter,
   ensureAndroidMainActivityShortcutsMetadata,
   patchAndroidAppActionsXmlResource,
@@ -87,6 +88,15 @@ test("Android cloud strip keeps only the active Java package root", () => {
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+test("Android cloud strip removes voice capture plugin with its service", () => {
+  assert.ok(
+    ANDROID_CLOUD_STRIPPED_JAVA_FILES.includes("ElizaVoiceCaptureService.java"),
+  );
+  assert.ok(
+    ANDROID_CLOUD_STRIPPED_JAVA_FILES.includes("VoiceCapturePlugin.java"),
+  );
 });
 
 test("Android App Actions shortcuts are rewritten to the configured package and URL scheme", () => {
