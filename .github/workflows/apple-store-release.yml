@@ -18,10 +18,20 @@ on:
         required: true
         type: string
     secrets:
+      # APPLE_ID, APPLE_TEAM_ID, APPLE_APP_SPECIFIC_PASSWORD are
+      # downgraded to `required: false` so this reusable workflow's
+      # secret contract does not startup_failure the parent
+      # (release-all.yml / release-orchestrator.yml) when called via
+      # `secrets: inherit` and the secrets are absent. The body's
+      # iOS-signing preflight checks for missing iOS secrets and
+      # exits with a clear ::error::, so the job still fails loudly
+      # when it can't sign — just inside the job, not at the parent
+      # workflow's startup. Same pattern as publish-apt-repo.yml
+      # (PR #7976), android-release.yml, update-homebrew.yml.
       APPLE_ID:
-        required: true
+        required: false
       APPLE_TEAM_ID:
-        required: true
+        required: false
       ITC_TEAM_ID:
         required: false
       APP_STORE_APP_ID:
@@ -33,7 +43,7 @@ on:
       MATCH_GIT_BASIC_AUTHORIZATION:
         required: false
       APPLE_APP_SPECIFIC_PASSWORD:
-        required: true
+        required: false
       MAS_CSC_LINK:
         required: false
       MAS_CSC_KEY_PASSWORD:
