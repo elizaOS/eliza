@@ -90,6 +90,23 @@ function isElizaOsAndroidRuntime(): boolean {
   );
 }
 
+/**
+ * Gitpathologist ships as @elizaos/plugin-gitpathologist. Auto-loads when the
+ * workspace looks like a git repo (`.git/` present at cwd) and the user has
+ * not explicitly opted out via ELIZA_GITPATHOLOGIST=0.
+ */
+function gitpathologistRequested(config: ElizaConfig): boolean {
+  const agentEntry = config.agents?.list?.[0];
+  const fromEntry = agentEntry?.gitpathologist;
+  const fromDefaults = config.agents?.defaults?.gitpathologist;
+  if (typeof fromEntry === "boolean") return fromEntry;
+  if (typeof fromDefaults === "boolean") return fromDefaults;
+  const raw = process.env.ELIZA_GITPATHOLOGIST?.trim().toLowerCase();
+  if (raw === "0" || raw === "false" || raw === "no") return false;
+  if (raw === "1" || raw === "true" || raw === "yes") return true;
+  return existsSync(path.join(process.cwd(), ".git"));
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -429,6 +446,13 @@ export function collectPluginNames(
     track(
       "agent-orchestrator",
       "agent-orchestrator (@elizaos/plugin-agent-orchestrator)",
+    );
+  }
+  if (!onMobile && gitpathologistRequested(config)) {
+    pluginsToLoad.add("@elizaos/plugin-gitpathologist");
+    track(
+      "@elizaos/plugin-gitpathologist",
+      "gitpathologist (auto-on when .git/ present; gate ELIZA_GITPATHOLOGIST)",
     );
   }
   // Allow list is additive — extra plugins on top of auto-detection,
