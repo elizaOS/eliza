@@ -154,12 +154,19 @@ describe("prompt templates (src/index.ts)", () => {
     );
   });
 
-  it("messageHandlerTemplate forbids phantom action claims in replyText", () => {
-    // Regression coverage for the structural rule that prevents Stage 1
-    // from writing "I scanned/searched/checked/looked up/recalled/remembered"
-    // prose when no tool call this turn actually retrieved that content.
-    // Originally observed in production as the bot replying "I've scanned
-    // the recent chat..." with plannerIterations=0 and toolCallsExecuted=0.
+  it("messageHandlerTemplate forbids phantom action claims in replyText across every verb form", () => {
+    // Regression coverage for the structural rule that prevents Stage 1 from
+    // writing prose that claims/implies an investigative action when no tool
+    // ran this turn. Originally past-perfect only ("I have scanned..."),
+    // tightened across multiple live trajectories where the model worked
+    // around the listed examples by picking a different grammatical form:
+    //   - tj-fe07eedf943fb7 (2026-05-24) past-perfect "I have scanned"
+    //   - tj-063a9ea4fad748 (2026-05-24) bare past "I scanned the recent messages"
+    //   - tj-01270535922813 (2026-05-24) present-continuous "Spawning a sub-agent"
+    //   - tj-3a485428bd1250 (2026-05-25) bare present-participle "Scanning the chat history now"
+    // The current rule is intentionally abstract: it covers every grammatical
+    // form rather than enumerating individual verbs, so the model cannot
+    // pattern-match its way around the listed anti-examples.
     const src = readSrc();
     const messageHandlerTemplateRe =
       /export const messageHandlerTemplate = `([^`]+)`/;
@@ -171,35 +178,43 @@ describe("prompt templates (src/index.ts)", () => {
     const body = match[1];
     assert.match(
       body,
-      /Never write replyText that claims you have searched, scanned, checked, looked up, recalled, or remembered anything/,
-      "messageHandlerTemplate should carry the phantom-action-claim rule",
+      /Never write replyText that claims or implies an investigative action is happening, has happened, or is about to happen/,
+      "phantom-action-claim rule should cover all three tense-aspects (past / present / future)",
     );
     assert.match(
       body,
       /unless an actual tool call this turn returned that content/,
       "phantom-action-claim rule should bind the prohibition to actual tool execution this turn",
     );
-    // Strengthening: the original rule used present-perfect phrasing
-    // ("you have searched/scanned/...") which the model interpreted
-    // narrowly. Live probes (trajectories tj-fe07eedf943fb7 /
-    // tj-063a9ea4fad748 / tj-01270535922813 on 2026-05-24) showed bare
-    // past-tense ("I scanned the recent messages") and present-continuous
-    // ("Spawning a sub-agent to search the chat history for X") slipping
-    // through.
     assert.match(
       body,
-      /bare past-tense \("I scanned the chat", "I searched the messages"\)/,
-      "phantom-action-claim rule should cover bare past-tense verb forms",
+      /past-perfect \("I have scanned"\)/,
+      "rule should explicitly cover past-perfect form",
     );
     assert.match(
       body,
-      /present-continuous claims of in-flight action \("Spawning a sub-agent", "Looking into it"/,
-      "phantom-action-claim rule should cover present-continuous future-action claims",
+      /bare past-tense \("I scanned"\)/,
+      "rule should explicitly cover bare past-tense form",
     );
     assert.match(
       body,
-      /none of these belong in a simple-path replyText where no tool actually runs/,
-      "phantom-action-claim rule should anchor the prohibition to the simple-path contract",
+      /present-continuous with subject \("I'm checking now"\)/,
+      "rule should explicitly cover present-continuous with subject form",
+    );
+    assert.match(
+      body,
+      /bare present-participle without subject \("Scanning the chat history now", "Looking into it", "Pulling up the logs"\)/,
+      "rule should explicitly cover bare present-participle form — the variant that slipped past the prior version",
+    );
+    assert.match(
+      body,
+      /gerund headers \("Searching:"\)/,
+      "rule should explicitly cover gerund-header form",
+    );
+    assert.match(
+      body,
+      /If no tool ran this turn the action did not happen — saying it did, or is, makes the bot a liar and leaves the user waiting for a result that will never arrive/,
+      "rule should make the user-facing consequence explicit so the model treats this as a falsehood, not a stylistic preference",
     );
   });
 

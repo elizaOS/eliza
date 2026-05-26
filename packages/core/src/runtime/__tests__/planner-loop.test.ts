@@ -210,6 +210,40 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
+	it("forbids phantom in-flight investigative claims in messageToUser/REPLY (planner side)", () => {
+		// Live regression on 2026-05-26 in the milady deployment: user asked
+		// "look it up bitch" after the bot honestly declined a current-news
+		// question. Stage 1 routed simple=false + requiresTool=true with
+		// candidateActions=[WEB_SEARCH, SHELL]. The planner ran 4 SHELL curl
+		// iterations against duckduckgo/google-news/etc — all blocked by
+		// anti-scraping. Iter 5 REPLY then emitted:
+		//   "I'm fetching the latest info on 'big Yahu'. Please hold..."
+		// — a phantom present-continuous claim. iters=5 tools=4 but no
+		// further fetch was queued. The planner does not run in the
+		// background after returning; the user was promised data that
+		// would never arrive.
+		//
+		// The phantom-action-claim ban already lives in
+		// messageHandlerTemplate (Stage 1). This regression covers the
+		// SAME ban in plannerTemplate — the planner's messageToUser /
+		// REPLY text path that runs after every tool iteration.
+		expect(plannerTemplate).toContain(
+			"messageToUser and REPLY text must NEVER claim or imply an investigative action is happening",
+		);
+		expect(plannerTemplate).toContain(
+			'"I\'m fetching X, please hold"',
+		);
+		expect(plannerTemplate).toContain(
+			"The planner does not run in the background after returning",
+		);
+		expect(plannerTemplate).toContain(
+			"set messageToUser saying so plainly",
+		);
+		expect(plannerTemplate).toContain(
+			'"please hold" / "give me a sec" / "be right back" style stalling phrases',
+		);
+	});
+
 	it("appends mandatory chat-recall fallback policy to optimized planner prompts", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => ({ text: "No chat search is available." })),
@@ -244,10 +278,16 @@ describe("v5 planner loop skeleton", () => {
 		expect(systemContent).toContain(
 			"candidateActions naming a tool that is not in this turn's exposed tools list is a dead hint",
 		);
-		expect(systemContent).toContain(
-			"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
-		);
-	});
+			expect(systemContent).toContain(
+				"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
+			);
+			expect(systemContent).toContain(
+				"messageToUser and REPLY text must NEVER claim or imply an investigative action is happening",
+			);
+			expect(systemContent).toContain(
+				'"please hold" / "give me a sec" / "be right back" style stalling phrases',
+			);
+		});
 
 	it("calls ACTION_PLANNER, executes the first queued tool, then evaluates", async () => {
 		const runtime = {
