@@ -12,6 +12,7 @@ const bunRuntimeSrc = resolve(
   monorepoRoot,
   "plugins/plugin-native-bun-runtime/src/index.ts",
 );
+const hostExternalStub = resolve(packageRoot, "test/stubs/host-external.ts");
 
 // Resolve react/react-dom using the same version that lucide-react (or any
 // other UI dep) natively resolves.  In a bun workspace the peer-hash variant
@@ -85,6 +86,18 @@ export default defineConfig({
       {
         find: /^@elizaos\/core\/(.+)$/,
         replacement: resolve(coreSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/app-core(?:\/browser|\/ui-compat)?$/,
+        replacement: hostExternalStub,
+      },
+      {
+        find: /^@elizaos\/capacitor-(contacts|messages|mobile-signals|phone|system)$/,
+        replacement: hostExternalStub,
+      },
+      {
+        find: /^@elizaos\/plugin-browser$/,
+        replacement: hostExternalStub,
       },
       {
         find: /^@elizaos\/capacitor-bun-runtime$/,

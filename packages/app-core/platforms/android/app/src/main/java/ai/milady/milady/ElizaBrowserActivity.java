@@ -13,7 +13,7 @@ import android.text.TextUtils;
  * external app firing ACTION_VIEW on an http(s) URL would land in
  * "No activity found to handle Intent." Eliza is the system browser
  * by being the only handler for these schemes; the actual page render
- * happens inside the WebView at the eliza://browse?url= deep link.
+ * happens inside the WebView at the elizaos://browse?url= deep link.
  */
 public class ElizaBrowserActivity extends Activity {
 

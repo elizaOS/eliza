@@ -15,7 +15,11 @@ import path from "node:path";
 import process from "node:process";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { listScenarioMetadata, loadAllScenarios } from "./loader.ts";
+import {
+  type LoadedScenario,
+  listScenarioMetadata,
+  loadAllScenarios,
+} from "./loader.ts";
 import type { ScenarioReport } from "./types.ts";
 
 type ExecutorModule = typeof import("./executor.ts");
@@ -25,7 +29,10 @@ type LiveProviderModule = {
   availableProviderNames: () => readonly string[];
 };
 type ScenarioRuntimeFactoryModule = {
-  createScenarioRuntime: () => Promise<{
+  createScenarioRuntime: (options?: {
+    registerAgentSkillsPlugin?: boolean;
+    registerLifeOpsPlugin?: boolean;
+  }) => Promise<{
     runtime: AgentRuntime;
     providerName: string;
     cleanup: () => Promise<void>;
@@ -137,6 +144,34 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
     filter,
     fileGlobs,
   };
+}
+
+function scenarioRequiresPlugin(
+  scenarios: readonly LoadedScenario[],
+  pluginName: string,
+): boolean {
+  return scenarios.some(({ scenario }) => {
+    const requires = scenario.requires;
+    const plugins =
+      requires &&
+      typeof requires === "object" &&
+      "plugins" in requires &&
+      Array.isArray((requires as { plugins?: unknown }).plugins)
+        ? (requires as { plugins: unknown[] }).plugins
+        : [];
+    return plugins.includes(pluginName);
+  });
+}
+
+function scenarioRequiresLifeOpsPlugin(
+  scenarios: readonly LoadedScenario[],
+): boolean {
+  if (scenarioRequiresPlugin(scenarios, "@elizaos/plugin-lifeops")) {
+    return true;
+  }
+  return scenarios.some(({ scenario }) =>
+    scenario.turns.some((turn) => turn.worker === "lifeops_scheduler"),
+  );
 }
 
 async function main(): Promise<number> {
@@ -254,7 +289,13 @@ async function main(): Promise<number> {
   // CLI always uses a single shared runtime. For true per-scenario isolation
   // (required when testing cross-scenario state leakage), invoke the CLI
   // once per scenario from a shell loop (see scripts/run-scenarios-isolated.mjs).
-  const { runtime, providerName, cleanup } = await createScenarioRuntime();
+  const { runtime, providerName, cleanup } = await createScenarioRuntime({
+    registerAgentSkillsPlugin: scenarioRequiresPlugin(
+      loaded,
+      "@elizaos/plugin-agent-skills",
+    ),
+    registerLifeOpsPlugin: scenarioRequiresLifeOpsPlugin(loaded),
+  });
   logger.info(`[eliza-scenarios] provider: ${providerName}`);
 
   const reports: ScenarioReport[] = [];

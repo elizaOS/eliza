@@ -1,4 +1,9 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const coreSrcRoot = path.resolve(__dirname, "../../packages/core/src");
 
 const testExcludes = [
   "dist/**",
@@ -12,6 +17,18 @@ const testExcludes = [
 ];
 
 export default defineConfig({
+  resolve: {
+    alias: [
+      {
+        find: /^@elizaos\/core$/,
+        replacement: path.join(coreSrcRoot, "index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/core\/(.*)$/,
+        replacement: path.join(coreSrcRoot, "$1"),
+      },
+    ],
+  },
   test: {
     testTimeout: 90_000,
     hookTimeout: 30_000,

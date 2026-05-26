@@ -6,7 +6,30 @@ import { fileURLToPath } from "node:url";
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_CORE_ROOT = path.resolve(SCRIPT_DIR, "..");
 
+function explicitRepoRoot() {
+  const raw =
+    process.env.ELIZA_REGRESSION_MATRIX_REPO_ROOT ??
+    process.env.MILADY_REPO_ROOT;
+  const explicitRoot = raw?.trim();
+  if (!explicitRoot) return null;
+
+  const repoRoot = path.resolve(explicitRoot);
+  if (
+    fs.existsSync(path.join(repoRoot, "package.json")) &&
+    fs.existsSync(path.join(repoRoot, ".github", "workflows"))
+  ) {
+    return repoRoot;
+  }
+
+  throw new Error(
+    `Explicit regression matrix repository root is invalid: ${repoRoot}`,
+  );
+}
+
 function findRepoRoot(startDir) {
+  const configuredRoot = explicitRepoRoot();
+  if (configuredRoot) return configuredRoot;
+
   try {
     return execFileSync(
       "git",
@@ -46,6 +69,34 @@ const MANIFEST_PATH = path.join(
 );
 const manifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
 
+function parsePathAliases(raw) {
+  if (!raw?.trim()) return [];
+
+  return raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const separatorIndex = entry.indexOf("=");
+      if (separatorIndex <= 0 || separatorIndex === entry.length - 1) {
+        throw new Error(
+          `Invalid regression matrix path alias "${entry}". Expected from=to.`,
+        );
+      }
+
+      return {
+        from: normalisePath(entry.slice(0, separatorIndex)),
+        to: normalisePath(entry.slice(separatorIndex + 1)),
+      };
+    });
+}
+
+const REPO_PATH_ALIASES = parsePathAliases(
+  process.env.ELIZA_REGRESSION_MATRIX_PATH_ALIASES ??
+    process.env.MILADY_REGRESSION_MATRIX_PATH_ALIASES ??
+    (process.env.MILADY_REPO_ROOT ? "packages/docs/=docs/" : ""),
+);
+
 function parseArgs(argv) {
   const args = new Map();
   for (let index = 0; index < argv.length; index += 1) {
@@ -66,6 +117,28 @@ function normalisePath(filePath) {
   return filePath.split(path.sep).join("/");
 }
 
+function resolveRepoRelativePath(relativePath) {
+  const normalisedPath = normalisePath(relativePath);
+  const directPath = path.join(REPO_ROOT, normalisedPath);
+  if (fs.existsSync(directPath)) return normalisedPath;
+
+  for (const alias of REPO_PATH_ALIASES) {
+    if (!normalisedPath.startsWith(alias.from)) continue;
+
+    const aliasedPath = `${alias.to}${normalisedPath.slice(alias.from.length)}`;
+    if (fs.existsSync(path.join(REPO_ROOT, aliasedPath))) {
+      return aliasedPath;
+    }
+  }
+
+  const nestedElizaPath = path.join("eliza", normalisedPath);
+  if (fs.existsSync(path.join(REPO_ROOT, nestedElizaPath))) {
+    return nestedElizaPath;
+  }
+
+  return normalisedPath;
+}
+
 function globToRegExp(glob) {
   const escaped = glob
     .replace(/[.+^${}()|[\]\\]/g, "\\$&")
@@ -83,7 +156,10 @@ function matchesAnyGlob(filePath, globs) {
 }
 
 function readText(relativePath) {
-  return fs.readFileSync(path.join(REPO_ROOT, relativePath), "utf8");
+  return fs.readFileSync(
+    path.join(REPO_ROOT, resolveRepoRelativePath(relativePath)),
+    "utf8",
+  );
 }
 
 function expandScheduledSuites(suiteIds) {
@@ -231,7 +307,10 @@ function ensurePackageScripts(failures) {
 }
 
 function ensureDesktopInventory(failures) {
-  const checklistPath = path.join(REPO_ROOT, manifest.manualChecklistDoc);
+  const checklistPath = path.join(
+    REPO_ROOT,
+    resolveRepoRelativePath(manifest.manualChecklistDoc),
+  );
   if (!fs.existsSync(checklistPath)) {
     failures.push(
       `Manual desktop checklist is missing: ${manifest.manualChecklistDoc}`,

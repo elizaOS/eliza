@@ -13,6 +13,7 @@ import {
   AgentRuntime as AgentRuntimeCtor,
   createBasicCapabilitiesPlugin,
   createCharacter,
+  InMemoryDatabaseAdapter,
   type LiveProviderConfig,
   type LiveProviderName,
   logger,
@@ -24,19 +25,19 @@ async function loadTestMocks() {
   // Keep these as file URL strings so runtime resolution is anchored to this
   // module instead of the process cwd or test runner transform root.
   const mockRuntimeSpecifier = new URL(
-    "../../test/mocks/helpers/mock-runtime.ts",
+    "../test/mocks/helpers/mock-runtime.ts",
     import.meta.url,
   ).href;
   const lifeopsSimulatorSpecifier = new URL(
-    "../../test/mocks/helpers/lifeops-simulator.ts",
+    "../test/mocks/helpers/lifeops-simulator.ts",
     import.meta.url,
   ).href;
   const benchmarkFixturesSpecifier = new URL(
-    "../../test/mocks/helpers/seed-benchmark-fixtures.ts",
+    "../test/mocks/helpers/seed-benchmark-fixtures.ts",
     import.meta.url,
   ).href;
   const grantsSpecifier = new URL(
-    "../../test/mocks/helpers/seed-grants.ts",
+    "../test/mocks/helpers/seed-grants.ts",
     import.meta.url,
   ).href;
   const llmProxySpecifier = new URL(
@@ -166,6 +167,8 @@ export interface CreateScenarioRuntimeOptions {
   characterName?: string;
   preferredProvider?: LiveProviderName;
   extraPlugins?: Plugin[];
+  registerAgentSkillsPlugin?: boolean;
+  registerLifeOpsPlugin?: boolean;
   useDeterministicLlmProxy?: boolean;
 }
 
@@ -316,16 +319,15 @@ export async function createScenarioRuntime(
     name: options?.characterName ?? "ScenarioAgent",
   });
   const runtime = new AgentRuntimeCtor({
+    adapter: new InMemoryDatabaseAdapter(),
     character,
+    enableDocuments: false,
+    enableRelationships: false,
+    enableTrajectories: false,
     plugins: [],
     logLevel: "warn",
     enableAutonomy: false,
   });
-
-  const { default: pluginSql } = (await import("@elizaos/plugin-sql")) as {
-    default: Plugin;
-  };
-  await runtime.registerPlugin(pluginSql);
 
   // Basic capabilities: REPLY, CHOICE, IGNORE, NONE actions, core providers
   // (CHARACTER, ACTIONS, MESSAGES, ENTITIES, ...), and baseline services
@@ -400,33 +402,37 @@ export async function createScenarioRuntime(
     await runtime.registerPlugin(providerPlugin);
   }
 
-  const agentSkillsModule = (await import(
-    "@elizaos/plugin-agent-skills"
-  )) as Record<string, unknown>;
-  const agentSkillsPlugin = extractPlugin(agentSkillsModule, [
-    "default",
-    "agentSkillsPlugin",
-  ]);
-  if (!agentSkillsPlugin) {
-    throw new Error(
-      "[scenario-runner] @elizaos/plugin-agent-skills did not export a Plugin",
-    );
+  if (options?.registerAgentSkillsPlugin === true) {
+    const agentSkillsModule = (await import(
+      "@elizaos/plugin-agent-skills"
+    )) as Record<string, unknown>;
+    const agentSkillsPlugin = extractPlugin(agentSkillsModule, [
+      "default",
+      "agentSkillsPlugin",
+    ]);
+    if (!agentSkillsPlugin) {
+      throw new Error(
+        "[scenario-runner] @elizaos/plugin-agent-skills did not export a Plugin",
+      );
+    }
+    await runtime.registerPlugin(agentSkillsPlugin);
   }
-  await runtime.registerPlugin(agentSkillsPlugin);
 
-  const lifeOpsModule = (await import(
-    "@elizaos/plugin-lifeops/plugin"
-  )) as Record<string, unknown>;
-  const lifeOpsPlugin = extractPlugin(lifeOpsModule, [
-    "default",
-    "appLifeOpsPlugin",
-  ]);
-  if (!lifeOpsPlugin) {
-    throw new Error(
-      "[scenario-runner] @elizaos/plugin-lifeops did not export a Plugin",
-    );
+  if (options?.registerLifeOpsPlugin === true) {
+    const lifeOpsModule = (await import(
+      "@elizaos/plugin-lifeops/plugin"
+    )) as Record<string, unknown>;
+    const lifeOpsPlugin = extractPlugin(lifeOpsModule, [
+      "default",
+      "appLifeOpsPlugin",
+    ]);
+    if (!lifeOpsPlugin) {
+      throw new Error(
+        "[scenario-runner] @elizaos/plugin-lifeops did not export a Plugin",
+      );
+    }
+    await runtime.registerPlugin(lifeOpsPlugin);
   }
-  await runtime.registerPlugin(lifeOpsPlugin);
 
   for (const extra of options?.extraPlugins ?? []) {
     await runtime.registerPlugin(extra);
@@ -437,8 +443,10 @@ export async function createScenarioRuntime(
     await mockedEnvironment.applyRuntimeFixtures?.(runtime);
   await seedGoogleConnectorGrant(runtime);
   await seedXConnectorGrant(runtime);
-  await seedBenchmarkLifeOpsFixtures(runtime);
-  await seedLifeOpsSimulatorRuntime(runtime);
+  if (options?.registerLifeOpsPlugin === true) {
+    await seedBenchmarkLifeOpsFixtures(runtime);
+    await seedLifeOpsSimulatorRuntime(runtime);
+  }
 
   // Remove upstream actions that reliably steal action-selection from the
   // domain actions scenarios actually care about. UPDATE_ENTITY's description
