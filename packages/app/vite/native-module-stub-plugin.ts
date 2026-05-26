@@ -221,6 +221,9 @@ export function nativeModuleStubPlugin(
     // renderer must resolve the symbol surface without bundling the server
     // registry package and its agent-only dependency graph.
     "@elizaos/plugin-registry",
+    // Vault is server/native-only; browser reaches it through optional
+    // autofill paths and must not resolve the OS-keychain dependency graph.
+    "@elizaos/vault",
     // Native argon2 bindings (server-side password hashing in
     // app-core/api/auth/passwords.ts). Pulled into the browser graph
     // through the dist-barrel re-export. The `*-wasm32-wasi` sibling is
@@ -568,6 +571,24 @@ export function nativeModuleStubPlugin(
           "export const Algorithm = Object.freeze({ Argon2d: 0, Argon2i: 1, Argon2id: 2 });",
           "export const Version = Object.freeze({ V0x10: 0x10, V0x13: 0x13 });",
           "export default { hash, verify, Algorithm, Version };",
+        ].join("\n");
+      }
+
+      if (strippedId === "@elizaos/vault") {
+        return [
+          "const asyncNull = async () => null;",
+          "const asyncFalse = async () => false;",
+          "const vault = {",
+          "  getSecret: asyncNull,",
+          "  setSecret: async () => undefined,",
+          "  deleteSecret: async () => undefined,",
+          "  listSecrets: async () => [],",
+          "};",
+          "export const createManager = () => ({ vault });",
+          "export const getAutofillAllowed = asyncFalse;",
+          "export const getSavedLogin = asyncNull;",
+          "export const listSavedLogins = async () => [];",
+          "export default { createManager, getAutofillAllowed, getSavedLogin, listSavedLogins };",
         ].join("\n");
       }
 
