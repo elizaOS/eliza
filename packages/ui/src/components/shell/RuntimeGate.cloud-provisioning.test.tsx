@@ -302,6 +302,7 @@ function setupApp(
     elizaCloudConnected: overrides.elizaCloudConnected ?? true,
     elizaCloudLoginBusy: false,
     elizaCloudLoginError: null,
+    elizaCloudLoginFallbackUrl: null,
     handleCloudLogin: overrides.handleCloudLogin ?? vi.fn(),
     uiLanguage: "en",
     uiTheme: "dark",

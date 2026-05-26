@@ -509,6 +509,18 @@ export interface AppState {
   cloudDashboardView: "overview" | "billing";
   elizaCloudLoginBusy: boolean;
   elizaCloudLoginError: string | null;
+  /**
+   * Verification URL returned by `POST /api/cloud/login` while a device-code
+   * sign-in is in flight. Always exposed (not just on error) so the renderer
+   * can render a copyable "didn't open? visit this link" fallback panel
+   * underneath the spinner. Cleared when polling stops.
+   *
+   * See useCloudState.handleCloudLogin for the setter and the rationale —
+   * some desktop environments (notably Tails routing xdg-open to Tor
+   * Browser flatpak) open without crashing but never surface a usable
+   * window, leaving the user stuck.
+   */
+  elizaCloudLoginFallbackUrl: string | null;
   elizaCloudDisconnecting: boolean;
 
   // Multi-agent profiles

@@ -73,6 +73,8 @@ import {
   useApp,
 } from "../../state";
 import { getElizaApiBase, preOpenWindow } from "../../utils";
+import { copyTextToClipboard } from "../../utils/clipboard";
+import { openExternalUrl } from "../../utils/openExternalUrl";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
 import { Button } from "../ui/button";
@@ -580,6 +582,7 @@ export function RuntimeGate() {
     elizaCloudConnected,
     elizaCloudLoginBusy,
     elizaCloudLoginError,
+    elizaCloudLoginFallbackUrl,
     handleCloudLogin,
     startupCoordinator,
     uiLanguage,
@@ -1763,6 +1766,20 @@ export function RuntimeGate() {
                 {error || elizaCloudLoginError}
               </p>
             )}
+            {/* Manual-link fallback for the device-code flow.
+                Shown while polling — even if openExternalUrl() succeeded —
+                because some desktop handlers open without crashing but never
+                surface a usable window (e.g. Tails routing xdg-open through
+                gtk-launch to the Tor Browser flatpak; if Tor hasn't
+                bootstrapped the browser hangs invisibly). Standard OAuth
+                device-code UX (gh auth login, npm login, stripe login)
+                always shows the URL as a copyable link. */}
+            {elizaCloudLoginBusy && elizaCloudLoginFallbackUrl && (
+              <CloudLoginFallbackPanel
+                browserUrl={elizaCloudLoginFallbackUrl}
+                t={t}
+              />
+            )}
             <BackButton t={t} onClick={() => setSubView("chooser")} />
           </div>
         )}
@@ -2648,6 +2665,94 @@ function BackButton({
 
 const LOCAL_EMBEDDINGS_TOOLTIP =
   "Embeddings are vector representations of your messages, used for memory and search. Keeping them local means your message text isn't sent to the cloud just to compute vectors. Chat still goes through the cloud.";
+
+function CloudLoginFallbackPanel({
+  browserUrl,
+  t,
+}: {
+  browserUrl: string;
+  t: (key: string, vars?: { defaultValue?: string }) => string;
+}) {
+  const [copied, setCopied] = React.useState(false);
+  const copyResetTimer = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (copyResetTimer.current !== null) {
+        window.clearTimeout(copyResetTimer.current);
+      }
+    };
+  }, []);
+
+  const handleCopy = React.useCallback(async () => {
+    try {
+      await copyTextToClipboard(browserUrl);
+      setCopied(true);
+      if (copyResetTimer.current !== null) {
+        window.clearTimeout(copyResetTimer.current);
+      }
+      copyResetTimer.current = window.setTimeout(() => {
+        setCopied(false);
+        copyResetTimer.current = null;
+      }, 2000);
+    } catch {
+      // Clipboard write failed (permission denied, headless context).
+      // The URL stays visible and `select-all` lets the user copy it
+      // manually, so the flow still completes.
+    }
+  }, [browserUrl]);
+
+  const handleRetryOpen = React.useCallback(() => {
+    void openExternalUrl(browserUrl).catch(() => {
+      // Auto-open failed again; the displayed URL + Copy button are the
+      // user's path forward — no error display needed here because we are
+      // already in the "the open didn't surface" branch.
+    });
+  }, [browserUrl]);
+
+  return (
+    <div
+      className="mt-1 flex flex-col gap-2 rounded border border-white/15 bg-white/[0.08] p-3 text-left"
+      style={{ fontFamily: MONO_FONT }}
+    >
+      <p className="text-3xs uppercase tracking-wide text-[var(--onboarding-text-muted)]">
+        {t("runtimegate.cloudFallbackPrompt", {
+          defaultValue:
+            "Sign-in window didn't open? Visit this link on any device:",
+        })}
+      </p>
+      <div className="select-all break-all rounded border border-white/10 bg-black/30 p-2 text-2xs text-[var(--onboarding-text-strong)]">
+        {browserUrl}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          className="h-7 px-3 text-3xs uppercase tracking-wide"
+          onClick={handleRetryOpen}
+        >
+          {t("runtimegate.cloudFallbackOpen", {
+            defaultValue: "Open link",
+          })}
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          className="h-7 px-3 text-3xs uppercase tracking-wide"
+          onClick={() => void handleCopy()}
+        >
+          {copied
+            ? t("runtimegate.cloudFallbackCopied", {
+                defaultValue: "Copied",
+              })
+            : t("runtimegate.cloudFallbackCopy", {
+                defaultValue: "Copy",
+              })}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function LocalEmbeddingsCheckbox({
   checked,
