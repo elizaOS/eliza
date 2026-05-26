@@ -283,6 +283,14 @@ export {
 	settingsDebugCloudSummary,
 } from "./settings-debug";
 export { sanitizeSpeechText } from "./spoken-text";
+export {
+	availableProviderNames,
+	isLiveTestEnabled,
+	type LiveProviderConfig,
+	type LiveProviderName,
+	requireLiveProvider,
+	selectLiveProvider,
+} from "./testing/live-provider";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
 export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
