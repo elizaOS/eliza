@@ -18,7 +18,7 @@ export interface StructuredOutputFailure {
 	source: "dynamicPromptExecFromState";
 	kind: "model_error" | "parse_error" | "parse_problem" | "validation_error";
 	model: string;
-	format: "JSON";
+	format: "JSON" | "TOON";
 	schemaFields: string[];
 	attempts: number;
 	maxRetries: number;

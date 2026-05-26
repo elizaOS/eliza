@@ -64,6 +64,8 @@ interface ParsedEvaluatorObject {
 	parseError?: string;
 }
 
+const DEFAULT_EVALUATOR_MAX_TOKENS = 1024;
+
 export async function runEvaluator(
 	params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
@@ -92,12 +94,20 @@ export async function runEvaluator(
 		}),
 		modelInputBudget,
 	);
+	const typedProviderOptions = providerOptions as Record<string, unknown> & {
+		eliza?: Record<string, unknown>;
+	};
+	typedProviderOptions.eliza = {
+		...(typedProviderOptions.eliza ?? {}),
+		thinking: "off",
+	};
 	const startedAt = Date.now();
 	const modelType = params.modelType ?? ModelType.RESPONSE_HANDLER;
 	const raw = await params.runtime.useModel(
 		modelType,
 		{
 			messages: renderedInput.messages,
+			maxTokens: DEFAULT_EVALUATOR_MAX_TOKENS,
 			responseSchema: evaluatorSchema,
 			promptSegments: renderedInput.promptSegments,
 			providerOptions,

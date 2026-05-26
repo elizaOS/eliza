@@ -292,7 +292,7 @@ const TEXT_GENERATION_MODEL_KEYS: readonly string[] = [
 	ModelType.TEXT_COMPLETION,
 ];
 
-type StructuredResponseFormat = "JSON";
+type StructuredResponseFormat = "JSON" | "TOON";
 
 type StructuredResponseCandidate = {
 	text: string;
