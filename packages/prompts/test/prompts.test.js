@@ -87,6 +87,73 @@ describe("prompt templates (src/index.ts)", () => {
     );
   });
 
+  it("messageHandlerTemplate forbids bare-acknowledgement replies + empty replyText on simple-path", () => {
+    // Regression for two failure shapes from the 2026-05-25 50-probe deepscan:
+    //   - Probes 20/21 ("what directory are you running in" / "how many cpu
+    //     cores"): bot replied with bare "On it." (iters=0 tools=0) — user
+    //     saw a fake acknowledgement, no follow-up.
+    //   - Probe 22 ("list the top-level dirs in /home/milady"): Stage 1
+    //     produced reply:"" (empty string) on simple-path — bot posted
+    //     literally nothing to Discord. trajectory tj-f61e23c88bdcbc.json.
+    //   - Probe 50 ("make me a pdf with 3 pages about elizaOS history"):
+    //     reply="Spawning the sub-agent now." with iters=0 tools=0 — no
+    //     sub-agent was actually spawned. Different article ("the" vs "a")
+    //     than the phantom rule's anti-example.
+    //
+    // The fix is structural: simple-path replyText must be non-empty AND
+    // must directly answer the question. Bare "I'll handle that" / "Sure"
+    // / "On it" acknowledgements are not answers — they are promises of
+    // work that never happens.
+    const src = readSrc();
+    const messageHandlerTemplateRe =
+      /export const messageHandlerTemplate = `([^`]+)`/;
+    const body = src.match(messageHandlerTemplateRe)[1];
+    assert.match(
+      body,
+      /simple-path \(simple=true\) replyText must be non-empty, must directly answer the question/,
+      "simple-path rule should require non-empty, answer-shaped replyText",
+    );
+    assert.match(
+      body,
+      /must not be a bare acknowledgement that promises work without doing it/,
+      "simple-path rule should explicitly forbid bare-acknowledgement promises",
+    );
+    assert.match(
+      body,
+      /"On it\.", "Sure\.", "Got it, working on that\.", "Spawning the sub-agent now\.", "One sec\.", "Let me handle that\./,
+      "simple-path rule should enumerate the common bare-acknowledgement variants seen in live trajectories",
+    );
+    assert.match(
+      body,
+      /Do not use them as the entire simple-path replyText regardless of which article \("a"\/"the"\) or tense the model picks/,
+      "rule should make article/tense irrelevance explicit so 'Spawning a sub-agent' and 'Spawning the sub-agent now' are both covered",
+    );
+    assert.match(
+      body,
+      /An empty replyText on simple-path is a bug: the user will see no reply at all/,
+      "rule should explicitly call out the empty-reply failure mode",
+    );
+    assert.match(
+      body,
+      /do not route to simple — set simple=false and pick the appropriate context with the right action surface; or set requiresTool=true with a real candidateAction/,
+      "rule should redirect to the correct escape hatch when the model can't directly answer",
+    );
+    // Interim acks are GOOD design on the non-simple path — the rule must
+    // not accidentally ban them or the bot can't say "On it." when a real
+    // planner iteration is about to run (probe 36 / spotify on 2026-05-25
+    // correctly used simple=false + requiresTool=true with reply="On it.").
+    assert.match(
+      body,
+      /Interim acknowledgements are perfectly fine on the non-simple path/,
+      "rule should explicitly green-light interim acks when simple=false + requiresTool=true",
+    );
+    assert.match(
+      body,
+      /simple=true means "this reply is the complete answer"; simple=false \+ requiresTool=true means "this reply is the interim ack, the planner will deliver the real result\."/,
+      "rule should state the simple/non-simple replyText contract explicitly",
+    );
+  });
+
   it("messageHandlerTemplate forbids phantom action claims in replyText", () => {
     // Regression coverage for the structural rule that prevents Stage 1
     // from writing "I scanned/searched/checked/looked up/recalled/remembered"
