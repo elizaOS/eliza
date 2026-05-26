@@ -5,10 +5,9 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { logger } from "@elizaos/core";
-import { type LoadedRegistry, loadRegistryFromRawEntries } from "./loader.js";
+import { type LoadedRegistry, loadRegistryFromRawEntries } from "./loader";
 
-export * from "./app-registry.js";
+export * from "./app-registry";
 export {
   getApps,
   getConnectors,
@@ -18,10 +17,9 @@ export {
   indexEntries,
   type LoadedRegistry,
   mergeWithRuntime,
-  normalizeConnectorAuth,
   type RegistryValidationError,
-} from "./loader.js";
-export * from "./schema.js";
+} from "./loader";
+export * from "./schema";
 
 // Bun.build collapses these top-level `const` declarations into `var`s
 // inside an `__esm` wrapper, and `import.meta.url` inside that wrapper
@@ -71,10 +69,25 @@ function resolveEntriesDir(): string {
   return distEntries;
 }
 
-let cache: LoadedRegistry | null = null;
+// TDZ-hardening (see also packages/app-core/src/services/vault-mirror.ts).
+// This module's cached registry slot must survive being re-entered during
+// circular-import partial evaluation on Bun's strict ESM runtime. A bare
+// `let cache = null` would still be in the temporal dead zone when an
+// import cycle re-enters `loadRegistry()`, throwing
+// `Cannot access 'cache' before initialization` and bricking boot
+// (observed: vault-bootstrap → sensitiveKeysFromRegistry → loadRegistry
+// during agent startup on the elizaOS live USB).
+//
+var cacheSlot: { value: LoadedRegistry | null } = { value: null };
 
 export function loadRegistry(): LoadedRegistry {
-  if (cache) return cache;
+  // Self-heal: if a cycle re-entered us before the module-top initializer
+  // ran, hoisted `cacheSlot` is `undefined`. Lazily initialize so we never
+  // throw and downstream callers see a stable `{ value: null }`.
+  if (!cacheSlot) {
+    cacheSlot = { value: null };
+  }
+  if (cacheSlot.value) return cacheSlot.value;
 
   const entriesDir = resolveEntriesDir();
   const raws: { file: string; data: unknown }[] = [];
@@ -86,7 +99,7 @@ export function loadRegistry(): LoadedRegistry {
     } catch {
       // In packaged desktop builds the registry entries may not be bundled.
       // Log and continue rather than crashing the agent subprocess.
-      logger.warn(`[registry] ${kind} directory missing: ${kindDir}`);
+      console.warn(`[registry] ${kind} directory missing: ${kindDir}`);
       continue;
     }
     for (const filename of entries) {
@@ -97,10 +110,14 @@ export function loadRegistry(): LoadedRegistry {
     }
   }
 
-  cache = loadRegistryFromRawEntries(raws);
-  return cache;
+  cacheSlot.value = loadRegistryFromRawEntries(raws);
+  return cacheSlot.value;
 }
 
 export function clearRegistryCacheForTests(): void {
-  cache = null;
+  if (!cacheSlot) {
+    cacheSlot = { value: null };
+    return;
+  }
+  cacheSlot.value = null;
 }

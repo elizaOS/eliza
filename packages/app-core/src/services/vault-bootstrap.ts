@@ -16,21 +16,79 @@
  * failures are isolated; if every write fails the function throws.
  */
 
-import {
-  type ElizaConfig,
-  formatVaultRef,
-  isVaultRef,
-  loadElizaConfig,
-  persistConfigEnv,
-  readConfigEnv,
-  resolveStateDir,
-  saveElizaConfig,
+// IMPORTANT — circular-import hardening
+//
+// `@elizaos/agent` depends on `@elizaos/app-core` (via plugin loading, server
+// routes, runtime hooks), so re-importing agent from any module under app-core
+// closes a cycle. On Bun's strict ESM evaluator, that cycle causes app-core
+// modules to be re-entered mid-evaluation: their top-level `let`/`const`
+// declarations are still in TDZ when functions defined later in the same
+// module are invoked, throwing "Cannot access 'X' before initialization"
+// at boot.
+//
+// Surfaced as the elizaOS-live-USB symptom: `runVaultBootstrap` failed with
+// TDZ on `cachedManager` / `WALLET_VAULT_KEYS` / `cache` (registry loader's
+// memoization slot), the agent process died before binding port 31337, and
+// the Electrobun shell stayed stuck on "Backend Timeout".
+//
+// Fix: keep agent imports type-only (erased at compile time, no runtime
+// edge), and load the runtime helpers lazily through a single dynamic
+// `import("@elizaos/agent")` inside `agentBridge()`. That defers the cycle
+// closure until after both modules have fully evaluated.
+import type {
+  ElizaConfig,
+  formatVaultRef as FormatVaultRefFn,
+  isVaultRef as IsVaultRefFn,
+  loadElizaConfig as LoadElizaConfigFn,
+  persistConfigEnv as PersistConfigEnvFn,
+  readConfigEnv as ReadConfigEnvFn,
+  resolveStateDir as ResolveStateDirFn,
+  saveElizaConfig as SaveElizaConfigFn,
 } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import type { Vault } from "@elizaos/vault";
 
 import { loadRegistry } from "../registry";
 import { sharedVault } from "./vault-mirror";
+
+interface AgentBridge {
+  formatVaultRef: typeof FormatVaultRefFn;
+  isVaultRef: typeof IsVaultRefFn;
+  loadElizaConfig: typeof LoadElizaConfigFn;
+  persistConfigEnv: typeof PersistConfigEnvFn;
+  readConfigEnv: typeof ReadConfigEnvFn;
+  resolveStateDir: typeof ResolveStateDirFn;
+  saveElizaConfig: typeof SaveElizaConfigFn;
+}
+
+var bridgeCache: AgentBridge | null = null;
+
+async function agentBridge(): Promise<AgentBridge> {
+  if (bridgeCache) return bridgeCache;
+  // Dynamic import defers the agent ↔ app-core edge until after both
+  // modules have fully evaluated. By the time this runs the runVaultBootstrap
+  // call site is already inside an async function body, so the cycle is
+  // long closed.
+  const mod = (await import("@elizaos/agent")) as unknown as {
+    formatVaultRef: typeof FormatVaultRefFn;
+    isVaultRef: typeof IsVaultRefFn;
+    loadElizaConfig: typeof LoadElizaConfigFn;
+    persistConfigEnv: typeof PersistConfigEnvFn;
+    readConfigEnv: typeof ReadConfigEnvFn;
+    resolveStateDir: typeof ResolveStateDirFn;
+    saveElizaConfig: typeof SaveElizaConfigFn;
+  };
+  bridgeCache = {
+    formatVaultRef: mod.formatVaultRef,
+    isVaultRef: mod.isVaultRef,
+    loadElizaConfig: mod.loadElizaConfig,
+    persistConfigEnv: mod.persistConfigEnv,
+    readConfigEnv: mod.readConfigEnv,
+    resolveStateDir: mod.resolveStateDir,
+    saveElizaConfig: mod.saveElizaConfig,
+  };
+  return bridgeCache;
+}
 
 export interface VaultBootstrapResult {
   migrated: number;
@@ -87,6 +145,7 @@ async function migrateElizaJson(
   config: ElizaConfig,
   vault: Vault,
   sensitiveKeys: ReadonlySet<string>,
+  bridge: AgentBridge,
 ): Promise<{
   migrated: string[];
   skipped: string[];
@@ -104,7 +163,7 @@ async function migrateElizaJson(
   ): Promise<void> {
     const value = container[key];
     if (typeof value !== "string" || value.length === 0) return;
-    if (isVaultRef(value)) {
+    if (bridge.isVaultRef(value)) {
       skipped.push(key);
       return;
     }
@@ -113,7 +172,7 @@ async function migrateElizaJson(
     if (!isSensitive) return;
     try {
       await vault.set(key, value, { sensitive: true });
-      container[key] = formatVaultRef(key);
+      container[key] = bridge.formatVaultRef(key);
       migrated.push(key);
       mutated = true;
     } catch (err) {
@@ -162,15 +221,16 @@ async function migrateConfigEnvFile(
   stateDir: string,
   vault: Vault,
   sensitiveKeys: ReadonlySet<string>,
+  bridge: AgentBridge,
 ): Promise<{ migrated: string[]; skipped: string[]; failed: string[] }> {
   const migrated: string[] = [];
   const skipped: string[] = [];
   const failed: string[] = [];
 
-  const entries = await readConfigEnv(stateDir);
+  const entries = await bridge.readConfigEnv(stateDir);
   for (const [key, value] of Object.entries(entries)) {
     if (typeof value !== "string" || value.length === 0) continue;
-    if (isVaultRef(value)) {
+    if (bridge.isVaultRef(value)) {
       skipped.push(key);
       continue;
     }
@@ -179,7 +239,9 @@ async function migrateConfigEnvFile(
     if (!isSensitive) continue;
     try {
       await vault.set(key, value, { sensitive: true });
-      await persistConfigEnv(key, formatVaultRef(key), { stateDir });
+      await bridge.persistConfigEnv(key, bridge.formatVaultRef(key), {
+        stateDir,
+      });
       migrated.push(key);
     } catch (err) {
       failed.push(key);
@@ -197,6 +259,7 @@ async function mirrorProcessEnvSensitive(
   vault: Vault,
   sensitiveKeys: ReadonlySet<string>,
   seenKeys: ReadonlySet<string>,
+  bridge: AgentBridge,
 ): Promise<{ migrated: string[]; failed: string[] }> {
   const migrated: string[] = [];
   const failed: string[] = [];
@@ -205,7 +268,7 @@ async function mirrorProcessEnvSensitive(
     if (!isEnvVarKey(key)) continue;
     if (seenKeys.has(key)) continue;
     if (typeof rawValue !== "string" || rawValue.length === 0) continue;
-    if (isVaultRef(rawValue)) continue;
+    if (bridge.isVaultRef(rawValue)) continue;
     const isSensitive =
       sensitiveKeys.has(key) || inferSensitiveByHeuristic(key);
     if (!isSensitive) continue;
@@ -228,18 +291,28 @@ async function mirrorProcessEnvSensitive(
 export async function runVaultBootstrap(
   opts: VaultBootstrapOptions = {},
 ): Promise<VaultBootstrapResult> {
-  const stateDir = opts.stateDir ?? resolveStateDir();
+  // Resolve the lazy agent bridge ONCE here; everything downstream gets it
+  // injected. Single resolution point also keeps the cycle-breaking dynamic
+  // import a single network/syscall hop instead of one per helper.
+  const bridge = await agentBridge();
+
+  const stateDir = opts.stateDir ?? bridge.resolveStateDir();
   const vault = opts.vault ?? sharedVault();
 
   const sensitiveKeys = sensitiveKeysFromRegistry();
-  const config = loadElizaConfig();
+  const config = bridge.loadElizaConfig();
 
-  const json = await migrateElizaJson(config, vault, sensitiveKeys);
+  const json = await migrateElizaJson(config, vault, sensitiveKeys, bridge);
   if (json.mutated) {
-    saveElizaConfig(config);
+    bridge.saveElizaConfig(config);
   }
 
-  const env = await migrateConfigEnvFile(stateDir, vault, sensitiveKeys);
+  const env = await migrateConfigEnvFile(
+    stateDir,
+    vault,
+    sensitiveKeys,
+    bridge,
+  );
 
   // Skip keys we already attempted (success or fail) so process.env
   // mirroring doesn't double-count keys that just failed against the json
@@ -250,7 +323,12 @@ export async function runVaultBootstrap(
     ...env.migrated,
     ...env.failed,
   ]);
-  const proc = await mirrorProcessEnvSensitive(vault, sensitiveKeys, seen);
+  const proc = await mirrorProcessEnvSensitive(
+    vault,
+    sensitiveKeys,
+    seen,
+    bridge,
+  );
 
   const migratedKeys = [...json.migrated, ...env.migrated, ...proc.migrated];
   const skippedKeys = [...json.skipped, ...env.skipped];
