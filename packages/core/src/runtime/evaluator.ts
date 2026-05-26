@@ -536,24 +536,24 @@ function recoverEvaluatorTextOutput(
 // and that object was published verbatim to the user's Discord
 // channel underneath the table.
 //
-	// The strip is conservative: it only removes a trailing balanced JSON object
-	// that parses as a real evaluator envelope (`success` boolean plus a valid
-	// `decision`/`route`). A legitimate user-asked-for trailing JSON object such
-	// as `{"success":true}` or `{"decision":"approve"}` is left untouched.
-	function stripTrailingEvaluatorEnvelope(text: string): string {
-		const trimmed = text.trimEnd();
-		if (!trimmed.endsWith("}")) return text;
-		const candidate = extractJsonObjects(trimmed).at(-1);
-		if (!candidate || !trimmed.endsWith(candidate)) return text;
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(candidate);
-		} catch {
-			return text;
-		}
-		if (!isEvaluatorEnvelopeObject(parsed)) return text;
-		return trimmed.slice(0, trimmed.length - candidate.length).trimEnd();
+// The strip is conservative: it only removes a trailing balanced JSON object
+// that parses as a real evaluator envelope (`success` boolean plus a valid
+// `decision`/`route`). A legitimate user-asked-for trailing JSON object such
+// as `{"success":true}` or `{"decision":"approve"}` is left untouched.
+function stripTrailingEvaluatorEnvelope(text: string): string {
+	const trimmed = text.trimEnd();
+	if (!trimmed.endsWith("}")) return text;
+	const candidate = extractJsonObjects(trimmed).at(-1);
+	if (!candidate || !trimmed.endsWith(candidate)) return text;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(candidate);
+	} catch {
+		return text;
 	}
+	if (!isEvaluatorEnvelopeObject(parsed)) return text;
+	return trimmed.slice(0, trimmed.length - candidate.length).trimEnd();
+}
 
 function isEvaluatorEnvelopeObject(value: unknown): boolean {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return false;

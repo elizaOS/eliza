@@ -333,7 +333,8 @@ export class SubAgentRouter extends Service {
   // across long-running sessions. 1024 origin messages is well above
   // any reasonable workload — Discord channels typically see hundreds
   // of message-events per hour at most.
-  private readonly completionFirstPostedSession: Map<string, string> = new Map();
+  private readonly completionFirstPostedSession: Map<string, string> =
+    new Map();
   private completionHasPostedFromOtherSession(
     completionKey: string,
     sessionId: string,
@@ -341,10 +342,7 @@ export class SubAgentRouter extends Service {
     const firstSession = this.completionFirstPostedSession.get(completionKey);
     return firstSession !== undefined && firstSession !== sessionId;
   }
-  private markCompletionPosted(
-    completionKey: string,
-    sessionId: string,
-  ): void {
+  private markCompletionPosted(completionKey: string, sessionId: string): void {
     if (this.completionFirstPostedSession.has(completionKey)) return;
     this.completionFirstPostedSession.set(completionKey, sessionId);
     while (this.completionFirstPostedSession.size > 1024) {
@@ -635,9 +633,7 @@ export class SubAgentRouter extends Service {
     const completionKey =
       event === "task_complete" ? completionLineageKey(session, origin) : null;
     if (completionKey) {
-      if (
-        this.completionHasPostedFromOtherSession(completionKey, sessionId)
-      ) {
+      if (this.completionHasPostedFromOtherSession(completionKey, sessionId)) {
         this.log(
           "debug",
           "suppressing duplicate sub-agent task_complete for lineage; another session already posted for this task",

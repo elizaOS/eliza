@@ -230,15 +230,11 @@ describe("v5 planner loop skeleton", () => {
 		expect(plannerTemplate).toContain(
 			"messageToUser and REPLY text must NEVER claim or imply an investigative action is happening",
 		);
-		expect(plannerTemplate).toContain(
-			'"I\'m fetching X, please hold"',
-		);
+		expect(plannerTemplate).toContain('"I\'m fetching X, please hold"');
 		expect(plannerTemplate).toContain(
 			"The planner does not run in the background after returning",
 		);
-		expect(plannerTemplate).toContain(
-			"set messageToUser saying so plainly",
-		);
+		expect(plannerTemplate).toContain("set messageToUser saying so plainly");
 		expect(plannerTemplate).toContain(
 			'"please hold" / "give me a sec" / "be right back" style stalling phrases',
 		);
@@ -278,16 +274,16 @@ describe("v5 planner loop skeleton", () => {
 		expect(systemContent).toContain(
 			"candidateActions naming a tool that is not in this turn's exposed tools list is a dead hint",
 		);
-			expect(systemContent).toContain(
-				"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
-			);
-			expect(systemContent).toContain(
-				"messageToUser and REPLY text must NEVER claim or imply an investigative action is happening",
-			);
-			expect(systemContent).toContain(
-				'"please hold" / "give me a sec" / "be right back" style stalling phrases',
-			);
-		});
+		expect(systemContent).toContain(
+			"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
+		);
+		expect(systemContent).toContain(
+			"messageToUser and REPLY text must NEVER claim or imply an investigative action is happening",
+		);
+		expect(systemContent).toContain(
+			'"please hold" / "give me a sec" / "be right back" style stalling phrases',
+		);
+	});
 
 	it("calls ACTION_PLANNER, executes the first queued tool, then evaluates", async () => {
 		const runtime = {

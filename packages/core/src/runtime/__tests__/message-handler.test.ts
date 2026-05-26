@@ -86,10 +86,10 @@ describe("v5 message handler routing", () => {
 			processMessage: "RESPOND" as const,
 			thought: "Tool would help here.",
 			plan: {
-					contexts: ["simple"],
-					requiresTool: true,
-					candidateActions: ["BASH"],
-					reply: "On it.",
+				contexts: ["simple"],
+				requiresTool: true,
+				candidateActions: ["BASH"],
+				reply: "On it.",
 			},
 		};
 
@@ -97,8 +97,8 @@ describe("v5 message handler routing", () => {
 		expect(route.type).toBe("planning_needed");
 		if (route.type === "planning_needed") {
 			expect(route.contexts).toEqual(["general"]);
-			}
-		});
+		}
+	});
 
 	it("keeps simple route for explicit non-tool candidate hints", () => {
 		const output = {

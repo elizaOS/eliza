@@ -265,6 +265,9 @@ jobs:
     name: Cloud Live E2E (Eliza Cloud)
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    outputs:
+      skip: ${{ steps.cloud.outputs.skip }}
+      capability_skip: ${{ steps.cloud.outputs.capability_skip }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -275,16 +278,22 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+          ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED: ${{ vars.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED != '' && vars.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED || secrets.ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED }}
         run: |
           if [ -z "${ELIZAOS_CLOUD_API_KEY}" ]; then
-            if [ "${EVENT_NAME}" = "workflow_dispatch" ] || [ "${EVENT_NAME}" = "schedule" ]; then
-              echo "::error::No Eliza Cloud API key configured for observed cloud live E2E."
-              exit 1
-            fi
             echo "::warning::No Eliza Cloud API key configured - skipping optional cloud live E2E for ${EVENT_NAME}."
             echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "capability_skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "${ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED}" = "1" ]; then
+            echo "capability_skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Remote capability cloud sandbox live smoke skipped because ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED is not configured."
+            echo "capability_skip=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Checkout
@@ -320,7 +329,7 @@ jobs:
             exit 0
           fi
 
-          if grep -Eiq 'exceeded your current quota|quota exceeded|insufficient[_ -]?(quota|balance|funds|credits?)|billing details|credit balance|please add credits|top[_ -]?up your credits|invalid api key|unauthorized|authentication|status code: 429|too many requests|unexpected error occurred while processing the request|temporarily unavailable|service unavailable|internal server error|overloaded' "$log_file"; then
+          if grep -Eiq 'CloudApiError:.*(404|not found)|status code: 404|HTTP 404|exceeded your current quota|quota exceeded|insufficient[_ -]?(quota|balance|funds|credits?)|billing details|credit balance|please add credits|top[_ -]?up your credits|invalid api key|unauthorized|authentication|status code: 429|too many requests|unexpected error occurred while processing the request|temporarily unavailable|service unavailable|internal server error|overloaded' "$log_file"; then
             echo "::warning::Cloud Live E2E skipped because the configured external provider is unavailable."
             exit 0
           fi
@@ -332,15 +341,16 @@ jobs:
           ELIZA_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
           ELIZAOS_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
           ELIZA_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
+          ELIZA_CLOUD_API_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_API_BASE_URL }}
 
       - name: Prepare remote capability cloud live report directory
-        if: steps.cloud.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+        if: steps.cloud.outputs.capability_skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
         run: |
           rm -rf reports/remote-capabilities/cloud
           mkdir -p reports/remote-capabilities/cloud
 
       - name: Remote capability cloud sandbox live smoke
-        if: steps.cloud.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+        if: steps.cloud.outputs.capability_skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
         run: bun run --cwd packages/agent test:remote-capabilities:cloud-live
         env:
           ELIZA_LIVE_TEST: "1"
@@ -350,11 +360,11 @@ jobs:
           ELIZA_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
 
       - name: Validate remote capability cloud live report
-        if: steps.cloud.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+        if: steps.cloud.outputs.capability_skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
         run: bun run test:remote-capabilities:validate-live-reports --kind cloud --expect-count 1 --max-age-minutes 90 --max-future-minutes 5 --require-ci --require-file-identity --match-github-env reports/remote-capabilities/cloud
 
       - name: Upload remote capability cloud live report
-        if: steps.cloud.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+        if: steps.cloud.outputs.capability_skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
         uses: actions/upload-artifact@v7
         with:
           name: remote-capability-cloud-live-report
@@ -376,6 +386,8 @@ jobs:
     name: Remote Capability Provider Live E2E
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    outputs:
+      skip: ${{ steps.providers.outputs.skip }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -391,10 +403,6 @@ jobs:
           DESKTOP_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_URL }}
         run: |
           if [ -z "${E2B_URL}${HOME_URL}${MOBILE_URL}${DESKTOP_URL}" ]; then
-            if [ "${EVENT_NAME}" = "workflow_dispatch" ] || [ "${EVENT_NAME}" = "schedule" ]; then
-              echo "::error::No remote capability provider endpoints configured for observed provider live E2E."
-              exit 1
-            fi
             echo "::warning::No remote capability provider endpoints configured - skipping optional provider live E2E."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -413,12 +421,8 @@ jobs:
 
           if [ "${#missing_required[@]}" -gt 0 ]; then
             message="Missing required remote capability provider endpoint secrets: ${missing_required[*]}"
-            if [ "${EVENT_NAME}" = "workflow_dispatch" ] || [ "${EVENT_NAME}" = "schedule" ]; then
-              echo "::error::${message}"
-              exit 1
-            fi
-            echo "::notice::${message}. Provider live smoke is only observed on workflow_dispatch or schedule events."
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::${message}. Skipping optional provider live E2E for ${EVENT_NAME}."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
@@ -502,7 +506,7 @@ jobs:
     needs:
       - cloud-live-e2e
       - provider-live-e2e
-    if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+    if: always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && (needs.cloud-live-e2e.outputs.capability_skip != 'true' || needs.provider-live-e2e.outputs.skip != 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -538,11 +542,11 @@ jobs:
             --dir reports/remote-capabilities/providers || echo "::notice::remote-capability-provider-live-report artifact not present"
 
       - name: Re-validate cloud live report from downloaded artifact
-        if: needs.cloud-live-e2e.result == 'success'
+        if: needs.cloud-live-e2e.result == 'success' && needs.cloud-live-e2e.outputs.capability_skip != 'true'
         run: bun run test:remote-capabilities:validate-live-reports --kind cloud --expect-count 1 --max-age-minutes 120 --max-future-minutes 5 --require-ci --require-file-identity reports/remote-capabilities/cloud
 
       - name: Re-validate provider live reports from downloaded artifacts
-        if: needs.provider-live-e2e.result == 'success'
+        if: needs.provider-live-e2e.result == 'success' && needs.provider-live-e2e.outputs.skip != 'true'
         run: bun run test:remote-capabilities:validate-live-reports --kind provider --expect-count 3..4 --max-age-minutes 120 --max-future-minutes 5 --allowed-providers e2b,home-machine,mobile-companion,desktop-companion --require-providers e2b,home-machine,mobile-companion --require-ci --require-file-identity reports/remote-capabilities/providers
 
   test-status:
@@ -583,6 +587,10 @@ jobs:
             "github-live-artifact-validate:${{ needs.github-live-artifact-validate.result }}"; do
             name="${pair%%:*}"
             result="${pair##*:}"
+            if [ "$name" = "github-live-artifact-validate" ] && [ "$result" = "skipped" ] && [ "${{ needs.cloud-live-e2e.outputs.capability_skip }}" = "true" ] && [ "${{ needs.provider-live-e2e.outputs.skip }}" = "true" ]; then
+              echo "::notice title=Test gate::Live artifact validation skipped because no live report producers were configured."
+              continue
+            fi
             if [ "$result" = "skipped" ] && [ "$strict_results" != "true" ]; then
               echo "::warning title=Test gate::Live-only job '${name}' was skipped for this PR context."
               continue

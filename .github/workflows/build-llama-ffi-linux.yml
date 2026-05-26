@@ -6,14 +6,14 @@ name: Build libelizainference (Linux, FFI)
 #
 # STATUS: SCAFFOLD. The build steps mirror the omnivoice workflow but
 # the target name `libelizainference.so` has not been wired through the
-# llama.cpp CMakeLists install rules yet. The top-level `if: false`
-# guard keeps the workflow out of the default fan-out until verified.
+# llama.cpp CMakeLists install rules yet. The `run_real_build` input keeps
+# the workflow out of the default fan-out until verified.
 
 on:
   workflow_dispatch:
     inputs:
       run_real_build:
-        description: "Bypass the if:false guard once the build is verified"
+        description: "Run the scaffold build once it has been verified"
         required: false
         type: boolean
         default: false
@@ -40,7 +40,7 @@ env:
 jobs:
   build-cpu:
     name: ubuntu-22.04 cpu
-    if: ${{ false }}
+    if: ${{ inputs.run_real_build == true }}
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
@@ -157,9 +157,8 @@ jobs:
 
   build-cuda:
     name: ubuntu-22.04 cuda (self-hosted)
-    # Double guard: workflow-wide if:false plus the explicit run_cuda input.
-    if: ${{ false && github.event.inputs.run_cuda == 'true' }}
-    runs-on: [self-hosted, gpu, cuda]
+    if: ${{ inputs.run_real_build == true && inputs.run_cuda == true }}
+    runs-on: [self-hosted, gpu-cuda-12.6]
     timeout-minutes: 120
     continue-on-error: true
     steps:

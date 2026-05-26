@@ -17,13 +17,13 @@ name: Build libelizainference (iOS, FFI static)
 #
 # STATUS: SCAFFOLD. The runner has not been validated against the
 # Electrobun iOS shell's XCFramework consumption path. Top-level
-# `if: false` keeps this out of the default fan-out.
+# The `run_real_build` input keeps this out of the default fan-out.
 
 on:
   workflow_dispatch:
     inputs:
       run_real_build:
-        description: "Bypass the if:false guard once the build is verified"
+        description: "Run the scaffold build once it has been verified"
         required: false
         type: boolean
         default: false
@@ -48,7 +48,7 @@ env:
 jobs:
   build:
     name: iOS XCFramework (Metal)
-    if: ${{ false }}
+    if: ${{ inputs.run_real_build == true }}
     runs-on: macos-14
     timeout-minutes: 120
     steps:

@@ -2237,7 +2237,11 @@ function finishWithCapturedRefusal(params: {
 	iteration: number;
 	thought: string | undefined;
 	refusal: string;
-}): { status: "finished"; trajectory: PlannerTrajectory; finalMessage: string | undefined } {
+}): {
+	status: "finished";
+	trajectory: PlannerTrajectory;
+	finalMessage: string | undefined;
+} {
 	params.trajectory.steps.push({
 		iteration: params.iteration,
 		thought: params.thought,

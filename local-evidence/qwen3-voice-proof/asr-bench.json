@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "tool": "asr_bench.ts",
   "generatedAt": "2026-05-25T03:40:31.044Z",
-  "dylib": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/libelizainference.dylib",
+  "dylib": "/Users/shawwalters/.eliza/local-inference/bin/native/darwin-arm64-metal-fused/libelizainference.dylib",
   "bundle": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle",
   "abiVersion": "4",
   "backend": "metal",
   "engine": {
-    "binDir": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused",
-    "capabilitiesPath": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/CAPABILITIES.json"
+    "binDir": "/Users/shawwalters/.eliza/local-inference/bin/native/darwin-arm64-metal-fused",
+    "capabilitiesPath": "/Users/shawwalters/.eliza/local-inference/bin/native/darwin-arm64-metal-fused/CAPABILITIES.json"
   },
   "labelledSet": {
     "source": "tts_loopback_self_labelled",

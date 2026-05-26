@@ -14,15 +14,15 @@ name: Build libelizainference (macOS, FFI)
 # STATUS: SCAFFOLD. The build steps are wired against the same patterns
 # the omnivoice workflow uses, but the artifact path on disk and the
 # fused-build entry point have not yet been verified end-to-end. The
-# top-level `if: false` keeps the workflow out of the default
-# event-trigger fan-out until that verification lands. Run manually via
-# workflow_dispatch once verified.
+# `run_real_build` input keeps the workflow out of the default event-trigger
+# fan-out until that verification lands. Run manually via workflow_dispatch
+# once verified.
 
 on:
   workflow_dispatch:
     inputs:
       run_real_build:
-        description: "Bypass the if:false guard once the build is verified"
+        description: "Run the scaffold build once it has been verified"
         required: false
         type: boolean
         default: false
@@ -44,9 +44,7 @@ env:
 jobs:
   build:
     name: macos-14 metal
-    # SCAFFOLD GUARD — flip this off via workflow_dispatch input once the
-    # build steps have been smoke-tested end-to-end on a runner.
-    if: ${{ false }}
+    if: ${{ inputs.run_real_build == true }}
     runs-on: macos-14
     timeout-minutes: 90
     steps:
