@@ -3,8 +3,8 @@
  *
  * One LLM call per drift, capped by `budget`. When the runtime exposes no
  * `useModel`, or when the call fails or returns unparseable JSON, we fall
- * back to a deterministic narrative derived from risk flags + classification.
- * The fallback is honest about its origin (`narrative` says "(no LLM)").
+ * back to {@link fallbackRotCause} — the fallback is honest about its origin
+ * (`narrative` says "(no LLM)").
  *
  * All commit text + diff snippets pass through {@link scrubSecrets} before
  * leaving the process.
@@ -13,6 +13,7 @@
 import { ModelType, type IAgentRuntime, logger } from "@elizaos/core";
 import { scrubSecrets } from "../secret-scrubber.ts";
 import type { CommitHealthPoint, InflectionPoint, RotCategory, RotCause } from "../types.ts";
+import { fallbackRotCause } from "./narrate-fallback.ts";
 import { fetchDiffSnippet } from "./scan.ts";
 
 const LOG_PREFIX = "[GitPathology/narrate]";
@@ -168,33 +169,4 @@ function parseRotCause(
   } catch {
     return null;
   }
-}
-
-function fallbackRotCause(
-  point: CommitHealthPoint,
-  before: CommitHealthPoint[],
-  after: CommitHealthPoint[],
-): RotCause {
-  const category = categoryFromFlags(point);
-  const churn = point.churn;
-  const flagSummary = point.riskFlags.length > 0 ? point.riskFlags.join(", ") : "no specific flags";
-  const narrative =
-    `Heuristic match (no LLM). Commit ${point.sha.slice(0, 7)} (${point.type}) ` +
-    `touched ${point.files.length} files with ${churn} lines of churn and triggered ${flagSummary}. ` +
-    `Following ${after.length} commits drifted toward lower health, suggesting ${category}.`;
-  return {
-    shaRange: rangeFor(point, after),
-    category,
-    evidence: evidenceShas(point, before, after),
-    narrative,
-  };
-}
-
-function categoryFromFlags(point: CommitHealthPoint): RotCategory {
-  if (point.riskFlags.includes("later-reverted")) return "revert-cycle";
-  if (point.type === "merge" && point.churn >= 200) return "bad-merge";
-  if (point.riskFlags.includes("wip-message")) return "rushed-fix";
-  if (point.riskFlags.includes("wide-blast")) return "scope-creep";
-  if (point.riskFlags.includes("large-churn")) return "churn-spiral";
-  return "other";
 }
