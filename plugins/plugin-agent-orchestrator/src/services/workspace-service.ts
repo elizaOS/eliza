@@ -354,13 +354,7 @@ export class CodingWorkspaceService {
         role: options.task?.role ?? "coding-agent",
         slug: options.task?.slug,
       },
-      userCredentials: options.userCredentials
-        ? {
-            type: options.userCredentials.type,
-            token: options.userCredentials.token ?? "",
-            provider: "github",
-          }
-        : undefined,
+      userCredentials: this.resolveUserCredentials(options.userCredentials),
     };
 
     const workspace = await this.workspaceService.provision(workspaceConfig);
@@ -764,6 +758,35 @@ export class CodingWorkspaceService {
     if (this.serviceConfig.debug) {
       logger.debug(`[CodingWorkspaceService] ${message}`);
     }
+  }
+
+  /**
+   * Resolve the credentials we hand to git-workspace-service. Callers who
+   * pass explicit credentials win; otherwise we fall back to GITHUB_TOKEN
+   * from runtime settings (which is how every dispatch from the orchestrator
+   * planner arrives — it does not pass userCredentials per-call). Without
+   * this fallback, planner-driven provisioning fires unauthenticated against
+   * private or yet-to-be-created repos and throws "requires authentication
+   * but no credentials are available", even though the orchestrator already
+   * has a working PAT loaded into a GitHubPatClient internally.
+   */
+  private resolveUserCredentials(
+    userCredentials: ProvisionWorkspaceOptions["userCredentials"],
+  ): WorkspaceConfig["userCredentials"] {
+    if (userCredentials) {
+      return {
+        type: userCredentials.type,
+        token: userCredentials.token ?? "",
+        provider: "github",
+      };
+    }
+    const githubToken = this.runtime.getSetting("GITHUB_TOKEN") as
+      | string
+      | undefined;
+    if (githubToken && githubToken.length > 0) {
+      return { type: "pat", token: githubToken, provider: "github" };
+    }
+    return undefined;
   }
 
   /** Read a key from the config file's env section (live, no restart needed). */
