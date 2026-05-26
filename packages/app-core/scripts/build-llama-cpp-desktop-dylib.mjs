@@ -131,6 +131,17 @@ const TARGETS = {
         ? ["-DGGML_CUDA=ON"]
         : ["-DGGML_VULKAN=ON"]),
     ],
+    hostNote:
+      "On a Windows host this build requires MSVC's `cl.exe` first on PATH. " +
+      "If `C:\\Strawberry\\c\\bin` (Strawberry Perl) is on PATH ahead of MSVC, " +
+      "CMake auto-detects Strawberry's MinGW `gcc.exe` + `windres.exe` as the " +
+      "host compiler/resource compiler, then `nvcc` (for `ELIZA_DESKTOP_BACKEND=cuda`) " +
+      "rejects the MinGW host with `Detecting CUDA compiler ABI info - failed` / " +
+      "`broken CUDA compiler`. Fix: launch a clean shell, `call vcvars64.bat` " +
+      "first, then append CUDA / node / git / VS-bundled cmake+ninja to PATH — " +
+      "DO NOT prepend Strawberry. CUDA toolkit must be a complete install (v12.4 " +
+      "or newer); empty `v12.6` stubs without `nvcc.exe` break detection too. " +
+      "For Vulkan backend (default), install the Vulkan SDK first.",
     crossNote:
       "Cross-build from darwin host: install `mingw-w64` via brew, then pass " +
       "a toolchain file setting CMAKE_C_COMPILER=x86_64-w64-mingw32-gcc, " +
@@ -178,6 +189,9 @@ function buildTarget(targetKey) {
     die(
       `cannot build ${targetKey} on ${process.platform}/${process.arch}: ${note}`,
     );
+  }
+  if (t.hostNote) {
+    log(`[${targetKey}] host-build prerequisites:\n  ${t.hostNote}`);
   }
 
   const [platform, arch] = targetKey.split("-");
