@@ -38,6 +38,7 @@ interface Logger {
  * its owner.
  */
 export type ResidentModelRole =
+	| "drafter"
 	| "emotion"
 	| "speaker-id"
 	| "vision"
@@ -57,6 +58,7 @@ export type ResidentModelRole =
 export const RESIDENT_ROLE_PRIORITY: Readonly<
 	Record<ResidentModelRole, number>
 > = {
+	drafter: 10,
 	emotion: 15,
 	"speaker-id": 18,
 	vision: 20,
