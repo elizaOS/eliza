@@ -1578,7 +1578,6 @@ function buildMobileLoadOptions(
   };
   return {
     ...options,
-    draftModelPath: undefined,
     draftContextSize: options.contextSize,
     draftMin: mtp?.draftMin ?? 1,
     draftMax: mtp?.draftMax ?? 4,

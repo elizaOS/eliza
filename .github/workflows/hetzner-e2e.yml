@@ -90,8 +90,8 @@ jobs:
       - name: Debug workspace
         if: steps.secret_config.outputs.configured == 'true'
         run: |
-          echo cwd=$(pwd)
-          echo workspace=$GITHUB_WORKSPACE
+          echo "cwd=$(pwd)"
+          echo "workspace=$GITHUB_WORKSPACE"
           ls -la "$GITHUB_WORKSPACE" | head -30
           test -f "$GITHUB_WORKSPACE/package.json" && echo HAS_PKG || echo NO_PKG
 

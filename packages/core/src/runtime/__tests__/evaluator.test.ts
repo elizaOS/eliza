@@ -453,8 +453,7 @@ df -h / /home
 	it("preserves user-facing trailing JSON that is not an evaluator envelope", async () => {
 		const runtime = {
 			useModel: vi.fn(
-				async () =>
-					'Here is the JSON you asked for:\n{"success":true}',
+				async () => 'Here is the JSON you asked for:\n{"success":true}',
 			),
 		};
 

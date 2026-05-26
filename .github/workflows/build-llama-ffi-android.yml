@@ -13,14 +13,14 @@ name: Build libelizainference (Android, FFI)
 #
 # STATUS: SCAFFOLD. The Android NDK + cmake toolchain is wired but the
 # resulting `.so` install path under `lib/<abi>` has not been validated
-# against Electrobun's APK packaging flow. Top-level `if: false` keeps
+# against Electrobun's APK packaging flow. The `run_real_build` input keeps
 # the workflow out of the default fan-out.
 
 on:
   workflow_dispatch:
     inputs:
       run_real_build:
-        description: "Bypass the if:false guard once the build is verified"
+        description: "Run the scaffold build once it has been verified"
         required: false
         type: boolean
         default: false
@@ -73,7 +73,7 @@ jobs:
   build:
     name: ${{ matrix.abi }}
     needs: prepare-matrix
-    if: ${{ false }}
+    if: ${{ inputs.run_real_build == true }}
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     strategy:

@@ -475,16 +475,23 @@ export const checks: Check[] = [
   {
     name: "cloud live smoke is observed only on manual or scheduled runs",
     pattern:
-      /Remote capability cloud sandbox live smoke[\s\S]{0,300}github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'[\s\S]{0,300}test:remote-capabilities:cloud-live/,
+      /Remote capability cloud sandbox live smoke[\s\S]{0,300}steps\.cloud\.outputs\.capability_skip != 'true'[\s\S]{0,300}github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'[\s\S]{0,300}test:remote-capabilities:cloud-live/,
     message:
-      "cloud live smoke must run on workflow_dispatch or schedule events.",
+      "cloud live smoke must run on workflow_dispatch or schedule events when capability live config is present.",
   },
   {
-    name: "cloud live credentials are required on observed runs",
+    name: "cloud live credentials skip cleanly when absent",
     pattern:
-      /No Eliza Cloud API key configured for observed cloud live E2E\."\s*\n\s*exit 1/,
+      /No Eliza Cloud API key configured - skipping optional cloud live E2E[\s\S]{0,200}skip=true[\s\S]{0,200}capability_skip=true[\s\S]{0,200}exit 0/,
     message:
-      "observed cloud live runs must fail instead of skipping when Cloud credentials are absent.",
+      "cloud live runs must skip cleanly when Cloud credentials are absent.",
+  },
+  {
+    name: "cloud capability live smoke is explicitly configured",
+    pattern:
+      /ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED[\s\S]{0,500}capability_skip=false[\s\S]{0,500}Remote capability cloud sandbox live smoke skipped because ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED is not configured[\s\S]{0,200}capability_skip=true/,
+    message:
+      "cloud capability live smoke must be gated by explicit live capability config.",
   },
   {
     name: "cloud live report validation is strict",
@@ -508,17 +515,18 @@ export const checks: Check[] = [
       "provider live smoke must require E2B, home-machine, and mobile-companion endpoints for observed runs.",
   },
   {
-    name: "provider live endpoints are required on observed runs",
+    name: "provider live endpoints skip cleanly when absent",
     pattern:
-      /No remote capability provider endpoints configured for observed provider live E2E\."\s*\n\s*exit 1/,
+      /No remote capability provider endpoints configured - skipping optional provider live E2E[\s\S]{0,200}skip=true[\s\S]{0,200}exit 0/,
     message:
-      "observed provider live runs must fail instead of skipping when all endpoint secrets are absent.",
+      "provider live runs must skip cleanly when all endpoint secrets are absent.",
   },
   {
-    name: "provider live primary endpoints are required on observed runs",
-    pattern: /echo "::error::\$\{message\}"\s*\n\s*exit 1/,
+    name: "provider live primary endpoint gaps skip cleanly",
+    pattern:
+      /Missing required remote capability provider endpoint secrets[\s\S]{0,300}Skipping optional provider live E2E[\s\S]{0,200}skip=true/,
     message:
-      "observed provider live runs must fail instead of skipping when any primary endpoint secret is absent.",
+      "provider live runs must skip cleanly when any primary endpoint secret is absent.",
   },
   {
     name: "provider live smoke is observed only on manual or scheduled runs",
@@ -562,6 +570,13 @@ export const checks: Check[] = [
       /remote-capability-provider-live-report[\s\S]*path: reports\/remote-capabilities\/providers\/\*\.json[\s\S]*if-no-files-found: error/,
     message:
       "provider live report artifact upload must fail when reports are absent.",
+  },
+  {
+    name: "GitHub live artifact validation skips absent live config",
+    pattern:
+      /github-live-artifact-validate:[\s\S]*needs\.cloud-live-e2e\.outputs\.capability_skip != 'true' \|\| needs\.provider-live-e2e\.outputs\.skip != 'true'[\s\S]*Re-validate cloud live report from downloaded artifact[\s\S]*needs\.cloud-live-e2e\.outputs\.capability_skip != 'true'[\s\S]*Re-validate provider live reports from downloaded artifacts[\s\S]*needs\.provider-live-e2e\.outputs\.skip != 'true'[\s\S]*Live artifact validation skipped because no live report producers were configured/,
+    message:
+      "GitHub live artifact validation must not require artifacts for live suites skipped due to absent config.",
   },
 ];
 

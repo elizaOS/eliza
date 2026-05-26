@@ -15,6 +15,8 @@
 #   bash scripts/verify-riscv64-buildpaths.sh --jobs 8                  # parallel
 #   bash scripts/verify-riscv64-buildpaths.sh --out reports/foo.md      # custom report path
 #   bash scripts/verify-riscv64-buildpaths.sh --keep-build              # don't rm build dirs at the end
+#   ELIZA_RISCV64_BOOTSTRAP_ZIG=0 bash scripts/verify-riscv64-buildpaths.sh
+#                                                                       # require zig on PATH/ZIG_BIN
 #
 # Exit code:
 #   0 — every package builds and every artifact validates rv64+lp64d
@@ -22,8 +24,8 @@
 #
 # Zig 0.13 vs 0.14:
 #   The Wave 1 RVV TUs (qjl_*_rvv.c, polar_*_rvv.c, tbq_*_rvv.c) expect
-#   `-march=rv64gcv1p0`, which Zig 0.14+'s clang accepts directly. On
-#   Zig 0.13 we drive the per-package escape hatches
+#   `-march=rv64gcv1p0`, which some Zig/LLVM releases accept directly.
+#   On releases that reject it, we drive the per-package escape hatches
 #   (QJL_RVV_COMPILE_OPTIONS / POLARQUANT_RVV_COMPILE_OPTIONS /
 #   TURBOQUANT_RVV_FLAGS) with a CPU name. TurboQuant uses
 #   `-mcpu=generic_rv64+v+m+a+f+d+c` rather than a named core
@@ -54,9 +56,110 @@ done
 
 mkdir -p "$(dirname "$OUT")"
 
+have_cmd() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+host_zig_platform() {
+    local os arch
+    os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+    arch="$(uname -m)"
+    case "$os:$arch" in
+        linux:x86_64|linux:amd64) echo "x86_64-linux";;
+        linux:aarch64|linux:arm64) echo "aarch64-linux";;
+        darwin:arm64|darwin:aarch64) echo "aarch64-macos";;
+        darwin:x86_64|darwin:amd64) echo "x86_64-macos";;
+        *)
+            echo ""
+            return 1
+            ;;
+    esac
+}
+
+sha256_file() {
+    if have_cmd sha256sum; then
+        sha256sum "$1" | awk '{ print $1 }'
+    else
+        shasum -a 256 "$1" | awk '{ print $1 }'
+    fi
+}
+
+bootstrap_zig() {
+    local version="${ELIZA_RISCV64_ZIG_VERSION:-0.14.1}"
+    local platform
+    platform="$(host_zig_platform)" || {
+        echo "[verify-riscv64] zig not on PATH and no bootstrap platform for $(uname -s)/$(uname -m)." >&2
+        return 1
+    }
+
+    if ! have_cmd curl || ! have_cmd python3; then
+        echo "[verify-riscv64] zig not on PATH; install Zig 0.13+ or provide curl+python3 for bootstrap." >&2
+        return 1
+    fi
+
+    local cache_dir="$repo_root/.tmp/riscv64-verify-zig"
+    local install_dir="$cache_dir/zig-$version-$platform"
+    local zig_bin="$install_dir/zig"
+    if [ -x "$zig_bin" ]; then
+        printf '%s\n' "$zig_bin"
+        return 0
+    fi
+
+    mkdir -p "$cache_dir"
+    local metadata archive expected actual top_dir
+    metadata="$(
+        python3 - "$version" "$platform" <<'PY'
+import json
+import sys
+import urllib.request
+
+version, platform = sys.argv[1], sys.argv[2]
+with urllib.request.urlopen("https://ziglang.org/download/index.json", timeout=30) as response:
+    index = json.load(response)
+try:
+    entry = index[version][platform]
+except KeyError:
+    raise SystemExit(f"missing Zig {version} metadata for {platform}")
+print(entry["tarball"])
+print(entry["shasum"])
+PY
+    )" || return 1
+    local tarball_url
+    tarball_url="$(printf '%s\n' "$metadata" | sed -n '1p')"
+    expected="$(printf '%s\n' "$metadata" | sed -n '2p')"
+    archive="$cache_dir/$(basename "$tarball_url")"
+
+    echo "[verify-riscv64] zig not on PATH; downloading Zig $version for $platform." >&2
+    curl -fsSL --retry 3 --retry-delay 2 -o "$archive" "$tarball_url"
+    actual="$(sha256_file "$archive")"
+    if [ "$actual" != "$expected" ]; then
+        echo "[verify-riscv64] Zig archive checksum mismatch: expected $expected got $actual" >&2
+        rm -f "$archive"
+        return 1
+    fi
+
+    rm -rf "$install_dir"
+    top_dir="$(tar -tf "$archive" | sed -n '1s#/.*##p')"
+    tar -xf "$archive" -C "$cache_dir"
+    if [ -z "$top_dir" ] || [ ! -x "$cache_dir/$top_dir/zig" ]; then
+        echo "[verify-riscv64] downloaded Zig archive did not contain an executable zig binary." >&2
+        return 1
+    fi
+    mv "$cache_dir/$top_dir" "$install_dir"
+    printf '%s\n' "$zig_bin"
+}
+
 # Probe toolchain.
-ZIG_BIN="${ZIG_BIN:-$(command -v zig || true)}"
-if [ -z "$ZIG_BIN" ]; then
+if [ -n "${ZIG_BIN:-}" ]; then
+    if [ ! -x "$ZIG_BIN" ]; then
+        echo "[verify-riscv64] ZIG_BIN is set but not executable: $ZIG_BIN" >&2
+        exit 1
+    fi
+elif have_cmd zig; then
+    ZIG_BIN="$(command -v zig)"
+elif [ "${ELIZA_RISCV64_BOOTSTRAP_ZIG:-1}" = "1" ]; then
+    ZIG_BIN="$(bootstrap_zig)"
+else
     echo "[verify-riscv64] zig not on PATH; install Zig 0.13+ and re-run." >&2
     exit 1
 fi

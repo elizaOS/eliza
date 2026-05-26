@@ -837,32 +837,32 @@ describe("SubAgentRouter", () => {
       expect(arg?.metadata?.keepAliveAfterComplete).toBe(false);
       // A retry was spawned → the failure is NOT posted to the parent yet;
       // the retry's own task_complete will report the outcome.
-	    expect(handleMessage).not.toHaveBeenCalled();
-	  });
+      expect(handleMessage).not.toHaveBeenCalled();
+    });
 
-	  it("redacts loopback URLs from posted verification failures", async () => {
-	    process.env.ELIZA_BUILD_VERIFY_MAX_RETRIES = "0";
-	    session = sessionWithTask(`build a calculator at ${DEAD_URL}`);
-	    acp = makeAcpService(session);
-	    const { runtime, handleMessage, spawnSession } = makeRuntime({
-	      acp: acp.service,
-	    });
-	    await SubAgentRouter.start(runtime);
+    it("redacts loopback URLs from posted verification failures", async () => {
+      process.env.ELIZA_BUILD_VERIFY_MAX_RETRIES = "0";
+      session = sessionWithTask(`build a calculator at ${DEAD_URL}`);
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
 
-	    acp.emit(SESSION_ID, "task_complete", {
-	      response: `Done — local check failed at ${DEAD_URL}`,
-	    });
-	    await new Promise((r) => setTimeout(r, 200));
+      acp.emit(SESSION_ID, "task_complete", {
+        response: `Done — local check failed at ${DEAD_URL}`,
+      });
+      await new Promise((r) => setTimeout(r, 200));
 
-	    expect(spawnSession).not.toHaveBeenCalled();
-	    expect(handleMessage).toHaveBeenCalledTimes(1);
-	    const posted = handleMessage.mock.calls[0]?.[1];
-	    expect(posted?.content?.text).not.toContain("127.0.0.1");
-	    expect(posted?.content?.text).not.toContain("localhost");
-	    expect(posted?.content?.text).not.toContain("::1");
-	  });
+      expect(spawnSession).not.toHaveBeenCalled();
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      const posted = handleMessage.mock.calls[0]?.[1];
+      expect(posted?.content?.text).not.toContain("127.0.0.1");
+      expect(posted?.content?.text).not.toContain("localhost");
+      expect(posted?.content?.text).not.toContain("::1");
+    });
 
-	  it("suppresses later original-session errors after handing off to a verification retry", async () => {
+    it("suppresses later original-session errors after handing off to a verification retry", async () => {
       session = sessionWithTask(`build a calculator at ${DEAD_URL}`);
       acp = makeAcpService(session);
       const { runtime, handleMessage, spawnSession } = makeRuntime({
@@ -1818,9 +1818,7 @@ describe("redactLoopbackUrls", () => {
 
   it("redacts repeated calls even after a prior global-regex match", () => {
     expect(redactLoopbackUrls("first http://127.0.0.1:3000/a")).toBe("first");
-    expect(redactLoopbackUrls("http://127.0.0.1:3000/b second")).toBe(
-      "second",
-    );
+    expect(redactLoopbackUrls("http://127.0.0.1:3000/b second")).toBe("second");
   });
 
   it("strips 127.x.x.x address space (not just 127.0.0.1)", () => {
@@ -1831,9 +1829,7 @@ describe("redactLoopbackUrls", () => {
     // Leading whitespace at start of trimmed output collapses; both
     // shapes are acceptable as long as the URL itself is gone and the
     // word "failed" remains intact.
-    const out = redactLoopbackUrls(
-      "https://localhost:8443/api/health failed",
-    );
+    const out = redactLoopbackUrls("https://localhost:8443/api/health failed");
     expect(out).not.toContain("localhost");
     expect(out).toContain("failed");
   });

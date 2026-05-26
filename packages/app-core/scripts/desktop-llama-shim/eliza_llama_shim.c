@@ -198,13 +198,13 @@ int32_t eliza_llama_context_has_drafter(void* main_ctx) {
     return 0;
 }
 
-void eliza_llama_dflash_stats(void* ctx, int32_t* out) {
+void eliza_llama_mtp_stats(void* ctx, int32_t* out) {
     (void)ctx;
     if (!out) return;
     out[0] = 0; out[1] = 0; out[2] = 0; out[3] = 0;
 }
 
-void eliza_llama_dflash_stats_ex(void* ctx, struct eliza_dflash_stats* out) {
+void eliza_llama_mtp_stats_ex(void* ctx, struct eliza_mtp_stats* out) {
     // Stub for the extended telemetry struct (see eliza_llama_shim.h).
     (void)ctx;
     if (!out) return;
@@ -222,12 +222,6 @@ int32_t eliza_llama_context_handle_memory_pressure(void* main_ctx, int32_t level
     (void)main_ctx;
     (void)level;
     return 0;
-}
-
-// Adapter-facing alias for dflash_stats — older adapter code calls this name.
-// Keep both symbols exported so the adapter doesn't have to track the rename.
-void eliza_llama_mtp_stats(void* ctx, int32_t* out) {
-    eliza_llama_dflash_stats(ctx, out);
 }
 
 // ─── token-tree sampler ──────────────────────────────────────────────────────

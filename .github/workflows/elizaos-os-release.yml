@@ -87,11 +87,12 @@ jobs:
           bun --bun --cwd packages/os-homepage vite preview --host 127.0.0.1 --port 4455 &
           echo $! > /tmp/os-homepage-preview.pid
           ready=0
-          for i in {1..60}; do
+          for attempt in {1..60}; do
             if curl -fsS http://127.0.0.1:4455 >/dev/null; then
               ready=1
               break
             fi
+            echo "Waiting for os-homepage preview (${attempt}/60)..."
             sleep 1
           done
           if [ "$ready" != "1" ]; then
