@@ -126,11 +126,6 @@
       "import": "./dist/content-packs/index.js",
       "default": "./dist/content-packs/index.js"
     },
-    "./desktop-runtime": {
-      "types": "./dist/desktop-runtime/index.d.ts",
-      "import": "./dist/desktop-runtime/index.js",
-      "default": "./dist/desktop-runtime/index.js"
-    },
     "./events": {
       "types": "./dist/events/index.d.ts",
       "import": "./dist/events/index.js",

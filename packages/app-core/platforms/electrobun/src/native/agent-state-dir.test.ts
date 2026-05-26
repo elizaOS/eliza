@@ -61,6 +61,11 @@ describe("desktop child launch env", () => {
     );
   });
 
+  it("does not let the shared eliza default override a branded package namespace", () => {
+    expect(resolveDesktopChildNamespace({ ELIZA_NAMESPACE: "eliza" }, "milady"))
+      .toBe("milady");
+  });
+
   it("prepends Bun directory even when PATH is absent", () => {
     const env: Record<string, string | undefined> = {};
 

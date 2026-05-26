@@ -46,6 +46,6 @@ export * from "./state";
 export * from "./streaming";
 export * from "./task";
 export * from "./tee";
-export * from "./testing";
+export type { TestCase, TestSuite } from "./testing";
 export * from "./tools";
 export * from "./trigger";

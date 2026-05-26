@@ -12,6 +12,7 @@ import type {
   RemotePluginWorkerMessage,
 } from "@elizaos/plugin-remote-manifest";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { resetBrandConfigForTests } from "../brand-config";
 import type { DynamicViewHost } from "../dynamic-views/host";
 import type { TraceHost } from "../trace/trace-host-requests";
 import type { VoiceHost } from "../voice/voice-host-requests";
@@ -106,6 +107,9 @@ type HostResponseMessage = Extract<
 
 afterEach(() => {
   vi.useRealTimers();
+  resetBrandConfigForTests();
+  delete process.env.ELIZA_BRAND_CONFIG_PATH;
+  delete process.env.ELIZA_NAMESPACE;
 });
 
 function waitForHostResponse(
@@ -146,6 +150,25 @@ describe("RemotePluginHost", () => {
       } as NodeJS.ProcessEnv),
     ).toBe("/tmp/remote-store");
   });
+
+  it("does not let the shared eliza namespace default override a packaged brand file", () =>
+    withTempDir((dir) => {
+      const configPath = join(dir, "brand.json");
+      writeFileSync(
+        configPath,
+        `${JSON.stringify({ appName: "Milady", namespace: "milady" })}\n`,
+        "utf8",
+      );
+      process.env.ELIZA_BRAND_CONFIG_PATH = configPath;
+      process.env.ELIZA_NAMESPACE = "eliza";
+
+      expect(
+        resolveRemotePluginStoreRoot({
+          XDG_STATE_HOME: join(dir, "state"),
+          ELIZA_NAMESPACE: "eliza",
+        } as NodeJS.ProcessEnv),
+      ).toBe(join(dir, "state", "milady", "remote-plugins"));
+    }));
 
   it("installs, lists, snapshots, and uninstalls remote plugins", () =>
     withTempDir((dir) => {

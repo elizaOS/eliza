@@ -79,6 +79,14 @@ interface DesktopBootstrapResponseBody {
 
 // ── State paths ───────────────────────────────────────────────────────────────
 
+function resolveBrandAwareNamespace(envNamespace: string | undefined): string {
+  const brandNamespace = getBrandConfig().namespace || "eliza";
+  const trimmed = envNamespace?.trim();
+  if (!trimmed) return brandNamespace;
+  if (trimmed === "eliza" && brandNamespace !== "eliza") return brandNamespace;
+  return trimmed;
+}
+
 /**
  * Resolve the elizaOS state dir. Mirrors the runtime precedence:
  * `ELIZA_STATE_DIR` > `$XDG_STATE_HOME/<namespace>` >
@@ -89,7 +97,7 @@ export function resolveStateDir(env: NodeJS.ProcessEnv = process.env): string {
     env.ELIZA_STATE_DIR?.trim() || env.MILADY_STATE_DIR?.trim() || "";
   if (explicit)
     return path.resolve(explicit.replace(/^~(?=$|[\\/])/, os.homedir()));
-  const namespace = env.ELIZA_NAMESPACE?.trim() || getBrandConfig().namespace;
+  const namespace = resolveBrandAwareNamespace(env.ELIZA_NAMESPACE);
   const xdgStateHome = env.XDG_STATE_HOME?.trim();
   if (xdgStateHome) {
     return path.join(

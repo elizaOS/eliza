@@ -71,6 +71,7 @@ function resolveWorkspacePluginDir(pluginDirName) {
 }
 
 const APP_CORE_PACKAGE_DIR = resolveWorkspacePackageDir("app-core");
+const AGENT_PACKAGE_DIR = resolveWorkspacePackageDir("agent");
 const CLOUD_SDK_PACKAGE_DIR = resolveWorkspacePackageDir("cloud-sdk");
 const CORE_PACKAGE_DIR = resolveWorkspacePackageDir("core");
 const PLUGIN_AGENT_ORCHESTRATOR_PACKAGE_DIR = resolveWorkspacePluginDir(
@@ -110,8 +111,8 @@ const buildVariant = resolveBuildVariant(
 const buildEnv = getArgValue(args, "env") ?? process.env.BUILD_ENV ?? "";
 const stageMacosReleaseApp = getBooleanArg(args, "stage-macos-release-app");
 const buildWhisper =
-  getBooleanArg(args, "build-whisper") ||
-  process.env.ELIZA_DESKTOP_BUILD_WHISPER === "1";
+  process.env.ELIZA_DESKTOP_BUILD_WHISPER !== "0" ||
+  getBooleanArg(args, "build-whisper");
 const whisperModelName =
   getArgValue(args, "whisper-model") ??
   process.env.ELIZA_DESKTOP_WHISPER_MODEL ??
@@ -683,6 +684,7 @@ function ensureWorkspaceRuntimePackagesBuilt() {
     "@elizaos/plugin-worker-runtime",
     PLUGIN_WORKER_RUNTIME_PACKAGE_DIR,
   );
+  ensureWorkspaceRuntimePackageBuilt("@elizaos/agent", AGENT_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt("@elizaos/app-core", APP_CORE_PACKAGE_DIR);
 }
 
@@ -1069,9 +1071,9 @@ function mirrorCanonicalToLegacy(name) {
 
 function packageDesktopBuild() {
   ensureAppDirs();
-  const packageArgs = ["run", "build"];
+  const packageArgs = ["build"];
   if (buildEnv) {
-    packageArgs.push("--", `--env=${buildEnv}`);
+    packageArgs.push(`--env=${buildEnv}`);
   }
 
   if (process.platform === "darwin") {
@@ -1089,15 +1091,17 @@ function packageDesktopBuild() {
 
   const packageEnv = {
     ...process.env,
+    ELECTROBUN_SKIP_CODESIGN: process.env.ELECTROBUN_SKIP_CODESIGN ?? "1",
     ELIZA_ELECTROBUN_REPO_ROOT: process.env.ELIZA_ELECTROBUN_REPO_ROOT ?? ROOT,
     ELIZA_BUILD_VARIANT: buildVariant,
+    PATH: `${path.join(ELECTROBUN_DIR, "scripts", "bin")}${path.delimiter}${process.env.PATH ?? ""}`,
     ...appIdentityEnv(APP_DIR),
     ...(stageMacosReleaseApp && process.platform === "darwin"
       ? { ELIZA_ELECTROBUN_NOTARIZE: "0" }
       : {}),
   };
 
-  runBun(packageArgs, {
+  runElectrobun(packageArgs, {
     cwd: ELECTROBUN_DIR,
     env: packageEnv,
     label: buildEnv

@@ -179,14 +179,25 @@ function isStoreBuildVariant(env: NodeJS.ProcessEnv = process.env): boolean {
   return raw?.toLowerCase() === "store";
 }
 
+function resolveBrandAwareNamespace(
+  envNamespace: string | undefined,
+  brandNamespace = getBrandConfig().namespace || "eliza",
+): string {
+  const trimmed = envNamespace?.trim();
+  if (!trimmed) return brandNamespace;
+  if (trimmed === "eliza" && brandNamespace !== "eliza") return brandNamespace;
+  return trimmed;
+}
+
 function resolveStateNamespace(env: NodeJS.ProcessEnv = process.env): string {
-  return env.ELIZA_NAMESPACE?.trim() || getBrandConfig().namespace || "eliza";
+  return resolveBrandAwareNamespace(env.ELIZA_NAMESPACE);
 }
 
 export function resolveDesktopChildNamespace(
   env: Record<string, string | undefined>,
+  brandNamespace?: string,
 ): string {
-  return env.ELIZA_NAMESPACE?.trim() || getBrandConfig().namespace || "eliza";
+  return resolveBrandAwareNamespace(env.ELIZA_NAMESPACE, brandNamespace);
 }
 
 function resolveExplicitStateDir(env: NodeJS.ProcessEnv): string | null {
@@ -1237,8 +1248,10 @@ async function maybeReclaimPortWithSigkill(port: number): Promise<void> {
   }
 }
 
-function resolveDatabaseAppStateDir(): string {
-  const stateDir = resolveDesktopChildStateDir();
+function resolveDatabaseAppStateDir(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const stateDir = resolveDesktopChildStateDir({ env });
   fs.mkdirSync(stateDir, { recursive: true });
   return stateDir;
 }
@@ -1247,7 +1260,7 @@ function resolveManagedPgliteDataDir(): string | null {
   const resolution = resolveDatabaseMode({
     env: process.env as Record<string, string | undefined>,
     packagedDesktop: isPackagedDesktopRuntime(),
-    appStateDir: resolveDatabaseAppStateDir(),
+    appStateDir: resolveDatabaseAppStateDir(process.env),
   });
   return resolution.mode === "pglite-persistent"
     ? (resolution.pgliteDataDir ?? null)
@@ -1477,7 +1490,7 @@ export class AgentManager {
       const databaseResolution = resolveDatabaseMode({
         env: childEnv,
         packagedDesktop: packagedRuntime,
-        appStateDir: resolveDatabaseAppStateDir(),
+        appStateDir: childEnv.ELIZA_STATE_DIR,
         cwd: runtimeDistPath,
       });
       applyDatabaseResolutionToEnv(childEnv, databaseResolution);
