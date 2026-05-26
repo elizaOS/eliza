@@ -305,6 +305,51 @@ describe("prompt templates (src/index.ts)", () => {
       "safety-scaffold rule should explicitly call out the failed-BROWSER-lookup anti-pattern",
     );
   });
+
+  it("messageHandlerTemplate forbids leaking LLM training-cutoff metadata to the user", () => {
+    // Live regression on 2026-05-25: probe "what is the latest version of
+    // nodejs" produced the reply: "I don't have real-time access to check
+    // the current Node.js release, but as of my last update (June 2024) the
+    // latest stable major version was Node 22..."
+    // The phrase "as of my last update (June 2024)" is the underlying LLM's
+    // training-cutoff bleeding through. The agent is supposed to be a
+    // character (e.g. Remilio Nubilio), not a model with a training cutoff.
+    // Breaks character + dates wrong (today is 2026-05-25). Issue #7961.
+    const src = readSrc();
+    const messageHandlerTemplateRe =
+      /export const messageHandlerTemplate = `([^`]+)`/;
+    const body = src.match(messageHandlerTemplateRe)[1];
+    assert.match(
+      body,
+      /Never write replyText that exposes the underlying LLM's training metadata to the user/,
+      "rule should explicitly forbid exposing LLM training metadata in replyText",
+    );
+    assert.match(
+      body,
+      /"as of my last update", "as of my training data", "my knowledge cutoff", "I was trained on", "I was last updated", "the latest information I have is from", "based on data through"/,
+      "rule should enumerate the common training-cutoff leak phrases for pattern coverage",
+    );
+    assert.match(
+      body,
+      /The agent has a character \(a name, a role, a persona\); the LLM beneath it does not exist to the user/,
+      "rule should state the character-vs-model distinction explicitly",
+    );
+    assert.match(
+      body,
+      /decline plainly \("I don't have live access to check the current X — try Y"\) without referring to model internals/,
+      "rule should provide the correct decline pattern",
+    );
+    assert.match(
+      body,
+      /if a BROWSER or fetch action is exposed, route there instead of answering from stale knowledge/,
+      "rule should redirect to BROWSER when one is exposed",
+    );
+    assert.match(
+      body,
+      /calling yourself a "language model" or "AI assistant" in third-person abstract terms when the character has its own name/,
+      "rule should also cover model-self-identification breaks",
+    );
+  });
 });
 
 describe("build scripts", () => {
