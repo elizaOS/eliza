@@ -2,6 +2,7 @@
 
 import os
 import re
+import subprocess
 import sys
 from argparse import ArgumentParser
 
@@ -110,11 +111,17 @@ def main():
         # "elizaOS" intentionally so GNOME keeps them grouped under the
         # same .desktop icon). WebKit may replace this title from the
         # loaded HTML <title> once the page renders; that is expected.
-        os.environ["ELIZAOS_SHELL_TITLE"] = "elizaOS — Documentation"
-        os.execv(
-            "/usr/local/lib/elizaos/elizaos-webkit-shell",
+        env = os.environ.copy()
+        env["ELIZAOS_SHELL_TITLE"] = "elizaOS — Documentation"
+        subprocess.Popen(
             ["/usr/local/lib/elizaos/elizaos-webkit-shell", uri],
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
         )
+        return
 
     os.environ["TOR_BROWSER_SKIP_OFFLINE_WARNING"] = "yes"
     # Some of our callers capture the stderr of the
