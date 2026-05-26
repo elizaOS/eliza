@@ -41,6 +41,11 @@ export type AgentConfig = {
   advancedMemory?: boolean;
   /** Enable built-in agent orchestrator (PTY / coding task agents) for this agent. */
   agentOrchestrator?: boolean;
+  /**
+   * Enable @elizaos/plugin-gitpathologist (forensic git-history analysis) for this agent.
+   * Unset = auto-on when the workspace has a `.git` directory.
+   */
+  gitpathologist?: boolean;
 
   // ── Personality fields (set during first-run setup from style presets) ──────
   /** Agent bio lines. Set during first-run setup from the chosen style preset. */

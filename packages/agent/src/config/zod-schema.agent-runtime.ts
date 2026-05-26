@@ -494,6 +494,7 @@ export const AgentEntrySchema = z
     memorySearch: MemorySearchSchema,
     advancedMemory: z.boolean().optional(),
     agentOrchestrator: z.boolean().optional(),
+    gitpathologist: z.boolean().optional(),
     humanDelay: HumanDelaySchema.optional(),
     heartbeat: HeartbeatSchema,
     identity: IdentitySchema,
@@ -731,6 +732,7 @@ export const AgentDefaultsSchema = z
     memorySearch: MemorySearchSchema,
     advancedMemory: z.boolean().optional(),
     agentOrchestrator: z.boolean().optional(),
+    gitpathologist: z.boolean().optional(),
     contextPruning: z
       .object({
         mode: z.union([z.literal("off"), z.literal("cache-ttl")]).optional(),
