@@ -275,6 +275,42 @@ describe("NativeAcpClient JSON-RPC lifecycle", () => {
     emitJson(p, { jsonrpc: "2.0", id: 3, result: {} });
   });
 
+  it("uses a 5-minute default timeout when none is configured (was 30s, raised after live 30-200s sub-agent runs hit the limit)", async () => {
+    // Regression: on 2026-05-25 deployment, the default 30-second timeout
+    // caused real coding-sub-agent work (PDF generation, multi-file refactor,
+    // dependency install + run) to abort prematurely. The bot's planner
+    // retried each timed-out spawn, producing 44 sub-agent trajectories for
+    // one user prompt while 23 orphaned opencode processes accumulated.
+    // The conservative new default is 5 minutes (300_000 ms), still
+    // overridable per-call via `setTimeoutMs` or per-request via the
+    // `timeoutMs` argument, and via env vars at the service layer
+    // (`ACPX_DEFAULT_TIMEOUT_MS` / `ELIZA_ACP_PROMPT_TIMEOUT_MS`).
+    vi.useFakeTimers();
+    const { client, p } = await startClient(); // no timeoutMs passed
+
+    const timeoutResult = client
+      .prompt("session-1", "long-running task")
+      .catch((error: unknown) => error);
+    await waitForWrites(p, 2);
+
+    // Advance just below the new 5-minute default — must NOT have fired yet.
+    await vi.advanceTimersByTimeAsync(299_000);
+    expect(p.stdinWrites.length).toBe(2);
+
+    // Cross the boundary.
+    await vi.advanceTimersByTimeAsync(2_000);
+    await waitForWrites(p, 3);
+    expect(writeAt(p, 2)).toMatchObject({
+      method: "session/cancel",
+      params: { sessionId: "session-1" },
+    });
+    const timeoutError = await timeoutResult;
+    expect((timeoutError as Error).message).toBe(
+      "ACP request timed out: session/prompt",
+    );
+    emitJson(p, { jsonrpc: "2.0", id: 3, result: {} });
+  });
+
   it("returns method-not-found for unsupported client request methods", async () => {
     const { p } = await startClient();
 
