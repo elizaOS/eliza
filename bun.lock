@@ -3600,6 +3600,22 @@
         "@elizaos/core": "workspace:*",
       },
     },
+    "plugins/plugin-gitpathologist": {
+      "name": "@elizaos/plugin-gitpathologist",
+      "version": "0.1.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "@types/node": "^25.0.3",
+        "typescript": "^6.0.3",
+        "vitest": "^3.0.0",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+    },
     "plugins/plugin-google": {
       "name": "@elizaos/plugin-google",
       "version": "2.0.3",
@@ -3875,11 +3891,7 @@
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
-        "node-llama-cpp": "*",
       },
-      "optionalPeers": [
-        "node-llama-cpp",
-      ],
     },
     "plugins/plugin-local-storage": {
       "name": "@elizaos/plugin-local-storage",
@@ -6240,6 +6252,8 @@
     "@elizaos/plugin-form": ["@elizaos/plugin-form@workspace:plugins/plugin-form"],
 
     "@elizaos/plugin-github": ["@elizaos/plugin-github@workspace:plugins/plugin-github"],
+
+    "@elizaos/plugin-gitpathologist": ["@elizaos/plugin-gitpathologist@workspace:plugins/plugin-gitpathologist"],
 
     "@elizaos/plugin-goals": ["@elizaos/plugin-goals@2.0.0-alpha.1", "", { "dependencies": { "@elizaos/core": "workspace:*", "@radix-ui/react-checkbox": "^1.1.4", "@radix-ui/react-collapsible": "^1.1.3", "@radix-ui/react-label": "^2.1.2", "@radix-ui/react-select": "^2.2.2", "@radix-ui/react-separator": "^1.1.2", "@radix-ui/react-slot": "^1.1.2", "class-variance-authority": "^0.7.1" } }, "sha512-KVg0soaLlJy5dxuPDcMEeIFtTINqh2osM3MJcptoqSU01mAFYykWCG67W3e2Y09261yxyo5vJDyd8PYykqLzYA=="],
 
