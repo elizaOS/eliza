@@ -510,14 +510,63 @@ function recoverEvaluatorTextOutput(
 	if (!hasSuccessfulToolResult(trajectory)) return output;
 	if (!looksLikeUserFacingAnswer(text)) return output;
 
+	const userFacing = stripTrailingEvaluatorEnvelope(text);
+
 	return {
 		success: true,
 		decision: "FINISH",
 		thought:
 			"Recovered user-facing evaluator prose after a successful tool result.",
-		messageToUser: text,
+		messageToUser: userFacing,
 		raw: { recoverySource: "prose_after_successful_tool" },
 	};
+}
+
+// When the evaluator model emits user-facing prose followed by the
+// structured envelope (e.g. shell output ... then `{"success":true,
+// "decision":"FINISH","thought":"..."}`) the strict JSON parser
+// rejects the whole response. The recovery path above then uses the
+// raw text as the user reply — and without this strip, the JSON
+// envelope leaks into Discord.
+//
+// Live regression on 2026-05-25 (trajectory tj-b224d87039960b.json):
+// user asked "use shell to show disk space" — the evaluator model
+// emitted the actual `df -h` table prose immediately followed by a
+// JSON object `{"success":true,"decision":"FINISH","thought":...}`
+// and that object was published verbatim to the user's Discord
+// channel underneath the table.
+//
+// The strip is conservative: it only removes a trailing balanced
+// `{...}` block whose body contains at least one evaluator-shaped
+// key (`success`/`decision`/`thought`/`messageToUser`/`nextTool`/...)
+// so a legitimate user-asked-for trailing JSON (e.g. a code answer
+// that ends with a JSON example) is left untouched.
+function stripTrailingEvaluatorEnvelope(text: string): string {
+	const trimmed = text.trimEnd();
+	if (!trimmed.endsWith("}")) return text;
+	let depth = 0;
+	let start = -1;
+	for (let i = trimmed.length - 1; i >= 0; i--) {
+		const c = trimmed[i];
+		if (c === "}") depth++;
+		else if (c === "{") {
+			depth--;
+			if (depth === 0) {
+				start = i;
+				break;
+			}
+		}
+	}
+	if (start < 0) return text;
+	const candidate = trimmed.slice(start);
+	if (
+		!/"\s*(?:success|decision|thought|messageToUser|nextTool|nextRecommendedTool|copyToClipboard|recommendedToolCallId|route)"\s*:/.test(
+			candidate,
+		)
+	) {
+		return text;
+	}
+	return trimmed.slice(0, start).trimEnd();
 }
 
 function rawText(raw: string | { text?: string; object?: unknown }): string {
