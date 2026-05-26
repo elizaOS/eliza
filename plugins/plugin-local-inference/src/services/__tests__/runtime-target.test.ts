@@ -16,6 +16,18 @@ describe("readRuntimeModeEnvOverride", () => {
 		).toBeNull();
 	});
 
+	it("ignores removed spawn aliases", () => {
+		expect(readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "spawn" })).toBe(
+			null,
+		);
+		expect(readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "HTTP" })).toBe(
+			null,
+		);
+		expect(
+			readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "http-server" }),
+		).toBe(null);
+	});
+
 	it("recognises ffi aliases", () => {
 		expect(readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "ffi" })).toBe(
 			"ffi",

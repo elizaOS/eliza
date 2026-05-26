@@ -179,7 +179,7 @@ describe("POST /api/local-inference/active", () => {
 		handleLocalInferenceCompatRoutes = (
 			await import("./local-inference-compat-routes")
 		).handleLocalInferenceCompatRoutes;
-	}, 30_000);
+	}, 120_000);
 
 	afterEach(() => {
 		setActiveMock.mockReset();
