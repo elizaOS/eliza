@@ -39,7 +39,12 @@ import type {
   WorkerRpcMessage,
   WorkerRpcResultMessage,
 } from "@elizaos/plugin-remote-manifest";
-import { fromWireError, toWireError } from "@elizaos/plugin-worker-runtime";
+// ./error subpath, not the barrel: the barrel eagerly loads ./bootstrap's heavy
+// runtime chain, which crashed agent boot in the cloud image.
+import {
+  fromWireError,
+  toWireError,
+} from "@elizaos/plugin-worker-runtime/error";
 
 /** Transport contract the bridge talks to. */
 export interface BridgeChannel {
