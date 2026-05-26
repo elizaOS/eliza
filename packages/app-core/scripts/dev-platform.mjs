@@ -135,17 +135,76 @@ const devServerEntry = isElizaMonorepo
 
 const appDir = resolveRendererAppDir();
 const electrobunDir = resolveElectrobunDir();
-const defaultElizaNamespace =
+const appIdentity = appIdentityEnv(appDir);
+const defaultElizaNamespace = appIdentity.ELIZA_NAMESPACE || "eliza";
+
+if (
   isElizaMonorepo &&
-  path
-    .resolve(appDir)
-    .startsWith(`${path.resolve(elizaRoot, "eliza")}${path.sep}`)
-    ? "eliza"
-    : isElizaMonorepo
-      ? "eliza"
-      : "eliza";
+  process.env.MILADY_SKIP_LOCAL_UPSTREAMS !== "1" &&
+  process.env.ELIZA_SKIP_LOCAL_UPSTREAMS !== "1"
+) {
+  process.env.MILADY_FORCE_LOCAL_UPSTREAMS ??= "1";
+  process.env.ELIZA_FORCE_LOCAL_UPSTREAMS ??= "1";
+}
+
+function resolveDevStateDir() {
+  const explicit =
+    process.env.ELIZA_STATE_DIR?.trim() || process.env.MILADY_STATE_DIR?.trim();
+  if (explicit)
+    return path.resolve(
+      explicit.replace(/^~(?=$|[\\/])/, process.env.HOME || process.cwd()),
+    );
+  const namespace =
+    process.env.ELIZA_NAMESPACE?.trim() || defaultElizaNamespace;
+  const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
+  const base = xdgStateHome
+    ? path.isAbsolute(xdgStateHome)
+      ? xdgStateHome
+      : path.join(process.env.HOME || process.cwd(), xdgStateHome)
+    : path.join(process.env.HOME || process.cwd(), ".local", "state");
+  return path.join(base, namespace);
+}
 
 const BUN_EXECUTABLE = process.versions?.bun ? process.execPath : "bun";
+
+function resolveElizaPackageDir(packageName) {
+  return isElizaMonorepo
+    ? path.join(elizaRoot, "eliza", "packages", packageName)
+    : path.join(elizaRoot, "packages", packageName);
+}
+
+function ensureWorkspacePackageBuilt(packageName, packageDir, entryFile) {
+  if (!existsSync(path.join(packageDir, "package.json"))) {
+    throw new Error(`Missing ${packageName} package at ${packageDir}`);
+  }
+  if (existsSync(path.join(packageDir, entryFile))) {
+    return;
+  }
+  console.log(`[eliza] Building ${packageName} for desktop startup...`);
+  execFileSync(BUN_EXECUTABLE, ["run", "build"], {
+    cwd: packageDir,
+    env: { ...process.env },
+    stdio: "inherit",
+  });
+}
+
+function ensureDesktopRuntimePackagesBuilt() {
+  ensureWorkspacePackageBuilt(
+    "@elizaos/security",
+    resolveElizaPackageDir("security"),
+    "dist/index.js",
+  );
+  ensureWorkspacePackageBuilt(
+    "@elizaos/plugin-remote-manifest",
+    resolveElizaPackageDir("plugin-remote-manifest"),
+    "dist/index.js",
+  );
+  ensureWorkspacePackageBuilt(
+    "@elizaos/plugin-worker-runtime",
+    resolveElizaPackageDir("plugin-worker-runtime"),
+    "dist/index.js",
+  );
+}
 
 function syncRendererPublicAssets() {
   const syncScript = path.join(
@@ -159,7 +218,16 @@ function syncRendererPublicAssets() {
   }
   execFileSync(
     process.execPath,
-    [syncScript, path.join(appDir, "public"), "--clouds"],
+    [
+      syncScript,
+      path.join(appDir, "public"),
+      "--logos",
+      "--favicons",
+      "--concepts",
+      "--banners",
+      "--background",
+      "--background-videos",
+    ],
     {
       stdio: "inherit",
     },
@@ -256,7 +324,7 @@ const desktopDevLogOptOut = (() => {
 })();
 const desktopDevLogPath = desktopDevLogOptOut
   ? null
-  : path.resolve(bundleRoot, ".eliza", "desktop-dev-console.log");
+  : path.join(resolveDevStateDir(), "desktop-dev-console.log");
 const desktopCefWorkaroundEnv = (() => {
   if (process.platform !== "darwin") {
     return null;
@@ -329,7 +397,11 @@ let ranInitialViteBuild = false;
 if (needRendererBuild) {
   ranInitialViteBuild = true;
   console.log("\n[eliza] Building renderer (vite build)…");
-  execSync("bun run vite build", { cwd: appDir, stdio: "inherit" });
+  execFileSync(BUN_EXECUTABLE, ["run", "vite", "build"], {
+    cwd: appDir,
+    env: { ...process.env },
+    stdio: "inherit",
+  });
   console.log("[eliza] Renderer ready.\n");
 } else {
   console.log(
@@ -365,6 +437,7 @@ export * from ${JSON.stringify(entryTs)};
 }
 
 ensureBunRootPackageLink("jsdom");
+ensureDesktopRuntimePackagesBuilt();
 
 async function allocateDistinctLoopbackPort(preferredPort, reservedPorts) {
   let candidate = preferredPort;
@@ -851,7 +924,7 @@ async function launch() {
       NODE_ENV: "development",
       ELECTROBUN_SKIP_CODESIGN: "1",
       ELIZA_ELECTROBUN_REPO_ROOT: bundleRoot,
-      ...appIdentityEnv(appDir),
+      ...appIdentity,
       ...(desktopCefWorkaroundEnv
         ? { ELIZA_DESKTOP_FORCE_CEF: desktopCefWorkaroundEnv }
         : {}),

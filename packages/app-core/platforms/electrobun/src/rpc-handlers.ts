@@ -67,6 +67,12 @@ import {
   getFirstPartyRemotePluginDefinitions,
   setFirstPartyRemotePluginDisabled,
 } from "./first-party-remotes";
+import {
+  composeFirstRunOptionsSnapshot,
+  composeFirstRunStatusSnapshot,
+  readFirstRunOptionsViaHttp,
+  readFirstRunStatusViaHttp,
+} from "./first-run-rpc";
 import { getFloatingChatManager } from "./floating-chat-window";
 import {
   composeInboxChatsSnapshot,
@@ -115,12 +121,6 @@ import {
 } from "./native/steward";
 import { getSwabbleManager } from "./native/swabble";
 import { getTalkModeManager } from "./native/talkmode";
-import {
-  composeOnboardingOptionsSnapshot,
-  composeOnboardingStatusSnapshot,
-  readOnboardingOptionsViaHttp,
-  readOnboardingStatusViaHttp,
-} from "./onboarding-rpc";
 import {
   buildDynamicViewRpcHandlers,
   buildWindowRpcHandlers,
@@ -361,7 +361,7 @@ export function buildBunRpcHandlers({
       );
     },
     readAuthStatus: readAuthStatusViaHttp,
-    readOnboardingStatus: readOnboardingStatusViaHttp,
+    readFirstRunStatus: readFirstRunStatusViaHttp,
     readDiagnostics: getStartupDiagnosticsSnapshot,
     readDatabaseStatus: () => agent.getDatabaseSnapshot(),
     readDiagnosticLogTail: getStartupDiagnosticLogTail,
@@ -488,23 +488,23 @@ export function buildBunRpcHandlers({
     databaseBackupPglite: async () => agent.backupPgliteDatabase(),
     databaseResetPglite: async (params) => agent.resetPgliteDatabase(params),
     /**
-     * Typed counterpart to renderer `client.getOnboardingStatus()` —
+     * Typed counterpart to renderer `client.getFirstRunStatus()` —
      * the polling-backend startup phase calls this. See
-     * `onboarding-rpc.ts` for the pure composition layer.
+     * `first-run-rpc.ts` for the pure composition layer.
      */
-    getOnboardingStatus: async () =>
-      composeOnboardingStatusSnapshot(
+    getFirstRunStatus: async () =>
+      composeFirstRunStatusSnapshot(
         resolveRpcAgentPort(agent.getStatus().port),
-        readOnboardingStatusViaHttp,
+        readFirstRunStatusViaHttp,
       ),
     /**
-     * Typed counterpart to renderer `client.getOnboardingOptions()` —
-     * provider + model catalogs for the onboarding form.
+     * Typed counterpart to renderer `client.getFirstRunOptions()` —
+     * provider + model catalogs for the firstRun form.
      */
-    getOnboardingOptions: async () =>
-      composeOnboardingOptionsSnapshot(
+    getFirstRunOptions: async () =>
+      composeFirstRunOptionsSnapshot(
         resolveRpcAgentPort(agent.getStatus().port),
-        readOnboardingOptionsViaHttp,
+        readFirstRunOptionsViaHttp,
       ),
     /**
      * Typed counterpart to `client.getConfig()` — redacted agent
@@ -1303,7 +1303,7 @@ export function buildBunRpcHandlers({
     credentialsScanProviders: async (params?: { context?: string }) => {
       if (
         !params?.context ||
-        !["onboarding", "tray-refresh"].includes(params.context)
+        !["first-run", "tray-refresh"].includes(params.context)
       ) {
         throw new Error("credentials:scanProviders requires a valid context");
       }
@@ -1312,7 +1312,7 @@ export function buildBunRpcHandlers({
     credentialsScanAndValidate: async (params?: { context?: string }) => {
       if (
         !params?.context ||
-        !["onboarding", "tray-refresh"].includes(params.context)
+        !["first-run", "tray-refresh"].includes(params.context)
       ) {
         throw new Error("credentialsScanAndValidate requires a valid context");
       }

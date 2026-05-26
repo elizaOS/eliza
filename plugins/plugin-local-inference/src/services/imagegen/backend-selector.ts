@@ -53,7 +53,7 @@ export interface ImageGenRuntimeProfile {
 	 */
 	gpu?: "nvidia" | "amd" | "intel" | "apple" | "none";
 	/**
-	 * sd-cpp binary capability evidence gathered from the onboarding probe,
+	 * sd-cpp binary capability evidence gathered from the first-run probe,
 	 * bundle manifest, or a loader-side help/version check. GPU vendor alone
 	 * is not proof that the installed `sd` binary was built with CUDA.
 	 */

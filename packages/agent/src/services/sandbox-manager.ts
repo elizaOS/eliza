@@ -1,7 +1,6 @@
 /** Sandbox container lifecycle: create, exec, health check, teardown. */
 
 import { mkdirSync } from "node:fs";
-import os from "node:os";
 import path, { join } from "node:path";
 import {
   createEngine,
@@ -9,6 +8,7 @@ import {
   type ISandboxEngine,
   type SandboxEngineType,
 } from "./sandbox-engine.ts";
+import { resolveStateDir } from "../config/paths.ts";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -189,12 +189,7 @@ export class SandboxManager {
 
   private resolveWorkspaceRoot(): string {
     const wsRoot =
-      this.config.workspaceRoot ??
-      join(
-        process.env.HOME ?? process.env.USERPROFILE ?? os.tmpdir(),
-        ".eliza",
-        "sandbox-workspace",
-      );
+      this.config.workspaceRoot ?? join(resolveStateDir(), "sandbox-workspace");
     mkdirSync(wsRoot, { recursive: true });
     return wsRoot;
   }

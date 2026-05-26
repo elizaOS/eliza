@@ -11,13 +11,14 @@ import type {
   JsonValue,
   RemotePluginWorkerMessage,
 } from "@elizaos/plugin-remote-manifest";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DynamicViewHost } from "../dynamic-views/host";
 import type { TraceHost } from "../trace/trace-host-requests";
 import type { VoiceHost } from "../voice/voice-host-requests";
 import {
   RemotePluginHost,
   type RemotePluginWorkerHandle,
+  resolveRemotePluginStoreRoot,
 } from "./remote-plugin-host";
 
 function withTempDir<T>(fn: (dir: string) => T): T {
@@ -103,6 +104,10 @@ type HostResponseMessage = Extract<
   { type: "host-response" }
 >;
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 function waitForHostResponse(
   worker: FakeWorkerHandle,
   requestId: number,
@@ -124,6 +129,24 @@ function waitForHostResponse(
 }
 
 describe("RemotePluginHost", () => {
+  it("defaults the remote plugin store under the state dir", () => {
+    expect(
+      resolveRemotePluginStoreRoot({
+        ELIZA_STATE_DIR: "/tmp/milady-state",
+        ELIZA_NAMESPACE: "milady",
+      } as NodeJS.ProcessEnv),
+    ).toBe(join("/tmp/milady-state", "remote-plugins"));
+  });
+
+  it("honors an explicit remote plugin store override", () => {
+    expect(
+      resolveRemotePluginStoreRoot({
+        MILADY_REMOTE_PLUGIN_STORE_DIR: "/tmp/remote-store",
+        ELIZA_STATE_DIR: "/tmp/milady-state",
+      } as NodeJS.ProcessEnv),
+    ).toBe("/tmp/remote-store");
+  });
+
   it("installs, lists, snapshots, and uninstalls remote plugins", () =>
     withTempDir((dir) => {
       const events: string[] = [];
@@ -978,6 +1001,73 @@ describe("RemotePluginHost", () => {
       });
 
       await expect(resultPromise).resolves.toEqual({ ok: true });
+    }));
+
+  it("honors a longer direct host invoke timeout for runtime startup", async () =>
+    withTempDir(async (dir) => {
+      vi.useFakeTimers();
+      const worker = new FakeWorkerHandle();
+      const manager = new RemotePluginHost({
+        storeRoot: join(dir, "store"),
+        workerRunner: { start: () => worker },
+        now: () => 1700000000000,
+      });
+      manager.installFromDirectory({ sourceDir: writePayload(dir) });
+      manager.startWorker("bunny.search");
+
+      const resultPromise = manager.invokeWorker({
+        id: "bunny.search",
+        method: "lookup",
+        timeoutMs: 120_000,
+      });
+      const forwarded = worker.messages.find((m) => m.type === "request");
+      expect(forwarded).toMatchObject({
+        type: "request",
+        method: "lookup",
+      });
+
+      await vi.advanceTimersByTimeAsync(31_000);
+
+      worker.emit({
+        type: "response",
+        requestId: (forwarded as { requestId: number }).requestId,
+        success: true,
+        payload: { ok: true },
+      });
+
+      await expect(resultPromise).resolves.toEqual({ ok: true });
+    }));
+
+  it("formats structured direct worker failures instead of leaking object strings", async () =>
+    withTempDir(async (dir) => {
+      const worker = new FakeWorkerHandle();
+      const manager = new RemotePluginHost({
+        storeRoot: join(dir, "store"),
+        workerRunner: { start: () => worker },
+        now: () => 1700000000000,
+      });
+      manager.installFromDirectory({ sourceDir: writePayload(dir) });
+      manager.startWorker("bunny.search");
+
+      const resultPromise = manager.invokeWorker({
+        id: "bunny.search",
+        method: "lookup",
+      });
+      const forwarded = worker.messages.find((m) => m.type === "request");
+
+      worker.emit({
+        type: "response",
+        requestId: (forwarded as { requestId: number }).requestId,
+        success: false,
+        error: {
+          code: "UNKNOWN",
+          message: "Health check timed out after 120000ms",
+        },
+      });
+
+      await expect(resultPromise).rejects.toThrow(
+        "UNKNOWN: Health check timed out after 120000ms",
+      );
     }));
 
   it("tails worker events with sequence cursors and bounded limits", () =>

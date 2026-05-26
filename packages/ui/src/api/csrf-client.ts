@@ -14,7 +14,7 @@
  */
 
 import { getBootConfig } from "../config/boot-config";
-import { hydrateAndroidLocalAgentTokenForUrl } from "../onboarding/local-agent-token";
+import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import { CSRF_COOKIE_NAME, CSRF_HEADER_NAME } from "./auth/sessions";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";

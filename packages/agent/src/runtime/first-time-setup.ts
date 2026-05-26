@@ -1,5 +1,5 @@
 /**
- * First-run interactive CLI onboarding flow.
+ * First-run interactive CLI first-run flow.
  *
  * Detects whether this is the first run (no agent name configured)
  * and walks the user through:
@@ -37,15 +37,15 @@ import {
 import { type ElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { isCloudWalletEnabled } from "../config/feature-flags.ts";
 import type { AgentConfig } from "../config/types.agents.ts";
-import { pickRandomNames } from "./onboarding-names.ts";
+import { pickRandomNames } from "./first-run-names.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers (private)
 // ---------------------------------------------------------------------------
 
-type FirstTimeSetupCloudResult = CloudOnboardingResult;
+type FirstTimeSetupCloudResult = CloudFirstRunResult;
 
-interface CloudOnboardingResult {
+interface CloudFirstRunResult {
   apiKey: string;
   agentId: string | undefined;
   baseUrl: string;
@@ -53,9 +53,9 @@ interface CloudOnboardingResult {
 }
 
 // Lazy: calling getStylePresets() at module init triggers a TDZ on
-// DEFAULT_LANGUAGE inside onboarding-presets.ts via a circular import. Defer
+// DEFAULT_LANGUAGE inside character-presets.ts via a circular import. Defer
 // to first use so the import graph settles before the function runs.
-function getDefaultOnboardingAgentName(): string {
+function getDefaultFirstRunAgentName(): string {
   return getStylePresets()[0]?.name ?? "Eliza";
 }
 
@@ -64,7 +64,7 @@ export function applyFirstTimeSetupTopology(
   args: {
     isCloudRuntime: boolean;
     selectedProviderId?: string;
-    cloudOnboardingResult?: FirstTimeSetupCloudResult | null;
+    cloudFirstRunResult?: FirstTimeSetupCloudResult | null;
     useLocalEmbeddings?: boolean;
   },
 ): ElizaConfig {
@@ -74,9 +74,9 @@ export function applyFirstTimeSetupTopology(
   const serviceRouting = {
     ...(config.serviceRouting ?? {}),
   } as NonNullable<ElizaConfig["serviceRouting"]>;
-  const cloudOnboardingResult = args.cloudOnboardingResult ?? null;
+  const cloudFirstRunResult = args.cloudFirstRunResult ?? null;
 
-  if (cloudOnboardingResult?.apiKey?.trim()) {
+  if (cloudFirstRunResult?.apiKey?.trim()) {
     linkedAccounts.elizacloud = {
       status: "linked",
       source: "oauth",
@@ -114,14 +114,14 @@ export function applyFirstTimeSetupTopology(
       Object.keys(linkedAccounts).length > 0 ? linkedAccounts : undefined,
     serviceRouting:
       Object.keys(serviceRouting).length > 0 ? serviceRouting : undefined,
-    ...(cloudOnboardingResult
+    ...(cloudFirstRunResult
       ? {
           cloud: {
             ...config.cloud,
-            apiKey: cloudOnboardingResult.apiKey,
-            baseUrl: cloudOnboardingResult.baseUrl,
-            ...(cloudOnboardingResult.agentId
-              ? { agentId: cloudOnboardingResult.agentId }
+            apiKey: cloudFirstRunResult.apiKey,
+            baseUrl: cloudFirstRunResult.baseUrl,
+            ...(cloudFirstRunResult.agentId
+              ? { agentId: cloudFirstRunResult.agentId }
               : {}),
           },
         }
@@ -130,7 +130,7 @@ export function applyFirstTimeSetupTopology(
 }
 
 // @clack/prompts is loaded lazily so the packaged desktop app (which never
-// runs interactive onboarding) does not crash when the package is unavailable.
+// runs interactive first-run) does not crash when the package is unavailable.
 type ClackModule = typeof import("@clack/prompts");
 let _clack: ClackModule | null = null;
 async function loadClack(): Promise<ClackModule> {
@@ -148,11 +148,11 @@ async function loadClack(): Promise<ClackModule> {
 }
 
 /**
- * Cancel the onboarding flow and exit cleanly.
+ * Cancel the first-run flow and exit cleanly.
  * Extracted to avoid duplicating the cancel+exit pattern 7 times.
  */
-function cancelOnboarding(): never {
-  // _clack is guaranteed to be loaded by the time onboarding calls this.
+function cancelFirstRun(): never {
+  // _clack is guaranteed to be loaded by the time first-run calls this.
   _clack?.cancel("Maybe next time!");
   process.exit(0);
 }
@@ -279,7 +279,7 @@ export async function runFirstTimeSetup(
   const agentEntry = config.agents?.list?.[0];
   const hasName = Boolean(agentEntry?.name || config.ui?.assistant?.name);
 
-  // hasName short-circuits the interactive onboarding prompts but must NOT
+  // hasName short-circuits the interactive first-run prompts but must NOT
   // bypass runtime-rebind steps (e.g. cloud-wallet → WALLET_SOURCE_*). Those
   // need to re-run every restart so cloud state changes made while the agent
   // was offline are reflected in env before plugins load.
@@ -291,7 +291,7 @@ export async function runFirstTimeSetup(
   // Only prompt when stdin is a TTY (interactive terminal)
   if (!process.stdin.isTTY) return config;
 
-  // Load @clack/prompts lazily — only needed for interactive CLI onboarding.
+  // Load @clack/prompts lazily — only needed for interactive CLI first-run.
   const clack = await loadClack();
 
   // ── Step 1: Welcome ────────────────────────────────────────────────────
@@ -308,7 +308,7 @@ export async function runFirstTimeSetup(
     ],
   });
 
-  if (clack.isCancel(nameChoice)) cancelOnboarding();
+  if (clack.isCancel(nameChoice)) cancelFirstRun();
 
   let name: string;
 
@@ -318,9 +318,9 @@ export async function runFirstTimeSetup(
       placeholder: "Choose a name",
     });
 
-    if (clack.isCancel(customName)) cancelOnboarding();
+    if (clack.isCancel(customName)) cancelFirstRun();
 
-    name = customName.trim() || getDefaultOnboardingAgentName();
+    name = customName.trim() || getDefaultFirstRunAgentName();
   } else {
     name = nameChoice;
   }
@@ -337,7 +337,7 @@ export async function runFirstTimeSetup(
     })),
   });
 
-  if (clack.isCancel(styleChoice)) cancelOnboarding();
+  if (clack.isCancel(styleChoice)) cancelFirstRun();
 
   const chosenTemplate = getStylePresets().find(
     (p: StylePreset) => p.id === styleChoice,
@@ -346,7 +346,7 @@ export async function runFirstTimeSetup(
   // ── Step 3.5: Runtime selection (Cloud vs Local) ───────────────────────
   // Present the user with a choice of where to run their agent. Cloud mode
   // skips the local AI provider, wallet, and GitHub steps.
-  let cloudOnboardingResult: CloudOnboardingResult | null = null;
+  let cloudFirstRunResult: CloudFirstRunResult | null = null;
   let isCloudMode = false;
 
   const runtimeChoice = await clack.select({
@@ -370,7 +370,7 @@ export async function runFirstTimeSetup(
     ],
   });
 
-  if (clack.isCancel(runtimeChoice)) cancelOnboarding();
+  if (clack.isCancel(runtimeChoice)) cancelFirstRun();
 
   if (runtimeChoice === "later") {
     // User deferred the decision — continue with local setup (steps 4–7).
@@ -378,7 +378,7 @@ export async function runFirstTimeSetup(
       "No problem! Starting with local setup. You can switch to cloud anytime with `eliza cloud connect`.",
     );
   } else if (runtimeChoice === "cloud") {
-    const { runCloudOnboarding, ClackObserver } = await import(
+    const { runCloudSetup, ClackObserver } = await import(
       "@elizaos/plugin-elizacloud"
     );
     // Cast to `unknown` first to bridge the two @clack/prompts module
@@ -389,16 +389,16 @@ export async function runFirstTimeSetup(
     const observer = new ClackObserver(
       clack as unknown as ConstructorParameters<typeof ClackObserver>[0],
     );
-    cloudOnboardingResult = await runCloudOnboarding(
+    cloudFirstRunResult = await runCloudSetup(
       observer,
       name,
       chosenTemplate,
     );
 
-    if (cloudOnboardingResult?.agentId) {
+    if (cloudFirstRunResult?.agentId) {
       isCloudMode = true;
       clack.log.success(`${name} is now running in the cloud! ☁️`);
-    } else if (cloudOnboardingResult) {
+    } else if (cloudFirstRunResult) {
       // Auth succeeded but no agent provisioned — save auth for later
       clack.log.info(
         "Cloud auth saved. You can provision later with `eliza cloud connect`.",
@@ -417,14 +417,14 @@ export async function runFirstTimeSetup(
   let providerEnvKey: string | undefined;
   let providerApiKey: string | undefined;
 
-  // Snapshot whether wallet keys already exist BEFORE onboarding touches
+  // Snapshot whether wallet keys already exist BEFORE first-run touches
   // process.env, so the persistence block later can guard against
   // overwriting pre-existing values.
   const hasEvmKey = Boolean(process.env.EVM_PRIVATE_KEY?.trim());
   const hasSolKey = Boolean(process.env.SOLANA_PRIVATE_KEY?.trim());
 
   const PROVIDER_OPTIONS = [
-    ...(cloudOnboardingResult?.apiKey
+    ...(cloudFirstRunResult?.apiKey
       ? ([
           {
             id: "elizacloud",
@@ -575,7 +575,7 @@ export async function runFirstTimeSetup(
       ],
     });
 
-    if (clack.isCancel(providerChoice)) cancelOnboarding();
+    if (clack.isCancel(providerChoice)) cancelFirstRun();
 
     if (providerChoice !== "_skip_") {
       const chosen = PROVIDER_OPTIONS.find((p) => p.id === providerChoice);
@@ -593,7 +593,7 @@ export async function runFirstTimeSetup(
             defaultValue: "http://localhost:11434",
           });
 
-          if (clack.isCancel(ollamaUrl)) cancelOnboarding();
+          if (clack.isCancel(ollamaUrl)) cancelFirstRun();
 
           providerApiKey = ollamaUrl.trim() || "http://localhost:11434";
         } else {
@@ -601,7 +601,7 @@ export async function runFirstTimeSetup(
             message: `Paste your ${chosen.label} API key:`,
           });
 
-          if (clack.isCancel(apiKeyInput)) cancelOnboarding();
+          if (clack.isCancel(apiKeyInput)) cancelFirstRun();
 
           providerApiKey = apiKeyInput.trim();
         }
@@ -648,7 +648,7 @@ export async function runFirstTimeSetup(
         ],
       });
 
-      if (clack.isCancel(walletAction)) cancelOnboarding();
+      if (clack.isCancel(walletAction)) cancelFirstRun();
 
       if (walletAction === "generate") {
         const keys = generateWalletKeys();
@@ -756,7 +756,7 @@ export async function runFirstTimeSetup(
   // ── Step 8: Persist agent + style + provider + embedding config ─────────
   // Save the agent name and chosen personality template into config so that
   // the same character data is used regardless of whether the user onboarded
-  // via CLI or GUI.  This ensures full parity between onboarding surfaces.
+  // via CLI or GUI.  This ensures full parity between first-run surfaces.
   const existingList: AgentConfig[] = config.agents?.list ?? [];
   const mainEntry: AgentConfig = existingList[0] ?? {
     id: "main",
@@ -791,7 +791,7 @@ export async function runFirstTimeSetup(
   const topologyUpdated = applyFirstTimeSetupTopology(updated, {
     isCloudRuntime: isCloudMode,
     selectedProviderId,
-    cloudOnboardingResult,
+    cloudFirstRunResult,
   });
 
   // Persist provider API keys and wallet keys in config.env so they survive
@@ -835,7 +835,7 @@ export async function runFirstTimeSetup(
     clack.log.warn(`Could not save config: ${formatError(err)}`);
   }
 
-  // If cloud-mode onboarding already left cloud-wallet descriptors in the
+  // If cloud-mode first-run already left cloud-wallet descriptors in the
   // config (rare on first run, but possible when resuming a partial flow),
   // make sure plugin-wallet sees WALLET_SOURCE_*=cloud before
   // they load.

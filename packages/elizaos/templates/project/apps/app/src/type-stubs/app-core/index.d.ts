@@ -105,7 +105,7 @@ export interface AppBootConfig {
   envAliases?: readonly (readonly [string, string])[];
   lifeOpsBrowserSetupPanel?: unknown;
   lifeOpsPageView?: unknown;
-  onboardingStyles?: unknown[];
+  firstRunStyles?: unknown[];
   vrmAssets?: { slug: string; title: string }[];
   websiteBlockerSettingsCard?: unknown;
 }
@@ -122,20 +122,20 @@ export function shouldUseCloudOnlyBranding(options: {
 
 // --- Runtime / platform helpers -------------------------------------------
 
-export function applyForceFreshOnboardingReset(): void;
+export function applyForceFreshFirstRunReset(): void;
 export function applyLaunchConnectionFromUrl(): Promise<boolean>;
 export function applyUiTheme(theme: unknown): void;
 export function getElectrobunRendererRpc(): unknown;
 export function initializeCapacitorBridge(): void;
 export function initializeStorageBridge(): Promise<void>;
 export function installDesktopPermissionsClientPatch(client: unknown): void;
-export function installForceFreshOnboardingClientPatch(client: unknown): void;
+export function installForceFreshFirstRunClientPatch(client: unknown): void;
 export function installLocalProviderCloudPreferencePatch(client: unknown): void;
 export function isDetachedWindowShell(route?: string | null): boolean;
 export function isElectrobunRuntime(): boolean;
 export function loadUiTheme(): unknown;
 export function resolveWindowShellRoute(): string | null;
-export function shouldInstallMainWindowOnboardingPatches(
+export function shouldInstallMainWindowFirstRunPatches(
   route?: string | null,
 ): boolean;
 export function subscribeDesktopBridgeEvent(options: {

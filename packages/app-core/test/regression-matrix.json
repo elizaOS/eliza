@@ -297,7 +297,7 @@
         "rationale": "requires the browser QA harness and stays out of the default live API/runtime lane"
       },
       {
-        "path": "eliza/packages/app-core/test/app/onboarding-companion.live.e2e.test.ts",
+        "path": "eliza/packages/app-core/test/app/first-run-companion.live.e2e.test.ts",
         "suite": "e2e-heavy",
         "tier": "heavy",
         "rationale": "drives the built dashboard in a browser and belongs in the heavy nightly or release gate"

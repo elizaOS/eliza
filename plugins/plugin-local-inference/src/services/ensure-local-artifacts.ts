@@ -5,8 +5,8 @@
  *
  *   - `runtime/ensure-local-inference-handler.ts` — fire-and-forget at agent
  *     boot whenever the resolved runtime mode is `local` or `local-only`.
- *   - `ui/src/onboarding/auto-download-recommended.ts` — when the user picks
- *     "Local" in the onboarding runtime gate, after the local agent's
+ *   - `ui/src/first-run/auto-download-recommended.ts` — when the user picks
+ *     "Local" in the first-run runtime setup, after the local agent's
  *     `/api/health` reports ready.
  *   - `POST /api/local-inference/ensure` — on-demand re-trigger from the
  *     settings UI / a CLI.

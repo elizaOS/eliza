@@ -322,7 +322,7 @@ The existing Electrobun module system in this repo still uses upstream packaging
 
 The current host manifest shape supports `host.storage`, `bun.read`, `bun.write`, `bun.env`, `bun.run`, and `bun.worker` through nested `host` and `bun` permission maps. The requested flat permission keys are not the shape used by the current `@elizaos/plugin-remote-manifest` types, so the Runtime Remote uses the existing nested format.
 
-The current host can downgrade `isolation: "isolated-process"` to a shared worker. The bundled first-party Runtime Remote delegates production process ownership to the existing Electrobun `AgentManager`; only standalone smoke tests use the subprocess manager directly.
+The bundled first-party Runtime Remote runs as a shared worker and delegates production process ownership to the existing Electrobun `AgentManager`; only standalone smoke tests use the subprocess manager directly.
 
 ## Known Limitations
 

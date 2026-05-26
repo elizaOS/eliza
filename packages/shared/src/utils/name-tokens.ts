@@ -1,6 +1,6 @@
 /**
  * Replace un-substituted `{{name}}` / `{{agentName}}` tokens with the
- * actual character name. Handles legacy persisted templates from onboarding.
+ * actual character name. Handles legacy persisted templates from first-run setup.
  */
 export function replaceNameTokens(text: string, name: string): string {
   return text

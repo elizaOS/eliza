@@ -10,14 +10,14 @@ export { replaceNameTokens } from "../../utils/name-tokens";
 
 /* ── Roster / preset helpers ─────────────────────────────────────── */
 
-export type OnboardingPreset = StylePreset;
+export type FirstRunPreset = StylePreset;
 
-export function getOnboardingPresetStyles(
+export function getFirstRunPresetStyles(
   options: unknown,
-): readonly OnboardingPreset[] {
+): readonly FirstRunPreset[] {
   if (!options || typeof options !== "object") return [];
   const styles = (options as { styles?: unknown }).styles;
-  return Array.isArray(styles) ? (styles as OnboardingPreset[]) : [];
+  return Array.isArray(styles) ? (styles as FirstRunPreset[]) : [];
 }
 
 export function replaceCharacterToken(value: string, name: string) {
@@ -25,7 +25,7 @@ export function replaceCharacterToken(value: string, name: string) {
 }
 
 export function buildCharacterDraftFromPreset(entry: CharacterRosterEntry) {
-  const p: OnboardingPreset = entry.preset;
+  const p: FirstRunPreset = entry.preset;
   const name = entry.name;
   return {
     name,

@@ -62,6 +62,11 @@ import {
 } from "../services/structured-output";
 import type { AgentModelSlot } from "../services/types";
 import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
+import { VoiceStartupError } from "../services/voice/errors";
+import {
+	AsrUnavailableError,
+	createStreamingTranscriber,
+} from "../services/voice/transcriber";
 import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
 
 type GenerateTextHandler = (
@@ -670,16 +675,49 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 		: new DOMException("Aborted", "AbortError");
 }
 
+async function transcribeWithStandaloneAsr(
+	audio: TranscriptionAudio,
+	signal: AbortSignal | undefined,
+): Promise<string> {
+	const transcriber = createStreamingTranscriber({
+		prefer: "whisper-cpp",
+		allowWhisperCpp: true,
+	});
+	try {
+		throwIfAborted(signal);
+		transcriber.feed({
+			pcm: audio.pcm,
+			sampleRate: audio.sampleRate,
+			timestampMs: Date.now(),
+		});
+		throwIfAborted(signal);
+		const update = await transcriber.flush();
+		throwIfAborted(signal);
+		return update.partial.trim();
+	} finally {
+		transcriber.dispose();
+	}
+}
+
+function shouldRetryWithStandaloneAsr(error: unknown): boolean {
+	return error instanceof VoiceStartupError || error instanceof AsrUnavailableError;
+}
+
 function makeTranscriptionHandler(): TranscriptionHandler {
 	return async (_runtime, params) => {
 		const signal = extractTranscriptionSignal(params);
 		throwIfAborted(signal);
 		const audio = extractTranscriptionAudio(params);
-		await localInferenceEngine.ensureActiveBundleVoiceReady();
-		throwIfAborted(signal);
-		const transcript = await localInferenceEngine.transcribePcm(audio, signal);
-		throwIfAborted(signal);
-		return transcript;
+		try {
+			await localInferenceEngine.ensureActiveBundleVoiceReady();
+			throwIfAborted(signal);
+			const transcript = await localInferenceEngine.transcribePcm(audio, signal);
+			throwIfAborted(signal);
+			return transcript;
+		} catch (error) {
+			if (!shouldRetryWithStandaloneAsr(error)) throw error;
+			return transcribeWithStandaloneAsr(audio, signal);
+		}
 	};
 }
 

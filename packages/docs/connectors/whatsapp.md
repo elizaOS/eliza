@@ -26,7 +26,7 @@ The connector auto-enables when `authDir`, `authState`, `sessionPath`, or `accou
 
 ## Minimal Configuration
 
-In `~/.eliza/eliza.json` (Baileys / QR code):
+In `~/.local/state/eliza/eliza.json` (Baileys / QR code):
 
 ```json
 {

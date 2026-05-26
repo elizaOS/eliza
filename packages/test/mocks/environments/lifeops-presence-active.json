@@ -41,7 +41,7 @@
     {
       "uuid": "00000003-0000-4000-8000-lifeopspresact",
       "type": "http",
-      "documentation": "Onboarding affect endpoint mock",
+      "documentation": "First-run affect endpoint mock",
       "method": "post",
       "endpoint": "api/lifeops/intake/utterance",
       "responses": [

@@ -312,15 +312,14 @@ grep -q 'bg-\[#F7F9FF\]' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupFailureView.tsx"
 grep -q 'text-\[#0B35F1\]' \
     "${REPO_ROOT}/packages/ui/src/components/shell/StartupFailureView.tsx"
-grep -q 'bg-brand-blue-soft' \
-    "${REPO_ROOT}/packages/ui/src/components/onboarding/VoicePrefixGate.tsx"
-grep -q 'bg-brand-blue' \
-    "${REPO_ROOT}/packages/ui/src/components/onboarding/VoicePrefixSteps.tsx"
+grep -q 'data-testid="first-run-shell"' \
+    "${REPO_ROOT}/packages/ui/src/components/shell/FirstRunShell.tsx"
+grep -q 'bg-\[#F7F9FF\]' \
+    "${REPO_ROOT}/packages/ui/src/components/shell/FirstRunShell.tsx"
 if rg -n 'bg-bg|bg-card|text-accent|bg-accent|text-warn|text-ok|text-danger|#FF5800|#ff5800|#ffe600|#f0b90b' \
-    "${REPO_ROOT}/packages/ui/src/components/onboarding/VoicePrefixGate.tsx" \
-    "${REPO_ROOT}/packages/ui/src/components/onboarding/VoicePrefixSteps.tsx"
+    "${REPO_ROOT}/packages/ui/src/components/shell/FirstRunShell.tsx"
 then
-    echo "Voice prefix onboarding must stay on the clean elizaOS white/blue surface." >&2
+    echo "First-run onboarding must stay on the clean elizaOS white/blue surface." >&2
     exit 1
 fi
 onboarding_states_css="${REPO_ROOT}/packages/ui/src/components/onboarding/states/onboarding.css"

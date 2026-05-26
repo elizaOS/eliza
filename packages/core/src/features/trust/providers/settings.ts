@@ -32,19 +32,16 @@ function worldSettingEntries(
 	);
 }
 
-const formatSettingValue = (
-	setting: Setting,
-	isOnboarding: boolean,
-): string => {
+const formatSettingValue = (setting: Setting, isSetup: boolean): string => {
 	if (setting.value === null) return "Not set";
-	if (setting.secret && !isOnboarding) return "****************";
+	if (setting.secret && !isSetup) return "****************";
 	return String(setting.value);
 };
 
 function generateStatusMessage(
 	runtime: IAgentRuntime,
 	worldSettings: WorldSettings,
-	isOnboarding: boolean,
+	isSetup: boolean,
 	state?: State,
 ): string {
 	try {
@@ -63,7 +60,7 @@ function generateStatusMessage(
 				return {
 					key,
 					name: setting.name,
-					value: formatSettingValue(setting, isOnboarding),
+					value: formatSettingValue(setting, isSetup),
 					description,
 					usageDescription,
 					required: setting.required,
@@ -76,7 +73,7 @@ function generateStatusMessage(
 			(s) => s?.required && !s.configured,
 		).length;
 
-		if (isOnboarding) {
+		if (isSetup) {
 			const settingsList = formattedSettings
 				.map((s) => {
 					const label = s?.required ? "(Required)" : "(Optional)";
@@ -90,11 +87,11 @@ function generateStatusMessage(
       - Only update settings if the user is clearly responding to a setting you are currently asking about.
       - If the user's reply clearly maps to a trust setting and a valid value, call the corresponding settings update action with the correct key and value. Do not just respond with a message saying it's updated -- it must be an action.
       - Never hallucinate settings or respond with values not listed above.
-      - Do not update a setting just because the user has started onboarding or you think a setting needs to be configured. Only update when the user clearly provides a specific value for a trust setting you are currently asking about.
+      - Do not update a setting just because the user has started setup or you think a setting needs to be configured. Only update when the user clearly provides a specific value for a trust setting you are currently asking about.
       - Answer setting-related questions using only the name, description, and value from the list.`;
 
 			if (requiredUnconfigured > 0) {
-				return `# PRIORITY TASK: Onboarding with ${state?.senderName}
+				return `# PRIORITY TASK: Setup with ${state?.senderName}
 
         ${runtime.character.name} needs to help the user configure ${requiredUnconfigured} required settings:
 
@@ -118,7 +115,7 @@ function generateStatusMessage(
 
 		return `## Current Configuration\n\n${
 			requiredUnconfigured > 0
-				? `IMPORTANT!: ${requiredUnconfigured} required settings still need configuration. ${runtime.character.name} should get onboarded with the OWNER as soon as possible.\n\n`
+				? `IMPORTANT!: ${requiredUnconfigured} required settings still need configuration. ${runtime.character.name} should complete setup with the OWNER as soon as possible.\n\n`
 				: "All required settings are configured.\n\n"
 		}${formattedSettings
 			.map(
@@ -176,13 +173,13 @@ export const settingsProvider: Provider = {
 			}
 
 			const type = room.type;
-			const isOnboarding = type === ChannelType.DM;
+			const isSetup = type === ChannelType.DM;
 
 			let world: World | null | undefined = null;
 			let serverId: string | undefined;
 			let worldSettings: WorldSettings | null = null;
 
-			if (isOnboarding) {
+			if (isSetup) {
 				world = userWorlds?.find(
 					(world) => world.metadata?.settings !== undefined,
 				);
@@ -202,15 +199,15 @@ export const settingsProvider: Provider = {
 							src: "trust:provider:settings",
 							agentId: runtime.agentId,
 						},
-						"No world found for user during onboarding -- settings provider will be skipped",
+						"No world found for user during setup -- settings provider will be skipped",
 					);
 					return {
 						data: { settings: [] },
 						values: {
 							settings:
-								"No onboarding world found for the user -- settings provider will be skipped",
+								"No setup world found for the user -- settings provider will be skipped",
 						},
-						text: "No onboarding world found for the user -- settings provider will be skipped",
+						text: "No setup world found for the user -- settings provider will be skipped",
 					};
 				}
 
@@ -245,7 +242,7 @@ export const settingsProvider: Provider = {
 			}
 
 			if (!serverId) {
-				return isOnboarding
+				return isSetup
 					? {
 							data: { settings: [] },
 							values: {
@@ -262,7 +259,7 @@ export const settingsProvider: Provider = {
 			}
 
 			if (!worldSettings) {
-				return isOnboarding
+				return isSetup
 					? {
 							data: { settings: [] },
 							values: {
@@ -281,7 +278,7 @@ export const settingsProvider: Provider = {
 			const output = generateStatusMessage(
 				runtime,
 				worldSettings,
-				isOnboarding,
+				isSetup,
 				state,
 			);
 

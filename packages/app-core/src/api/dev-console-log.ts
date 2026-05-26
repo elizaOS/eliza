@@ -9,18 +9,23 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 
 /**
  * Limits which file the API may tail (env is untrusted even on loopback).
- * Requires both the correct basename AND a `.eliza` parent directory to
- * prevent reading arbitrary files named `desktop-dev-console.log`.
+ * Requires both the correct basename AND a path under the resolved state dir
+ * to prevent reading arbitrary files named `desktop-dev-console.log`.
  */
 export function isAllowedDevConsoleLogPath(absPath: string): boolean {
   if (path.basename(absPath) !== "desktop-dev-console.log") return false;
-  // Require the file to live under a `.eliza` directory
   const normalized = path.resolve(absPath);
-  const parts = normalized.split(path.sep);
-  return parts.some((part) => part === ".eliza");
+  const stateDir = path.resolve(resolveStateDir());
+  const relative = path.relative(stateDir, normalized);
+  return (
+    relative.length > 0 &&
+    !relative.startsWith("..") &&
+    !path.isAbsolute(relative)
+  );
 }
 
 export type ReadDevConsoleLogResult =

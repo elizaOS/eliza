@@ -8,7 +8,7 @@ import { runCommandWithRuntime } from "../cli-utils";
 const defaultRuntime = { error: console.error, exit: process.exit };
 
 function resolveDbDir(env: NodeJS.ProcessEnv = process.env): string {
-  return path.join(resolveStateDir(env), "workspace", ".eliza", ".elizadb");
+  return path.join(resolveStateDir(env), "workspace", ".elizadb");
 }
 
 export function registerDbCommand(program: Command) {

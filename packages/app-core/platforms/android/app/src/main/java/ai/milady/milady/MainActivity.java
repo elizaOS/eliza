@@ -178,8 +178,8 @@ public class MainActivity extends BridgeActivity {
      * Iterate over `BRAND_USER_AGENT_MARKERS` and append each marker's
      * `<uaPrefix><tag>` token to the WebView's User-Agent when the
      * named system property is non-empty. On stock Android no marker
-     * matches and the UA is left untouched, preserving the
-     * RuntimeGate picker. Idempotent — already-present markers aren't
+     * matches and the UA is left untouched, preserving first-run runtime
+     * setup. Idempotent — already-present markers aren't
      * duplicated.
      *
      * The framework's default `ro.elizaos.product` → `ElizaOS/` entry

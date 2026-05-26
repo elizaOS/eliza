@@ -69,8 +69,8 @@ describe("workspace-folder-config", () => {
 		);
 	});
 
-	it("honors ELIZA_STATE_DIR when ELIZA_STATE_DIR is unset", () => {
-		const env2: NodeJS.ProcessEnv = { ELIZA_STATE_DIR: stateDir };
+	it("honors MILADY_STATE_DIR when ELIZA_STATE_DIR is unset", () => {
+		const env2: NodeJS.ProcessEnv = { MILADY_STATE_DIR: stateDir };
 		expect(workspaceFolderConfigPath(env2)).toBe(
 			join(stateDir, "workspace-folder.json"),
 		);

@@ -277,6 +277,7 @@ import { handleConnectorRoutes } from "./connector-routes.ts";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.ts";
+import { handleFirstRunRoutes } from "./first-run-routes.ts";
 import { handleHealthRoutes } from "./health-routes.ts";
 import { tryHandleHonoRuntimeRoute } from "./hono-mount.ts";
 import { pushWithBatchEvict } from "./memory-bounds.ts";
@@ -285,7 +286,6 @@ import { handleMiscRoutes } from "./misc-routes.ts";
 import { handleMobileOptionalRoutes } from "./mobile-optional-routes.ts";
 import { handleModelsRoutes } from "./models-routes.ts";
 import { tryHandleMusicPlayerStatusFallback } from "./music-player-route-fallback.ts";
-import { handleOnboardingRoutes } from "./onboarding-routes.ts";
 import { handlePermissionRoutes } from "./permissions-routes.ts";
 import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.ts";
 import { handleProviderSwitchRoutes } from "./provider-switch-routes.ts";
@@ -301,7 +301,7 @@ import {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
   getErrorMessage,
-  hasPersistedOnboardingState,
+  hasPersistedFirstRunState,
   isUuidLike,
   patchTouchesProviderSelection,
 } from "./server-helpers.ts";
@@ -352,7 +352,7 @@ export {
   shouldForceCheckBalanceFallback,
 } from "./binance-skill-helpers.ts";
 
-type OnboardingRouteArg = Parameters<typeof handleOnboardingRoutes>[0];
+type FirstRunRouteArg = Parameters<typeof handleFirstRunRoutes>[0];
 type AgentStatusRouteArg = Parameters<typeof handleAgentStatusRoutes>[0];
 type TtsRouteArg = {
   req: http.IncomingMessage;
@@ -1132,10 +1132,10 @@ export {
 
 const resolveMcpServersRejection = _resolveMcpServersRejection;
 
-import { pickRandomNames } from "../runtime/onboarding-names.ts";
+import { pickRandomNames } from "../runtime/first-run-names.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import {
-  applyOnboardingVoicePreset,
+  applyFirstRunVoicePreset,
   ensureWalletKeysInEnvAndConfig,
   getCloudProviderOptions,
   getProviderOptions,
@@ -1547,9 +1547,9 @@ async function handleRequest(
     resolveBlueBubblesWebhookPath: (args: unknown) => string;
   }>("imessage");
   const isCloudProvisioned = isCloudProvisionedContainer();
-  const isCloudOnboardingStatusEndpoint =
+  const isCloudFirstRunStatusEndpoint =
     method === "GET" &&
-    pathname === "/api/onboarding/status" &&
+    pathname === "/api/first-run/status" &&
     isCloudProvisioned;
   const isWhatsAppWebhookEndpoint = pathname === "/api/whatsapp/webhook";
   const blueBubblesWebhookPath =
@@ -1681,7 +1681,7 @@ async function handleRequest(
     isAuthProtectedPath &&
     !isAuthEndpoint &&
     !isHealthEndpoint &&
-    !isCloudOnboardingStatusEndpoint &&
+    !isCloudFirstRunStatusEndpoint &&
     !isWhatsAppWebhookEndpoint &&
     !isBlueBubblesWebhookEndpoint &&
     !isPublicRuntimePluginRoute({
@@ -1858,54 +1858,52 @@ async function handleRequest(
   }
 
   if (
-    await handleOnboardingRoutes({
+    await handleFirstRunRoutes({
       req,
       res,
       method,
       pathname,
       url,
-      state: coerce<OnboardingRouteArg["state"]>(state),
+      state: coerce<FirstRunRouteArg["state"]>(state),
       json,
       error,
       readJsonBody,
       isCloudProvisionedContainer,
-      hasPersistedOnboardingState,
+      hasPersistedFirstRunState,
       ensureWalletKeysInEnvAndConfig,
       getWalletAddresses:
-        coerce<OnboardingRouteArg["getWalletAddresses"]>(getWalletAddresses),
+        coerce<FirstRunRouteArg["getWalletAddresses"]>(getWalletAddresses),
       pickRandomNames,
       getStylePresets:
-        coerce<OnboardingRouteArg["getStylePresets"]>(getStylePresets),
+        coerce<FirstRunRouteArg["getStylePresets"]>(getStylePresets),
       getProviderOptions:
-        coerce<OnboardingRouteArg["getProviderOptions"]>(getProviderOptions),
+        coerce<FirstRunRouteArg["getProviderOptions"]>(getProviderOptions),
       getCloudProviderOptions: coerce<
-        OnboardingRouteArg["getCloudProviderOptions"]
+        FirstRunRouteArg["getCloudProviderOptions"]
       >(getCloudProviderOptions),
       getModelOptions:
-        coerce<OnboardingRouteArg["getModelOptions"]>(getModelOptions),
+        coerce<FirstRunRouteArg["getModelOptions"]>(getModelOptions),
       getInventoryProviderOptions: coerce<
-        OnboardingRouteArg["getInventoryProviderOptions"]
+        FirstRunRouteArg["getInventoryProviderOptions"]
       >(getInventoryProviderOptions),
       resolveConfiguredCharacterLanguage: coerce<
-        OnboardingRouteArg["resolveConfiguredCharacterLanguage"]
+        FirstRunRouteArg["resolveConfiguredCharacterLanguage"]
       >(resolveConfiguredCharacterLanguage),
       normalizeCharacterLanguage: coerce<
-        OnboardingRouteArg["normalizeCharacterLanguage"]
+        FirstRunRouteArg["normalizeCharacterLanguage"]
       >(normalizeCharacterLanguage),
       readUiLanguageHeader:
-        coerce<OnboardingRouteArg["readUiLanguageHeader"]>(
-          readUiLanguageHeader,
-        ),
-      applyOnboardingVoicePreset: coerce<
-        OnboardingRouteArg["applyOnboardingVoicePreset"]
-      >(applyOnboardingVoicePreset),
+        coerce<FirstRunRouteArg["readUiLanguageHeader"]>(readUiLanguageHeader),
+      applyFirstRunVoicePreset: coerce<
+        FirstRunRouteArg["applyFirstRunVoicePreset"]
+      >(applyFirstRunVoicePreset),
       saveElizaConfig,
     })
   ) {
     return;
   }
 
-  // POST /api/onboarding is now handled by onboarding-routes.ts above.
+  // POST /api/first-run is now handled by first-run-routes.ts above.
 
   if (
     await handleAgentLifecycleRoutes({
@@ -3841,7 +3839,7 @@ export async function startApiServer(opts?: {
               };
               // Merge disk + live server config so we never persist a minimal
               // snapshot (e.g. ENOENT default) and clobber eliza.json during
-              // onboarding while state.config still holds the full boot payload.
+              // first-run while state.config still holds the full boot payload.
               const toSave: ElizaConfig = {
                 ...diskCfg,
                 ...state.config,

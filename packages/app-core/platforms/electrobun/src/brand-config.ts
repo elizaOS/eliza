@@ -28,7 +28,7 @@ export interface DesktopBrandConfig {
   configExportFileName: string;
   /** User-facing description. */
   appDescription: string;
-  /** Default namespace for state directory (~/.eliza/ or ~/.eliza/). */
+  /** Default namespace for XDG state directory. */
   namespace: string;
   /** Config directory name (used under ~/.config/ on Unix, %APPDATA% on Windows). */
   configDirName: string;

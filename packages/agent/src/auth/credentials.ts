@@ -1,7 +1,7 @@
 /**
  * Credential storage and token refresh for subscription providers.
  *
- * Credentials live under `~/.eliza/auth/{providerId}/{accountId}.json`
+ * Credentials live under `<stateDir>/auth/{providerId}/{accountId}.json`
  * (see `account-storage.ts` for the on-disk format and atomic-write
  * details). The `loadCredentials` / `saveCredentials` /
  * `deleteCredentials` / `hasValidCredentials` / `getAccessToken`

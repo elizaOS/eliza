@@ -9,7 +9,7 @@ import type {
   AuthStatusSnapshot,
   BootProgressSnapshot,
   EmbeddedAgentStatus,
-  OnboardingStatusSnapshot,
+  FirstRunStatusSnapshot,
 } from "../rpc-schema";
 import {
   createLaunchDiagnosticsViewManifest,
@@ -53,9 +53,7 @@ export interface LaunchOrchestratorOptions {
   agent: LaunchAgentAdapter;
   readBootProgress: () => Promise<BootProgressSnapshot>;
   readAuthStatus: (port: number) => Promise<AuthStatusSnapshot | null>;
-  readOnboardingStatus: (
-    port: number,
-  ) => Promise<OnboardingStatusSnapshot | null>;
+  readFirstRunStatus: (port: number) => Promise<FirstRunStatusSnapshot | null>;
   readDiagnostics: () => LaunchDiagnosticsSnapshot;
   readDatabaseStatus?: () => DatabaseSnapshot;
   readDiagnosticLogTail: (maxChars?: number) => string;
@@ -77,12 +75,12 @@ function apiBase(port: number | null): string | null {
 
 function requiredGate(
   auth: AuthStatusSnapshot | null,
-  onboarding: OnboardingStatusSnapshot | null,
+  firstRun: FirstRunStatusSnapshot | null,
 ): "runtime" | "bootstrap" | "pairing" | null {
   if (auth?.required === true && auth.pairingEnabled === true) return "pairing";
   if (auth?.bootstrapRequired === true) return "bootstrap";
-  if (onboarding?.complete === false) {
-    return onboarding.cloudProvisioned === true ? "bootstrap" : "runtime";
+  if (firstRun?.complete === false) {
+    return firstRun.cloudProvisioned === true ? "bootstrap" : "runtime";
   }
   return null;
 }
@@ -110,15 +108,15 @@ function classifyAuthPhase(params: {
   return null;
 }
 
-function classifyOnboardingPhase(params: {
-  onboarding: OnboardingStatusSnapshot | null;
-  onboardingError: string | null;
+function classifyFirstRunPhase(params: {
+  firstRun: FirstRunStatusSnapshot | null;
+  firstRunError: string | null;
 }): LaunchPhase | null {
-  if (params.onboarding === null && params.onboardingError === null) {
-    return "onboarding-checking";
+  if (params.firstRun === null && params.firstRunError === null) {
+    return "first-run-checking";
   }
-  if (params.onboarding?.complete !== false) return null;
-  return params.onboarding.cloudProvisioned === true
+  if (params.firstRun?.complete !== false) return null;
+  return params.firstRun.cloudProvisioned === true
     ? "cloud-bootstrap-required"
     : "runtime-gate-required";
 }
@@ -128,8 +126,8 @@ function classifyPhase(params: {
   boot: BootProgressSnapshot | null;
   auth: AuthStatusSnapshot | null;
   authError: string | null;
-  onboarding: OnboardingStatusSnapshot | null;
-  onboardingError: string | null;
+  firstRun: FirstRunStatusSnapshot | null;
+  firstRunError: string | null;
 }): LaunchPhase {
   const agentPhase = classifyAgentPhase(params.agent);
   if (agentPhase !== null) return agentPhase;
@@ -138,8 +136,8 @@ function classifyPhase(params: {
   }
   const authPhase = classifyAuthPhase(params);
   if (authPhase !== null) return authPhase;
-  const onboardingPhase = classifyOnboardingPhase(params);
-  if (onboardingPhase !== null) return onboardingPhase;
+  const firstRunPhase = classifyFirstRunPhase(params);
+  if (firstRunPhase !== null) return firstRunPhase;
   return "ready";
 }
 
@@ -184,7 +182,7 @@ function suggestedAction(snapshot: LaunchSnapshot): string | undefined {
   if (snapshot.phase === "pairing-required")
     return "Complete pairing in the startup gate.";
   if (snapshot.phase === "runtime-gate-required")
-    return "Choose Cloud, Local, or Remote in RuntimeGate.";
+    return "Choose Cloud, Local, or Remote in first-run runtime setup.";
   if (snapshot.phase === "cloud-bootstrap-required")
     return "Complete cloud bootstrap before entering chat.";
   if (!snapshot.remotes.requiredStarted) {
@@ -233,7 +231,7 @@ function snapshotJson(snapshot: LaunchSnapshot): Record<string, JsonValue> {
     boot: snapshot.boot,
     database: databaseSnapshotJson(snapshot.database),
     auth: snapshot.auth,
-    onboarding: snapshot.onboarding,
+    firstRun: snapshot.firstRun,
     remotes: snapshot.remotes,
     localModel: snapshot.localModel,
     diagnostics: snapshot.diagnostics,
@@ -248,9 +246,9 @@ export class LaunchOrchestrator {
   private readonly readAuthStatus: (
     port: number,
   ) => Promise<AuthStatusSnapshot | null>;
-  private readonly readOnboardingStatus: (
+  private readonly readFirstRunStatus: (
     port: number,
-  ) => Promise<OnboardingStatusSnapshot | null>;
+  ) => Promise<FirstRunStatusSnapshot | null>;
   private readonly readDiagnostics: () => LaunchDiagnosticsSnapshot;
   private readonly readDatabaseStatus: () => DatabaseSnapshot;
   private readonly readDiagnosticLogTail: (maxChars?: number) => string;
@@ -265,7 +263,7 @@ export class LaunchOrchestrator {
     this.agent = options.agent;
     this.readBootProgress = options.readBootProgress;
     this.readAuthStatus = options.readAuthStatus;
-    this.readOnboardingStatus = options.readOnboardingStatus;
+    this.readFirstRunStatus = options.readFirstRunStatus;
     this.readDiagnostics = options.readDiagnostics;
     this.readDatabaseStatus =
       options.readDatabaseStatus ?? (() => createUnknownDatabaseSnapshot());
@@ -285,8 +283,8 @@ export class LaunchOrchestrator {
     let boot: BootProgressSnapshot | null = null;
     let auth: AuthStatusSnapshot | null = null;
     let authError: string | null = null;
-    let onboarding: OnboardingStatusSnapshot | null = null;
-    let onboardingError: string | null = null;
+    let firstRun: FirstRunStatusSnapshot | null = null;
+    let firstRunError: string | null = null;
 
     try {
       boot = await this.readBootProgress();
@@ -302,10 +300,9 @@ export class LaunchOrchestrator {
         authError = error instanceof Error ? error.message : String(error);
       }
       try {
-        onboarding = await this.readOnboardingStatus(port);
+        firstRun = await this.readFirstRunStatus(port);
       } catch (error) {
-        onboardingError =
-          error instanceof Error ? error.message : String(error);
+        firstRunError = error instanceof Error ? error.message : String(error);
       }
     }
 
@@ -317,8 +314,8 @@ export class LaunchOrchestrator {
           boot,
           auth,
           authError,
-          onboarding,
-          onboardingError,
+          firstRun,
+          firstRunError,
         });
     const snapshot: LaunchSnapshot = {
       phase,
@@ -342,12 +339,12 @@ export class LaunchOrchestrator {
         pairingEnabled: auth?.pairingEnabled,
         error: authError,
       },
-      onboarding: {
-        checked: onboarding !== null,
-        complete: onboarding?.complete ?? null,
-        cloudProvisioned: onboarding?.cloudProvisioned,
-        requiredGate: requiredGate(auth, onboarding),
-        error: onboardingError,
+      firstRun: {
+        checked: firstRun !== null,
+        complete: firstRun?.complete ?? null,
+        cloudProvisioned: firstRun?.cloudProvisioned,
+        requiredGate: requiredGate(auth, firstRun),
+        error: firstRunError,
       },
       remotes,
       localModel: {

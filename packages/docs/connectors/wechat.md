@@ -29,7 +29,7 @@ The WeChat connector is a plugin that bridges your agent to WeChat via a user-su
 |------|----------|-------------|
 | `WECHAT_API_KEY` | Yes | Proxy service API key |
 
-Additional configuration is done via the `connectors.wechat` config in `~/.eliza/eliza.json`:
+Additional configuration is done via the `connectors.wechat` config in `~/.local/state/eliza/eliza.json`:
 
 | Config Field | Type | Default | Description |
 |------|------|---------|-------------|
@@ -43,7 +43,7 @@ Additional configuration is done via the `connectors.wechat` config in `~/.eliza
 
 The connector auto-enables when `apiKey` is truthy at the top level, or an `accounts` entry has a truthy `apiKey`.
 
-Configure in `~/.eliza/eliza.json`:
+Configure in `~/.local/state/eliza/eliza.json`:
 
 ```json
 {

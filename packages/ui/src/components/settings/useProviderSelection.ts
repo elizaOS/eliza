@@ -14,9 +14,9 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
 import { useBranding } from "../../config/branding";
-import { isElizaCloudRuntimeLocked } from "../../onboarding/mobile-runtime-mode";
+import { isElizaCloudRuntimeLocked } from "../../first-run/mobile-runtime-mode";
 import {
-  getOnboardingProviderOption,
+  getFirstRunProviderOption,
   isSubscriptionProviderSelectionId,
   type SubscriptionProviderSelectionId,
 } from "../../providers";
@@ -122,7 +122,7 @@ export function useProviderSelection(
   const initializeFromConfig = useCallback(
     (cfg: Record<string, unknown>) => {
       const llmText = resolveServiceRoutingInConfig(cfg)?.llmText;
-      const providerId = getOnboardingProviderOption(llmText?.backend)?.id;
+      const providerId = getFirstRunProviderOption(llmText?.backend)?.id;
       const savedSubscriptionProvider = readSubscriptionProvider(cfg);
       const nextSelectedId =
         llmText?.transport === "cloud-proxy" && providerId === "elizacloud"
@@ -353,12 +353,11 @@ export function resolveProviderIdForSwitch(
   const target =
     aiProviders.find(
       (provider) =>
-        (getOnboardingProviderOption(normalizeAiProviderPluginId(provider.id))
+        (getFirstRunProviderOption(normalizeAiProviderPluginId(provider.id))
           ?.id ?? normalizeAiProviderPluginId(provider.id)) === newId,
     ) ?? null;
   return (
-    getOnboardingProviderOption(
-      normalizeAiProviderPluginId(target?.id ?? newId),
-    )?.id ?? newId
+    getFirstRunProviderOption(normalizeAiProviderPluginId(target?.id ?? newId))
+      ?.id ?? newId
   );
 }

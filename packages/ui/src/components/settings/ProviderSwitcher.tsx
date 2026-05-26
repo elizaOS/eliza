@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
 import {
-  getDirectAccountProviderForOnboardingProvider,
+  getDirectAccountProviderForFirstRunProvider,
   isSubscriptionProviderSelectionId,
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   type SubscriptionProviderSelectionId,
@@ -142,7 +142,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   }, [apiProviderChoices, visibleProviderPanelId]);
 
   const selectedPanelAccountProvider = useMemo(
-    () => getDirectAccountProviderForOnboardingProvider(visibleProviderPanelId),
+    () => getDirectAccountProviderForFirstRunProvider(visibleProviderPanelId),
     [visibleProviderPanelId],
   );
 

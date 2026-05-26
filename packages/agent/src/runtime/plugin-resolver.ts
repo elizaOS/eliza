@@ -685,7 +685,7 @@ function wrapPluginWithErrorBoundary(
  *   1. npm layout:  <installPath>/node_modules/@scope/package/  (from `bun add`)
  *   2. git layout:  <installPath>/ is the package root directly  (from `git clone`)
  *
- * @param installPath  Root directory of the installation (e.g. ~/.eliza/plugins/installed/foo/).
+ * @param installPath  Root directory of the installation (e.g. <stateDir>/plugins/installed/foo/).
  * @param packageName  The npm package name (e.g. "@elizaos/plugin-discord") — used
  *                     to navigate directly into node_modules when present.
  */
@@ -1356,8 +1356,8 @@ async function discoverPluginCandidates(): Promise<PluginManifestCandidate[]> {
  *
  * Handles three categories of plugins:
  * 1. Built-in/npm plugins — imported by package name
- * 2. User-installed plugins — from ~/.eliza/plugins/installed/
- * 3. Custom/drop-in plugins — from ~/.eliza/plugins/custom/ and plugins.load.paths
+ * 2. User-installed plugins — from <stateDir>/plugins/installed/
+ * 3. Custom/drop-in plugins — from <stateDir>/plugins/custom/ and plugins.load.paths
  *
  * Each plugin is loaded inside an error boundary so a single failing plugin
  * cannot crash the entire agent startup.
@@ -1810,8 +1810,8 @@ export async function resolvePlugins(
   const diagnostic = diagnoseNoAIProvider(loadedNames, failedPlugins);
   if (diagnostic) {
     if (opts?.quiet) {
-      // In headless/GUI mode before onboarding, this is expected — the user
-      // will configure a provider through the onboarding wizard and restart.
+      // In headless/GUI mode before first-run setup, this is expected — the user
+      // will configure a provider through first-run setup and restart.
       logger.info(`[eliza] ${diagnostic}`);
     } else {
       logger.error(`[eliza] ${diagnostic}`);

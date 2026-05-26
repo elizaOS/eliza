@@ -179,7 +179,7 @@ export function ChatConversationItem({
         isGameModal
           ? `group relative flex w-full items-start gap-2 rounded-sm border p-2.5 transition-all sm:gap-3 ${
               isActive
-                ? "border-[color:var(--onboarding-accent-border)] bg-[color:var(--onboarding-accent-bg)] shadow-[0_14px_28px_rgba(0,0,0,0.2)]"
+                ? "border-[color:var(--first-run-accent-border)] bg-[color:var(--first-run-accent-bg)] shadow-[0_14px_28px_rgba(0,0,0,0.2)]"
                 : "border-transparent bg-transparent hover:border-white/10 hover:bg-white/5"
             }`
           : `group relative flex w-full items-center gap-2 px-2.5 py-1 text-left transition-colors duration-100 ${
@@ -263,7 +263,7 @@ export function ChatConversationItem({
           aria-label={labels.rename ?? "Rename conversation"}
           className={cn(
             isGameModal
-              ? "h-8 w-8 shrink-0 self-center rounded-lg border border-white/10 bg-black/20 text-[color:var(--onboarding-text-muted)] shadow-sm transition-[border-color,background-color,color,opacity] hover:border-[color:var(--onboarding-accent-border)] hover:bg-[color:var(--onboarding-accent-bg)] hover:text-[color:var(--onboarding-text-strong)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              ? "h-8 w-8 shrink-0 self-center rounded-lg border border-white/10 bg-black/20 text-[color:var(--first-run-text-muted)] shadow-sm transition-[border-color,background-color,color,opacity] hover:border-[color:var(--first-run-accent-border)] hover:bg-[color:var(--first-run-accent-bg)] hover:text-[color:var(--first-run-text-strong)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
               : "h-8 w-8 shrink-0 rounded-lg hover:text-accent",
             mobile
               ? "opacity-100"
@@ -287,7 +287,7 @@ export function ChatConversationItem({
           aria-label={labels.delete ?? "Delete conversation"}
           className={cn(
             isGameModal
-              ? "h-8 w-8 shrink-0 self-center rounded-lg border border-white/10 bg-black/20 text-[color:var(--onboarding-text-muted)] shadow-sm transition-[border-color,background-color,color,opacity] hover:border-[color:var(--onboarding-accent-border)] hover:bg-[color:var(--onboarding-accent-bg)] hover:text-[color:var(--onboarding-text-strong)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              ? "h-8 w-8 shrink-0 self-center rounded-lg border border-white/10 bg-black/20 text-[color:var(--first-run-text-muted)] shadow-sm transition-[border-color,background-color,color,opacity] hover:border-[color:var(--first-run-accent-border)] hover:bg-[color:var(--first-run-accent-bg)] hover:text-[color:var(--first-run-text-strong)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
               : "h-8 w-8 shrink-0 rounded-lg",
             mobile
               ? "opacity-100"

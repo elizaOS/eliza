@@ -59,7 +59,7 @@ Install the plugin from the registry:
 bun add nextcloud-talk
 ```
 
-Configure in `~/.eliza/eliza.json`:
+Configure in `~/.local/state/eliza/eliza.json`:
 
 ```json
 {

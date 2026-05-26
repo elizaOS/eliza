@@ -105,7 +105,7 @@ Options:
   --live                           Exercise the app-core local-agent HTTP API on Android
   --api-base URL                   Exercise an already-reachable app-core HTTP API
   --auth-token TOKEN               Bearer token for protected app-core API routes
-  --ios-select-local               Pre-seed iOS onboarding/runtime state for Local mode before launch
+  --ios-select-local               Pre-seed iOS first-run/runtime state for Local mode before launch
   --ios-full-bun-smoke             Run a WebView-executed full Bun backend smoke in the iOS app
   --android-select-local           Tap through Android first-run Local runtime selection
   --android-stage-smoke-model      Stage the smallest active Eliza-1 GGUF into Android app data
@@ -450,7 +450,7 @@ function preseedIosLocalRuntime(udid, id) {
 
   tryExec("xcrun", ["simctl", "terminate", udid, id], { allowFailure: true });
   writeIosDefaultsString(udid, id, "eliza:mobile-runtime-mode", "local");
-  writeIosDefaultsString(udid, id, "eliza:onboarding-complete", "1");
+  writeIosDefaultsString(udid, id, "eliza:first-run-complete", "1");
   writeIosDefaultsString(udid, id, "elizaos:active-server", activeServer);
   flushIosPreferencesCache(udid);
   console.log(
@@ -811,7 +811,7 @@ function preseedAndroidLocalRuntime(context) {
   });
   writeAndroidCapacitorPreferences(context, {
     "eliza:mobile-runtime-mode": "local",
-    "eliza:onboarding-complete": "1",
+    "eliza:first-run-complete": "1",
     "elizaos:active-server": activeServer,
   });
   console.log(
@@ -2112,7 +2112,7 @@ async function main() {
           "--config",
           "vitest.config.ts",
           "src/api/ios-local-agent-kernel.local-inference.test.ts",
-          "src/onboarding/auto-download-recommended.test.ts",
+          "src/first-run/auto-download-recommended.test.ts",
         ],
         { cwd: path.join(repoRoot, "packages/ui") },
       );

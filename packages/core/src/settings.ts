@@ -3,8 +3,8 @@ import { logger } from "./logger";
 import type {
 	Character,
 	IAgentRuntime,
-	OnboardingConfig,
 	Setting,
+	SetupConfig,
 	World,
 	WorldSettings,
 } from "./types";
@@ -411,17 +411,17 @@ export async function getWorldSettings(
 /**
  * Initializes settings configuration for a server
  */
-export async function initializeOnboarding(
+export async function initializeSetup(
 	runtime: IAgentRuntime,
 	world: World,
-	config: OnboardingConfig,
+	config: SetupConfig,
 ): Promise<WorldSettings | null> {
 	// Check if settings state already exists
 	const existingSettings = world.metadata?.settings;
 	if (existingSettings) {
 		logger.debug(
 			{ src: "core:settings", serverId: world.messageServerId },
-			"Onboarding state already exists",
+			"Setup state already exists",
 		);
 		// Get settings from metadata and remove salt
 		const saltedSettings = existingSettings as WorldSettings;

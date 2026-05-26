@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -270,7 +271,7 @@ describe("kokoroEngineModelDir", () => {
 	it("returns the canonical home path when env is unset", () => {
 		delete process.env.ELIZA_KOKORO_MODEL_DIR;
 		expect(kokoroEngineModelDir()).toBe(
-			path.join(os.homedir(), ".eliza", "local-inference", "models", "kokoro"),
+			path.join(resolveStateDir(), "local-inference", "models", "kokoro"),
 		);
 	});
 });

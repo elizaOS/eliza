@@ -29,7 +29,7 @@ describe("VoiceProfilesClient.list", () => {
             firstHeardAtMs: 1,
             lastHeardAtMs: 2,
             cohort: "owner",
-            source: "onboarding",
+            source: "first-run",
           },
         ],
       };
@@ -44,7 +44,7 @@ describe("VoiceProfilesClient.list", () => {
     expect(owner.isOwner).toBe(true);
     expect(owner.entityId).toBe("ent-shaw");
     expect(owner.cohort).toBe("owner");
-    expect(owner.source).toBe("onboarding");
+    expect(owner.source).toBe("first-run");
   });
 
   it("falls back to [] when the endpoint is missing (404)", async () => {
@@ -178,12 +178,10 @@ describe("VoiceProfilesClient.appendOwnerCapture", () => {
       durationMs: 1000,
     });
 
-    expect(calls).toEqual([
-      "/api/voice/onboarding/profile/append?id=session-x",
-    ]);
+    expect(calls).toEqual(["/api/voice/first-run/profile/append?id=session-x"]);
   });
 
-  it("does not block onboarding when the route rejects the temporary JSON capture body", async () => {
+  it("does not block first-run when the route rejects the temporary JSON capture body", async () => {
     const client = makeClient(async () => {
       throw Object.assign(new Error("invalid PCM body"), {
         kind: "http",
@@ -255,7 +253,7 @@ describe("VoiceProfilesClient.finalizeOwnerCapture", () => {
     await client.finalizeOwnerCapture("session-x", { displayName: "Shaw" });
 
     expect(calls).toEqual([
-      "/api/voice/onboarding/profile/finalize?id=session-x",
+      "/api/voice/first-run/profile/finalize?id=session-x",
     ]);
   });
 

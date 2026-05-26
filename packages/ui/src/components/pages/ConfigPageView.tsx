@@ -195,7 +195,7 @@ export function ConfigPageView({
     alchemy: [
       {
         configKey: "ALCHEMY_API_KEY",
-        label: t("onboarding.rpcAlchemyKey", {
+        label: t("settings.rpcAlchemyKey", {
           defaultValue: "Alchemy API Key",
         }),
         isSet: walletConfig?.alchemyKeySet ?? false,
@@ -225,7 +225,7 @@ export function ConfigPageView({
     alchemy: [
       {
         configKey: "ALCHEMY_API_KEY",
-        label: t("onboarding.rpcAlchemyKey", {
+        label: t("settings.rpcAlchemyKey", {
           defaultValue: "Alchemy API Key",
         }),
         isSet: walletConfig?.alchemyKeySet ?? false,

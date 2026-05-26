@@ -41,7 +41,7 @@ Install the plugin from the registry:
 bun add tlon
 ```
 
-Configure in `~/.eliza/eliza.json`:
+Configure in `~/.local/state/eliza/eliza.json`:
 
 ```json
 {

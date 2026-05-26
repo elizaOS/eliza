@@ -9,7 +9,7 @@ const EXAMPLES = [
   ["eliza", "Start Eliza in the interactive TUI."],
   ["eliza start", "Start the classic runtime/chat loop."],
   ["eliza dashboard", "Open the Control UI in your browser."],
-  ["eliza setup", "Initialize ~/.eliza/eliza.json and the agent workspace."],
+  ["eliza setup", "Initialize the XDG state-dir config and agent workspace."],
   ["eliza config get agents.defaults.model.primary", "Read a config value."],
   ["eliza models", "Show configured model providers."],
   ["eliza plugins list", "List available plugins."],
@@ -26,11 +26,11 @@ export function configureProgramHelp(program: Command, programVersion: string) {
     .option("--debug", "Enable debug-level runtime logs")
     .option(
       "--dev",
-      "Dev profile: isolate state under ~/.eliza-dev with separate config and ports",
+      "Dev profile: isolate state under a named XDG state-dir namespace with separate config and ports",
     )
     .option(
       "--profile <name>",
-      "Use a named profile (isolates state and config under ~/.eliza-<name>)",
+      "Use a named profile with isolated state and config",
     );
 
   program.option("--no-color", "Disable ANSI colors", false);

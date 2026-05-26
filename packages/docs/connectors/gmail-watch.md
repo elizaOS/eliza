@@ -32,7 +32,7 @@ Install the plugin from the registry:
 bun add gmail-watch
 ```
 
-Enable in `~/.eliza/eliza.json`:
+Enable in `~/.local/state/eliza/eliza.json`:
 
 ```json
 {

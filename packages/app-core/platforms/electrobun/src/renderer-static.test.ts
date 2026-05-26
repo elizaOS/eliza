@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   getRendererAssetContentType,
+  resolveRendererAssetByteRange,
   resolveRendererAsset,
 } from "./renderer-static";
 
@@ -30,5 +31,22 @@ describe("renderer static assets", () => {
       isGzipped: true,
       mimeExt: ".js",
     });
+  });
+
+  it("resolves browser media byte ranges", () => {
+    expect(resolveRendererAssetByteRange("bytes=0-1", 10)).toEqual({
+      start: 0,
+      end: 1,
+    });
+    expect(resolveRendererAssetByteRange("bytes=5-", 10)).toEqual({
+      start: 5,
+      end: 9,
+    });
+    expect(resolveRendererAssetByteRange("bytes=-4", 10)).toEqual({
+      start: 6,
+      end: 9,
+    });
+    expect(resolveRendererAssetByteRange("bytes=11-", 10)).toBeNull();
+    expect(resolveRendererAssetByteRange("items=0-1", 10)).toBeNull();
   });
 });

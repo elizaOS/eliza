@@ -115,7 +115,7 @@ function persistServiceRouting(
   }
 }
 
-export function applyCanonicalOnboardingConfig(
+export function applyCanonicalSetupConfig(
   config: MutableElizaConfig,
   args: {
     deploymentTarget?: DeploymentTargetConfig | null;

@@ -38,7 +38,7 @@ export async function registerTrainingRuntimeHooks(
       );
     }
     logger.info(
-      "[eliza] Registered OptimizedPromptService (action_planner / media_description / etc. will pick up artifacts from ~/.eliza/optimized-prompts/)",
+      "[eliza] Registered OptimizedPromptService (action_planner / media_description / etc. will pick up artifacts from <stateDir>/optimized-prompts/)",
     );
   } catch (err) {
     logger.warn(

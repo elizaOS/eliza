@@ -24,7 +24,7 @@ UI imports from this directory are limited to:
   values.
 - `packages/ui/src/api/ios-local-agent-kernel.ts` — catalog,
   recommendation, routing-preferences, types (incl. `AGENT_MODEL_SLOTS`).
-- `packages/ui/src/onboarding/auto-download-recommended.ts` — types only.
+- `packages/ui/src/first-run/auto-download-recommended.ts` — types only.
 
 Anything else in this directory exists to satisfy the local dependency
 graph for those files (e.g. `recommendation.ts` reaches into

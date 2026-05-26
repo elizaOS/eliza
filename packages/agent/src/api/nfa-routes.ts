@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
-import type { RouteRequestMeta } from "@elizaos/core";
+import { resolveStateDir, type RouteRequestMeta } from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
 import { readJsonFile } from "../utils/atomic-json.ts";
 
@@ -68,7 +67,7 @@ export async function handleNfaRoutes(ctx: NfaRouteContext): Promise<boolean> {
   const { res, method, pathname, json } = ctx;
 
   if (method === "GET" && pathname === "/api/nfa/status") {
-    const elizaDir = join(homedir(), ".eliza");
+    const elizaDir = resolveStateDir();
     const [nfaRecord, identityRecord] = await Promise.all([
       readJsonFile<NfaRecord>(join(elizaDir, "bap578-nfa.json")),
       readJsonFile<IdentityRecord>(join(elizaDir, "bnb-identity.json")),
@@ -110,7 +109,7 @@ export async function handleNfaRoutes(ctx: NfaRouteContext): Promise<boolean> {
 
   if (method === "GET" && pathname === "/api/nfa/learnings") {
     const learningsPaths = [
-      join(homedir(), ".eliza", "LEARNINGS.md"),
+      join(resolveStateDir(), "LEARNINGS.md"),
       join(process.cwd(), "LEARNINGS.md"),
     ];
 

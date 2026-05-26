@@ -141,6 +141,11 @@
       "import": "./dist/genui/index.js",
       "default": "./dist/genui/index.js"
     },
+    "./first-run/*": {
+      "types": "./dist/first-run/*.d.ts",
+      "import": "./dist/first-run/*.js",
+      "default": "./dist/first-run/*.js"
+    },
     "./hooks": {
       "types": "./dist/hooks/index.d.ts",
       "import": "./dist/hooks/index.js",

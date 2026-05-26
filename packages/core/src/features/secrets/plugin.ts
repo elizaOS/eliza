@@ -6,19 +6,12 @@
  * - Encryption at rest
  * - Dynamic plugin activation when secrets become available
  * - Natural language secret management
- * - Conversational onboarding flow (Discord, Telegram)
+ * - Conversational setup flow (Discord, Telegram)
  */
 
 import { logger } from "../../logger.ts";
 import type { IAgentRuntime, Plugin } from "../../types/index.ts";
 import { secretsAction } from "./actions/manage-secret.ts";
-import {
-	missingSecretsProvider,
-	ONBOARDING_SERVICE_TYPE,
-	OnboardingService,
-	onboardingSettingsProvider,
-	updateSettingsAction,
-} from "./onboarding/index.ts";
 import {
 	secretsInfoProvider,
 	secretsStatusProvider,
@@ -28,6 +21,13 @@ import {
 	PluginActivatorService,
 } from "./services/plugin-activator.ts";
 import { SECRETS_SERVICE_TYPE, SecretsService } from "./services/secrets.ts";
+import {
+	missingSecretsProvider,
+	SETUP_SERVICE_TYPE,
+	SetupService,
+	setupSettingsProvider,
+	updateSettingsAction,
+} from "./setup/index.ts";
 
 /**
  * Plugin configuration
@@ -83,12 +83,12 @@ export interface SecretsManagerPluginConfig {
 export const secretsManagerPlugin: Plugin = {
 	name: "secrets",
 	description:
-		"Multi-level secret management with encryption, dynamic plugin activation, and conversational onboarding",
+		"Multi-level secret management with encryption, dynamic plugin activation, and conversational setup",
 
 	// Services
-	services: [SecretsService, PluginActivatorService, OnboardingService],
+	services: [SecretsService, PluginActivatorService, SetupService],
 
-	// Actions for natural language secret management and onboarding.
+	// Actions for natural language secret management and setup.
 	// The planner sees exactly two actions: `SECRETS` (the umbrella that
 	// dispatches to get|set|delete|list|check|mirror|request via the `action`
 	// discriminator) and `SECRETS_UPDATE_SETTINGS` (a settings mutation, not
@@ -99,7 +99,7 @@ export const secretsManagerPlugin: Plugin = {
 	providers: [
 		secretsStatusProvider,
 		secretsInfoProvider,
-		onboardingSettingsProvider,
+		setupSettingsProvider,
 		missingSecretsProvider,
 	],
 
@@ -120,10 +120,8 @@ export const secretsManagerPlugin: Plugin = {
 		await activator?.stop();
 		const secrets = runtime.getService<SecretsService>(SECRETS_SERVICE_TYPE);
 		await secrets?.stop();
-		const onboarding = runtime.getService<OnboardingService>(
-			ONBOARDING_SERVICE_TYPE,
-		);
-		await onboarding?.stop();
+		const setup = runtime.getService<SetupService>(SETUP_SERVICE_TYPE);
+		await setup?.stop();
 	},
 };
 
@@ -131,8 +129,8 @@ export const secretsManagerPlugin: Plugin = {
 export default secretsManagerPlugin;
 
 export * from "./crypto/index.ts";
-export * from "./onboarding/index.ts";
 export * from "./services/index.ts";
+export * from "./setup/index.ts";
 export * from "./storage/index.ts";
 // Re-export types and utilities
 export * from "./types.ts";

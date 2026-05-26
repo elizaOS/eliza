@@ -87,7 +87,7 @@ export interface DeviceTierAssessment {
 	canRunLocalVoice: boolean;
 	/** Default backend mode for the user. */
 	recommendedMode: RecommendedMode;
-	/** Numeric snapshot to drive UI badges and onboarding copy. */
+	/** Numeric snapshot to drive UI badges and first-run copy. */
 	numericContext: {
 		totalRamGb: number;
 		freeRamGb: number;

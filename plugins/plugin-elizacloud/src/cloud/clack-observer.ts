@@ -1,8 +1,8 @@
 /**
- * `@clack/prompts`-backed implementation of `CloudOnboardingObserver`.
+ * `@clack/prompts`-backed implementation of `CloudSetupObserver`.
  *
  * Used by the CLI first-time-setup flow. Wraps a lazily-loaded clack module
- * (so packaged desktop builds that never run interactive onboarding don't
+ * (so packaged desktop builds that never run interactive setup don't
  * pay the dep cost) and renders every observer event as a spinner update,
  * `log.info` / `log.warn`, or `confirm` / `select` prompt.
  *
@@ -10,11 +10,11 @@
  */
 import { logger } from "@elizaos/core";
 import type {
-  CloudOnboardingObserver,
+  CloudSetupObserver,
   ConfirmPrompt,
   ProvisionSuccessInfo,
   SelectChoicePrompt,
-} from "./onboarding-observer.js";
+} from "./setup-observer.js";
 
 /** Lazy-loaded @clack/prompts module type. */
 type ClackModule = typeof import("@clack/prompts");
@@ -26,11 +26,11 @@ interface ClackSpinner {
 }
 
 /**
- * Observer that drives a clack CLI session. One instance per onboarding run
+ * Observer that drives a clack CLI session. One instance per setup run
  * — internal spinner state is reused across the auth + provisioning phases
  * so we don't stack overlapping spinners.
  */
-export class ClackObserver implements CloudOnboardingObserver {
+export class ClackObserver implements CloudSetupObserver {
   private spinner: ClackSpinner | null = null;
 
   constructor(private readonly clack: ClackModule) {}
@@ -139,7 +139,7 @@ export class ClackObserver implements CloudOnboardingObserver {
   }
 
   onFatalError(error: Error, context: string): void {
-    logger.error(`[cloud-onboarding] ${context}: ${error.message}`);
+    logger.error(`[cloud-setup] ${context}: ${error.message}`);
     this.clack.log.error(`${context}: ${error.message}`);
   }
 

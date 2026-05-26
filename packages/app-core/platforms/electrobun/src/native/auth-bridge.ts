@@ -80,14 +80,26 @@ interface DesktopBootstrapResponseBody {
 // ── State paths ───────────────────────────────────────────────────────────────
 
 /**
- * Resolve the eliza state dir. Mirrors the precedence used elsewhere in the
- * codebase: explicit eliza env first, then legacy eliza env, then
- * `~/.<namespace>` derived from brand config.
+ * Resolve the elizaOS state dir. Mirrors the runtime precedence:
+ * `ELIZA_STATE_DIR` > `$XDG_STATE_HOME/<namespace>` >
+ * `~/.local/state/<namespace>`.
  */
 export function resolveStateDir(env: NodeJS.ProcessEnv = process.env): string {
-  const explicit = env.ELIZA_STATE_DIR?.trim() || "";
-  if (explicit) return explicit;
-  return path.join(os.homedir(), `.${getBrandConfig().namespace}`);
+  const explicit =
+    env.ELIZA_STATE_DIR?.trim() || env.MILADY_STATE_DIR?.trim() || "";
+  if (explicit)
+    return path.resolve(explicit.replace(/^~(?=$|[\\/])/, os.homedir()));
+  const namespace = env.ELIZA_NAMESPACE?.trim() || getBrandConfig().namespace;
+  const xdgStateHome = env.XDG_STATE_HOME?.trim();
+  if (xdgStateHome) {
+    return path.join(
+      path.isAbsolute(xdgStateHome)
+        ? xdgStateHome
+        : path.join(os.homedir(), xdgStateHome),
+      namespace,
+    );
+  }
+  return path.join(os.homedir(), ".local", "state", namespace);
 }
 
 export function resolveAuthDir(env: NodeJS.ProcessEnv = process.env): string {

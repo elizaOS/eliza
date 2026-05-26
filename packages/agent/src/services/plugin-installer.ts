@@ -4,7 +4,7 @@
  * Cross-platform plugin installation and lifecycle management.
  *
  * Install targets:
- *   ~/.eliza/plugins/installed/<sanitised-name>/
+ *   <stateDir>/plugins/installed/<sanitised-name>/
  *
  * Works identically whether eliza is:
  *   - Running from source (dev)
@@ -225,7 +225,7 @@ export async function detectPackageManager(): Promise<"bun" | "npm"> {
  * Install a plugin from the registry.
  *
  * 1. Resolves the plugin name in the registry.
- * 2. Installs via npm/bun to ~/.eliza/plugins/installed/<name>/.
+ * 2. Installs via npm/bun to `<stateDir>/plugins/installed/<name>/`.
  * 3. Falls back to git clone if npm is not available for this package.
  * 4. Writes an install record to eliza.json.
  * 5. Returns metadata about the installation for the caller to

@@ -290,7 +290,7 @@ export function checkDatabase(
   env: Record<string, string | undefined> = process.env,
 ): CheckResult {
   const stateDir = resolveStateDir(env as NodeJS.ProcessEnv);
-  const dbDir = path.join(stateDir, "workspace", ".eliza", ".elizadb");
+  const dbDir = path.join(stateDir, "workspace", ".elizadb");
 
   if (!existsSync(dbDir)) {
     return {

@@ -99,8 +99,8 @@ html.eliza-electrobun-macos-titlebar [data-shell-scroll-region="true"] {
   -webkit-app-region: no-drag;
 }
 
-/* Onboarding full-screen VRM canvas would otherwise stay no-drag (companion rule above). */
-html.eliza-electrobun-macos-titlebar.eliza-electrobun-frameless .onboarding-screen
+/* First-run full-screen VRM canvas would otherwise stay no-drag (companion rule above). */
+html.eliza-electrobun-macos-titlebar.eliza-electrobun-frameless .first-run-screen
   canvas {
   -webkit-app-region: drag;
 }

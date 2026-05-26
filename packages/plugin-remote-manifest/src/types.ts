@@ -265,7 +265,7 @@ export interface WorkerResponseMessage {
   requestId: number;
   success: boolean;
   payload?: JsonValue;
-  error?: string;
+  error?: JsonValue;
 }
 
 export interface WorkerReadyMessage {

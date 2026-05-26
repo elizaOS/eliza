@@ -30,25 +30,23 @@ test("settings exposes computer use capability controls", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("onboarding starts with setup choices before capability settings", async ({
+test("first-run starts with setup choices before capability settings", async ({
   page,
 }) => {
   await seedAppStorage(page, {
-    "eliza:onboarding-complete": "0",
-    "elizaos:onboarding:force-fresh": "1",
-    "eliza:onboarding:step": "features",
+    "eliza:first-run-complete": "0",
+    "elizaos:first-run:force-fresh": "1",
     "elizaos:active-server": "",
   });
+  await installDefaultAppRoutes(page);
 
   await page.goto("/chat", { waitUntil: "domcontentloaded" });
 
-  await expect(page.getByTestId("voice-prefix-gate")).toBeVisible();
+  await expect(page.getByTestId("first-run-shell")).toBeVisible();
   await expect(
-    page.getByTestId("voice-prefix-step-name").getByText("Welcome"),
+    page.getByRole("heading", { name: "What should Milady call you?" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Grant microphone access" }),
-  ).toBeVisible();
+  await expect(page.getByPlaceholder("Your name")).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();
   await expect(
     page.getByRole("switch", { name: "Enable Computer Use" }),

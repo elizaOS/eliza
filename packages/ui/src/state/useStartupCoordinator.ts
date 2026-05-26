@@ -17,7 +17,6 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { isElectrobunRuntime } from "../bridge";
 import { isAndroid, isElizaOS, isIOS, isNative } from "../platform";
-import { loadPersistedOnboardingComplete } from "./persistence";
 import {
   createAndroidPolicy,
   createDesktopPolicy,
@@ -78,7 +77,7 @@ export interface StartupCoordinatorHandle {
   retry: () => void;
   reset: () => void;
   pairingSuccess: () => void;
-  onboardingComplete: () => void;
+  firstRunComplete: () => void;
   policy: PlatformPolicy;
   legacyPhase: "starting-backend" | "initializing-agent" | "ready";
   loading: boolean;
@@ -125,19 +124,6 @@ export function useStartupCoordinator(
     if (!depsReady) return;
     depsRef.current?.setStartupPhase(legacyPhase);
   }, [legacyPhase, depsReady]);
-
-  // ── Phase: splash — auto-skip for returning users, mark loaded for new users
-  // Fresh installs stay on splash until the user explicitly continues.
-  useEffect(() => {
-    if (state.phase !== "splash") return;
-    if (!depsReady) return;
-
-    if (loadPersistedOnboardingComplete()) {
-      dispatch({ type: "SPLASH_CONTINUE" });
-      return;
-    }
-    dispatch({ type: "SPLASH_LOADED" });
-  }, [state.phase, depsReady]);
 
   // ── Phase: restoring-session ────────────────────────────────────
   useEffect(() => {
@@ -259,8 +245,8 @@ export function useStartupCoordinator(
     () => dispatch({ type: "PAIRING_SUCCESS" }),
     [],
   );
-  const onboardingCompleteFn = useCallback(
-    () => dispatch({ type: "ONBOARDING_COMPLETE" }),
+  const firstRunCompleteFn = useCallback(
+    () => dispatch({ type: "FIRST_RUN_COMPLETE" }),
     [],
   );
 
@@ -274,7 +260,7 @@ export function useStartupCoordinator(
     retry,
     reset,
     pairingSuccess,
-    onboardingComplete: onboardingCompleteFn,
+    firstRunComplete: firstRunCompleteFn,
     policy,
     legacyPhase: toLegacyStartupPhase(state),
     loading: isStartupLoading(state),

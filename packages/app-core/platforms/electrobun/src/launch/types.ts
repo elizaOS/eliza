@@ -8,7 +8,7 @@ export type LaunchPhase =
   | "agent-api-ready"
   | "auth-checking"
   | "pairing-required"
-  | "onboarding-checking"
+  | "first-run-checking"
   | "runtime-gate-required"
   | "cloud-bootstrap-required"
   | "remote-seeding"
@@ -45,7 +45,7 @@ export interface LaunchSnapshot {
     pairingEnabled?: boolean;
     error?: string | null;
   };
-  onboarding: {
+  firstRun: {
     checked: boolean;
     complete: boolean | null;
     cloudProvisioned?: boolean;

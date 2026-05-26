@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createLocalAsrAutoStopDetector,
   encodeMonoPcm16Wav,
   isSilentPcmAudio,
   measurePcmAudio,
@@ -30,5 +31,38 @@ describe("local ASR capture", () => {
     expect(String.fromCharCode(...wav.slice(8, 12))).toBe("WAVE");
     expect(view.getUint32(24, true)).toBe(16000);
     expect(view.getUint32(40, true)).toBe(6);
+  });
+
+  it("ignores startup audio and stops after speech followed by silence", () => {
+    const detect = createLocalAsrAutoStopDetector(
+      {
+        startGraceMs: 100,
+        minSpeechMs: 100,
+        silenceMs: 200,
+        speechPeakThreshold: 0.01,
+      },
+      0,
+    );
+    if (!detect) throw new Error("auto-stop detector was not created");
+
+    const speech = new Float32Array([0.02, -0.02, 0.015]);
+    const silence = new Float32Array([0, 0, 0]);
+
+    expect(detect(speech, 50)).toEqual({
+      shouldBuffer: false,
+      shouldStop: false,
+    });
+    expect(detect(speech, 120)).toEqual({
+      shouldBuffer: true,
+      shouldStop: false,
+    });
+    expect(detect(speech, 260)).toEqual({
+      shouldBuffer: true,
+      shouldStop: false,
+    });
+    expect(detect(silence, 520)).toEqual({
+      shouldBuffer: false,
+      shouldStop: true,
+    });
   });
 });

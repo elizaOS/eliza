@@ -22,8 +22,6 @@ export * from "./memory";
 export * from "./memory-storage";
 export * from "./messaging";
 export * from "./model";
-// Onboarding types
-export * from "./onboarding";
 export * from "./pairing";
 export * from "./payment";
 export * from "./pipeline-hooks";
@@ -42,6 +40,8 @@ export * from "./schema-builder";
 export * from "./service";
 export * from "./service-interfaces";
 export * from "./settings";
+// Setup types
+export * from "./setup";
 export * from "./state";
 export * from "./streaming";
 export * from "./task";

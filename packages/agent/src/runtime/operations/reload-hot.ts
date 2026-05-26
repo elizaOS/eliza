@@ -9,7 +9,7 @@
  * env vars settle to the same values, notifications are best-effort.
  *
  * The strategy delegates env mutation to a caller-supplied `applyProviderEnv`
- * which wraps the existing onboarding env-pump (`applyOnboardingConnectionConfig`
+ * which wraps the existing first-run env-pump (`applyFirstRunConnectionConfig`
  * + `createProviderSwitchConnection`). The plugin notify step iterates the
  * runtime's plugins and invokes `plugin.applyConfig` when present; that hook
  * is the one defined on the elizaOS Plugin contract for config-only updates.
@@ -34,7 +34,7 @@ import {
 export interface HotStrategyDeps {
   /**
    * Apply env-var / config mutations for a provider switch. Defaults wrap the
-   * existing onboarding env-pump. The wrapper must be idempotent: same intent
+   * existing first-run env-pump. The wrapper must be idempotent: same intent
    * in → same env state out.
    */
   applyProviderEnv: (intent: ProviderSwitchIntent) => Promise<void>;
@@ -104,7 +104,7 @@ function describeIntent(intent: OperationIntent): {
 }
 
 /**
- * Default env-pump wrapper. Lazy-imports the onboarding env-pump to keep the
+ * Default env-pump wrapper. Lazy-imports the first-run env-pump to keep the
  * dependency graph clean (the operations module sits below the api module
  * in the layering, but the env-pump genuinely owns the canonical mutation).
  *
@@ -116,7 +116,7 @@ function makeDefaultApplyProviderEnv(
   secrets: SecretsManager,
 ): (intent: ProviderSwitchIntent) => Promise<void> {
   return async (intent: ProviderSwitchIntent): Promise<void> => {
-    const { applyOnboardingConnectionConfig, createProviderSwitchConnection } =
+    const { applyFirstRunConnectionConfig, createProviderSwitchConnection } =
       await import("../../api/provider-switch-config.ts");
     const { loadElizaConfig, saveElizaConfig } = await import(
       "../../config/config.ts"
@@ -140,7 +140,7 @@ function makeDefaultApplyProviderEnv(
     }
 
     const config = loadElizaConfig();
-    await applyOnboardingConnectionConfig(config, connection);
+    await applyFirstRunConnectionConfig(config, connection);
     saveElizaConfig(config);
   };
 }

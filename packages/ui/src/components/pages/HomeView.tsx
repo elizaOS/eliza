@@ -1,4 +1,4 @@
-import { Mic, Send } from "lucide-react";
+import { Send } from "lucide-react";
 import type * as React from "react";
 import { useMemo, useState } from "react";
 
@@ -7,14 +7,6 @@ import { cn } from "../../lib/utils";
 import { useShellControllerContext } from "../shell/ShellControllerContext";
 import { VoiceWaveform } from "../voice/VoiceWaveform";
 
-/**
- * Default landing surface — the "home" assistant view.
- *
- * Renders the clouds backdrop with a centered voice-avatar waveform as the
- * assistant's presence. Home suppresses the global assistant pill and exposes
- * its own composer/mic controls; the waveform mode is driven by the shared
- * shell controller phase.
- */
 export function HomeView(): React.JSX.Element {
   const controller = useShellControllerContext();
   const mode = controller?.waveformMode ?? "idle";
@@ -94,6 +86,23 @@ export function HomeView(): React.JSX.Element {
             </ol>
           ) : null}
 
+          <div className="mb-2 flex justify-center">
+            <button
+              type="button"
+              aria-label={
+                controller?.recording ? "Stop voice input" : "Start voice input"
+              }
+              aria-pressed={controller?.recording ?? false}
+              onClick={() => controller?.toggleRecording()}
+              className={cn(
+                "min-h-8 bg-transparent px-2 text-xs font-semibold text-white transition-colors [text-shadow:0_2px_10px_rgba(0,0,0,0.75),0_1px_4px_rgba(0,0,0,0.65)] hover:text-white focus-visible:outline-none focus-visible:underline",
+                controller?.recording && "animate-pulse",
+              )}
+            >
+              {controller?.recording ? "Listening" : "Not listening"}
+            </button>
+          </div>
+
           <div className="flex items-center gap-2 rounded-full border border-black/10 bg-white/60 p-2 text-slate-800 shadow-lg backdrop-blur-md">
             <input
               type="text"
@@ -112,21 +121,6 @@ export function HomeView(): React.JSX.Element {
               data-testid="home-chat-input"
               className="min-w-0 flex-1 bg-transparent px-3 text-sm text-slate-800 placeholder:text-slate-500 focus:outline-none"
             />
-            <button
-              type="button"
-              aria-label={
-                controller?.recording ? "Stop voice input" : "Start voice input"
-              }
-              aria-pressed={controller?.recording ?? false}
-              onClick={() => controller?.toggleRecording()}
-              className={cn(
-                "grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-500 transition-colors hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                controller?.recording &&
-                  "bg-warn/25 text-slate-900 animate-pulse",
-              )}
-            >
-              <Mic className="h-4 w-4" aria-hidden />
-            </button>
             <button
               type="button"
               aria-label="Send message"

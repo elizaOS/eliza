@@ -101,10 +101,10 @@
       "import": "./dist/api/response.js",
       "default": "./dist/api/response.js"
     },
-    "./onboarding/onboarding-config": {
-      "types": "./dist/onboarding/onboarding-config.d.ts",
-      "import": "./dist/onboarding/onboarding-config.js",
-      "default": "./dist/onboarding/onboarding-config.js"
+    "./first-run/first-run-config": {
+      "types": "./dist/first-run/first-run-config.d.ts",
+      "import": "./dist/first-run/first-run-config.js",
+      "default": "./dist/first-run/first-run-config.js"
     },
     "./registry": {
       "types": "./dist/registry/index.d.ts",

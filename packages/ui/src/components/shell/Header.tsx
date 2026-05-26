@@ -8,9 +8,9 @@ import type {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
+import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useMediaQuery } from "../../hooks";
 import { isAppsToolTab, titleForTab } from "../../navigation";
-import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
 import {
   isDetachedWindowShell,
   resolveWindowShellRoute,

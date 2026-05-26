@@ -12,7 +12,7 @@
 
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
-import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../onboarding/mobile-runtime-mode";
+import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
 
 function isNativePlatform(): boolean {
   try {
@@ -35,8 +35,8 @@ const SYNCED_KEYS = new Set([
   "eliza.device.identity",
   "eliza.device.auth",
   "elizaos:active-server",
-  "eliza:onboarding-complete",
-  "eliza:onboarding:step",
+  "eliza:first-run-complete",
+  "eliza:setup:step",
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
   // `useAppLifecycleEvents` writes this on APP_PAUSE so the next
   // foreground can rehydrate the same conversation even after the

@@ -80,7 +80,7 @@ for (const viewport of VIEWPORTS) {
       });
     });
 
-    await page.route("**/api/onboarding/status", async (route) => {
+    await page.route("**/api/first-run/status", async (route) => {
       if (route.request().method() !== "GET") {
         await route.fallback();
         return;
@@ -358,7 +358,7 @@ test.skip("new cloud agent shows provisioning chat immediately, accepts a setup 
     });
   });
 
-  await page.route("**/api/onboarding/status", async (route) => {
+  await page.route("**/api/first-run/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;

@@ -138,7 +138,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
       ],
       apiExamples: [
         {
-          name: "Submit onboarding utterance for ephemeral affect read",
+          name: "Submit first-run utterance for ephemeral affect read",
           provider: "lifeops-local",
           method: "POST",
           path: "/api/lifeops/intake/utterance",
@@ -162,7 +162,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
       expectedWorkflow: [
         "Extract narrow, observable affect signals from the current utterance.",
         "Phrase the inference as tentative and correctable.",
-        "Use the signal to choose the next onboarding question only for this turn.",
+        "Use the signal to choose the next first-run question only for this turn.",
         "Avoid storing personality or mental-health claims unless the user explicitly asks.",
       ],
       expectedAssertions: [
@@ -178,7 +178,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
       edgeCases: [
         "User has a speech impediment or accent that looks like hesitation to the model.",
         "Background noise creates false pauses.",
-        "User says not to analyze tone during onboarding.",
+        "User says not to analyze tone during first run.",
       ],
     },
     {
@@ -248,7 +248,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
       edgeCases: [
         "User asks for a deceptive human identity.",
         "User changes the assistant name later.",
-        "Memory service is unavailable during onboarding.",
+        "Memory service is unavailable during first run.",
       ],
     },
     {

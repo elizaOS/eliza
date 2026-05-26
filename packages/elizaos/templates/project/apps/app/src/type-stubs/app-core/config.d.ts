@@ -28,7 +28,7 @@ export interface AppBootConfig {
   envAliases?: readonly (readonly [string, string])[];
   lifeOpsBrowserSetupPanel?: unknown;
   lifeOpsPageView?: unknown;
-  onboardingStyles?: unknown[];
+  firstRunStyles?: unknown[];
   vrmAssets?: Array<{ slug: string; title: string }>;
   websiteBlockerSettingsCard?: unknown;
 }
