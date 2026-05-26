@@ -21,6 +21,12 @@ export interface VoiceWaveformProps {
    * The waveform never mutates or disconnects the node — it only reads.
    */
   analyser?: AnalyserNode | null;
+  /**
+   * Open a private microphone analyser when listening and no analyser is
+   * supplied. Defaults to false so shells that already own voice capture do
+   * not create a second getUserMedia session just for visualization.
+   */
+  captureMic?: boolean;
   /** Bar count. Default 24. */
   bars?: number;
   /** Diameter / square size in px. Default 220. */
@@ -94,15 +100,16 @@ async function openMicAnalyser(): Promise<MicAnalyser | null> {
  * the active mic capture (when `listening`) or TTS playback amplitude (when
  * `responding` with an analyser). Idle renders a calm breathing ring.
  *
- * Self-contained: in `listening` mode it opens its own mic analyser so the
- * visualizer works even when the capture pipeline does not expose one. The
- * node is released the moment the mode leaves `listening`.
+ * When an analyser is supplied, the visualizer reads from that audio node.
+ * Without one it uses an active fallback animation; callers can opt into a
+ * private microphone analyser with `captureMic` for standalone demos.
  *
  * Honors `prefers-reduced-motion` by rendering a single static ring.
  */
 export function VoiceWaveform({
   mode,
   analyser,
+  captureMic = false,
   bars = DEFAULT_BARS,
   size = DEFAULT_SIZE,
   className,
@@ -120,7 +127,7 @@ export function VoiceWaveform({
   // Open / close the mic analyser as the mode enters / leaves `listening`.
   React.useEffect(() => {
     let cancelled = false;
-    if (mode === "listening") {
+    if (mode === "listening" && captureMic && !externalAnalyserRef.current) {
       void openMicAnalyser().then((handle) => {
         if (cancelled || !handle) {
           handle?.stop();
@@ -134,7 +141,7 @@ export function VoiceWaveform({
       micRef.current?.stop();
       micRef.current = null;
     };
-  }, [mode]);
+  }, [captureMic, mode]);
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -165,7 +172,7 @@ export function VoiceWaveform({
         modeRef.current === "responding"
           ? externalAnalyserRef.current
           : modeRef.current === "listening"
-            ? (micRef.current?.analyser ?? null)
+            ? (externalAnalyserRef.current ?? micRef.current?.analyser ?? null)
             : null;
       const out = new Float32Array(bars);
       if (active) {

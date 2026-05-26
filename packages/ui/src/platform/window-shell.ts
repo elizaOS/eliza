@@ -13,6 +13,7 @@ export type WindowShellRoute =
   | { mode: "main" }
   | { mode: "settings"; tab?: string }
   | { mode: "surface"; tab: DetachedSurfaceTab }
+  | { mode: "chat-overlay" }
   | { mode: "pill" };
 
 export interface DetachedShellTarget {
@@ -23,6 +24,11 @@ export interface DetachedShellTarget {
 export function parseWindowShellRoute(search: string): WindowShellRoute {
   const params = new URLSearchParams(search);
   const shell = params.get("shell");
+  const shellMode = params.get("shellMode") ?? params.get("shell-mode");
+
+  if (shellMode === "chat-overlay") {
+    return { mode: "chat-overlay" };
+  }
 
   if (shell === "settings") {
     const tab = params.get("tab")?.trim() || undefined;
@@ -58,8 +64,27 @@ export function resolveWindowShellRoute(
 
 export function isDetachedWindowShell(
   route: WindowShellRoute,
-): route is Exclude<WindowShellRoute, { mode: "main" } | { mode: "pill" }> {
-  return route.mode !== "main" && route.mode !== "pill";
+): route is Exclude<
+  WindowShellRoute,
+  { mode: "main" } | { mode: "pill" } | { mode: "chat-overlay" }
+> {
+  return (
+    route.mode !== "main" &&
+    route.mode !== "pill" &&
+    route.mode !== "chat-overlay"
+  );
+}
+
+export function isChatOverlayWindowShell(
+  route: WindowShellRoute,
+): route is Extract<WindowShellRoute, { mode: "chat-overlay" }> {
+  return route.mode === "chat-overlay";
+}
+
+export function isStandaloneWindowShell(
+  route: WindowShellRoute,
+): route is Exclude<WindowShellRoute, { mode: "main" }> {
+  return route.mode !== "main";
 }
 
 export function isPillWindowShell(
@@ -81,8 +106,10 @@ export function resolveDetachedShellTarget(
     throw new Error("Main windows do not have a detached shell target");
   }
 
-  if (route.mode === "pill") {
-    throw new Error("Pill windows do not have a detached shell target");
+  if (route.mode === "pill" || route.mode === "chat-overlay") {
+    throw new Error(
+      `${route.mode} windows do not have a detached shell target`,
+    );
   }
 
   if (route.mode === "settings") {
@@ -117,7 +144,11 @@ export function syncDetachedShellLocation(
     href?: string;
   },
 ): boolean {
-  if (route.mode === "main" || route.mode === "pill") {
+  if (
+    route.mode === "main" ||
+    route.mode === "pill" ||
+    route.mode === "chat-overlay"
+  ) {
     return false;
   }
 

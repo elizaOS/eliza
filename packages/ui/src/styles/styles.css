@@ -60,6 +60,27 @@ body {
   background: var(--bg);
 }
 
+html.eliza-chat-overlay-shell,
+html.eliza-chat-overlay-shell body,
+html.eliza-chat-overlay-shell #root {
+  background: transparent;
+}
+
+html.eliza-chat-overlay-shell #root {
+  pointer-events: none;
+}
+
+html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
+  top: auto !important;
+  right: 10px !important;
+  bottom: 10px !important;
+  left: 10px !important;
+  width: auto !important;
+  height: min(220px, calc(100% - 20px)) !important;
+  transform: none !important;
+  border-radius: 18px !important;
+}
+
 body.native {
   position: fixed;
   inset: 0;

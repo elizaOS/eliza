@@ -442,7 +442,8 @@ function describeLocalSetupStatus(
     return {
       state: "ready",
       label: "Local bundle installed",
-      detail: "Model and voice assets are present. They load when used.",
+      detail:
+        "Model and voice assets are present. The app warms them after setup.",
       percent: 100,
     };
   }

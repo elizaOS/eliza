@@ -73,14 +73,17 @@ import {
 } from "./native/mac-window-effects";
 import { getPermissionManager } from "./native/permissions";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
-import { createPillWindow } from "./pill-window";
+import { createPillWindow, getPillWindow } from "./pill-window";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
 import {
   createRendererApiProxyRequestInit,
   isRendererApiProxyPath,
   resolveRendererProxyIdleTimeoutSeconds,
 } from "./renderer-api-proxy";
-import { resolveRendererAsset } from "./renderer-static";
+import {
+  getRendererAssetContentType,
+  resolveRendererAsset,
+} from "./renderer-static";
 import {
   buildBunRpcHandlers,
   wireBrowserWorkspaceCaller,
@@ -681,23 +684,6 @@ async function startRendererServer(): Promise<string> {
 
   const port = await getPort(5174);
 
-  const mimeTypes: Record<string, string> = {
-    ".html": "text/html; charset=utf-8",
-    ".js": "application/javascript",
-    ".mjs": "application/javascript",
-    ".css": "text/css",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".svg": "image/svg+xml",
-    ".ico": "image/x-icon",
-    ".json": "application/json",
-    ".gz": "application/octet-stream",
-    ".wasm": "application/wasm",
-    ".glb": "model/gltf-binary",
-    ".gltf": "model/gltf+json",
-    ".vrm": "model/gltf-binary",
-  };
-
   // Seed the api-base-owner singleton with the initial value so the
   // HTML-inject path and the RPC push path both read the same source of
   // truth. Without this seeding, the static server would inject one value
@@ -740,7 +726,15 @@ async function startRendererServer(): Promise<string> {
         ".m4a",
         ".aac",
         ".flac",
+        ".mp4",
+        ".webm",
         ".glb",
+        ".gltf",
+        ".vrm",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".otf",
       ].includes(mimeExt)
     ) {
       return "public, max-age=86400";
@@ -818,7 +812,7 @@ async function startRendererServer(): Promise<string> {
         }
 
         const headers: Record<string, string> = {
-          "Content-Type": mimeTypes[mimeExt] ?? "application/octet-stream",
+          "Content-Type": getRendererAssetContentType(mimeExt),
           "Access-Control-Allow-Origin": "*",
           "Cache-Control": resolveRendererCacheControl(pathname, mimeExt),
         };
@@ -1507,6 +1501,21 @@ function injectApiBase(win: BrowserWindow): void {
   setAgentReady(true);
 }
 
+function injectApiBaseIntoOpenRendererWindows(): void {
+  if (currentWindow) {
+    injectApiBase(currentWindow);
+  }
+
+  const pillWindow = getPillWindow();
+  if (pillWindow && pillWindow !== currentWindow) {
+    injectApiBase(pillWindow);
+  }
+
+  surfaceWindowManager?.forEachWindow((w) => {
+    injectApiBase(w as BrowserWindow);
+  });
+}
+
 /**
  * Push real OS permission states into the agent REST API so the renderer's
  * PermissionsSection shows correct statuses and capability toggles unlock.
@@ -1569,6 +1578,10 @@ async function _startAgent(win: BrowserWindow): Promise<void> {
       await primeDesktopSessionAuth(apiBase, rendererBase);
       const apiToken = resolveApiToken(process.env) ?? "";
       apiBaseOwner.notifyChange(win, rendererBase, apiToken);
+      const pillWindow = getPillWindow();
+      if (pillWindow && pillWindow !== win) {
+        apiBaseOwner.pushToWindow(pillWindow);
+      }
       setAgentReady(true);
       // Sync real OS permission states to the REST API so the renderer
       // can display them and capability toggles can unlock.
@@ -2191,8 +2204,8 @@ async function main(): Promise<void> {
       if (status.port) {
         // The agent rebound to a different loopback port (or recovered from a
         // crash) — the cookies we installed during _startAgent were scoped to
-        // the old origin. Re-prime so the renderer's next /api request stays
-        // authenticated.
+        // the old origin. Re-prime so every renderer's next /api request stays
+        // authenticated, including the OS-level pill window.
         markDesktopSessionStale();
         const apiBase = `http://127.0.0.1:${status.port}`;
         const rendererBase = resolveRendererFacingApiBase(
@@ -2200,12 +2213,7 @@ async function main(): Promise<void> {
           status.port,
         );
         void primeDesktopSessionAuth(apiBase, rendererBase);
-        if (currentWindow) {
-          injectApiBase(currentWindow);
-        }
-        surfaceWindowManager?.forEachWindow((w) => {
-          injectApiBase(w as BrowserWindow);
-        });
+        injectApiBaseIntoOpenRendererWindows();
       }
     }),
   );
@@ -2239,10 +2247,10 @@ async function main(): Promise<void> {
     }
     getFloatingChatManager().configure(url, preload);
     // In kiosk mode the chat pill lives in-canvas on the KioskShell, so we
-    // never spawn the separate native pill toplevel.
+    // never spawn the separate native pill toplevel. Outside kiosk, the pill
+    // loads the same renderer in chat-overlay shell mode so the assistant
+    // lives in its own OS-level window instead of inside the app.
     if (!isKioskShellMode() && shouldCreateDesktopPill()) {
-      // The pill loads the same renderer with `?shell=pill`, which routes to
-      // a minimal <VoicePill> mount in apps/app/src/main.tsx.
       try {
         createPillWindow({ rendererUrl: url, preload });
       } catch (err) {
@@ -2414,7 +2422,7 @@ async function main(): Promise<void> {
       process.env as Record<string, string | undefined>,
     );
     if (rt.mode === "external") {
-      injectApiBase(currentWindow);
+      injectApiBaseIntoOpenRendererWindows();
     } else if (rt.mode === "local") {
       logger.info("[Main] Starting embedded agent (local mode).");
       _startAgent(currentWindow).catch((err) => {

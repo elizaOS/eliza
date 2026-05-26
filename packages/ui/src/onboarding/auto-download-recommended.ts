@@ -3,16 +3,16 @@
  *
  * Background-only — never blocks the UI. The user lands in chat immediately
  * via `RuntimeGate.finishAsLocal()`; this helper polls the local agent's
- * `/api/health` until the runtime is up, then enqueues a download for a
- * model that fits the device's hardware bucket. The user can interact with
- * the chat (with the composer-locked / "set up provider" placeholder) while
- * the download runs; once complete, the local-inference panel and the
- * provider selector see the new model.
+ * `/api/health` until the runtime is up, then activates an installed
+ * Eliza-1 bundle or enqueues a download for a model that fits the device's
+ * hardware bucket. The user can interact with the chat while download/warmup
+ * happens in the background; once complete, the local-inference panel and the
+ * provider selector see the ready model.
  *
  * Idempotency: a `localStorage` marker stops us from re-enqueuing on every
- * boot. The marker is set after a successful enqueue OR after we determine
- * the user already has at least one `eliza-download` model installed; the
- * Local Inference panel is the source of truth from then on.
+ * boot. The marker is set after a successful enqueue OR after an installed
+ * `eliza-download` bundle is already active/activating or successfully starts
+ * activation; the Local Inference panel is the source of truth from then on.
  *
  * Failure modes:
  *   - agent never comes up within the deadline → silent no-op, no marker.
@@ -83,6 +83,17 @@ function pickRecommendedModel(snapshot: ModelHubSnapshot): CatalogModel | null {
   );
 }
 
+function pickInstalledElizaDownloadModel(
+  snapshot: ModelHubSnapshot,
+): string | null {
+  const catalogIds = new Set(snapshot.catalog.map((model) => model.id));
+  return (
+    snapshot.installed.find(
+      (model) => model.source === "eliza-download" && catalogIds.has(model.id),
+    )?.id ?? null
+  );
+}
+
 export async function autoDownloadRecommendedLocalModelInBackground(
   apiBase: string,
 ): Promise<void> {
@@ -98,10 +109,24 @@ export async function autoDownloadRecommendedLocalModelInBackground(
     return;
   }
 
-  const alreadyHasElizaDownload = snapshot.installed.some(
-    (m) => m.source === "eliza-download",
-  );
-  if (alreadyHasElizaDownload) {
+  const installedElizaDownload = pickInstalledElizaDownloadModel(snapshot);
+  if (installedElizaDownload) {
+    if (
+      snapshot.active.modelId === installedElizaDownload &&
+      (snapshot.active.status === "ready" ||
+        snapshot.active.status === "loading")
+    ) {
+      writeMarker();
+      return;
+    }
+
+    try {
+      await client.setLocalInferenceActive(installedElizaDownload);
+    } catch {
+      // Leave the marker unset so a later boot retries activation after the
+      // local runtime stabilizes.
+      return;
+    }
     writeMarker();
     return;
   }

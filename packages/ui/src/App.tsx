@@ -63,7 +63,10 @@ import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { ErrorBoundary } from "./components/ui/error-boundary";
 import { VoiceWaveform } from "./components/voice/VoiceWaveform";
-import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
+import {
+  AppWorkspaceChrome,
+  type AppWorkspaceChromeProps,
+} from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react";
 import type { CompanionShellComponentProps } from "./config/boot-config-store";
 import {
@@ -271,15 +274,11 @@ function useShellMode(): ShellMode {
  * chrome — over a transparent background.
  */
 function ChatOverlayShell() {
-  const controller = useShellControllerContext();
   return (
     <div
       data-testid="chat-overlay-shell"
-      className="fixed inset-0 flex items-end justify-center bg-transparent"
+      className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
     >
-      <div className="pointer-events-none mb-20 flex items-center justify-center">
-        <VoiceWaveform mode={controller?.waveformMode ?? "idle"} size={160} />
-      </div>
       <ShellFoundationMount />
     </div>
   );
@@ -545,6 +544,7 @@ function renderStaticViewRouterTab({
   LifeOpsPageView: ComponentType | null | undefined;
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
+    home: <HomeView />,
     chat: <ChatView />,
     home: <HomeView />,
     browser: <BrowserWorkspaceView />,
@@ -1574,6 +1574,19 @@ export function App() {
           <StreamView />
         </LazyViewBoundary>
       </div>
+    );
+  }
+
+  // OS chat-overlay window — render JUST the floating assistant pill +
+  // waveform over a transparent background, no app chrome or onboarding gate.
+  if (shellMode === "chat-overlay") {
+    return (
+      <BugReportProvider value={bugReport}>
+        <ShellControllerProvider>
+          <ChatOverlayShell />
+        </ShellControllerProvider>
+        <BugReportModal />
+      </BugReportProvider>
     );
   }
 

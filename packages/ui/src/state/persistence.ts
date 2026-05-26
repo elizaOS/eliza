@@ -337,7 +337,7 @@ export function clearPersistedOnboardingStep(): void {
 
 /* ── Onboarding completion persistence ────────────────────────────────── */
 
-const ONBOARDING_COMPLETE_STORAGE_KEY = "eliza:onboarding-complete";
+export const ONBOARDING_COMPLETE_STORAGE_KEY = "eliza:onboarding-complete";
 
 export function loadPersistedOnboardingComplete(): boolean {
   if (typeof localStorage === "undefined") {

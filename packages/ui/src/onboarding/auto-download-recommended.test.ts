@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mockClient = vi.hoisted(() => ({
   getLocalInferenceHub: vi.fn(),
+  setLocalInferenceActive: vi.fn(),
   startLocalInferenceDownload: vi.fn(),
 }));
 
@@ -92,5 +93,73 @@ describe("autoDownloadRecommendedLocalModelInBackground", () => {
     expect(mockClient.startLocalInferenceDownload).toHaveBeenCalledWith(
       "eliza-1-2b",
     );
+  });
+
+  it("activates an installed Eliza download bundle instead of only marking setup attempted", async () => {
+    const snapshot = simulatorSnapshot();
+    snapshot.installed = [
+      {
+        id: "eliza-1-0_8b",
+        displayName: "eliza-1-0.8B",
+        path: "/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
+        sizeBytes: 556_982_432,
+        installedAt: new Date(0).toISOString(),
+        source: "eliza-download",
+      },
+      {
+        id: "eliza-1-0_8b-drafter",
+        displayName: "eliza-1-0.8B drafter",
+        path: "/models/eliza-1-0_8b.bundle/dflash/drafter-0_8b.gguf",
+        sizeBytes: 237_637_024,
+        installedAt: new Date(0).toISOString(),
+        source: "eliza-download",
+        runtimeRole: "dflash-drafter",
+        companionFor: "eliza-1-0_8b",
+      },
+    ] as ModelHubSnapshot["installed"];
+
+    vi.stubGlobal("window", { localStorage: stubLocalStorage() });
+    fetchWithCsrfMock.mockResolvedValue(new Response("ok", { status: 200 }));
+    mockClient.getLocalInferenceHub.mockResolvedValue(snapshot);
+    mockClient.setLocalInferenceActive.mockResolvedValue({ status: "ready" });
+
+    await autoDownloadRecommendedLocalModelInBackground(
+      "http://127.0.0.1:31337",
+    );
+
+    expect(mockClient.setLocalInferenceActive).toHaveBeenCalledWith(
+      "eliza-1-0_8b",
+    );
+    expect(mockClient.startLocalInferenceDownload).not.toHaveBeenCalled();
+  });
+
+  it("does not re-activate an installed bundle that is already ready", async () => {
+    const snapshot = simulatorSnapshot();
+    snapshot.installed = [
+      {
+        id: "eliza-1-0_8b",
+        displayName: "eliza-1-0.8B",
+        path: "/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
+        sizeBytes: 556_982_432,
+        installedAt: new Date(0).toISOString(),
+        source: "eliza-download",
+      },
+    ] as ModelHubSnapshot["installed"];
+    snapshot.active = {
+      modelId: "eliza-1-0_8b",
+      loadedAt: new Date(0).toISOString(),
+      status: "ready",
+    };
+
+    vi.stubGlobal("window", { localStorage: stubLocalStorage() });
+    fetchWithCsrfMock.mockResolvedValue(new Response("ok", { status: 200 }));
+    mockClient.getLocalInferenceHub.mockResolvedValue(snapshot);
+
+    await autoDownloadRecommendedLocalModelInBackground(
+      "http://127.0.0.1:31337",
+    );
+
+    expect(mockClient.setLocalInferenceActive).not.toHaveBeenCalled();
+    expect(mockClient.startLocalInferenceDownload).not.toHaveBeenCalled();
   });
 });

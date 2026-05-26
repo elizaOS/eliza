@@ -276,6 +276,13 @@ export function startupReducer(
 
     case "error":
       switch (event.type) {
+        case "BACKEND_REACHED":
+          if (event.onboardingComplete) {
+            return { phase: "starting-runtime", attempts: 0 };
+          }
+          return { phase: "onboarding-required", serverReachable: true };
+        case "AGENT_RUNNING":
+          return { phase: "hydrating" };
         case "RETRY":
           return { phase: "restoring-session" };
         default:
