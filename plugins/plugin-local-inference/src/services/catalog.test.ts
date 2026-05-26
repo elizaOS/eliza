@@ -151,7 +151,7 @@ describe("local inference catalog", () => {
 			expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
 			expect(model?.runtime?.dflash, `${id} dflash`).toBeUndefined();
 			expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
-			expect(model?.runtime?.optimizations?.requiresKernel).not.toContain(
+			expect(model?.runtime?.optimizations?.requiresKernel).toContain(
 				"dflash",
 			);
 			if ((model?.contextLength ?? 0) >= 65536) {
