@@ -11,6 +11,7 @@ import {
   androidAospRoleLauncherIntentFilter,
   ensureAndroidMainActivityShortcutsMetadata,
   patchAndroidAppActionsXmlResource,
+  removeInactiveAndroidJavaSourceRoots,
   validateAndroidAppActionsXmlResource,
 } from "./run-mobile-build.mjs";
 
@@ -61,6 +62,31 @@ test("AOSP role launcher filters stay out of stock Android manifests", () => {
   assert.match(contactsFilter, /android\.intent\.action\.MAIN/);
   assert.match(contactsFilter, /android\.intent\.category\.LAUNCHER/);
   assert.match(contactsFilter, /android\.intent\.category\.APP_CONTACTS/);
+});
+
+test("Android cloud strip keeps only the active Java package root", () => {
+  const tmp = fs.mkdtempSync(path.join(process.cwd(), ".tmp-android-roots-"));
+  try {
+    const active = path.join(tmp, "app", "eliza");
+    const stale = path.join(tmp, "ai", "milady", "milady");
+    const legacy = path.join(tmp, "ai", "elizaos", "app");
+    for (const root of [active, stale, legacy]) {
+      fs.mkdirSync(root, { recursive: true });
+      fs.writeFileSync(path.join(root, "MainActivity.java"), "", "utf8");
+    }
+
+    const removed = removeInactiveAndroidJavaSourceRoots(
+      [active, stale, legacy, stale],
+      active,
+    );
+
+    assert.equal(removed, 2);
+    assert.equal(fs.existsSync(active), true);
+    assert.equal(fs.existsSync(stale), false);
+    assert.equal(fs.existsSync(legacy), false);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test("Android App Actions shortcuts are rewritten to the configured package and URL scheme", () => {

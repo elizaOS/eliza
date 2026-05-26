@@ -1965,6 +1965,7 @@ export function patchAndroidAppActionsXmlResource(
 
   const escapedSchemes = [
     "eliza",
+    "elizaos",
     "ai.elizaos.app",
     "app.eliza",
     androidPackage,
@@ -4115,10 +4116,7 @@ export function patchLlamaCppCapacitorPodspecForXcframework(
 // xcframework packaging --verify step additionally greps the static
 // archives for AGENTS.md §3 kernel symbols. Either failure aborts the
 // iOS build before the npm-bundled stock framework can be linked.
-const MTP_BUILD_SCRIPT = path.resolve(
-  __dirname,
-  "build-llama-cpp-mtp.mjs",
-);
+const MTP_BUILD_SCRIPT = path.resolve(__dirname, "build-llama-cpp-mtp.mjs");
 const IOS_XCFRAMEWORK_BUILD_SCRIPT = path.resolve(
   __dirname,
   "ios-xcframework",
@@ -5149,6 +5147,21 @@ function rewriteCloudJavaSources(javaRoots, androidPackage) {
   }
 }
 
+export function removeInactiveAndroidJavaSourceRoots(javaRoots, activeRoot) {
+  const active = path.resolve(activeRoot);
+  const seen = new Set();
+  let removed = 0;
+  for (const root of javaRoots) {
+    const resolved = path.resolve(root);
+    if (resolved === active || seen.has(resolved)) continue;
+    seen.add(resolved);
+    if (!fs.existsSync(root)) continue;
+    fs.rmSync(root, { recursive: true, force: true });
+    removed += 1;
+  }
+  return removed;
+}
+
 function removeCloudNativeArtifacts() {
   const assetsRoot = path.join(androidDir, "app", "src", "main", "assets");
   const stagedAgentAssets = path.join(assetsRoot, "agent");
@@ -5620,15 +5633,16 @@ function stripAndroidForCloud() {
   //    app/src/main/java/<package-path>/, and overlayAndroid() may also
   //    have left a legacy ai/elizaos/app copy if the Java rename ran on a
   //    fresh tree — wipe both.
+  const activeJavaRoot = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "java",
+    packageNameToPath(androidPackage),
+  );
   const javaRoots = [
-    path.join(
-      androidDir,
-      "app",
-      "src",
-      "main",
-      "java",
-      packageNameToPath(androidPackage),
-    ),
+    activeJavaRoot,
     path.join(
       androidDir,
       "app",
@@ -5655,6 +5669,15 @@ function stripAndroidForCloud() {
   if (removedJavaCount > 0) {
     console.log(
       `[mobile-build] Removed ${removedJavaCount} Play-Store-noncompliant Java source(s).`,
+    );
+  }
+  const removedJavaRootCount = removeInactiveAndroidJavaSourceRoots(
+    javaRoots,
+    activeJavaRoot,
+  );
+  if (removedJavaRootCount > 0) {
+    console.log(
+      `[mobile-build] Removed ${removedJavaRootCount} inactive Android Java source root(s).`,
     );
   }
   rewriteCloudJavaSources(javaRoots, androidPackage);
@@ -5721,15 +5744,16 @@ function stripAndroidForSmsGateway() {
     }
   }
 
+  const activeJavaRoot = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "java",
+    packageNameToPath(androidPackage),
+  );
   const javaRoots = [
-    path.join(
-      androidDir,
-      "app",
-      "src",
-      "main",
-      "java",
-      packageNameToPath(androidPackage),
-    ),
+    activeJavaRoot,
     path.join(
       androidDir,
       "app",
@@ -5756,6 +5780,15 @@ function stripAndroidForSmsGateway() {
   if (removedJavaCount > 0) {
     console.log(
       `[mobile-build] Removed ${removedJavaCount} non-SMS Java source(s).`,
+    );
+  }
+  const removedJavaRootCount = removeInactiveAndroidJavaSourceRoots(
+    javaRoots,
+    activeJavaRoot,
+  );
+  if (removedJavaRootCount > 0) {
+    console.log(
+      `[mobile-build] Removed ${removedJavaRootCount} inactive Android Java source root(s).`,
     );
   }
   rewriteCloudJavaSources(javaRoots, androidPackage);
