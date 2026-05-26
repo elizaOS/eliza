@@ -1577,7 +1577,7 @@ async function runProvisionWorkspace(
   runtime: IAgentRuntime,
   message: Memory,
   state: State | undefined,
-  _params: Record<string, unknown>,
+  params: Record<string, unknown>,
   _content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
@@ -1603,7 +1603,24 @@ async function runProvisionWorkspace(
     parentWorkspaceId?: string;
   };
 
-  let repo = content.repo;
+  // The planner calls TASKS via PLAN_ACTIONS with the workspace inputs in
+  // `parameters`, not in `message.content`. Treat `params` as the primary
+  // source so action-driven dispatch works; fall back to `content` only for
+  // legacy callers that stuffed the args into the message body.
+  const paramRepo =
+    typeof params.repo === "string" ? (params.repo as string) : undefined;
+  const paramBaseBranch =
+    typeof params.baseBranch === "string"
+      ? (params.baseBranch as string)
+      : undefined;
+  const paramUseWorktree =
+    params.useWorktree === true || params.useWorktree === "true";
+  const paramParentWorkspaceId =
+    typeof params.parentWorkspaceId === "string"
+      ? (params.parentWorkspaceId as string)
+      : undefined;
+
+  let repo = paramRepo ?? content.repo;
   if (!repo && content.text) {
     const urlMatch = content.text.match(
       /https?:\/\/(?:github\.com|gitlab\.com|bitbucket\.org)\/[\w.-]+\/[\w.-]+(?:\.git)?/i,
@@ -1613,7 +1630,7 @@ async function runProvisionWorkspace(
     }
   }
 
-  if (!repo && !content.useWorktree) {
+  if (!repo && !content.useWorktree && !paramUseWorktree) {
     if (callback)
       await callback({
         text: "Please specify a repository URL or use worktree mode with a parent workspace.",
@@ -1633,8 +1650,9 @@ async function runProvisionWorkspace(
     }
   }
 
-  let parentWorkspaceId = content.parentWorkspaceId;
-  if (content.useWorktree && !parentWorkspaceId) {
+  const useWorktree = paramUseWorktree || content.useWorktree === true;
+  let parentWorkspaceId = paramParentWorkspaceId ?? content.parentWorkspaceId;
+  if (useWorktree && !parentWorkspaceId) {
     if (state?.codingWorkspace) {
       parentWorkspaceId = (state.codingWorkspace as { id: string }).id;
     } else {
@@ -1650,8 +1668,8 @@ async function runProvisionWorkspace(
     const workspace: WorkspaceResult = await Promise.race([
       workspaceService.provisionWorkspace({
         repo: repo ?? "",
-        baseBranch: content.baseBranch,
-        useWorktree: content.useWorktree,
+        baseBranch: paramBaseBranch ?? content.baseBranch,
+        useWorktree,
         parentWorkspaceId,
       }),
       new Promise<never>((_, reject) =>
