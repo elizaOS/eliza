@@ -1,4 +1,5 @@
 import inspect
+import os
 import subprocess
 
 from tps.configuration.conflicting_app import ConflictingApp
@@ -46,6 +47,18 @@ class ElizaOSData(Feature):
             process_names=["launcher", "bun"],
         ),
     )
+    TpsMaintenanceMarker = "/run/elizaos/tps-persistence-maintenance"
+
+    def _mark_tps_maintenance_active(self):
+        os.makedirs(os.path.dirname(self.TpsMaintenanceMarker), exist_ok=True)
+        with open(self.TpsMaintenanceMarker, "w", encoding="utf-8") as marker:
+            marker.write("tps\n")
+
+    def _clear_tps_maintenance_active(self):
+        try:
+            os.unlink(self.TpsMaintenanceMarker)
+        except FileNotFoundError:
+            pass
 
     def _run_persistence_maintenance(self, command: str):
         subprocess.run(
@@ -54,18 +67,26 @@ class ElizaOSData(Feature):
         )
 
     def do_activate(self, job, non_blocking=False):
-        self._run_persistence_maintenance("enter")
+        self._mark_tps_maintenance_active()
         try:
-            super().do_activate(job, non_blocking=non_blocking)
+            self._run_persistence_maintenance("enter")
+            try:
+                super().do_activate(job, non_blocking=non_blocking)
+            finally:
+                self._run_persistence_maintenance("leave")
         finally:
-            self._run_persistence_maintenance("leave")
+            self._clear_tps_maintenance_active()
 
     def do_deactivate(self, job):
-        self._run_persistence_maintenance("enter")
+        self._mark_tps_maintenance_active()
         try:
-            super().do_deactivate(job)
+            self._run_persistence_maintenance("enter")
+            try:
+                super().do_deactivate(job)
+            finally:
+                self._run_persistence_maintenance("leave")
         finally:
-            self._run_persistence_maintenance("leave")
+            self._clear_tps_maintenance_active()
 
 
 class WelcomeScreen(Feature):
