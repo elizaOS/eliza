@@ -220,9 +220,13 @@ function isLoopbackUrl(url: string): boolean {
 const LOOPBACK_URL_PATTERN =
   /https?:\/\/(?:localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[?::1\]?)(?::\d{1,5})?(?:\/[^\s)<>"`]*)?/gi;
 export function redactLoopbackUrls(text: string): string {
-  if (!text || !LOOPBACK_URL_PATTERN.test(text)) return text;
+  if (!text) return text;
   LOOPBACK_URL_PATTERN.lastIndex = 0;
-  const stripped = text.replace(LOOPBACK_URL_PATTERN, "").replace(/[ \t]+\n/g, "\n");
+  if (!LOOPBACK_URL_PATTERN.test(text)) return text;
+  LOOPBACK_URL_PATTERN.lastIndex = 0;
+  const stripped = text
+    .replace(LOOPBACK_URL_PATTERN, "")
+    .replace(/[ \t]+\n/g, "\n");
   // Drop lines that became orphan punctuation after the URL was removed
   // (e.g. "- " or "* " markdown list bullets pointing at nothing).
   return stripped
@@ -592,7 +596,7 @@ export class SubAgentRouter extends Service {
         this.runtime,
         routeVerification,
       );
-      text = verified.text;
+      text = redactLoopbackUrls(verified.text);
       deadUrls = verified.dead;
       verifiedUrls = verified.verifiedUrls;
     }
