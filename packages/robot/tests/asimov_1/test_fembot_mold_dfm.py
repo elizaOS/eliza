@@ -35,12 +35,14 @@ def test_fembot_mold_dfm_screens_smooth_loft_processes() -> None:
     assert report["summary"]["injection_wall_adjustment_preview_wall_ok_shells"] == 26
     assert report["summary"]["injection_wall_adjustment_preview_height_preserved_shells"] == 26
     assert report["summary"]["injection_wall_adjustment_preview_parametric_editable_shells"] == 26
-    assert report["summary"]["injection_wall_adjustment_preview_cavity_clearance_failures"] == 26
+    assert report["summary"]["injection_wall_adjustment_preview_cavity_clearance_failures"] == 22
     assert report["summary"]["injection_wall_adjustment_max_wall_increase_m"] > 0.0
     assert report["summary"]["injection_wall_adjustment_max_outward_growth_if_used_m"] > 0.0
-    assert report["summary"]["injection_draw_ratio_screen_failures"] == 10
-    assert report["summary"]["vacuform_draw_ratio_failures"] == 21
-    assert report["summary"]["internal_cavity_clearance_failures"] == 26
+    assert report["summary"]["injection_draw_ratio_screen_failures"] == 0
+    assert report["summary"]["vacuform_draw_ratio_failures"] == 2
+    assert report["summary"]["internal_cavity_clearance_failures"] == 0
+    assert report["summary"]["internal_cavity_pre_clearance_failures"] == 26
+    assert report["summary"]["full_cavity_clearance_verified_shells"] == 26
     assert report["summary"]["split_line_candidate_shells"] == 26
     assert report["summary"]["trim_flange_candidate_shells"] == 4
     assert report["summary"]["decorative_cutout_free_shells"] == 26
@@ -54,8 +56,11 @@ def test_fembot_mold_dfm_screens_smooth_loft_processes() -> None:
 
     shells = {record["link"]: record for record in report["shells"]}
     assert shells["IMU_ORIGIN"]["recommended_process"] == (
-        "molded_shell_candidate_needs_draft_split_and_keepout_resolution"
+        "molded_shell_candidate_needs_draft_split_and_parting_proof"
     )
+    assert shells["IMU_ORIGIN"]["internal_cavity_pre_clearance_violation_count"] > 0
+    assert shells["IMU_ORIGIN"]["internal_cavity_violation_count"] == 0
+    assert shells["IMU_ORIGIN"]["full_cavity_clearance_verified"] is True
     assert shells["IMU_ORIGIN"]["vacuform"]["wall_ok"] is True
     assert shells["IMU_ORIGIN"]["injection_molding"]["wall_ok"] is False
     assert shells["IMU_ORIGIN"]["injection_wall_shortfall_m"] > 0.0
@@ -79,7 +84,7 @@ def test_fembot_mold_dfm_screens_smooth_loft_processes() -> None:
     assert shells["IMU_ORIGIN"]["vacuform"]["trim_flange_candidate"] is True
     assert shells["WAIST_YAW"]["smooth_chest_no_cutout_loft"] is True
     assert shells["WAIST_YAW"]["decorative_cutout_free"] is True
-    assert shells["WAIST_YAW"]["injection_molding"]["draw_ratio_screen_ok"] is False
+    assert shells["WAIST_YAW"]["injection_molding"]["draw_ratio_screen_ok"] is True
     assert shells["LEFT_ELBOW"]["recommended_process"] == (
         "split_structural_shell_or_additive_reference_before_production"
     )
@@ -95,6 +100,9 @@ def test_fembot_inventory_surfaces_mold_dfm_status() -> None:
     assert report["mold_dfm"]["summary"]["smooth_chest_no_cutout_loft_links"] == ["WAIST_YAW"]
     assert report["mold_dfm"]["summary"]["decorative_cutout_free_shells"] == 26
     assert report["mold_dfm"]["summary"]["trim_flange_candidate_shells"] == 4
+    assert report["mold_dfm"]["summary"]["internal_cavity_clearance_failures"] == 0
+    assert report["mold_dfm"]["summary"]["internal_cavity_pre_clearance_failures"] == 26
+    assert report["mold_dfm"]["summary"]["full_cavity_clearance_verified_shells"] == 26
     assert (
         report["mold_dfm"]["summary"][
             "injection_wall_adjustment_preview_wall_ok_shells"

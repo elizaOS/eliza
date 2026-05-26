@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Qwen3 Voice Proof</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f7f3;
+      --ink: #171717;
+      --muted: #5f625b;
+      --line: #d9d9d0;
+      --panel: #ffffff;
+      --accent: #0f766e;
+      --accent-ink: #ecfeff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #121411;
+        --ink: #eeeeea;
+        --muted: #b2b6ad;
+        --line: #34382f;
+        --panel: #1b1e19;
+        --accent: #2dd4bf;
+        --accent-ink: #042f2e;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.45;
+    }
+    main {
+      width: min(980px, calc(100vw - 32px));
+      margin: 32px auto 48px;
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 20px;
+      margin-bottom: 24px;
+    }
+    h1, h2 { margin: 0; letter-spacing: 0; }
+    h1 { font-size: clamp(2rem, 5vw, 4rem); line-height: 0.95; }
+    h2 { font-size: 1.1rem; }
+    .subtitle { color: var(--muted); max-width: 760px; margin: 14px 0 0; }
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 10px;
+      margin: 22px 0;
+    }
+    .metric, .sample {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .metric { padding: 14px; }
+    .metric strong { display: block; font-size: 1.4rem; }
+    .metric span { color: var(--muted); font-size: 0.9rem; }
+    .sample { padding: 18px; margin: 14px 0; }
+    .sample-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: var(--accent-ink);
+      font-size: 0.86rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    audio { width: 100%; margin: 6px 0 14px; }
+    .facts { display: grid; gap: 10px; margin: 0; }
+    .facts div {
+      display: grid;
+      grid-template-columns: 170px 1fr;
+      gap: 12px;
+      border-top: 1px solid var(--line);
+      padding-top: 10px;
+    }
+    dt { color: var(--muted); font-weight: 700; }
+    dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+    a { color: var(--accent); font-weight: 700; }
+    .note {
+      border-left: 4px solid var(--accent);
+      padding: 10px 14px;
+      background: color-mix(in srgb, var(--accent) 10%, transparent);
+      margin: 18px 0;
+    }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em; }
+    @media (max-width: 620px) {
+      main { width: min(100vw - 20px, 980px); margin-top: 20px; }
+      .facts div { grid-template-columns: 1fr; gap: 3px; }
+      .sample-header { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Qwen3 Voice Proof</h1>
+      <p class="subtitle">Local Metal run showing OmniVoice/Qwen3 TTS generating WAV audio and Qwen3-ASR transcribing it through the fused local inference ABI.</p>
+    </header>
+
+    <section class="summary" aria-label="Run summary">
+      <div class="metric"><strong>metal</strong><span>Backend</span></div>
+      <div class="metric"><strong>5.88%</strong><span>Aggregate WER</span></div>
+      <div class="metric"><strong>2</strong><span>Recordings</span></div>
+      <div class="metric"><strong>6.78</strong><span>ASR RTF</span></div>
+    </section>
+
+    <p class="note">Audio is synthesized from the same local bundle and labelled with the text that created it. This self-labelled TTS→ASR loopback WER measures text preservation through the local TTS and ASR stack, not ASR accuracy on real recorded speech.</p>
+
+    
+      <article class="sample">
+        <div class="sample-header">
+          <h2>tts-asr-00</h2>
+          <span class="pill">WER 14.29%</span>
+        </div>
+        <audio controls preload="metadata" src="audio/tts-asr-00.wav"></audio>
+        <dl class="facts">
+          <div><dt>Prompt</dt><dd>Qwen three speech is working on metal.</dd></div>
+          <div><dt>ASR hypothesis</dt><dd>Quinn Three Speech is working on metal.</dd></div>
+          <div><dt>Normalized reference</dt><dd>qwen three speech is working on metal</dd></div>
+          <div><dt>Normalized ASR</dt><dd>quinn three speech is working on metal</dd></div>
+          <div><dt>Audio</dt><dd>2.44 sec, 24000 Hz</dd></div>
+          <div><dt>Latency</dt><dd>TTS 9673 ms; ASR 364 ms; roundtrip 10037 ms</dd></div>
+          <div><dt>Files</dt><dd><a href="audio/tts-asr-00.wav">WAV</a> · <a href="audio/tts-asr-00.txt">prompt text</a></dd></div>
+        </dl>
+      </article>
+
+      <article class="sample">
+        <div class="sample-header">
+          <h2>tts-asr-01</h2>
+          <span class="pill">WER 0.00%</span>
+        </div>
+        <audio controls preload="metadata" src="audio/tts-asr-01.wav"></audio>
+        <dl class="facts">
+          <div><dt>Prompt</dt><dd>The local speech to text model hears this sample clearly.</dd></div>
+          <div><dt>ASR hypothesis</dt><dd>The local speech-to-text model hears this sample clearly.</dd></div>
+          <div><dt>Normalized reference</dt><dd>the local speech to text model hears this sample clearly</dd></div>
+          <div><dt>Normalized ASR</dt><dd>the local speech to text model hears this sample clearly</dd></div>
+          <div><dt>Audio</dt><dd>3.11 sec, 24000 Hz</dd></div>
+          <div><dt>Latency</dt><dd>TTS 8787 ms; ASR 455 ms; roundtrip 9242 ms</dd></div>
+          <div><dt>Files</dt><dd><a href="audio/tts-asr-01.wav">WAV</a> · <a href="audio/tts-asr-01.txt">prompt text</a></dd></div>
+        </dl>
+      </article>
+
+    <section class="sample">
+      <h2>Artifacts</h2>
+      <dl class="facts">
+        <div><dt>Generated at</dt><dd>2026-05-25T03:40:31.044Z</dd></div>
+        <div><dt>Bundle</dt><dd><code>/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle</code></dd></div>
+        <div><dt>Native library</dt><dd><code>/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/libelizainference.dylib</code></dd></div>
+        <div><dt>Bench JSON</dt><dd><a href="asr-bench.json">asr-bench.json</a></dd></div>
+        <div><dt>Gate JSON</dt><dd><a href="asr-wer.json">asr-wer.json</a></dd></div>
+      </dl>
+    </section>
+  </main>
+</body>
+</html>

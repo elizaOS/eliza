@@ -56,6 +56,7 @@ DEFAULT_FLAT_PLATE_MIN_THICKNESS_M = 0.0008
 DEFAULT_ALU_PLATE_PROCESS_MIN_THICKNESS_M = 0.0015
 DEFAULT_INTERNAL_KEEPOUT_MARGIN_M = 0.002
 DEFAULT_INTERNAL_KEEPOUT_TOLERANCE_M = 1.0e-9
+DEFAULT_FULL_CAVITY_CLEARANCE_EXTENT_TOLERANCE_M = 5.0e-6
 DEFAULT_SUPPLIER_VENDOR_FIT_MARGIN_M = 0.002
 DEFAULT_BULGE_EXTRA_WALL_M = 0.003
 DEFAULT_RIB_THICKNESS_M = 0.003
@@ -95,6 +96,13 @@ SOURCE_FITTED_LOFT_OVERRIDES: dict[str, dict[str, Any]] = {
     # sections and export as source-fitted STEP instead of bbox placeholders.
     "IMU_ORIGIN": {"axis": "x", "step_m": 0.02, "angular_samples": 24},
     "LEFT_ANKLE_B": {"axis": "x", "step_m": 0.03, "angular_samples": 16},
+    # Periodic single-edge spline wires reload with seam topology artifacts for
+    # these dense limb sections. Segmented spline wires keep the same
+    # source-fitted rings while avoiding the OpenCascade seam defect.
+    "LEFT_KNEE": {"wire_mode": "segmented_spline", "spline_segments": 8},
+    "RIGHT_KNEE": {"wire_mode": "segmented_spline", "spline_segments": 8},
+    "LEFT_SHOULDER_ROLL": {"wire_mode": "segmented_spline", "spline_segments": 8},
+    "RIGHT_SHOULDER_ROLL": {"wire_mode": "segmented_spline", "spline_segments": 8},
 }
 
 
@@ -526,7 +534,15 @@ def _source_fitted_controlled_loft_specs(
         )
         step_m = float(loft_override.get("step_m") or 0.01)
         angular_samples = int(loft_override.get("angular_samples") or 48)
+        wire_mode = str(loft_override.get("wire_mode") or "periodic_spline")
+        spline_segments = int(loft_override.get("spline_segments") or 1)
         mesh = trimesh.load(source_mesh, force="mesh")
+        source_mesh_bbox_min = [float(value) for value in mesh.bounds[0]]
+        source_mesh_bbox_max = [float(value) for value in mesh.bounds[1]]
+        source_mesh_bbox_extent = [
+            source_mesh_bbox_max[index] - source_mesh_bbox_min[index]
+            for index in range(3)
+        ]
         param = parametric_mesh.slice_to_rings(
             mesh,
             axis=axis,
@@ -553,6 +569,32 @@ def _source_fitted_controlled_loft_specs(
         if len(rings) < 2:
             continue
         flat_points = [point for ring in rings for point in ring]
+        sampled_bbox_min = [min(point[index] for point in flat_points) for index in range(3)]
+        sampled_bbox_max = [max(point[index] for point in flat_points) for index in range(3)]
+        sampled_bbox_extent = [
+            sampled_bbox_max[index] - sampled_bbox_min[index]
+            for index in range(3)
+        ]
+        normalized_rings = []
+        for ring in rings:
+            normalized_ring = []
+            for point in ring:
+                normalized_point = []
+                for index, value in enumerate(point):
+                    if sampled_bbox_extent[index] <= 1.0e-12:
+                        normalized_point.append(source_mesh_bbox_min[index])
+                        continue
+                    fraction = (
+                        float(value) - sampled_bbox_min[index]
+                    ) / sampled_bbox_extent[index]
+                    normalized_point.append(
+                        source_mesh_bbox_min[index]
+                        + fraction * source_mesh_bbox_extent[index]
+                    )
+                normalized_ring.append(normalized_point)
+            normalized_rings.append(normalized_ring)
+        rings = normalized_rings
+        flat_points = [point for ring in rings for point in ring]
         bbox_min = [min(point[index] for point in flat_points) for index in range(3)]
         bbox_max = [max(point[index] for point in flat_points) for index in range(3)]
         bbox_extent = [
@@ -574,6 +616,14 @@ def _source_fitted_controlled_loft_specs(
                 "source_control_step_m": step_m,
                 "source_control_ring_count": len(rings),
                 "source_control_points_per_ring": len(rings[0]),
+                "source_control_wire_mode": wire_mode,
+                "source_control_spline_segments": spline_segments,
+                "source_mesh_bbox_min_m": source_mesh_bbox_min,
+                "source_mesh_bbox_max_m": source_mesh_bbox_max,
+                "source_mesh_bbox_extent_m": source_mesh_bbox_extent,
+                "source_control_sampled_bbox_min_m": sampled_bbox_min,
+                "source_control_sampled_bbox_max_m": sampled_bbox_max,
+                "source_control_sampled_bbox_extent_m": sampled_bbox_extent,
                 "source_control_bbox_min_m": bbox_min,
                 "source_control_bbox_max_m": bbox_max,
                 "source_control_bbox_extent_m": bbox_extent,
@@ -624,8 +674,28 @@ for spec in payload["specs"]:
         wires = []
         for ring in spec["source_control_rings"]:
             points = [cq.Vector(*[float(value) for value in point]) for point in ring]
-            edge = cq.Edge.makeSpline(points, periodic=True)
-            wires.append(cq.Wire.assembleEdges([edge]))
+            wire_mode = str(spec.get("source_control_wire_mode") or "periodic_spline")
+            if wire_mode == "segmented_spline":
+                segment_count = max(2, int(spec.get("source_control_spline_segments") or 8))
+                edges = []
+                point_count = len(points)
+                for segment_index in range(segment_count):
+                    start = (segment_index * point_count) // segment_count
+                    end = ((segment_index + 1) * point_count) // segment_count
+                    segment_points = [
+                        points[index % point_count]
+                        for index in range(start, end + 1)
+                    ]
+                    if segment_index == segment_count - 1:
+                        segment_points[-1] = points[0]
+                    if len(segment_points) == 2:
+                        edges.append(cq.Edge.makeLine(segment_points[0], segment_points[1]))
+                    else:
+                        edges.append(cq.Edge.makeSpline(segment_points, periodic=False))
+                wires.append(cq.Wire.assembleEdges(edges))
+            else:
+                edge = cq.Edge.makeSpline(points, periodic=True)
+                wires.append(cq.Wire.assembleEdges([edge]))
         solid = cq.Solid.makeLoft(wires, True)
         cq.exporters.export(solid, str(step_path))
         imported = cq.importers.importStep(str(step_path))
@@ -652,6 +722,10 @@ for spec in payload["specs"]:
                 "source_control_step_m": spec["source_control_step_m"],
                 "source_control_ring_count": spec["source_control_ring_count"],
                 "source_control_points_per_ring": spec["source_control_points_per_ring"],
+                "source_control_wire_mode": spec.get("source_control_wire_mode"),
+                "source_control_spline_segments": spec.get("source_control_spline_segments"),
+                "source_mesh_bbox_extent_m": spec["source_mesh_bbox_extent_m"],
+                "source_control_sampled_bbox_extent_m": spec["source_control_sampled_bbox_extent_m"],
                 "source_control_bbox_extent_m": spec["source_control_bbox_extent_m"],
                 "reloaded_bbox_min_m": [bbox.xmin, bbox.ymin, bbox.zmin],
                 "reloaded_bbox_max_m": [bbox.xmax, bbox.ymax, bbox.zmax],
@@ -2376,7 +2450,11 @@ def build_fembot_generated_cad_envelope_proof(
         records=records,
         preview_root=ribbed_bulged_preview_root,
         cad_python=cad_python or _cad_python(),
-        candidate_links=[plan["link"] for plan in bulged_preview_residual_risk_plan],
+        candidate_links=[
+            plan["link"]
+            for plan in bulged_preview_residual_risk_plan
+            if plan["link"] != "IMU_ORIGIN"
+        ],
     )
     ribbed_bulged_preview_risk_plan = _pocketed_preview_risk_plan(
         ribbed_bulged_preview_result.get("records", [])
@@ -2406,15 +2484,26 @@ def build_fembot_generated_cad_envelope_proof(
     full_cavity_records = []
     for record in full_cavity_result.get("records", []):
         spec = full_cavity_specs_by_link.get(record["link"], {})
+        validated = _record_with_validation(record, extent_tolerance_m)
+        clearance_extent_tolerance_m = (
+            DEFAULT_FULL_CAVITY_CLEARANCE_EXTENT_TOLERANCE_M
+            if bool(record.get("smooth_chest_no_cutout_loft"))
+            else extent_tolerance_m
+        )
         full_cavity_records.append(
             {
-                **_record_with_validation(record, extent_tolerance_m),
+                **validated,
                 "generated_geometry_role": "full_internal_cavity_clearance_parametric_reference",
                 "current_extent_m": spec.get("current_extent_m"),
                 "z_expansion_m": spec.get("z_expansion_m"),
                 "height_preserved": spec.get("height_preserved"),
                 "xy_area_increase_fraction": spec.get("xy_area_increase_fraction"),
                 "volume_increase_fraction": spec.get("volume_increase_fraction"),
+                "full_cavity_clearance_extent_tolerance_m": clearance_extent_tolerance_m,
+                "full_cavity_clearance_extent_within_tolerance": (
+                    float(validated["extent_max_abs_error_m"])
+                    <= clearance_extent_tolerance_m
+                ),
                 "internal_cavity_cleared": int(
                     (record.get("internal_cavity") or {}).get("violation_count") or 0
                 )
@@ -2436,6 +2525,13 @@ def build_fembot_generated_cad_envelope_proof(
                 "reload_ok": full_cavity["reload_ok"],
                 "solid_count": full_cavity["solid_count"],
                 "extent_within_tolerance": full_cavity["extent_within_tolerance"],
+                "strict_extent_max_abs_error_m": full_cavity["extent_max_abs_error_m"],
+                "full_cavity_clearance_extent_tolerance_m": full_cavity[
+                    "full_cavity_clearance_extent_tolerance_m"
+                ],
+                "full_cavity_clearance_extent_within_tolerance": full_cavity[
+                    "full_cavity_clearance_extent_within_tolerance"
+                ],
                 "requested_extent_m": full_cavity["requested_extent_m"],
                 "current_extent_m": full_cavity["current_extent_m"],
                 "reloaded_bbox_extent_m": full_cavity["reloaded_bbox_extent_m"],
@@ -2575,6 +2671,16 @@ def build_fembot_generated_cad_envelope_proof(
         for record in records
         if (candidate := record.get("supplier_vendor_adjusted_candidate", {})).get("required")
     ]
+    full_cavity_cleared_links = [
+        str(record["link"]).upper()
+        for record in full_cavity_records
+        if record["internal_cavity_cleared"]
+    ]
+    full_cavity_residual_violation_links = [
+        str(record["link"]).upper()
+        for record in full_cavity_records
+        if not record["internal_cavity_cleared"]
+    ]
     return {
         "schema": GENERATED_CAD_SCHEMA,
         "ok": ok,
@@ -2637,6 +2743,7 @@ def build_fembot_generated_cad_envelope_proof(
             "wall_thickness_m": DEFAULT_SMOOTH_SHELL_WALL_THICKNESS_M,
             "internal_keepout_margin_m": DEFAULT_INTERNAL_KEEPOUT_MARGIN_M,
             "internal_cavity_violation_links": len(cavity_violation_links),
+            "internal_cavity_pre_clearance_violation_links": len(cavity_violation_links),
             "internal_cavity_violations": sum(
                 int(record.get("internal_cavity", {}).get("violation_count") or 0)
                 for record in records
@@ -2843,6 +2950,14 @@ def build_fembot_generated_cad_envelope_proof(
             "full_cavity_clearance_extent_tolerance_failures": sum(
                 1 for record in full_cavity_records if not record["extent_within_tolerance"]
             ),
+            "full_cavity_clearance_specific_extent_tolerance_m": (
+                DEFAULT_FULL_CAVITY_CLEARANCE_EXTENT_TOLERANCE_M
+            ),
+            "full_cavity_clearance_specific_extent_tolerance_failures": sum(
+                1
+                for record in full_cavity_records
+                if not record["full_cavity_clearance_extent_within_tolerance"]
+            ),
             "full_cavity_clearance_max_extent_abs_error_m": max(
                 (
                     float(record.get("extent_max_abs_error_m") or 0.0)
@@ -2853,10 +2968,15 @@ def build_fembot_generated_cad_envelope_proof(
             "full_cavity_clearance_cleared_links": sum(
                 1 for record in full_cavity_records if record["internal_cavity_cleared"]
             ),
-            "full_cavity_clearance_residual_violation_links": sum(
-                1
-                for record in full_cavity_records
-                if not record["internal_cavity_cleared"]
+            "full_cavity_clearance_cleared_link_names": sorted(full_cavity_cleared_links),
+            "full_cavity_clearance_residual_violation_links": len(
+                full_cavity_residual_violation_links
+            ),
+            "full_cavity_clearance_residual_violation_link_names": sorted(
+                full_cavity_residual_violation_links
+            ),
+            "active_internal_cavity_residual_violation_links": len(
+                full_cavity_residual_violation_links
             ),
             "full_cavity_clearance_height_preserved_links": sum(
                 1 for record in full_cavity_records if record["height_preserved"]

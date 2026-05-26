@@ -42,6 +42,26 @@ def test_fembot_media_review_validates_screenshots_and_joint_video(tmp_path) -> 
                         "surface_symmetric_hausdorff_m": 0.002,
                     }
                 ],
+                "source_fitted_visual_mjcf": {
+                    "visual_replacements": 28,
+                    "replacement_failures": 0,
+                },
+                "source_fitted_assembly_media": [
+                    {
+                        "name": "front",
+                        "path": str(media_root / "fembot_source_fitted_assembly_front.png"),
+                    },
+                    {
+                        "name": "left",
+                        "path": str(media_root / "fembot_source_fitted_assembly_left.png"),
+                    },
+                    {
+                        "name": "three_quarter",
+                        "path": str(
+                            media_root / "fembot_source_fitted_assembly_three_quarter.png"
+                        ),
+                    },
+                ],
             }
         ),
         encoding="utf-8",
@@ -49,6 +69,16 @@ def test_fembot_media_review_validates_screenshots_and_joint_video(tmp_path) -> 
     source_fit_image = Image.new("RGB", (32, 24), (30, 100, 120))
     source_fit_image.putpixel((3, 3), (230, 220, 70))
     source_fit_image.save(media_root / "fembot_source_fitted_left_toe.png")
+    for index, name in enumerate(
+        [
+            "fembot_source_fitted_assembly_front.png",
+            "fembot_source_fitted_assembly_left.png",
+            "fembot_source_fitted_assembly_three_quarter.png",
+        ]
+    ):
+        image = Image.new("RGB", (32, 24), (80, 30 + index * 20, 120))
+        image.putpixel((4, 4), (235, 235, 80))
+        image.save(media_root / name)
 
     report = build_fembot_media_review_proof(media_root=media_root, proof_path=proof_path)
 
@@ -64,6 +94,16 @@ def test_fembot_media_review_validates_screenshots_and_joint_video(tmp_path) -> 
     assert report["summary"]["source_fitted_part_links"] == ["LEFT_TOE"]
     assert report["summary"]["missing_source_fitted_part_screenshots"] == []
     assert report["summary"]["blank_source_fitted_part_screenshots"] == []
+    assert report["summary"]["source_fitted_visual_mjcf_replacements"] == 28
+    assert report["summary"]["source_fitted_visual_mjcf_replacement_failures"] == 0
+    assert report["summary"]["source_fitted_assembly_screenshot_count"] == 3
+    assert report["summary"]["source_fitted_assembly_screenshot_names"] == [
+        "front",
+        "left",
+        "three_quarter",
+    ]
+    assert report["summary"]["missing_source_fitted_assembly_screenshots"] == []
+    assert report["summary"]["blank_source_fitted_assembly_screenshots"] == []
 
 
 def test_fembot_media_review_reports_missing_round_media(tmp_path) -> None:

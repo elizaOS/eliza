@@ -285,6 +285,19 @@ def _link_record(
                     ),
                     "height_preserved": full_cavity_candidate.get("height_preserved"),
                     "z_expansion_m": full_cavity_candidate.get("z_expansion_m"),
+                    "strict_extent_max_abs_error_m": full_cavity_candidate.get(
+                        "strict_extent_max_abs_error_m"
+                    ),
+                    "full_cavity_clearance_extent_tolerance_m": (
+                        full_cavity_candidate.get(
+                            "full_cavity_clearance_extent_tolerance_m"
+                        )
+                    ),
+                    "full_cavity_clearance_extent_within_tolerance": (
+                        full_cavity_candidate.get(
+                            "full_cavity_clearance_extent_within_tolerance"
+                        )
+                    ),
                     "xy_area_increase_fraction": full_cavity_candidate.get(
                         "xy_area_increase_fraction"
                     ),
@@ -295,7 +308,10 @@ def _link_record(
                 limit=0.0,
                 verified=bool(
                     full_cavity_candidate.get("reload_ok")
-                    and full_cavity_candidate.get("extent_within_tolerance")
+                    and full_cavity_candidate.get(
+                        "full_cavity_clearance_extent_within_tolerance",
+                        full_cavity_candidate.get("extent_within_tolerance"),
+                    )
                     and full_cavity_candidate.get("internal_cavity_cleared")
                 ),
                 proofs=["asimov-fembot-generated-cad-parametric-v1"],

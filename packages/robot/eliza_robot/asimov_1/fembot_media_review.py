@@ -84,6 +84,28 @@ def build_fembot_media_review_proof(
         for item in source_fitted_part_media
         if isinstance(item, dict) and item.get("path")
     ]
+    source_fitted_assembly_media = (
+        existing_proof.get("source_fitted_assembly_media")
+        if isinstance(existing_proof, dict)
+        else []
+    )
+    if not isinstance(source_fitted_assembly_media, list):
+        source_fitted_assembly_media = []
+    source_fitted_assembly_images = [
+        _image_report(Path(str(item.get("path"))))
+        | {
+            "name": item.get("name"),
+        }
+        for item in source_fitted_assembly_media
+        if isinstance(item, dict) and item.get("path")
+    ]
+    source_fitted_visual_mjcf = (
+        existing_proof.get("source_fitted_visual_mjcf")
+        if isinstance(existing_proof, dict)
+        else {}
+    )
+    if not isinstance(source_fitted_visual_mjcf, dict):
+        source_fitted_visual_mjcf = {}
 
     missing_screenshots = [item["path"] for item in screenshots if not item["exists"]]
     blank_screenshots = [item["path"] for item in screenshots if item["exists"] and not item["nonblank"]]
@@ -95,8 +117,22 @@ def build_fembot_media_review_proof(
         for item in source_fitted_part_images
         if item["exists"] and not item["nonblank"]
     ]
+    missing_source_fitted_assembly_images = [
+        item["path"] for item in source_fitted_assembly_images if not item["exists"]
+    ]
+    blank_source_fitted_assembly_images = [
+        item["path"]
+        for item in source_fitted_assembly_images
+        if item["exists"] and not item["nonblank"]
+    ]
     frame_count = (existing_proof.get("video") or {}).get("frame_count") if isinstance(existing_proof, dict) else None
     joint_count = joint_motion.get("joint_count")
+    source_fitted_visual_replacements = int(
+        source_fitted_visual_mjcf.get("visual_replacements") or 0
+    )
+    source_fitted_visual_failures = int(
+        source_fitted_visual_mjcf.get("replacement_failures") or 0
+    )
     ok = bool(
         not missing_screenshots
         and not blank_screenshots
@@ -107,6 +143,11 @@ def build_fembot_media_review_proof(
         and joint_count > 0
         and not missing_source_fitted_part_images
         and not blank_source_fitted_part_images
+        and source_fitted_visual_replacements == 28
+        and source_fitted_visual_failures == 0
+        and len(source_fitted_assembly_images) >= 3
+        and not missing_source_fitted_assembly_images
+        and not blank_source_fitted_assembly_images
     )
     return {
         "schema": FEMBOT_MEDIA_REVIEW_SCHEMA,
@@ -133,6 +174,20 @@ def build_fembot_media_review_proof(
             ),
             "missing_source_fitted_part_screenshots": missing_source_fitted_part_images,
             "blank_source_fitted_part_screenshots": blank_source_fitted_part_images,
+            "source_fitted_visual_mjcf_replacements": source_fitted_visual_replacements,
+            "source_fitted_visual_mjcf_replacement_failures": source_fitted_visual_failures,
+            "source_fitted_assembly_screenshot_count": len(source_fitted_assembly_images),
+            "source_fitted_assembly_screenshot_names": sorted(
+                str(item.get("name"))
+                for item in source_fitted_assembly_images
+                if item.get("name")
+            ),
+            "missing_source_fitted_assembly_screenshots": (
+                missing_source_fitted_assembly_images
+            ),
+            "blank_source_fitted_assembly_screenshots": (
+                blank_source_fitted_assembly_images
+            ),
             "accepted": False,
             "acceptance_blocker": (
                 "screenshots and constrained all-joint video exist, but production "
@@ -141,6 +196,8 @@ def build_fembot_media_review_proof(
         },
         "screenshots": screenshots,
         "source_fitted_part_screenshots": source_fitted_part_images,
+        "source_fitted_assembly_screenshots": source_fitted_assembly_images,
+        "source_fitted_visual_mjcf": source_fitted_visual_mjcf,
         "video": video,
         "joint_motion": joint_motion,
     }

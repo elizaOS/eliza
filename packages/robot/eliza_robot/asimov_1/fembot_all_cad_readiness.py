@@ -20,15 +20,33 @@ from eliza_robot.asimov_1.fembot_cad_primitive_mjcf import (
 from eliza_robot.asimov_1.fembot_generated_cad import (
     build_fembot_generated_cad_envelope_proof,
 )
+from eliza_robot.asimov_1.fembot_mate_feature_cut_preview import (
+    build_fembot_mate_feature_cut_preview_proof,
+)
+from eliza_robot.asimov_1.fembot_mate_feature_spatial_fit import (
+    build_fembot_mate_feature_spatial_fit_proof,
+)
+from eliza_robot.asimov_1.fembot_mate_feature_specs import (
+    build_fembot_mate_feature_specs_proof,
+)
 from eliza_robot.asimov_1.fembot_mesh_traceability import (
     build_fembot_mesh_parametric_traceability_proof,
 )
 from eliza_robot.asimov_1.fembot_mjcf import FEMBOT_MJCF_PATH
+from eliza_robot.asimov_1.fembot_post_cut_validation import (
+    build_fembot_post_cut_validation_proof,
+)
+from eliza_robot.asimov_1.fembot_source_fitted_params import (
+    build_fembot_source_fitted_params_proof,
+)
 from eliza_robot.asimov_1.fembot_topology import build_fembot_topology_proof
 from eliza_robot.asimov_1.fembot_topology_promotion import (
     build_fembot_topology_promotion_proof,
 )
 from eliza_robot.asimov_1.fembot_waist_yaw_no_cutout import build_waist_yaw_no_cutout_proof
+from eliza_robot.asimov_1.fembot_wrist_fastener_redesign import (
+    build_fembot_wrist_fastener_redesign_proof,
+)
 from eliza_robot.asimov_1.parametric_inventory import ASIMOV_PARAM_PROOFS
 
 FEMBOT_ALL_CAD_READINESS_SCHEMA = "asimov-fembot-all-cad-readiness-v1"
@@ -122,6 +140,16 @@ def build_fembot_all_cad_readiness_proof(
     source_decision_report: dict[str, Any] | None = None,
     brep_surface_fit_report: dict[str, Any] | None = None,
     link_source_assignment_report: dict[str, Any] | None = None,
+    source_fitted_params_report: dict[str, Any] | None = None,
+    material_report: dict[str, Any] | None = None,
+    mold_dfm_report: dict[str, Any] | None = None,
+    structural_report: dict[str, Any] | None = None,
+    supplier_pocket_plan_report: dict[str, Any] | None = None,
+    mate_feature_specs_report: dict[str, Any] | None = None,
+    mate_feature_cut_preview_report: dict[str, Any] | None = None,
+    post_cut_validation_report: dict[str, Any] | None = None,
+    mate_feature_spatial_fit_report: dict[str, Any] | None = None,
+    wrist_fastener_redesign_report: dict[str, Any] | None = None,
     mjcf_path: Path = FEMBOT_MJCF_PATH,
     source_mjcf_path: Path = ASIMOV1_GENERATED_MJCF,
 ) -> dict[str, Any]:
@@ -166,6 +194,72 @@ def build_fembot_all_cad_readiness_proof(
     link_source_assignment = link_source_assignment_report or _load_json(
         ASIMOV_PARAM_PROOFS / "fembot-link-source-assignments.json"
     ) or {}
+    source_fitted_params = (
+        source_fitted_params_report
+        or _load_json(ASIMOV_PARAM_PROOFS / "fembot-source-fitted-params.json")
+        or build_fembot_source_fitted_params_proof(
+            body_groups,
+            generated_cad_report=generated,
+        )
+    )
+    material = material_report or _load_json(
+        ASIMOV_PARAM_PROOFS / "fembot-material-manufacturing.json"
+    ) or {}
+    mold_dfm = mold_dfm_report or _load_json(
+        ASIMOV_PARAM_PROOFS / "fembot-mold-dfm.json"
+    ) or {}
+    structural = structural_report or _load_json(
+        ASIMOV_PARAM_PROOFS / "fembot-structural-sanity.json"
+    ) or {}
+    supplier_pocket_plan = supplier_pocket_plan_report or _load_json(
+        ASIMOV_PARAM_PROOFS / "fembot-supplier-pocket-plan.json"
+    ) or {}
+    mate_feature_specs = (
+        mate_feature_specs_report
+        or _load_json(ASIMOV_PARAM_PROOFS / "fembot-mate-feature-specs.json")
+        or build_fembot_mate_feature_specs_proof(
+            body_groups,
+            generated_cad_report=generated,
+        )
+    )
+    mate_feature_spatial_fit = (
+        mate_feature_spatial_fit_report
+        or _load_json(ASIMOV_PARAM_PROOFS / "fembot-mate-feature-spatial-fit.json")
+        or build_fembot_mate_feature_spatial_fit_proof(
+            body_groups,
+            generated_cad_report=generated,
+            mate_feature_specs_report=mate_feature_specs,
+        )
+    )
+    wrist_fastener_redesign = (
+        wrist_fastener_redesign_report
+        or _load_json(ASIMOV_PARAM_PROOFS / "fembot-wrist-fastener-redesign.json")
+        or build_fembot_wrist_fastener_redesign_proof(
+            body_groups,
+            spatial_fit_report=mate_feature_spatial_fit,
+        )
+    )
+    mate_feature_cut_preview = mate_feature_cut_preview_report or _load_json(
+        ASIMOV_PARAM_PROOFS / "fembot-mate-feature-cut-preview.json"
+    )
+    if int(
+        (mate_feature_cut_preview or {}).get("summary", {}).get("feature_cut_step_links")
+        or 0
+    ) < int(mate_feature_specs.get("summary", {}).get("joint_feature_spec_records") or 0):
+        mate_feature_cut_preview = build_fembot_mate_feature_cut_preview_proof(
+            body_groups,
+            mate_feature_specs_report=mate_feature_specs,
+            wrist_fastener_redesign_report=wrist_fastener_redesign,
+        )
+    post_cut_validation = (
+        post_cut_validation_report
+        or _load_json(ASIMOV_PARAM_PROOFS / "fembot-post-cut-validation.json")
+        or build_fembot_post_cut_validation_proof(
+            body_groups,
+            generated_cad_report=generated,
+            mate_feature_cut_preview_report=mate_feature_cut_preview,
+        )
+    )
     requested_links = sorted(
         {
             str(link).upper()
@@ -328,9 +422,11 @@ def build_fembot_all_cad_readiness_proof(
             else set()
         )
     )
+    source_fitted_params_accepted = bool(source_fitted_params.get("accepted"))
     exact_source_shape_ready = bool(
         source_shape_ready_links == len(requested_links)
         and not generated_placeholder_links
+        and source_fitted_params_accepted
     )
     physics_mesh_policy_ok = bool(
         generated_stl_physics_ready and stl_mesh_assets_have_parametric_provenance
@@ -343,6 +439,62 @@ def build_fembot_all_cad_readiness_proof(
         and generated.get("accepted")
     )
     generated_summary = generated.get("summary", {})
+    material_summary = material.get("summary", {})
+    mold_summary = mold_dfm.get("summary", {})
+    material_local_screens_present = bool(
+        material.get("ok")
+        and int(material_summary.get("generated_geometry_measurement_parts") or 0)
+        == len(requested_links)
+        and int(material_summary.get("generated_adjusted_wall_thickness_ready_parts") or 0)
+        == len(requested_links)
+        and int(material_summary.get("generated_preliminary_mass_property_parts") or 0)
+        == len(requested_links)
+    )
+    mold_local_screens_present = bool(
+        mold_dfm.get("ok")
+        and int(mold_summary.get("full_cavity_clearance_verified_shells") or 0)
+        == int(mold_summary.get("smooth_shell_records") or -1)
+        and int(mold_summary.get("internal_cavity_clearance_failures") or 0) == 0
+    )
+    structural_summary = structural.get("summary", {})
+    structural_local_screens_present = bool(
+        structural.get("ok")
+        and int(structural_summary.get("links") or 0) == len(requested_links)
+        and int(structural_summary.get("analytic_load_case_failure_links") or 0) == 0
+        and int(structural_summary.get("preliminary_load_case_screen_pass_links") or 0)
+        == len(requested_links)
+        and int(structural_summary.get("preliminary_structural_screen_pass_links") or 0)
+        == len(requested_links)
+        and structural_summary.get("minimum_preliminary_safety_factor") is not None
+        and float(structural_summary.get("minimum_preliminary_safety_factor") or 0.0) > 1.0
+        and structural_summary.get("max_preliminary_deflection_m") is not None
+    )
+    supplier_summary = supplier_pocket_plan.get("summary", {})
+    mate_feature_proxy_screens_present = bool(
+        supplier_pocket_plan.get("ok")
+        and int(supplier_summary.get("supplier_link_pocket_plans") or 0) > 0
+        and int(supplier_summary.get("placement_proxy_verified_plans") or 0)
+        == int(supplier_summary.get("supplier_link_pocket_plans") or -1)
+        and int(supplier_summary.get("mate_feature_proxy_verified_plans") or 0)
+        == int(supplier_summary.get("supplier_link_pocket_plans") or -1)
+    )
+    mate_feature_specs_summary = mate_feature_specs.get("summary", {})
+    mate_feature_cut_summary = mate_feature_cut_preview.get("summary", {})
+    post_cut_summary = post_cut_validation.get("summary", {})
+    mate_feature_spatial_summary = mate_feature_spatial_fit.get("summary", {})
+    wrist_fastener_redesign_summary = wrist_fastener_redesign.get("summary", {})
+    parametric_mate_feature_specs_present = bool(
+        mate_feature_specs.get("ok")
+        and int(mate_feature_specs_summary.get("parametric_mate_feature_spec_ready_links") or 0)
+        == len(requested_links)
+        and int(mate_feature_specs_summary.get("joint_feature_spec_records") or 0) >= 27
+        and int(mate_feature_specs_summary.get("child_interface_datum_records") or 0) >= 27
+    )
+    mate_feature_cut_tooling_present = bool(
+        mate_feature_cut_preview.get("ok")
+        and int(mate_feature_cut_summary.get("feature_cut_tool_step_links") or 0) >= 27
+        and int(mate_feature_cut_summary.get("feature_cut_tool_step_reloads") or 0) >= 27
+    )
     blocker_reasons = []
     if generated_placeholder_links:
         blocker_reasons.append(
@@ -354,10 +506,31 @@ def build_fembot_all_cad_readiness_proof(
             "source-shape fit is not ready across all requested links"
         )
     if not bool(generated.get("accepted")):
+        material_process_blocker = (
+            "production material/process validation"
+            if material_local_screens_present and mold_local_screens_present
+            else "material/process checks"
+        )
+        generated_subblockers = [
+            "production mate-feature validation"
+            if mate_feature_proxy_screens_present
+            else "mate features",
+            material_process_blocker,
+            "production structural validation"
+            if structural_local_screens_present
+            else "structural proof",
+            "collision validation",
+        ]
+        if int(
+            generated_summary.get("active_internal_cavity_residual_violation_links")
+            if generated_summary.get("active_internal_cavity_residual_violation_links")
+            is not None
+            else generated_summary.get("internal_cavity_violation_links") or 0
+        ) > 0:
+            generated_subblockers.insert(3, "internal cavity/keepout resolution")
         blocker_reasons.append(
             "the generated CAD proof is not production-accepted yet; remaining work includes "
-            "mate features, material/process checks, structural proof, internal cavity/keepout "
-            "resolution, and collision validation"
+            + ", ".join(generated_subblockers)
         )
     return {
         "schema": FEMBOT_ALL_CAD_READINESS_SCHEMA,
@@ -402,10 +575,187 @@ def build_fembot_all_cad_readiness_proof(
             "link_source_controlled_loft_assignments": link_source_assignment.get(
                 "summary", {}
             ).get("controlled_loft_assignments"),
+            "source_fitted_param_manifest_links": source_fitted_params.get(
+                "summary", {}
+            ).get("links"),
+            "source_fitted_param_manifest_accepted": source_fitted_params_accepted,
+            "source_fitted_param_manifest_step_export_reload_links": (
+                source_fitted_params.get("summary", {}).get("step_export_reload_links")
+            ),
+            "source_fitted_param_manifest_bbox_preserved_links": (
+                source_fitted_params.get("summary", {}).get(
+                    "source_control_bbox_preserved_links"
+                )
+            ),
+            "source_fitted_param_manifest_reloaded_envelope_preserved_links": (
+                source_fitted_params.get("summary", {}).get(
+                    "source_reloaded_envelope_preserved_links"
+                )
+            ),
             "source_shape_fit_ready": exact_source_shape_ready,
             "generated_cad_accepted": bool(generated.get("accepted")),
+            "material_local_screens_present": material_local_screens_present,
+            "mold_dfm_local_screens_present": mold_local_screens_present,
+            "material_manufacturing_ok": bool(material.get("ok")),
+            "material_manufacturing_accepted": bool(material.get("accepted")),
+            "mold_dfm_ok": bool(mold_dfm.get("ok")),
+            "mold_dfm_accepted": bool(mold_dfm.get("accepted")),
+            "structural_local_screens_present": structural_local_screens_present,
+            "structural_sanity_ok": bool(structural.get("ok")),
+            "structural_sanity_accepted": bool(structural.get("accepted")),
+            "structural_preliminary_screen_pass_links": structural_summary.get(
+                "preliminary_structural_screen_pass_links"
+            ),
+            "structural_preliminary_load_case_screen_pass_links": structural_summary.get(
+                "preliminary_load_case_screen_pass_links"
+            ),
+            "structural_analytic_load_case_failure_links": structural_summary.get(
+                "analytic_load_case_failure_links"
+            ),
+            "structural_minimum_preliminary_safety_factor": structural_summary.get(
+                "minimum_preliminary_safety_factor"
+            ),
+            "structural_max_preliminary_deflection_m": structural_summary.get(
+                "max_preliminary_deflection_m"
+            ),
+            "material_generated_geometry_measurement_parts": material.get(
+                "summary", {}
+            ).get("generated_geometry_measurement_parts"),
+            "material_generated_adjusted_wall_thickness_ready_parts": material.get(
+                "summary", {}
+            ).get("generated_adjusted_wall_thickness_ready_parts"),
+            "mold_dfm_full_cavity_clearance_verified_shells": mold_dfm.get(
+                "summary", {}
+            ).get("full_cavity_clearance_verified_shells"),
+            "mate_feature_proxy_screens_present": mate_feature_proxy_screens_present,
+            "parametric_mate_feature_specs_present": parametric_mate_feature_specs_present,
+            "mate_feature_specs_ok": bool(mate_feature_specs.get("ok")),
+            "mate_feature_specs_accepted": bool(mate_feature_specs.get("accepted")),
+            "mate_feature_specs_ready_links": mate_feature_specs_summary.get(
+                "parametric_mate_feature_spec_ready_links"
+            ),
+            "mate_feature_specs_joint_feature_records": mate_feature_specs_summary.get(
+                "joint_feature_spec_records"
+            ),
+            "mate_feature_specs_child_interface_datum_records": (
+                mate_feature_specs_summary.get("child_interface_datum_records")
+            ),
+            "mate_feature_specs_feature_cut_step_links": mate_feature_specs_summary.get(
+                "feature_cut_step_links"
+            ),
+            "mate_feature_cut_tooling_present": mate_feature_cut_tooling_present,
+            "mate_feature_cut_preview_ok": bool(mate_feature_cut_preview.get("ok")),
+            "mate_feature_cut_preview_accepted": bool(
+                mate_feature_cut_preview.get("accepted")
+            ),
+            "mate_feature_cut_tool_step_links": mate_feature_cut_summary.get(
+                "feature_cut_tool_step_links"
+            ),
+            "mate_feature_cut_tool_step_reloads": mate_feature_cut_summary.get(
+                "feature_cut_tool_step_reloads"
+            ),
+            "mate_feature_cut_wrist_fastener_redesign_applied_links": (
+                mate_feature_cut_summary.get("wrist_fastener_redesign_applied_links")
+            ),
+            "mate_feature_cut_source_body_step_links": mate_feature_cut_summary.get(
+                "feature_cut_step_links"
+            ),
+            "mate_feature_cut_source_body_step_reloads": mate_feature_cut_summary.get(
+                "feature_cut_step_reloads"
+            ),
+            "mate_feature_cut_source_cut_fallback_links": mate_feature_cut_summary.get(
+                "source_cut_fallback_links"
+            ),
+            "mate_feature_cut_source_cut_boolean_recovery_links": (
+                mate_feature_cut_summary.get("source_cut_boolean_recovery_links")
+            ),
+            "mate_feature_cut_post_cut_collision_validated_links": (
+                mate_feature_cut_summary.get("post_cut_collision_validated_links")
+            ),
+            "mate_feature_cut_post_cut_structural_validated_links": (
+                post_cut_summary.get("post_cut_structural_screen_pass_links")
+            ),
+            "post_cut_validation_ok": bool(post_cut_validation.get("ok")),
+            "post_cut_validation_accepted": bool(post_cut_validation.get("accepted")),
+            "post_cut_geometry_validated_links": post_cut_summary.get(
+                "post_cut_geometry_validated_links"
+            ),
+            "post_cut_topology_validated_links": post_cut_summary.get(
+                "post_cut_topology_validated_links"
+            ),
+            "post_cut_manufacturing_screen_pass_links": post_cut_summary.get(
+                "post_cut_manufacturing_screen_pass_links"
+            ),
+            "post_cut_structural_screen_pass_links": post_cut_summary.get(
+                "post_cut_structural_screen_pass_links"
+            ),
+            "post_cut_fragmented_links": post_cut_summary.get("post_cut_fragmented_links"),
+            "post_cut_high_volume_loss_links": post_cut_summary.get(
+                "post_cut_high_volume_loss_links"
+            ),
+            "mate_feature_spatial_fit_ok": bool(mate_feature_spatial_fit.get("ok")),
+            "mate_feature_spatial_fit_accepted": bool(
+                mate_feature_spatial_fit.get("accepted")
+            ),
+            "mate_feature_spatial_fit_records": mate_feature_spatial_summary.get(
+                "joint_feature_records"
+            ),
+            "mate_feature_spatial_fit_current_envelope_records": (
+                mate_feature_spatial_summary.get("fits_current_envelope_records")
+            ),
+            "mate_feature_spatial_fit_redesign_required_records": (
+                mate_feature_spatial_summary.get("redesign_required_records")
+            ),
+            "mate_feature_spatial_fit_redesign_required_links": (
+                mate_feature_spatial_summary.get("redesign_required_links")
+            ),
+            "mate_feature_spatial_fit_worst_margin_m": (
+                mate_feature_spatial_summary.get("worst_fit_margin_m")
+            ),
+            "wrist_fastener_redesign_ok": bool(wrist_fastener_redesign.get("ok")),
+            "wrist_fastener_redesign_accepted": bool(
+                wrist_fastener_redesign.get("accepted")
+            ),
+            "wrist_fastener_redesign_candidate_links": (
+                wrist_fastener_redesign_summary.get("redesign_candidate_links")
+            ),
+            "wrist_fastener_redesign_fit_links": (
+                wrist_fastener_redesign_summary.get(
+                    "redesign_fits_current_envelope_links"
+                )
+            ),
+            "wrist_fastener_redesign_remaining_spatial_failures": (
+                wrist_fastener_redesign_summary.get(
+                    "remaining_spatial_fit_failures_after_redesign"
+                )
+            ),
+            "wrist_fastener_redesign_min_revised_fit_margin_m": (
+                wrist_fastener_redesign_summary.get("min_revised_fit_margin_m")
+            ),
+            "supplier_pocket_plan_ok": bool(supplier_pocket_plan.get("ok")),
+            "supplier_pocket_plan_accepted": bool(supplier_pocket_plan.get("accepted")),
+            "supplier_pocket_plan_placement_proxy_verified_plans": (
+                supplier_summary.get("placement_proxy_verified_plans")
+            ),
+            "supplier_pocket_plan_mate_feature_proxy_verified_plans": (
+                supplier_summary.get("mate_feature_proxy_verified_plans")
+            ),
             "generated_internal_cavity_violation_links": generated_summary.get(
                 "internal_cavity_violation_links"
+            ),
+            "generated_internal_cavity_pre_clearance_violation_links": generated_summary.get(
+                "internal_cavity_pre_clearance_violation_links",
+                generated_summary.get("internal_cavity_violation_links"),
+            ),
+            "generated_active_internal_cavity_residual_violation_links": generated_summary.get(
+                "active_internal_cavity_residual_violation_links",
+                generated_summary.get("full_cavity_clearance_residual_violation_links"),
+            ),
+            "generated_full_cavity_clearance_cleared_links": generated_summary.get(
+                "full_cavity_clearance_cleared_links"
+            ),
+            "generated_full_cavity_clearance_residual_violation_links": generated_summary.get(
+                "full_cavity_clearance_residual_violation_links"
             ),
             "missing_generated_step_links": missing_generated_step_links,
             "parametric_part_scripts": len(parametric_part_scripts) - len(missing_parametric_part_scripts),
@@ -562,6 +912,11 @@ def build_fembot_all_cad_readiness_proof(
                 "accepted": bool(link_source_assignment.get("accepted")),
                 "summary": link_source_assignment.get("summary", {}),
             },
+            "source_fitted_params": {
+                "ok": bool(source_fitted_params.get("ok")),
+                "accepted": bool(source_fitted_params.get("accepted")),
+                "summary": source_fitted_params.get("summary", {}),
+            },
             "generated_placeholder_reference_links": generated_placeholder_links,
             "generated_source_fitted_controlled_loft_links": (
                 generated_source_fitted_loft_links
@@ -599,6 +954,11 @@ def build_fembot_all_cad_readiness_proof(
                 "topology": waist_yaw_no_cutout.get("topology", {}),
                 "error": waist_yaw_no_cutout.get("error"),
             },
+        },
+        "post_cut_validation": {
+            "ok": bool(post_cut_validation.get("ok")),
+            "accepted": bool(post_cut_validation.get("accepted")),
+            "summary": post_cut_validation.get("summary", {}),
         },
         "parametric_part_scripts": list(parametric_part_scripts.values()),
         "mesh_assets": asset_records,

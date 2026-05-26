@@ -21,9 +21,15 @@ from eliza_robot.asimov_1.fembot_all_cad_readiness import (
 from eliza_robot.asimov_1.fembot_assembly import build_fembot_assembly_proof
 from eliza_robot.asimov_1.fembot_body_matching import build_fembot_body_matching_proof
 from eliza_robot.asimov_1.fembot_cad_toolchain import build_fembot_cad_toolchain_readiness_proof
+from eliza_robot.asimov_1.fembot_cavity_resolution import (
+    build_fembot_cavity_resolution_proof,
+)
 from eliza_robot.asimov_1.fembot_clearance_projection import build_fembot_clearance_projection_proof
 from eliza_robot.asimov_1.fembot_component_constraints import (
     build_fembot_component_constraint_coverage_proof,
+)
+from eliza_robot.asimov_1.fembot_controller_telemetry import (
+    build_fembot_controller_telemetry_plan_proof,
 )
 from eliza_robot.asimov_1.fembot_controller_validation import (
     build_fembot_controller_validation_proof,
@@ -38,6 +44,21 @@ from eliza_robot.asimov_1.fembot_inertia_calibration import (
 )
 from eliza_robot.asimov_1.fembot_keepouts import build_fembot_keepout_proof
 from eliza_robot.asimov_1.fembot_link_sources import build_fembot_link_source_assignment_proof
+from eliza_robot.asimov_1.fembot_mass_reconciliation import (
+    build_fembot_mass_reconciliation_plan_proof,
+)
+from eliza_robot.asimov_1.fembot_mate_feature_cut_preview import (
+    build_fembot_mate_feature_cut_preview_proof,
+)
+from eliza_robot.asimov_1.fembot_mate_feature_spatial_fit import (
+    build_fembot_mate_feature_spatial_fit_proof,
+)
+from eliza_robot.asimov_1.fembot_mate_feature_specs import (
+    build_fembot_mate_feature_specs_proof,
+)
+from eliza_robot.asimov_1.fembot_mate_features import (
+    build_fembot_mate_features_plan_proof,
+)
 from eliza_robot.asimov_1.fembot_materials import build_fembot_material_manufacturing_proof
 from eliza_robot.asimov_1.fembot_media_review import build_fembot_media_review_proof
 from eliza_robot.asimov_1.fembot_mesh_traceability import (
@@ -45,14 +66,23 @@ from eliza_robot.asimov_1.fembot_mesh_traceability import (
 )
 from eliza_robot.asimov_1.fembot_mold_dfm import build_fembot_mold_dfm_proof
 from eliza_robot.asimov_1.fembot_motion_validation import build_fembot_collision_dynamics_proof
+from eliza_robot.asimov_1.fembot_package_redesign import (
+    build_fembot_package_redesign_plan_proof,
+)
 from eliza_robot.asimov_1.fembot_parametric_constraints import (
     build_fembot_parametric_constraints_proof,
+)
+from eliza_robot.asimov_1.fembot_post_cut_validation import (
+    build_fembot_post_cut_validation_proof,
 )
 from eliza_robot.asimov_1.fembot_proofs import (
     FEMBOT_PROOF_CONTRACTS,
     fembot_proof_contract_report,
 )
 from eliza_robot.asimov_1.fembot_slimming_envelope import build_fembot_slimming_envelope_proof
+from eliza_robot.asimov_1.fembot_source_fitted_params import (
+    build_fembot_source_fitted_params_proof,
+)
 from eliza_robot.asimov_1.fembot_source_manifest import build_fembot_source_manifest_proof
 from eliza_robot.asimov_1.fembot_structural import build_fembot_structural_sanity_proof
 from eliza_robot.asimov_1.fembot_supplier_pocket_plan import (
@@ -67,6 +97,9 @@ from eliza_robot.asimov_1.fembot_topology_promotion import (
     build_fembot_topology_promotion_proof,
 )
 from eliza_robot.asimov_1.fembot_visual_review import build_fembot_visual_review_proof
+from eliza_robot.asimov_1.fembot_wrist_fastener_redesign import (
+    build_fembot_wrist_fastener_redesign_proof,
+)
 from eliza_robot.asimov_1.mujoco_load_proof import build_mujoco_load_proof
 from eliza_robot.asimov_1.parametric_inventory import collect_asimov1_parametric_inventory
 
@@ -439,6 +472,12 @@ def collect_fembot_inventory(
         clearance_report=clearance_projection,
         component_constraint_report=component_constraints,
     )
+    source_fitted_params = build_fembot_source_fitted_params_proof(
+        records_dict,
+        generated_cad_report=generated_cad,
+        mesh_dir=mesh_dir,
+        mjcf_path=mjcf_path,
+    )
     hardware_measurements = build_fembot_hardware_measurement_requirements_proof(
         records_dict,
         component_constraint_report=component_constraints,
@@ -502,9 +541,17 @@ def collect_fembot_inventory(
         material_report=material_manufacturing,
         hardware_measurements=hardware_measurements,
     )
+    mass_reconciliation = build_fembot_mass_reconciliation_plan_proof(
+        records_dict,
+        inertia_calibration_report=inertia_calibration,
+    )
     controller_validation = build_fembot_controller_validation_proof(
         records_dict,
         source_mjcf=mjcf_path,
+    )
+    controller_telemetry = build_fembot_controller_telemetry_plan_proof(
+        records_dict,
+        controller_validation_report=controller_validation,
     )
     structural_sanity = build_fembot_structural_sanity_proof(
         records_dict,
@@ -518,6 +565,15 @@ def collect_fembot_inventory(
         generated_cad_report=generated_cad,
         structural_report=structural_sanity,
         component_constraint_report=component_constraints,
+    )
+    cavity_resolution = build_fembot_cavity_resolution_proof(
+        records_dict,
+        generated_cad_report=generated_cad,
+        thinness_frontier_report=thinness_frontier,
+    )
+    package_redesign_plan = build_fembot_package_redesign_plan_proof(
+        records_dict,
+        cavity_resolution_report=cavity_resolution,
     )
     parametric_constraints = build_fembot_parametric_constraints_proof(
         records_dict,
@@ -542,6 +598,11 @@ def collect_fembot_inventory(
         generated_cad_report=generated_cad,
         topology_report=generated_topology,
         topology_promotion_report=topology_promotion,
+        material_report=material_manufacturing,
+        mold_dfm_report=mold_dfm,
+        structural_report=structural_sanity,
+        supplier_pocket_plan_report=supplier_pocket_plan,
+        source_fitted_params_report=source_fitted_params,
     )
     if all_cad_readiness.get("accepted"):
         for record in records_dict:
@@ -555,6 +616,38 @@ def collect_fembot_inventory(
         generated_cad_report=generated_cad,
         mujoco_report=mujoco,
         structural_report=structural_sanity,
+    )
+    mate_features = build_fembot_mate_features_plan_proof(
+        records_dict,
+        assembly_report=assembly,
+        supplier_pocket_plan_report=supplier_pocket_plan,
+        hardware_measurements_report=hardware_measurements,
+    )
+    mate_feature_specs = build_fembot_mate_feature_specs_proof(
+        records_dict,
+        generated_cad_report=generated_cad,
+        assembly_report=assembly,
+        hardware_measurements_report=hardware_measurements,
+        mate_features_report=mate_features,
+    )
+    mate_feature_spatial_fit = build_fembot_mate_feature_spatial_fit_proof(
+        records_dict,
+        generated_cad_report=generated_cad,
+        mate_feature_specs_report=mate_feature_specs,
+    )
+    wrist_fastener_redesign = build_fembot_wrist_fastener_redesign_proof(
+        records_dict,
+        spatial_fit_report=mate_feature_spatial_fit,
+    )
+    mate_feature_cut_preview = build_fembot_mate_feature_cut_preview_proof(
+        records_dict,
+        mate_feature_specs_report=mate_feature_specs,
+        wrist_fastener_redesign_report=wrist_fastener_redesign,
+    )
+    post_cut_validation = build_fembot_post_cut_validation_proof(
+        records_dict,
+        generated_cad_report=generated_cad,
+        mate_feature_cut_preview_report=mate_feature_cut_preview,
     )
     fembot_collision_dynamics = build_fembot_collision_dynamics_proof(
         records_dict,
@@ -667,10 +760,20 @@ def collect_fembot_inventory(
             "accepted": bool(inertia_calibration.get("accepted")),
             "summary": inertia_calibration.get("summary", {}),
         },
+        "mass_reconciliation": {
+            "ok": bool(mass_reconciliation.get("ok")),
+            "accepted": bool(mass_reconciliation.get("accepted")),
+            "summary": mass_reconciliation.get("summary", {}),
+        },
         "controller_validation": {
             "ok": bool(controller_validation.get("ok")),
             "accepted": bool(controller_validation.get("accepted")),
             "summary": controller_validation.get("summary", {}),
+        },
+        "controller_telemetry": {
+            "ok": bool(controller_telemetry.get("ok")),
+            "accepted": bool(controller_telemetry.get("accepted")),
+            "summary": controller_telemetry.get("summary", {}),
         },
         "keepouts": {
             "ok": bool(keepouts.get("ok")),
@@ -697,6 +800,11 @@ def collect_fembot_inventory(
             "accepted": bool(generated_cad.get("accepted")),
             "summary": generated_cad.get("summary", {}),
         },
+        "source_fitted_params": {
+            "ok": bool(source_fitted_params.get("ok")),
+            "accepted": bool(source_fitted_params.get("accepted")),
+            "summary": source_fitted_params.get("summary", {}),
+        },
         "hardware_measurements": {
             "ok": bool(hardware_measurements.get("ok")),
             "accepted": bool(hardware_measurements.get("accepted")),
@@ -722,6 +830,16 @@ def collect_fembot_inventory(
             "accepted": bool(thinness_frontier.get("accepted")),
             "summary": thinness_frontier.get("summary", {}),
         },
+        "cavity_resolution": {
+            "ok": bool(cavity_resolution.get("ok")),
+            "accepted": bool(cavity_resolution.get("accepted")),
+            "summary": cavity_resolution.get("summary", {}),
+        },
+        "package_redesign_plan": {
+            "ok": bool(package_redesign_plan.get("ok")),
+            "accepted": bool(package_redesign_plan.get("accepted")),
+            "summary": package_redesign_plan.get("summary", {}),
+        },
         "parametric_constraints": {
             "ok": bool(parametric_constraints.get("ok")),
             "accepted": bool(parametric_constraints.get("accepted")),
@@ -741,6 +859,36 @@ def collect_fembot_inventory(
             "ok": bool(assembly.get("ok")),
             "accepted": bool(assembly.get("accepted")),
             "summary": assembly.get("summary", {}),
+        },
+        "mate_features": {
+            "ok": bool(mate_features.get("ok")),
+            "accepted": bool(mate_features.get("accepted")),
+            "summary": mate_features.get("summary", {}),
+        },
+        "mate_feature_specs": {
+            "ok": bool(mate_feature_specs.get("ok")),
+            "accepted": bool(mate_feature_specs.get("accepted")),
+            "summary": mate_feature_specs.get("summary", {}),
+        },
+        "mate_feature_cut_preview": {
+            "ok": bool(mate_feature_cut_preview.get("ok")),
+            "accepted": bool(mate_feature_cut_preview.get("accepted")),
+            "summary": mate_feature_cut_preview.get("summary", {}),
+        },
+        "post_cut_validation": {
+            "ok": bool(post_cut_validation.get("ok")),
+            "accepted": bool(post_cut_validation.get("accepted")),
+            "summary": post_cut_validation.get("summary", {}),
+        },
+        "mate_feature_spatial_fit": {
+            "ok": bool(mate_feature_spatial_fit.get("ok")),
+            "accepted": bool(mate_feature_spatial_fit.get("accepted")),
+            "summary": mate_feature_spatial_fit.get("summary", {}),
+        },
+        "wrist_fastener_redesign": {
+            "ok": bool(wrist_fastener_redesign.get("ok")),
+            "accepted": bool(wrist_fastener_redesign.get("accepted")),
+            "summary": wrist_fastener_redesign.get("summary", {}),
         },
         "visual_review": {
             "ok": bool(visual_review.get("ok")),

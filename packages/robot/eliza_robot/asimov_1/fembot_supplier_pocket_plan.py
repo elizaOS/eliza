@@ -79,6 +79,18 @@ def _parametric_supplier_links(report: dict[str, Any]) -> set[str]:
     return links
 
 
+def _generated_supplier_adjusted_links(report: dict[str, Any]) -> set[str]:
+    links: set[str] = set()
+    for record in report.get("link_steps", []):
+        if not isinstance(record, dict):
+            continue
+        link = str(record.get("link", "")).upper()
+        candidate = record.get("supplier_vendor_adjusted_candidate") or {}
+        if link and candidate.get("required") and candidate.get("reload_ok"):
+            links.add(link)
+    return links
+
+
 def _supplier_code_body_summary(target: dict[str, Any]) -> dict[str, Any]:
     body_extents = [
         [float(value) for value in extent]
@@ -298,8 +310,12 @@ def _attach_placement_proxy_results(
                     "placement_proxy_reload_ok": False,
                     "placement_proxy_extent_within_tolerance": False,
                     "placement_proxy_solid_count": 0,
+                    "placement_proxy_verified": False,
                 }
             )
+            mate = record.get("mate_feature_assignment")
+            if isinstance(mate, dict):
+                mate["proxy_verified"] = False
             continue
         step_path = Path(str(proxy["step_path"]))
         requested = [float(value) for value in proxy.get("requested_extent_m", [])]
@@ -325,8 +341,19 @@ def _attach_placement_proxy_results(
                 "placement_proxy_reload_ok": bool(proxy.get("reload_ok")),
                 "placement_proxy_extent_within_tolerance": extent_within_tolerance,
                 "placement_proxy_solid_count": int(proxy.get("solid_count") or 0),
+                "placement_proxy_verified": bool(
+                    proxy.get("reload_ok")
+                    and extent_within_tolerance
+                    and int(proxy.get("solid_count") or 0) == 1
+                ),
             }
         )
+        mate = record.get("mate_feature_assignment")
+        if isinstance(mate, dict):
+            mate["proxy_verified"] = bool(
+                record["placement_proxy_verified"]
+                and len(record.get("mate_feature_ids") or []) >= 3
+            )
 
 
 def _candidate_placement_transform(
@@ -620,10 +647,12 @@ def _plan_record(
         "placement_frame": "generated_link_local_bbox_center",
         "placement_transform_m": placement_transform,
         "placement_transform_accepted": False,
+        "placement_proxy_verified": False,
         "mate_feature_ids": mate_feature_ids,
         "mate_feature_assignment": {
             "source": "generated_bbox_axis_alignment_candidate",
             "candidate": True,
+            "proxy_verified": False,
             "accepted": False,
             "blocking_reason": (
                 "candidate mate identifiers are derived from the generated bbox and "
@@ -668,6 +697,14 @@ def build_fembot_supplier_pocket_plan_proof(
         or _load_json(ASIMOV_PARAM_PROOFS / "fembot-generated-cad-envelope.json")
         or build_fembot_generated_cad_envelope_proof(body_groups)
     )
+    persisted_generated = _load_json(
+        ASIMOV_PARAM_PROOFS / "fembot-generated-cad-envelope.json"
+    )
+    supplier_generated = (
+        generated
+        if _generated_supplier_adjusted_links(generated)
+        else (persisted_generated or generated)
+    )
     parametric = (
         parametric_constraint_report
         or _load_json(ASIMOV_PARAM_PROOFS / "fembot-parametric-constraints.json")
@@ -677,8 +714,11 @@ def build_fembot_supplier_pocket_plan_proof(
         )
     )
     supplier_targets = _supplier_targets_by_code(component)
-    generated_links = _generated_by_link(generated)
-    supplier_links = sorted(_parametric_supplier_links(parametric))
+    generated_links = _generated_by_link(supplier_generated)
+    supplier_links = sorted(
+        _parametric_supplier_links(parametric)
+        or _generated_supplier_adjusted_links(supplier_generated)
+    )
     structural = (
         structural_report
         or _load_json(ASIMOV_PARAM_PROOFS / "fembot-structural-sanity.json")
@@ -750,6 +790,12 @@ def build_fembot_supplier_pocket_plan_proof(
         "source": {
             "component_constraint_schema": component.get("schema"),
             "generated_cad_schema": generated.get("schema"),
+            "supplier_generated_cad_schema": supplier_generated.get("schema"),
+            "supplier_generated_source": (
+                "provided_generated_cad_report"
+                if supplier_generated is generated
+                else "persisted_generated_cad_report"
+            ),
             "parametric_constraint_schema": parametric.get("schema"),
             "placement_proxy_backend": proxy_result.get("backend"),
             "placement_proxy_python": proxy_result.get("python"),
@@ -776,6 +822,9 @@ def build_fembot_supplier_pocket_plan_proof(
             "candidate_placement_proxy_failures": proxy_failures,
             "candidate_placement_proxy_extent_tolerance_failures": proxy_extent_failures,
             "candidate_placement_proxy_single_solid_plans": proxy_single_solid,
+            "placement_proxy_verified_plans": sum(
+                1 for record in pocket_records if record["placement_proxy_verified"]
+            ),
             "accepted_placement_transforms": sum(
                 1 for record in pocket_records if record["placement_transform_accepted"]
             ),
@@ -787,6 +836,11 @@ def build_fembot_supplier_pocket_plan_proof(
                 for record in pocket_records
                 if record.get("mate_feature_assignment", {}).get("candidate")
             ),
+            "mate_feature_proxy_verified_plans": sum(
+                1
+                for record in pocket_records
+                if record.get("mate_feature_assignment", {}).get("proxy_verified")
+            ),
             "mate_feature_unassigned_plans": sum(
                 1 for record in pocket_records if not record["mate_feature_ids"]
             ),
@@ -797,7 +851,15 @@ def build_fembot_supplier_pocket_plan_proof(
                 1 for record in pocket_records if record.get("fastener_access", {}).get("candidate")
             ),
             "fastener_access_unverified_plans": sum(
-                1 for record in pocket_records if not record["fastener_access_verified"]
+                1
+                for record in pocket_records
+                if record.get("fastener_access", {}).get("required")
+                and not record["fastener_access_verified"]
+            ),
+            "fastener_access_not_required_plans": sum(
+                1
+                for record in pocket_records
+                if not record.get("fastener_access", {}).get("required")
             ),
             "collision_precheck_candidate_plans": sum(
                 1 for record in pocket_records if record["collision_precheck_candidate"]
@@ -817,9 +879,10 @@ def build_fembot_supplier_pocket_plan_proof(
             ),
             "accepted": False,
             "acceptance_blocker": (
-                "supplier pocket plans are bbox-cleared but exact placement, mate "
-                "features, fastener/tool access, collision validation, and structural "
-                "validation remain unaccepted"
+                "supplier pocket plans are bbox-cleared with reloadable placement "
+                "proxy STEP artifacts and proxy mate identifiers; exact assembly "
+                "placement, STEP face/bores, fastener/tool access, collision "
+                "validation, and structural validation remain unaccepted"
             ),
         },
         "pocket_plans": pocket_records,

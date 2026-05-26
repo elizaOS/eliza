@@ -124,6 +124,16 @@ def _generated_part_record(record: dict[str, Any]) -> dict[str, Any]:
     adjusted_wall_ok = adjusted_wall >= process_wall
     requires_draft_review = manufacturing["draft_angle_deg"] is not None
     requires_tool_access = bool(manufacturing["requires_tool_access_check"])
+    geometry_measurements_present = bool(
+        volume_m3 > 0.0
+        and len(extents) == 3
+        and all(float(value) > 0.0 for value in extents)
+        and nominal_wall > 0.0
+    )
+    preliminary_mass_properties_present = bool(
+        mass_kg > 0.0
+        and all(float(value) > 0.0 for value in inertia_box.values() if isinstance(value, float))
+    )
     return {
         "part_id": record["link"],
         "group": record["group"],
@@ -149,14 +159,18 @@ def _generated_part_record(record: dict[str, Any]) -> dict[str, Any]:
         "requires_tool_access_check": requires_tool_access,
         "requires_flatness_check": manufacturing["requires_flatness_check"],
         "requires_smoothness_check": manufacturing["requires_smoothness_check"],
+        "geometry_measurements_present": geometry_measurements_present,
+        "preliminary_mass_properties_present": preliminary_mass_properties_present,
         "reloaded_volume_m3": volume_m3,
         "mass_estimate_kg": mass_kg,
         "bbox_inertia_estimate": inertia_box,
         "accepted": False,
         "blocking_reason": (
-            "generated part has material/process/mass inputs, but manufacturing acceptance "
-            "still needs exact material choice, tolerance drawings, tool access, draft/undercut, "
-            "fastener/bearing features, and process-specific inspection evidence"
+            "generated part has local geometry, wall, material-class, and preliminary "
+            "mass-property inputs, but manufacturing acceptance still needs released "
+            "material/process selection, tolerance drawings, tool-access or draft/undercut "
+            "proof where applicable, fastener/bearing features, and process-specific "
+            "inspection evidence"
         ),
     }
 
@@ -169,9 +183,9 @@ def build_fembot_material_manufacturing_proof(
     """Classify candidate STEP parts by material/process.
 
     This proof is intentionally not accepted for production by itself. It proves
-    source classification coverage for the current ASIMOV fabrication folders,
-    but the final fembot needs generated per-part geometry measurements before
-    material/manufacturing proof contracts can pass.
+    source classification coverage plus local generated-part geometry, wall, mass,
+    and process-screen measurements; released production still needs the missing
+    material/process validation gates surfaced in the summary.
     """
     group_reports = []
     unknown_candidates = []
@@ -209,9 +223,11 @@ def build_fembot_material_manufacturing_proof(
                 "classification_ok": classification_ok,
                 "accepted": False,
                 "blocking_reason": (
-                    "candidate STEP folders are classified, but generated fembot parts "
-                    "do not yet have measured wall thickness, flatness/smoothness, "
-                    "tool access, draft/undercut, tolerance, mass, or inertia proofs"
+                    "candidate STEP folders are classified, and generated fembot parts "
+                    "now carry local wall, volume, envelope, mass, and inertia estimates; "
+                    "production release still needs exact material/process selection, "
+                    "flatness/smoothness inspection, tool access, draft/undercut, "
+                    "tolerance, and measured mass/inertia evidence"
                 ),
             }
         )
@@ -237,6 +253,17 @@ def build_fembot_material_manufacturing_proof(
         record for record in generated_parts if record["requires_tool_access_check"]
     ]
     generated_draft_pending = [record for record in generated_parts if record["requires_draft_review"]]
+    generated_geometry_measurement_missing = [
+        record for record in generated_parts if not record["geometry_measurements_present"]
+    ]
+    generated_preliminary_mass_missing = [
+        record for record in generated_parts if not record["preliminary_mass_properties_present"]
+    ]
+    generated_adjusted_wall_ready = [
+        record
+        for record in generated_parts
+        if record["manufacturing_adjusted_wall_thickness_ok"]
+    ]
     generated_material_counts: dict[str, int] = {}
     generated_total_mass = 0.0
     for record in generated_parts:
@@ -259,14 +286,39 @@ def build_fembot_material_manufacturing_proof(
             "generated_part_records": len(generated_parts),
             "generated_material_class_counts": dict(sorted(generated_material_counts.items())),
             "generated_mass_estimate_kg": generated_total_mass,
+            "generated_geometry_measurement_parts": (
+                len(generated_parts) - len(generated_geometry_measurement_missing)
+            ),
+            "generated_geometry_measurement_missing_parts": len(
+                generated_geometry_measurement_missing
+            ),
+            "generated_preliminary_mass_property_parts": (
+                len(generated_parts) - len(generated_preliminary_mass_missing)
+            ),
+            "generated_preliminary_mass_property_missing_parts": len(
+                generated_preliminary_mass_missing
+            ),
             "generated_wall_thickness_failures": len(generated_wall_failures),
             "generated_adjusted_wall_thickness_failures": len(
                 generated_adjusted_wall_failures
             ),
+            "generated_adjusted_wall_thickness_ready_parts": len(
+                generated_adjusted_wall_ready
+            ),
             "generated_tool_access_pending_parts": len(generated_tool_access_pending),
             "generated_draft_review_pending_parts": len(generated_draft_pending),
+            "production_material_selection_pending_parts": len(generated_parts),
+            "production_tolerance_drawing_pending_parts": len(generated_parts),
+            "production_inspection_pending_parts": len(generated_parts),
             "material_properties_accepted": False,
             "manufacturing_process_accepted": False,
+            "acceptance_blocker": (
+                "local material-class, generated geometry, adjusted wall, and preliminary "
+                "mass-property screens are present; production acceptance still needs exact "
+                "released materials/processes, tolerance drawings, process-specific "
+                "draft/tool-access/inspection proof, fastener/bearing feature validation, "
+                "and measured hardware mass/inertia"
+            ),
         },
         "unknown_candidates": unknown_candidates,
         "body_groups": group_reports,

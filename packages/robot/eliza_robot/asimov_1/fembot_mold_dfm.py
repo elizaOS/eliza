@@ -27,8 +27,8 @@ def _draw_ratio(extents: list[float]) -> float:
 
 def _recommended_process(*, group: str, shape_family: str) -> str:
     if group in {"torso", "head"}:
-        return "molded_shell_candidate_needs_draft_split_and_keepout_resolution"
-    if "limb" in shape_family:
+        return "molded_shell_candidate_needs_draft_split_and_parting_proof"
+    if group in {"arm", "leg"} or "limb" in shape_family:
         return "split_structural_shell_or_additive_reference_before_production"
     return "smooth_shell_reference_needs_process_selection"
 
@@ -67,8 +67,8 @@ def _wall_adjustment_preview(
         "accepted": False,
         "blocking_reason": (
             "wall thickening can be represented by the shell wall_thickness_m "
-            "parameter, but production still needs resolved internal keepouts, draft, "
-            "split-line/trim features, and revalidated collision/structural proofs"
+            "parameter, but production still needs draft, split-line/trim features, "
+            "and revalidated cavity, collision, and structural proofs after process edits"
         ),
     }
 
@@ -77,7 +77,19 @@ def _dfm_record(record: dict[str, Any]) -> dict[str, Any]:
     extents = [float(value) for value in record.get("reloaded_bbox_extent_m", [])]
     wall = float(record.get("wall_thickness_m") or 0.0)
     cavity = record.get("internal_cavity") or {}
-    cavity_violations = int(cavity.get("violation_count") or 0)
+    pre_clearance_cavity_violations = int(cavity.get("violation_count") or 0)
+    full_clearance = record.get("full_cavity_clearance_candidate") or {}
+    full_clearance_cavity = full_clearance.get("internal_cavity") or {}
+    full_clearance_verified = bool(
+        full_clearance.get("required")
+        and full_clearance.get("reload_ok")
+        and full_clearance.get("internal_cavity_cleared")
+    )
+    active_cavity_violations = (
+        int(full_clearance_cavity.get("violation_count") or 0)
+        if full_clearance_verified
+        else pre_clearance_cavity_violations
+    )
     draw_ratio = _draw_ratio(extents)
     injection_wall_ok = wall >= INJECTION_MIN_WALL_M
     vacuform_wall_ok = wall >= VACUFORM_MIN_WALL_M
@@ -87,7 +99,11 @@ def _dfm_record(record: dict[str, Any]) -> dict[str, Any]:
     trim_flange_candidate = record["group"] in {"torso", "head"}
     decorative_cutout_free = "cutout" in str(record.get("cutout_policy") or "").lower()
     smooth_chest_no_cutout = bool(record.get("smooth_chest_no_cutout_loft"))
-    cavity_minimum_clearance = cavity.get("minimum_projected_clearance_m")
+    cavity_minimum_clearance = (
+        full_clearance_cavity.get("minimum_projected_clearance_m")
+        if full_clearance_verified
+        else cavity.get("minimum_projected_clearance_m")
+    )
     cavity_minimum_clearance_m = (
         float(cavity_minimum_clearance)
         if cavity_minimum_clearance is not None
@@ -100,7 +116,7 @@ def _dfm_record(record: dict[str, Any]) -> dict[str, Any]:
     draft_proven = False
     undercut_proven = False
     split_line_proven = False
-    cavity_clearance_ok = cavity_violations == 0
+    cavity_clearance_ok = active_cavity_violations == 0
     return {
         "link": record["link"],
         "group": record["group"],
@@ -118,7 +134,9 @@ def _dfm_record(record: dict[str, Any]) -> dict[str, Any]:
         "cutout_policy": record.get("cutout_policy"),
         "decorative_cutout_free": decorative_cutout_free,
         "smooth_chest_no_cutout_loft": smooth_chest_no_cutout,
-        "internal_cavity_violation_count": cavity_violations,
+        "internal_cavity_violation_count": active_cavity_violations,
+        "internal_cavity_pre_clearance_violation_count": pre_clearance_cavity_violations,
+        "full_cavity_clearance_verified": full_clearance_verified,
         "internal_cavity_minimum_projected_clearance_m": cavity_minimum_clearance_m,
         "injection_wall_adjustment_preview": wall_adjustment_preview,
         "injection_molding": {
@@ -164,7 +182,8 @@ def _dfm_record(record: dict[str, Any]) -> dict[str, Any]:
         "blocking_reason": (
             "smooth loft has a generated shell reference, but production molding "
             "still needs explicit draft analysis, undercut/split-line proof, trim or "
-            "parting features, and resolved internal keepout/cavity clearance"
+            "parting features, and cavity/collision/structural revalidation for the "
+            "selected process"
         ),
     }
 
@@ -200,6 +219,14 @@ def build_fembot_mold_dfm_proof(
         record
         for record in records
         if int(record["internal_cavity_violation_count"]) > 0
+    ]
+    pre_clearance_cavity_failures = [
+        record
+        for record in records
+        if int(record["internal_cavity_pre_clearance_violation_count"]) > 0
+    ]
+    full_cavity_clearance_verified = [
+        record for record in records if record["full_cavity_clearance_verified"]
     ]
     torso_head = [record for record in records if record["group"] in {"torso", "head"}]
     limb = [record for record in records if record["group"] in {"arm", "leg"}]
@@ -262,6 +289,8 @@ def build_fembot_mold_dfm_proof(
             "injection_draw_ratio_screen_failures": len(injection_draw_failures),
             "vacuform_draw_ratio_failures": len(vacuform_draw_failures),
             "internal_cavity_clearance_failures": len(cavity_failures),
+            "internal_cavity_pre_clearance_failures": len(pre_clearance_cavity_failures),
+            "full_cavity_clearance_verified_shells": len(full_cavity_clearance_verified),
             "split_line_candidate_shells": sum(
                 1 for record in records if record["injection_molding"]["split_line_candidate"]
             ),
@@ -289,7 +318,8 @@ def build_fembot_mold_dfm_proof(
             "acceptance_blocker": (
                 "smooth shell references are classified for injection/vacuform DFM, "
                 "but production acceptance still needs draft, undercut, split-line or "
-                "trim-flange proof and resolved internal keepout clearance"
+                "trim-flange proof plus process-specific cavity, collision, and "
+                "structural revalidation"
             ),
         },
         "shells": records,

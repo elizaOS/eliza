@@ -7,6 +7,7 @@ import json
 import math
 import os
 import shutil
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,7 @@ DEFAULT_GENERATED_CAD_PROOF = (
     PACKAGE_ROOT / "cad" / "asimov-feminine" / "proofs" / "fembot-generated-cad-envelope.json"
 )
 DEFAULT_SPLINE_PROOF_ROOT = PACKAGE_ROOT / "cad" / "asimov-feminine" / "proofs"
+DEFAULT_SOURCE_FITTED_STL_ROOT = PACKAGE_ROOT / "cad" / "asimov-feminine" / "output" / "stl"
 
 
 def _joint_name(model: mujoco.MjModel, joint_id: int) -> str:
@@ -249,6 +251,105 @@ def _source_fitted_part_screenshots(
     return records
 
 
+def _link_from_primitive_visual_name(name: str) -> str | None:
+    suffix = "_cad_primitive_visual"
+    if not name.endswith(suffix):
+        return None
+    return name[: -len(suffix)].upper()
+
+
+def _write_source_fitted_visual_mjcf(
+    *,
+    mjcf_path: Path,
+    output_root: Path,
+    stl_root: Path = DEFAULT_SOURCE_FITTED_STL_ROOT,
+) -> dict[str, Any]:
+    tree = ET.parse(mjcf_path)
+    root = tree.getroot()
+    asset = root.find("asset")
+    if asset is None:
+        asset = ET.SubElement(root, "asset")
+    compiler = root.find("compiler")
+    if compiler is not None:
+        compiler.attrib.pop("meshdir", None)
+
+    replacements: list[dict[str, Any]] = []
+    mesh_assets: set[str] = set()
+    for geom in root.findall(".//geom"):
+        link = _link_from_primitive_visual_name(str(geom.get("name") or ""))
+        if link is None:
+            continue
+        mesh_path = stl_root / f"{link}.STL"
+        mesh_name = f"source_fitted_{link.lower()}"
+        if not mesh_path.is_file():
+            replacements.append(
+                {
+                    "link": link,
+                    "replaced": False,
+                    "blocking_reason": "missing source-fitted controlled loft STL mesh",
+                    "mesh_path": str(mesh_path),
+                }
+            )
+            continue
+        if mesh_name not in mesh_assets:
+            ET.SubElement(asset, "mesh", {"name": mesh_name, "file": str(mesh_path)})
+            mesh_assets.add(mesh_name)
+        for key in ("type", "size", "pos", "quat", "fromto"):
+            geom.attrib.pop(key, None)
+        geom.set("type", "mesh")
+        geom.set("mesh", mesh_name)
+        replacements.append(
+            {
+                "link": link,
+                "replaced": True,
+                "mesh_name": mesh_name,
+                "mesh_path": str(mesh_path),
+            }
+        )
+
+    output_path = output_root / "asimov_fembot_source_fitted_visuals.xml"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    ET.indent(tree, space="  ")
+    tree.write(output_path, encoding="utf-8", xml_declaration=False)
+    return {
+        "path": str(output_path),
+        "exists": output_path.is_file(),
+        "source_mjcf": str(mjcf_path),
+        "mesh_assets": len(mesh_assets),
+        "visual_replacements": sum(1 for item in replacements if item.get("replaced")),
+        "replacement_failures": sum(1 for item in replacements if not item.get("replaced")),
+        "replacements": replacements,
+    }
+
+
+def _source_fitted_assembly_screenshots(
+    *,
+    source_fitted_mjcf: Path,
+    output_root: Path,
+    width: int,
+    height: int,
+) -> list[dict[str, Any]]:
+    model = mujoco.MjModel.from_xml_path(str(source_fitted_mjcf))
+    data = mujoco.MjData(model)
+    screenshots: list[dict[str, Any]] = []
+    camera_specs = {
+        "front": {"lookat": [0.0, 0.0, 0.78], "distance": 1.9, "azimuth": 180, "elevation": -8},
+        "left": {"lookat": [0.0, 0.0, 0.78], "distance": 1.9, "azimuth": 90, "elevation": -8},
+        "three_quarter": {"lookat": [0.0, 0.0, 0.82], "distance": 1.75, "azimuth": 145, "elevation": -10},
+    }
+    renderer = mujoco.Renderer(model, height=height, width=width)
+    try:
+        _reset_pose(model, data)
+        for name, spec in camera_specs.items():
+            renderer.update_scene(data, camera=_camera(spec))
+            path = output_root / f"fembot_source_fitted_assembly_{name}.png"
+            Image.fromarray(renderer.render()).save(path)
+            screenshots.append({"name": name, **_nonblank_image(path)})
+    finally:
+        renderer.close()
+    return screenshots
+
+
 def render_media(
     *,
     mjcf_path: Path,
@@ -312,6 +413,16 @@ def render_media(
         spline_proof_root=spline_proof_root,
         output_root=output_root,
     )
+    source_fitted_visual_mjcf = _write_source_fitted_visual_mjcf(
+        mjcf_path=mjcf_path,
+        output_root=output_root,
+    )
+    source_fitted_assembly_media = _source_fitted_assembly_screenshots(
+        source_fitted_mjcf=Path(str(source_fitted_visual_mjcf["path"])),
+        output_root=output_root,
+        width=width,
+        height=height,
+    )
 
     proof = {
         "schema": "asimov-fembot-media-review-v1",
@@ -337,6 +448,8 @@ def render_media(
         },
         "sample_video_frames": sample_frames,
         "source_fitted_part_media": source_fitted_part_media,
+        "source_fitted_visual_mjcf": source_fitted_visual_mjcf,
+        "source_fitted_assembly_media": source_fitted_assembly_media,
         "verification": {
             "renderer": "mujoco.Renderer",
             "video_encoder": "opencv VideoWriter mp4v",

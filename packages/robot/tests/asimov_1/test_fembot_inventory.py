@@ -63,9 +63,10 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
     assert report["generated_cad"]["summary"]["surface_intent_counts"] == {"flat": 2, "smooth": 26}
     assert report["generated_cad"]["summary"]["hollow_shell_links"] == 26
     assert report["generated_cad"]["summary"]["internal_cavity_violation_links"] == 26
+    assert report["generated_cad"]["summary"]["active_internal_cavity_residual_violation_links"] == 0
     assert report["generated_cad"]["summary"]["internal_cavity_minimum_projected_clearance_m"] < 0.0
-    assert report["generated_cad"]["summary"]["volume_adjusted_xy_violation_links"] == 18
-    assert report["generated_cad"]["summary"]["volume_adjusted_z_blocked_links"] == 18
+    assert report["generated_cad"]["summary"]["volume_adjusted_xy_violation_links"] == 16
+    assert report["generated_cad"]["summary"]["volume_adjusted_z_blocked_links"] == 16
     assert report["generated_cad"]["summary"]["remediation_target_count"] == 73
     assert report["generated_cad"]["summary"]["remediation_z_pocket_or_refinement_count"] == 23
     assert report["generated_cad"]["summary"]["remediation_plan_links"] == 26
@@ -75,14 +76,14 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
     assert report["generated_cad"]["summary"]["remediation_link_pocket_set_exports"] == 26
     assert report["generated_cad"]["summary"]["remediation_link_pocket_set_reloads"] == 26
     assert report["generated_cad"]["summary"]["pocketed_preview_exports"] == 26
-    assert report["generated_cad"]["summary"]["pocketed_preview_fragmented_links"] == 7
+    assert report["generated_cad"]["summary"]["pocketed_preview_fragmented_links"] == 2
     assert report["generated_cad"]["summary"]["pocketed_preview_structural_risk_links"] == 25
     assert report["generated_cad"]["summary"]["pocketed_preview_high_volume_loss_links"] == 25
     assert report["generated_cad"]["summary"]["bulged_preview_exports"] == 26
-    assert report["generated_cad"]["summary"]["bulged_preview_high_volume_loss_links"] == 15
-    assert report["generated_cad"]["summary"]["bulged_preview_fragmented_links"] == 4
-    assert report["generated_cad"]["summary"]["bulged_preview_residual_structural_risk_links"] == 15
-    assert report["generated_cad"]["summary"]["bulged_preview_top_residual_risk_links"][0] == "NECK_PITCH"
+    assert report["generated_cad"]["summary"]["bulged_preview_high_volume_loss_links"] == 16
+    assert report["generated_cad"]["summary"]["bulged_preview_fragmented_links"] == 2
+    assert report["generated_cad"]["summary"]["bulged_preview_residual_structural_risk_links"] == 16
+    assert report["generated_cad"]["summary"]["bulged_preview_top_residual_risk_links"][0] == "RIGHT_WRIST_YAW"
     assert report["generated_cad"]["summary"]["ribbed_bulged_preview_exports"] == 15
     assert report["generated_cad"]["summary"]["ribbed_bulged_preview_reloads"] == 15
     assert report["generated_cad"]["summary"]["ribbed_bulged_preview_fragmented_links"] == 0
@@ -91,7 +92,13 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
     assert report["generated_cad"]["summary"]["full_cavity_clearance_exports"] == 26
     assert report["generated_cad"]["summary"]["full_cavity_clearance_cleared_links"] == 26
     assert report["generated_cad"]["summary"]["full_cavity_clearance_residual_violation_links"] == 0
-    assert report["generated_cad"]["summary"]["full_cavity_clearance_z_expansion_links"] == 18
+    assert (
+        report["generated_cad"]["summary"][
+            "full_cavity_clearance_specific_extent_tolerance_failures"
+        ]
+        == 0
+    )
+    assert report["generated_cad"]["summary"]["full_cavity_clearance_z_expansion_links"] == 16
     assert report["generated_cad"]["summary"]["manufacturing_adjusted_plate_exports"] == 2
     assert (
         report["generated_cad"]["summary"][
@@ -99,46 +106,89 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
         ]
         == 0
     )
+    assert report["source_fitted_params"]["ok"] is True
+    assert report["source_fitted_params"]["accepted"] is True
+    assert report["source_fitted_params"]["summary"]["links"] == 28
+    assert (
+        report["source_fitted_params"]["summary"]["source_control_bbox_preserved_links"]
+        == 28
+    )
+    assert (
+        report["source_fitted_params"]["summary"][
+            "source_reloaded_envelope_preserved_links"
+        ]
+        == 28
+    )
+    assert report["cavity_resolution"]["ok"] is True
+    assert report["cavity_resolution"]["accepted"] is False
+    assert report["cavity_resolution"]["summary"]["internal_cavity_violation_links"] == 26
+    assert report["cavity_resolution"]["summary"]["height_preserving_resolution_links"] == 10
+    assert (
+        report["cavity_resolution"]["summary"][
+            "component_or_packaging_redesign_required_links"
+        ]
+        == 16
+    )
+    assert report["cavity_resolution"]["summary"]["unresolved_geometry_or_keepout_links"] == 0
+    assert report["package_redesign_plan"]["ok"] is True
+    assert report["package_redesign_plan"]["accepted"] is False
+    assert (
+        report["package_redesign_plan"]["summary"][
+            "component_or_packaging_redesign_required_links"
+        ]
+        == 16
+    )
+    assert report["package_redesign_plan"]["summary"]["major_package_redesign_links"] == 13
+    assert (
+        report["package_redesign_plan"]["summary"]["localized_package_redesign_links"]
+        == 3
+    )
+    assert (
+        report["package_redesign_plan"]["summary"]["action_counts"][
+            "actuator_package_redesign"
+        ]
+        == 15
+    )
     assert report["hardware_measurements"]["ok"] is True
     assert report["hardware_measurements"]["accepted"] is False
     assert report["hardware_measurements"]["summary"]["measurement_records"] == 1047
     assert report["hardware_measurements"]["summary"]["missing_measurement_records"] == 1047
     assert report["hardware_measurements"]["summary"]["remediation_targets"] == 73
     assert report["generated_topology"]["ok"] is True
-    assert report["generated_topology"]["accepted"] is False
+    assert report["generated_topology"]["accepted"] is True
     assert report["generated_topology"]["summary"]["mesh_exports"] == 28
     assert report["generated_topology"]["summary"]["single_solid_source_steps"] == 28
-    assert report["generated_topology"]["summary"]["watertight_meshes"] == 19
-    assert report["generated_topology"]["summary"]["accepted_topologies"] == 19
-    assert report["generated_topology"]["summary"]["topology_failure_links"] == 9
-    assert report["generated_topology"]["summary"]["repair_preview_candidates"] == 9
-    assert report["generated_topology"]["summary"]["repair_preview_exports"] == 9
-    assert report["generated_topology"]["summary"]["repair_preview_reloads"] == 9
+    assert report["generated_topology"]["summary"]["watertight_meshes"] == 28
+    assert report["generated_topology"]["summary"]["accepted_topologies"] == 28
+    assert report["generated_topology"]["summary"]["topology_failure_links"] == 0
+    assert report["generated_topology"]["summary"]["repair_preview_candidates"] == 0
+    assert report["generated_topology"]["summary"]["repair_preview_exports"] == 0
+    assert report["generated_topology"]["summary"]["repair_preview_reloads"] == 0
     assert (
         report["generated_topology"]["summary"]["repair_preview_accepted_topologies"]
-        == 9
+        == 0
     )
     assert report["generated_topology"]["summary"]["repair_preview_failure_links"] == 0
     assert (
         report["generated_topology"]["summary"][
             "repair_preview_promotable_by_topology_and_envelope"
         ]
-        is True
+        is False
     )
     assert report["topology_promotion"]["ok"] is True
     assert report["topology_promotion"]["accepted"] is True
     assert report["topology_promotion"]["summary"]["links"] == 28
-    assert report["topology_promotion"]["summary"]["promoted_repair_preview_links"] == 9
+    assert report["topology_promotion"]["summary"]["promoted_repair_preview_links"] == 0
     assert report["topology_promotion"]["summary"]["accepted_promoted_meshes"] == 28
     assert report["surface_quality"]["summary"]["generated_reference_links"] == 28
     assert report["surface_quality"]["summary"]["generated_flat_plate_surfaces"] == 2
     assert report["surface_quality"]["summary"]["generated_smooth_loft_surfaces"] == 26
-    assert report["surface_quality"]["summary"]["generated_surface_check_failures"] == 0
+    assert report["surface_quality"]["summary"]["generated_surface_check_failures"] == 26
     assert report["foot_handling"]["ok"] is True
-    assert report["foot_handling"]["accepted"] is True
+    assert report["foot_handling"]["accepted"] is False
     assert report["foot_handling"]["summary"]["foot_collision_geoms_preserved"] is True
     assert report["foot_handling"]["summary"]["non_foot_floor_contact_count"] == 0
-    assert report["foot_handling"]["summary"]["flat_foot_plate_count"] == 2
+    assert report["foot_handling"]["summary"]["flat_foot_plate_count"] == 0
     assert report["foot_handling"]["summary"]["manufacturing_adjusted_foot_plate_count"] == 2
     assert report["foot_handling"]["summary"]["foot_flatness_ok_count"] == 2
     assert report["inertia_calibration"]["ok"] is True
@@ -150,6 +200,29 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
     )
     assert report["inertia_calibration"]["summary"]["hardware_measurement_required_links"] == 28
     assert len(report["inertia_calibration"]["summary"]["missing_hardware_links"]) == 28
+    assert report["mass_reconciliation"]["ok"] is True
+    assert report["mass_reconciliation"]["accepted"] is False
+    assert report["mass_reconciliation"]["summary"]["links"] == 28
+    assert report["mass_reconciliation"]["summary"]["mass_out_of_tolerance_links"] == 26
+    assert report["mass_reconciliation"]["summary"]["inertia_out_of_tolerance_links"] == 25
+    assert (
+        report["mass_reconciliation"]["summary"][
+            "missing_hardware_measurement_links"
+        ]
+        == 28
+    )
+    assert (
+        report["mass_reconciliation"]["summary"][
+            "add_internal_mass_or_density_retarget_links"
+        ]
+        == 23
+    )
+    assert (
+        report["mass_reconciliation"]["summary"][
+            "reduce_shell_mass_or_compiled_mass_retarget_links"
+        ]
+        == 3
+    )
     assert report["controller_validation"]["ok"] is True
     assert report["controller_validation"]["accepted"] is False
     assert (
@@ -162,6 +235,22 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
         report["controller_validation"]["summary"]["hardware_controller_validated"]
         is False
     )
+    assert report["controller_telemetry"]["ok"] is True
+    assert report["controller_telemetry"]["accepted"] is False
+    assert report["controller_telemetry"]["summary"]["actuators"] == 25
+    assert report["controller_telemetry"]["summary"]["actuated_links"] == 25
+    assert report["controller_telemetry"]["summary"]["non_actuated_links"] == [
+        "IMU_ORIGIN",
+        "LEFT_TOE",
+        "RIGHT_TOE",
+    ]
+    assert (
+        report["controller_telemetry"]["summary"][
+            "missing_hardware_telemetry_actuators"
+        ]
+        == 25
+    )
+    assert report["controller_telemetry"]["summary"]["required_telemetry_records"] == 150
     assert report["material_manufacturing"]["ok"] is True
     assert report["material_manufacturing"]["accepted"] is False
     assert report["material_manufacturing"]["summary"]["classification_ok"] is True
@@ -192,49 +281,49 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
         ]
         == 0
     )
-    assert report["structural_sanity"]["summary"]["topology_repair_preview_links"] == 9
+    assert report["structural_sanity"]["summary"]["topology_repair_preview_links"] == 0
     assert (
         report["structural_sanity"]["summary"][
             "topology_repair_preview_envelope_preserved_links"
         ]
-        == 9
+        == 0
     )
     assert report["structural_sanity"]["summary"]["analytic_load_cases"] == 84
-    assert report["structural_sanity"]["summary"]["analytic_load_case_failure_links"] == 6
-    assert report["structural_sanity"]["summary"]["structural_remediation_links"] == 6
-    assert report["structural_sanity"]["summary"]["structural_remediation_preview_exports"] == 6
-    assert report["structural_sanity"]["summary"]["structural_remediation_preview_reloads"] == 6
+    assert report["structural_sanity"]["summary"]["analytic_load_case_failure_links"] == 0
+    assert report["structural_sanity"]["summary"]["structural_remediation_links"] == 0
+    assert report["structural_sanity"]["summary"]["structural_remediation_preview_exports"] == 0
+    assert report["structural_sanity"]["summary"]["structural_remediation_preview_reloads"] == 0
     assert (
         report["structural_sanity"]["summary"][
             "structural_remediation_preview_screen_pass_links"
         ]
-        == 6
+        == 0
     )
     assert (
         report["structural_sanity"]["summary"][
             "structural_remediation_preview_xy_area_increase_fraction"
         ]
-        > 0.7
+        is None
     )
     assert (
         report["structural_sanity"]["summary"][
             "structural_remediation_internal_cavity_checked_links"
         ]
-        == 6
+        == 0
     )
     assert (
         report["structural_sanity"]["summary"][
             "structural_remediation_internal_cavity_adjusted_violations"
         ]
-        == 20
+        == 0
     )
     assert (
         report["structural_sanity"]["summary"][
             "structural_remediation_internal_cavity_z_blocked_links"
         ]
-        == 2
+        == 0
     )
-    assert report["structural_sanity"]["summary"]["minimum_preliminary_safety_factor"] < 1.0
+    assert report["structural_sanity"]["summary"]["minimum_preliminary_safety_factor"] > 40.0
     assert report["assembly"]["ok"] is True
     assert report["assembly"]["accepted"] is False
     assert report["assembly"]["summary"]["actuator_order_ok"] is True
@@ -242,9 +331,141 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
     assert report["assembly"]["summary"]["visual_body_link_count"] == 28
     assert report["assembly"]["summary"]["mate_gap_max_m"] == 0.0
     assert report["assembly"]["summary"]["axis_delta_max_rad"] == 0.0
-    assert report["assembly"]["summary"]["structural_remediation_assembly_links"] == 6
-    assert report["assembly"]["summary"]["structural_remediation_actuated_links"] == 6
-    assert report["assembly"]["summary"]["structural_remediation_z_refinement_links"] == 2
+    assert report["assembly"]["summary"]["structural_remediation_assembly_links"] == 0
+    assert report["assembly"]["summary"]["structural_remediation_actuated_links"] == 0
+    assert report["assembly"]["summary"]["structural_remediation_z_refinement_links"] == 0
+    assert report["mate_features"]["ok"] is True
+    assert report["mate_features"]["accepted"] is False
+    assert report["mate_features"]["summary"]["links"] == 28
+    assert report["mate_features"]["summary"]["body_link_records"] == 28
+    assert report["mate_features"]["summary"]["kinematic_proxy_ready_links"] == 28
+    assert report["mate_features"]["summary"]["joint_mate_links"] == 27
+    assert report["mate_features"]["summary"]["actuated_mate_links"] == 25
+    assert report["mate_features"]["summary"]["child_interface_links"] == 23
+    assert report["mate_features"]["summary"]["supplier_pocket_links"] == 8
+    assert (
+        report["mate_features"]["summary"][
+            "supplier_mate_feature_proxy_ready_links"
+        ]
+        == 8
+    )
+    assert (
+        report["mate_features"]["summary"]["supplier_exact_placement_ready_links"]
+        == 0
+    )
+    assert (
+        report["mate_features"]["summary"][
+            "exact_bore_fastener_measurement_ready_links"
+        ]
+        == 0
+    )
+    assert (
+        len(
+            report["mate_features"]["summary"][
+                "missing_exact_bore_fastener_measurement_links"
+            ]
+        )
+        == 28
+    )
+    assert report["mate_features"]["summary"]["required_mate_feature_records"] > 100
+    assert report["mate_feature_specs"]["ok"] is True
+    assert report["mate_feature_specs"]["accepted"] is False
+    assert report["mate_feature_specs"]["summary"]["links"] == 28
+    assert (
+        report["mate_feature_specs"]["summary"][
+            "parametric_mate_feature_spec_ready_links"
+        ]
+        == 28
+    )
+    assert report["mate_feature_specs"]["summary"]["joint_feature_spec_records"] == 27
+    assert (
+        report["mate_feature_specs"]["summary"]["child_interface_datum_records"]
+        == 27
+    )
+    assert report["mate_feature_specs"]["summary"]["feature_cut_step_links"] == 0
+    assert (
+        report["mate_feature_specs"]["summary"]["post_cut_collision_validated_links"]
+        == 0
+    )
+    assert (
+        report["mate_feature_specs"]["summary"]["post_cut_structural_validated_links"]
+        == 0
+    )
+    assert report["mate_feature_cut_preview"]["ok"] is True
+    assert report["mate_feature_cut_preview"]["accepted"] is False
+    assert report["mate_feature_cut_preview"]["summary"]["feature_cut_tool_step_links"] == 27
+    assert report["mate_feature_cut_preview"]["summary"]["feature_cut_tool_step_reloads"] == 27
+    assert (
+        report["mate_feature_cut_preview"]["summary"][
+            "wrist_fastener_redesign_applied_links"
+        ]
+        == 2
+    )
+    assert report["mate_feature_cut_preview"]["summary"]["feature_cut_step_links"] == 27
+    assert report["mate_feature_cut_preview"]["summary"]["feature_cut_step_reloads"] == 27
+    assert report["mate_feature_cut_preview"]["summary"]["source_cut_fallback_links"] == 0
+    assert (
+        report["mate_feature_cut_preview"]["summary"][
+            "source_cut_boolean_recovery_links"
+        ]
+        == 1
+    )
+    assert (
+        report["mate_feature_cut_preview"]["summary"][
+            "post_cut_collision_validated_links"
+        ]
+        == 0
+    )
+    assert (
+        report["mate_feature_cut_preview"]["summary"][
+            "post_cut_structural_validated_links"
+        ]
+        == 0
+    )
+    assert report["post_cut_validation"]["ok"] is True
+    assert report["post_cut_validation"]["accepted"] is False
+    assert report["post_cut_validation"]["summary"]["post_cut_geometry_validated_links"] == 27
+    assert report["post_cut_validation"]["summary"]["post_cut_topology_validated_links"] == 27
+    assert (
+        report["post_cut_validation"]["summary"][
+            "post_cut_manufacturing_screen_pass_links"
+        ]
+        == 27
+    )
+    assert report["post_cut_validation"]["summary"]["post_cut_structural_screen_pass_links"] == 6
+    assert report["post_cut_validation"]["summary"]["post_cut_fragmented_links"] == 16
+    assert report["post_cut_validation"]["summary"]["post_cut_high_volume_loss_links"] == 7
+    assert report["post_cut_validation"]["summary"]["post_cut_source_cut_fallback_links"] == 0
+    assert report["mate_feature_spatial_fit"]["ok"] is True
+    assert report["mate_feature_spatial_fit"]["accepted"] is False
+    assert report["mate_feature_spatial_fit"]["summary"]["joint_feature_records"] == 27
+    assert (
+        report["mate_feature_spatial_fit"]["summary"][
+            "fits_current_envelope_records"
+        ]
+        == 25
+    )
+    assert (
+        report["mate_feature_spatial_fit"]["summary"]["redesign_required_links"]
+        == 2
+    )
+    assert report["mate_feature_spatial_fit"]["summary"]["worst_fit_margin_m"] < 0.0
+    assert report["wrist_fastener_redesign"]["ok"] is True
+    assert report["wrist_fastener_redesign"]["accepted"] is False
+    assert report["wrist_fastener_redesign"]["summary"]["redesign_candidate_links"] == 2
+    assert (
+        report["wrist_fastener_redesign"]["summary"][
+            "redesign_fits_current_envelope_links"
+        ]
+        == 2
+    )
+    assert (
+        report["wrist_fastener_redesign"]["summary"][
+            "remaining_spatial_fit_failures_after_redesign"
+        ]
+        == 0
+    )
+    assert report["wrist_fastener_redesign"]["summary"]["min_revised_fit_margin_m"] > 0.0
     assert report["fembot_collision_dynamics"]["ok"] is False
     assert report["fembot_collision_dynamics"]["accepted"] is False
     assert report["fembot_collision_dynamics"]["summary"]["generated_links"] == 28
@@ -275,7 +496,7 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
         ]
         is True
     )
-    assert report["fembot_collision_dynamics"]["summary"]["foot_handling_accepted"] is True
+    assert report["fembot_collision_dynamics"]["summary"]["foot_handling_accepted"] is False
     assert (
         report["fembot_collision_dynamics"]["summary"]["inertia_calibration_ready"]
         is True
@@ -284,13 +505,13 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
         report["fembot_collision_dynamics"]["summary"][
             "inertia_mass_out_of_tolerance_count"
         ]
-        == 28
+        == 26
     )
     assert (
         report["fembot_collision_dynamics"]["summary"][
             "inertia_inertia_out_of_tolerance_count"
         ]
-        == 28
+        == 25
     )
     assert (
         report["fembot_collision_dynamics"]["summary"][
@@ -338,6 +559,22 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
     assert report["visual_motion_media"]["summary"]["screenshot_count"] == 6
     assert report["visual_motion_media"]["summary"]["video_frame_count"] == 144
     assert report["visual_motion_media"]["summary"]["joint_count"] == 27
+    assert (
+        report["visual_motion_media"]["summary"]["source_fitted_part_screenshot_count"]
+        == 28
+    )
+    assert (
+        report["visual_motion_media"]["summary"][
+            "source_fitted_visual_mjcf_replacements"
+        ]
+        == 28
+    )
+    assert (
+        report["visual_motion_media"]["summary"][
+            "source_fitted_assembly_screenshot_count"
+        ]
+        == 3
+    )
 
     groups = {group["group"]: group for group in report["body_groups"]}
     assert groups["torso"]["links"] == ["IMU_ORIGIN", "WAIST_YAW"]

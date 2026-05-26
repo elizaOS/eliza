@@ -279,41 +279,41 @@
   "ok": true,
   "sample_video_frames": [
     {
-      "bytes": 293762,
+      "bytes": 289817,
       "exists": true,
       "height": 720,
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/joint_rotation_frames/frame_0000.png",
       "stddev_rgb": [
-        45.742,
-        61.691,
-        81.116
+        51.564,
+        64.067,
+        81.502
       ],
       "width": 960
     },
     {
-      "bytes": 297823,
+      "bytes": 296931,
       "exists": true,
       "height": 720,
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/joint_rotation_frames/frame_0072.png",
       "stddev_rgb": [
-        43.882,
-        60.814,
-        80.77
+        52.38,
+        64.371,
+        81.465
       ],
       "width": 960
     },
     {
-      "bytes": 294559,
+      "bytes": 290966,
       "exists": true,
       "height": 720,
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/joint_rotation_frames/frame_0143.png",
       "stddev_rgb": [
-        45.613,
-        61.62,
-        81.075
+        51.757,
+        64.17,
+        81.545
       ],
       "width": 960
     }
@@ -321,86 +321,86 @@
   "schema": "asimov-fembot-media-review-v1",
   "screenshots": [
     {
-      "bytes": 218854,
+      "bytes": 224898,
       "exists": true,
       "height": 720,
       "name": "front",
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_front.png",
       "stddev_rgb": [
-        47.355,
-        62.962,
-        82.135
+        47.914,
+        62.25,
+        80.899
       ],
       "width": 960
     },
     {
-      "bytes": 221829,
+      "bytes": 224515,
       "exists": true,
       "height": 720,
       "name": "rear",
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_rear.png",
       "stddev_rgb": [
-        47.214,
-        62.737,
-        81.883
+        47.172,
+        61.607,
+        80.366
       ],
       "width": 960
     },
     {
-      "bytes": 207036,
+      "bytes": 215282,
       "exists": true,
       "height": 720,
       "name": "left",
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_left.png",
       "stddev_rgb": [
-        43.585,
-        61.661,
-        82.147
+        45.803,
+        61.685,
+        81.135
       ],
       "width": 960
     },
     {
-      "bytes": 206931,
+      "bytes": 215136,
       "exists": true,
       "height": 720,
       "name": "right",
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_right.png",
       "stddev_rgb": [
-        43.568,
-        61.655,
-        82.148
+        45.741,
+        61.644,
+        81.107
       ],
       "width": 960
     },
     {
-      "bytes": 304003,
+      "bytes": 305280,
       "exists": true,
       "height": 720,
       "name": "three_quarter",
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_three_quarter.png",
       "stddev_rgb": [
-        44.413,
-        60.573,
-        80.047
+        48.513,
+        61.64,
+        79.617
       ],
       "width": 960
     },
     {
-      "bytes": 296658,
+      "bytes": 290135,
       "exists": true,
       "height": 720,
       "name": "upper_three_quarter",
       "nonblank": true,
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_upper_three_quarter.png",
       "stddev_rgb": [
-        46.546,
-        61.498,
-        80.611
+        55.783,
+        65.452,
+        81.087
       ],
       "width": 960
     }
@@ -409,6 +409,50 @@
     "mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/mjcf/asimov_fembot.xml",
     "output_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot"
   },
+  "source_fitted_assembly_media": [
+    {
+      "bytes": 246076,
+      "exists": true,
+      "height": 720,
+      "name": "front",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_assembly_front.png",
+      "stddev_rgb": [
+        49.379,
+        63.125,
+        81.346
+      ],
+      "width": 960
+    },
+    {
+      "bytes": 240694,
+      "exists": true,
+      "height": 720,
+      "name": "left",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_assembly_left.png",
+      "stddev_rgb": [
+        45.596,
+        61.619,
+        81.13
+      ],
+      "width": 960
+    },
+    {
+      "bytes": 336574,
+      "exists": true,
+      "height": 720,
+      "name": "three_quarter",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_source_fitted_assembly_three_quarter.png",
+      "stddev_rgb": [
+        47.181,
+        60.917,
+        79.282
+      ],
+      "width": 960
+    }
+  ],
   "source_fitted_part_media": [
     {
       "bytes": 38014,
@@ -416,7 +460,7 @@
       "controlled_loft_mesh_sha256": "1357d679e6b9232382d1160e68dd1be27fa0017397c0585be3d48cad33adc03d",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/imu_origin.step",
-      "generated_step_sha256": "48fb4b1b01706ad22f70c1682e409a9fe70914587091e788cc6e316df09c80bb",
+      "generated_step_sha256": "530f20e505e1627e41c73fa6e1d08f8f99a27183040ea132d3bd9bc58ea69968",
       "height": 402,
       "link": "IMU_ORIGIN",
       "nonblank": true,
@@ -437,7 +481,7 @@
       "controlled_loft_mesh_sha256": "3aa03b921c1f50fcdab16b54fc48817bc99c68aff5f29dde5ccb4c8ee97dfac9",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/waist_yaw.step",
-      "generated_step_sha256": "e46553e0870cdd704fcc2cff6e2bed583f01629b0b6bc5ce8569ad08711060f7",
+      "generated_step_sha256": "860495acd5dc23bf775c214a5e7a96609e835e6cf45835c832b09da163137059",
       "height": 402,
       "link": "WAIST_YAW",
       "nonblank": true,
@@ -458,7 +502,7 @@
       "controlled_loft_mesh_sha256": "b04d7c67558190827fc7df56a9b4e2870a6839a3ab9378545abed049180e84b6",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/neck_yaw.step",
-      "generated_step_sha256": "c043a9a03459cfdcfca9019f8bedd0e4a735ea3d5be6f03349f75fb2322a6951",
+      "generated_step_sha256": "4eac4206ae5984fbf59e6691b0fc9994fa29ab5c4250fa533a802349c0ae2aa1",
       "height": 402,
       "link": "NECK_YAW",
       "nonblank": true,
@@ -479,7 +523,7 @@
       "controlled_loft_mesh_sha256": "f94b7ecfc2fbb26cf9f96ebf74b050690e55c5a3c502bbf3f4c6ad62376fd0c1",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/neck_pitch.step",
-      "generated_step_sha256": "ec1a0ac7f6c8cd9a9f2499d1022741d4634a782718cd436e20a680031fa46b66",
+      "generated_step_sha256": "8aaf2a91c19dee8d4196f2b9873222ecfec31f6e64cec76964e0767143d7662b",
       "height": 402,
       "link": "NECK_PITCH",
       "nonblank": true,
@@ -500,7 +544,7 @@
       "controlled_loft_mesh_sha256": "386d9808026cf1e7b1f31b00419ac89cf35d3e0750732b52cbe6171c2db1454d",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_pitch.step",
-      "generated_step_sha256": "eda8fb675291c0cfd757ca37d93cf6e15cb98a9fce94684e12deeda20c770d33",
+      "generated_step_sha256": "fbf367736357ed01f1cae41ef019ec0508a9ca5b939688f03b026d09f0dbee37",
       "height": 402,
       "link": "LEFT_SHOULDER_PITCH",
       "nonblank": true,
@@ -521,7 +565,7 @@
       "controlled_loft_mesh_sha256": "5aa8ac3e103d2b200a9f46d16e2b5b1e826016ad8b7eab71dfc6fae71a43b540",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_pitch.step",
-      "generated_step_sha256": "bd32d57ae56328ad542e1e34a735e38e581ae5bb4f88295fffa3dbc62e750145",
+      "generated_step_sha256": "69577775c04ed7b57e61258d1f6b20b52c2ca6f23a8b856352996db46a7fcf60",
       "height": 402,
       "link": "RIGHT_SHOULDER_PITCH",
       "nonblank": true,
@@ -542,7 +586,7 @@
       "controlled_loft_mesh_sha256": "9dcc4f0ca6bb6ccda7f368b1a8aec07c12e5b92579c3296b23ac799390555c97",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_roll.step",
-      "generated_step_sha256": "68a3a92f1d57d361b3921934fa7d62b53a2fb2a3ab5deff62a30a46c99f5ea3c",
+      "generated_step_sha256": "d85751168da9a40af48639b2f63c45cccdbe729bd040ef5495b77d502e285aaa",
       "height": 402,
       "link": "LEFT_SHOULDER_ROLL",
       "nonblank": true,
@@ -563,7 +607,7 @@
       "controlled_loft_mesh_sha256": "1edd68ecfea58a6a6b03dc395b3ce86e559a4b005c59a0124c9342e42ac106de",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_roll.step",
-      "generated_step_sha256": "bdd19e5677cd2a69808c64d80c239493ff867ca2de3d588fdc989b04c094c03e",
+      "generated_step_sha256": "23a0519d63cbae1ba286a95ca4c9a5849125b958745b592a20f9bb4a2ebf764e",
       "height": 402,
       "link": "RIGHT_SHOULDER_ROLL",
       "nonblank": true,
@@ -584,7 +628,7 @@
       "controlled_loft_mesh_sha256": "7fac3ec25b4dbafd5160eb0f5fe763368e2f004102bda9ea9a4cc9f9428bc331",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_yaw.step",
-      "generated_step_sha256": "387dbbfcc44d32c4cdf725a80475dffc334aa607c8c047b2e41c609fcb7db3e5",
+      "generated_step_sha256": "7643e157df856195845e4998fb21495eefe046326fd12a745ee5716be6190e56",
       "height": 402,
       "link": "LEFT_SHOULDER_YAW",
       "nonblank": true,
@@ -605,7 +649,7 @@
       "controlled_loft_mesh_sha256": "1ed621ec55d39b6c7a43dc0ad3535120782499f551956574868ffae725328d66",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_yaw.step",
-      "generated_step_sha256": "8de833a9d5187a6fa355cac2f58b70d7308de7149f3ef4df7846bffc06654855",
+      "generated_step_sha256": "d06f47fe12817a6e07f4a952e83f4dff8ba2ae61d51f612aeb8a1b8642bcfec8",
       "height": 402,
       "link": "RIGHT_SHOULDER_YAW",
       "nonblank": true,
@@ -626,7 +670,7 @@
       "controlled_loft_mesh_sha256": "989464c2ee1f2105a0fbafd79c21ed6cc8b773db11cb054bdd2c4f2db7f277bb",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_elbow.step",
-      "generated_step_sha256": "1699b6ba35204c8765b3c56126f239825f065ec35db370947a4692d59eec9c96",
+      "generated_step_sha256": "9c97cba7a92ad4a286ebd4d4d6efa08651e942f1a7bb32e3bbc3e456359fba1b",
       "height": 402,
       "link": "LEFT_ELBOW",
       "nonblank": true,
@@ -647,7 +691,7 @@
       "controlled_loft_mesh_sha256": "69c0ddf53d0d6af7112b038fc3ce4ae694f41f4ca5b4382316821b08e907c4f5",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_elbow.step",
-      "generated_step_sha256": "c88dca1fbb59f4f9d069d855342a5c4d180e18b2e9a05d68ebd6a0ce52cbbe13",
+      "generated_step_sha256": "35d7bdd5f4b6173ba08b9e873ba089aa4fd5be304df11c15dff31f147030d208",
       "height": 402,
       "link": "RIGHT_ELBOW",
       "nonblank": true,
@@ -668,7 +712,7 @@
       "controlled_loft_mesh_sha256": "0afc00835b827164b739f642e01d0b1f5639c0f766ff23a056017d2307b603dd",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_wrist_yaw.step",
-      "generated_step_sha256": "456b8aadaa858fef574f82f6a4a1aeec8095e2f60b9cdb29358e8a04eaf54fb5",
+      "generated_step_sha256": "fe19efd3f90fbe319ef999ea5d5d4ea24840e40dc225d0ca7288a24ca6e17781",
       "height": 402,
       "link": "LEFT_WRIST_YAW",
       "nonblank": true,
@@ -689,7 +733,7 @@
       "controlled_loft_mesh_sha256": "f3c47eecffcedf67e861aca4972a50deac978af57a7c6089e3afd46ae5b1616f",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_wrist_yaw.step",
-      "generated_step_sha256": "9341009955ca549e24386b62319840a2173759bcb3a875507e68c022f6b168b7",
+      "generated_step_sha256": "f585961b09b92620a9f5e3c3b01e5cff835c8134b89ea717c375c3c6cd308f59",
       "height": 402,
       "link": "RIGHT_WRIST_YAW",
       "nonblank": true,
@@ -710,7 +754,7 @@
       "controlled_loft_mesh_sha256": "a4c65c80e0c099c424bc879df7dae7b77919cba3591ba7325b270481d08c9d1f",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_pitch.step",
-      "generated_step_sha256": "a6f4ce6d6a1c4aa528fc2f34f2b9a7b70da5524e45210dafc21b52aec9f8e5b2",
+      "generated_step_sha256": "b5ed1cdc2618746c87a42716c38f9d41333ca16b5f53f2a0682f2517b9e97023",
       "height": 402,
       "link": "LEFT_HIP_PITCH",
       "nonblank": true,
@@ -731,7 +775,7 @@
       "controlled_loft_mesh_sha256": "1e79104df16f75b4d6e6a26caa91eb5169cce7eff16c9ea9039d0585dac94e11",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_pitch.step",
-      "generated_step_sha256": "5876204acf44efc7528449ce7350725c91682531fbd390d836bcd54d0fa7dd28",
+      "generated_step_sha256": "b5f700969e4a5efbe9c3f4307ba071bf45c2fde27f8f643e81054f9bca4394b7",
       "height": 402,
       "link": "RIGHT_HIP_PITCH",
       "nonblank": true,
@@ -752,7 +796,7 @@
       "controlled_loft_mesh_sha256": "a25a90c087e950df3d03ae26e83ef95c15e1bff70be243b61a29489c0ba13dae",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_roll.step",
-      "generated_step_sha256": "780b8a9c4a210d27ea3349474da26fa51dd749872783f046b62ed4911db5c184",
+      "generated_step_sha256": "034804f62d6f2eb25a43f85c215a89dacc41046f5d5cf4d7fbfc3f653fd14675",
       "height": 402,
       "link": "LEFT_HIP_ROLL",
       "nonblank": true,
@@ -773,7 +817,7 @@
       "controlled_loft_mesh_sha256": "7123866f4144486825205a09213a482b23f134af9f8a77e7781d812e05850d03",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_roll.step",
-      "generated_step_sha256": "f4c27be48ff44a148836970597157238326dfdea7208d72aefa8d5a14debbf29",
+      "generated_step_sha256": "0c90a1ef45d3eccf5453e7b68ef984a8a795b66fac74cd1f1101ddae4db1fd9b",
       "height": 402,
       "link": "RIGHT_HIP_ROLL",
       "nonblank": true,
@@ -794,7 +838,7 @@
       "controlled_loft_mesh_sha256": "490399da7a65a7ec66e6d1de7560f4a5834f7235519e667033a688d28c9f8d1a",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_yaw.step",
-      "generated_step_sha256": "b0ac0d33ef2c4ee89c7d575634549e6e0b9b260e9f33edfd7f743f1db691b654",
+      "generated_step_sha256": "af173099664b96547816645bd8c22d99dca3439bd83cde157e1228eb5465ab9b",
       "height": 402,
       "link": "LEFT_HIP_YAW",
       "nonblank": true,
@@ -815,7 +859,7 @@
       "controlled_loft_mesh_sha256": "dd7d6caabe4c47f244a2ea2cac0f9ce1eeb5c701c813f7d9f1b52dac37fd76dc",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_yaw.step",
-      "generated_step_sha256": "b27164b825f49af5504eadc99a9f1e7cc382232f793c566d12d7565e5ca9373a",
+      "generated_step_sha256": "e66d824f84e7f3aa9154640874ae83de60f31f97261d7dc064b95dd9e5d54bf0",
       "height": 402,
       "link": "RIGHT_HIP_YAW",
       "nonblank": true,
@@ -836,7 +880,7 @@
       "controlled_loft_mesh_sha256": "25caf91ea33c3fc34079c24d34419a974e1b057bfacc63c93b7e832af6d49a61",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_knee.step",
-      "generated_step_sha256": "9a31c865c87284e8d2a558cd17b7b924607abb6dbc4802cf8a6040ce0403697e",
+      "generated_step_sha256": "66a12b8a852a495418f0924f44df51edc6d35c7e973373c3c2e1789018f2e008",
       "height": 402,
       "link": "LEFT_KNEE",
       "nonblank": true,
@@ -857,7 +901,7 @@
       "controlled_loft_mesh_sha256": "705139be80b341d5c4180058aa2db3dce27a61fbf20aa7cb6d140f8b11984798",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_knee.step",
-      "generated_step_sha256": "9eabf3fd3f6e79713a2c46237152aa693e12e16e04f52b74e1138f7e44367ee4",
+      "generated_step_sha256": "77ec66d15c9f626d7dfb601a92fa31bf88db3851d37acd393f353282c4f0dba4",
       "height": 402,
       "link": "RIGHT_KNEE",
       "nonblank": true,
@@ -878,7 +922,7 @@
       "controlled_loft_mesh_sha256": "17d8b9afb206ed1121a398b26809e2e5b565cd63f45512bf55b3656e32b700ee",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_ankle_a.step",
-      "generated_step_sha256": "43fa589b35d064507e721326361a5e5da76dc8d69b82f63c9cad3fb4ce9971c3",
+      "generated_step_sha256": "91a715e4a2d9684ea175ff7cd7aaa1a0a47c2f77f4ef7b577bd472510d9a8d0d",
       "height": 402,
       "link": "LEFT_ANKLE_A",
       "nonblank": true,
@@ -899,7 +943,7 @@
       "controlled_loft_mesh_sha256": "71c496512fdc956d094f79f51c46f206eba1fbe414dfefd4bec225f1d9663bf7",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_ankle_a.step",
-      "generated_step_sha256": "071c26fd321b4489f584ff80b703f26985674cb62f4c1e8d41d56b37a4b06a7b",
+      "generated_step_sha256": "ecbec7c5e421b44980bfc9f16b3bae7ab3879ca52bcc5831f6d4870305a214a8",
       "height": 402,
       "link": "RIGHT_ANKLE_A",
       "nonblank": true,
@@ -920,7 +964,7 @@
       "controlled_loft_mesh_sha256": "2c88d8b0f814442b0c26495633eae75a026826b5e04c77d9ea593ab30201d737",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_ankle_b.step",
-      "generated_step_sha256": "1c1fb8535efc20040721c4462e0bf966993cecae3fc77bab14d6ea7e48f23f26",
+      "generated_step_sha256": "d5acf632c7dc4a855b2378608b5e749d25a6ff6ecb9d637d59c506d57d7bb33c",
       "height": 402,
       "link": "LEFT_ANKLE_B",
       "nonblank": true,
@@ -941,7 +985,7 @@
       "controlled_loft_mesh_sha256": "710de2865258ce16aeabfa482ba0136f9a591965391e9b2c6e733ac77c3c6a4b",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_ankle_b.step",
-      "generated_step_sha256": "d5f0e244d3468fc181d485e730e7678aef0abd09c381f2043cff992d28904e11",
+      "generated_step_sha256": "8b5c6b600722f2b0286e64c3af25b33c459ddd47b9dc880d830d8f02c9aa2a2a",
       "height": 402,
       "link": "RIGHT_ANKLE_B",
       "nonblank": true,
@@ -962,7 +1006,7 @@
       "controlled_loft_mesh_sha256": "0857cf90b40ce5337ef8713da4226ba6ae67fb1e3caa5b78bc232b2ff6252fe4",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_toe.step",
-      "generated_step_sha256": "ec07b6f8ec3a29bcfe99a1bdea79660c3f0424041d5bad8f8c01e977cb4913cf",
+      "generated_step_sha256": "b121c315037ec503a8d54bb0c4b74eca49150f38bb4334b465bfd415baf96c7f",
       "height": 402,
       "link": "LEFT_TOE",
       "nonblank": true,
@@ -983,7 +1027,7 @@
       "controlled_loft_mesh_sha256": "75ab916806daadd3c718c1b87a5092a0b161f893634eb63b5a0441b28eb26f13",
       "exists": true,
       "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_toe.step",
-      "generated_step_sha256": "5d8ac964278db3f929430c533a955a54f25a8d220946507dbde606fded75a9f6",
+      "generated_step_sha256": "5021f62e5c196fb8b17d30413a7ddbdce47ead7d2d9cdfea669b2d6df92a629c",
       "height": 402,
       "link": "RIGHT_TOE",
       "nonblank": true,
@@ -999,6 +1043,184 @@
       "width": 1080
     }
   ],
+  "source_fitted_visual_mjcf": {
+    "exists": true,
+    "mesh_assets": 28,
+    "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/asimov_fembot_source_fitted_visuals.xml",
+    "replacement_failures": 0,
+    "replacements": [
+      {
+        "link": "IMU_ORIGIN",
+        "mesh_name": "source_fitted_imu_origin",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/IMU_ORIGIN.STL",
+        "replaced": true
+      },
+      {
+        "link": "LEFT_HIP_PITCH",
+        "mesh_name": "source_fitted_left_hip_pitch",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_HIP_PITCH.STL",
+        "replaced": true
+      },
+      {
+        "link": "LEFT_HIP_ROLL",
+        "mesh_name": "source_fitted_left_hip_roll",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_HIP_ROLL.STL",
+        "replaced": true
+      },
+      {
+        "link": "LEFT_HIP_YAW",
+        "mesh_name": "source_fitted_left_hip_yaw",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_HIP_YAW.STL",
+        "replaced": true
+      },
+      {
+        "link": "LEFT_KNEE",
+        "mesh_name": "source_fitted_left_knee",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_KNEE.STL",
+        "replaced": true
+      },
+      {
+        "link": "LEFT_ANKLE_A",
+        "mesh_name": "source_fitted_left_ankle_a",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_ANKLE_A.STL",
+        "replaced": true
+      },
+      {
+        "link": "LEFT_ANKLE_B",
+        "mesh_name": "source_fitted_left_ankle_b",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_ANKLE_B.STL",
+        "replaced": true
+      },
+      {
+        "link": "LEFT_TOE",
+        "mesh_name": "source_fitted_left_toe",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_TOE.STL",
+        "replaced": true
+      },
+      {
+        "link": "RIGHT_HIP_PITCH",
+        "mesh_name": "source_fitted_right_hip_pitch",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_HIP_PITCH.STL",
+        "replaced": true
+      },
+      {
+        "link": "RIGHT_HIP_ROLL",
+        "mesh_name": "source_fitted_right_hip_roll",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_HIP_ROLL.STL",
+        "replaced": true
+      },
+      {
+        "link": "RIGHT_HIP_YAW",
+        "mesh_name": "source_fitted_right_hip_yaw",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_HIP_YAW.STL",
+        "replaced": true
+      },
+      {
+        "link": "RIGHT_KNEE",
+        "mesh_name": "source_fitted_right_knee",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_KNEE.STL",
+        "replaced": true
+      },
+      {
+        "link": "RIGHT_ANKLE_A",
+        "mesh_name": "source_fitted_right_ankle_a",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_ANKLE_A.STL",
+        "replaced": true
+      },
+      {
+        "link": "RIGHT_ANKLE_B",
+        "mesh_name": "source_fitted_right_ankle_b",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_ANKLE_B.STL",
+        "replaced": true
+      },
+      {
+        "link": "RIGHT_TOE",
+        "mesh_name": "source_fitted_right_toe",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_TOE.STL",
+        "replaced": true
+      },
+      {
+        "link": "WAIST_YAW",
+        "mesh_name": "source_fitted_waist_yaw",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/WAIST_YAW.STL",
+        "replaced": true
+      },
+      {
+        "link": "NECK_YAW",
+        "mesh_name": "source_fitted_neck_yaw",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/NECK_YAW.STL",
+        "replaced": true
+      },
+      {
+        "link": "NECK_PITCH",
+        "mesh_name": "source_fitted_neck_pitch",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/NECK_PITCH.STL",
+        "replaced": true
+      },
+      {
+        "link": "RIGHT_SHOULDER_PITCH",
+        "mesh_name": "source_fitted_right_shoulder_pitch",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_SHOULDER_PITCH.STL",
+        "replaced": true
+      },
+      {
+        "link": "RIGHT_SHOULDER_ROLL",
+        "mesh_name": "source_fitted_right_shoulder_roll",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_SHOULDER_ROLL.STL",
+        "replaced": true
+      },
+      {
+        "link": "RIGHT_SHOULDER_YAW",
+        "mesh_name": "source_fitted_right_shoulder_yaw",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_SHOULDER_YAW.STL",
+        "replaced": true
+      },
+      {
+        "link": "RIGHT_ELBOW",
+        "mesh_name": "source_fitted_right_elbow",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_ELBOW.STL",
+        "replaced": true
+      },
+      {
+        "link": "RIGHT_WRIST_YAW",
+        "mesh_name": "source_fitted_right_wrist_yaw",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_WRIST_YAW.STL",
+        "replaced": true
+      },
+      {
+        "link": "LEFT_SHOULDER_PITCH",
+        "mesh_name": "source_fitted_left_shoulder_pitch",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_SHOULDER_PITCH.STL",
+        "replaced": true
+      },
+      {
+        "link": "LEFT_SHOULDER_ROLL",
+        "mesh_name": "source_fitted_left_shoulder_roll",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_SHOULDER_ROLL.STL",
+        "replaced": true
+      },
+      {
+        "link": "LEFT_SHOULDER_YAW",
+        "mesh_name": "source_fitted_left_shoulder_yaw",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_SHOULDER_YAW.STL",
+        "replaced": true
+      },
+      {
+        "link": "LEFT_ELBOW",
+        "mesh_name": "source_fitted_left_elbow",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_ELBOW.STL",
+        "replaced": true
+      },
+      {
+        "link": "LEFT_WRIST_YAW",
+        "mesh_name": "source_fitted_left_wrist_yaw",
+        "mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_WRIST_YAW.STL",
+        "replaced": true
+      }
+    ],
+    "source_mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/mjcf/asimov_fembot.xml",
+    "visual_replacements": 28
+  },
   "verification": {
     "acceptance_blocker": "visual media generated; engineering acceptance still requires manual review and measured hardware calibration",
     "constraint_policy": "values clipped to each MuJoCo joint range every frame",
@@ -1006,7 +1228,7 @@
     "video_encoder": "opencv VideoWriter mp4v"
   },
   "video": {
-    "bytes": 2288541,
+    "bytes": 2149984,
     "exists": true,
     "fps": 24,
     "frame_count": 144,

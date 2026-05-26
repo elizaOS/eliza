@@ -31,8 +31,8 @@ def test_fembot_topology_promotion_selects_clean_step_set() -> None:
     assert report["accepted"] is True
     assert report["summary"]["links"] == 28
     assert report["summary"]["missing_links"] == []
-    assert report["summary"]["promoted_original_step_links"] == 19
-    assert report["summary"]["promoted_repair_preview_links"] == 9
+    assert report["summary"]["promoted_original_step_links"] == 28
+    assert report["summary"]["promoted_repair_preview_links"] == 0
     assert report["summary"]["promoted_step_exports"] == 28
     assert report["summary"]["validated_promoted_meshes"] == 28
     assert report["summary"]["accepted_promoted_meshes"] == 28
@@ -42,8 +42,8 @@ def test_fembot_topology_promotion_selects_clean_step_set() -> None:
 
     records = {record["link"]: record for record in report["records"]}
     assert records["WAIST_YAW"]["promotion_source"] == "accepted_original_step"
-    assert records["LEFT_KNEE"]["promotion_source"] == "repair_preview"
-    assert records["LEFT_KNEE"]["repair_preview_envelope_preserved"] is True
+    assert records["LEFT_KNEE"]["promotion_source"] == "accepted_original_step"
+    assert records["LEFT_KNEE"]["repair_preview_envelope_preserved"] is False
     assert records["LEFT_KNEE"]["promoted_step_path"].endswith("left_knee.step")
 
 
@@ -67,5 +67,5 @@ def test_fembot_topology_promotion_cli_writes_gateable_proof(tmp_path) -> None:
     assert output.is_file()
     report = json.loads(output.read_text(encoding="utf-8"))
     assert report["accepted"] is True
-    assert '"promoted_repair_preview_links": 9' in proc.stdout
+    assert '"promoted_repair_preview_links": 0' in proc.stdout
     assert '"accepted_promoted_meshes": 28' in proc.stdout

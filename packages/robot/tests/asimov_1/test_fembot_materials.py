@@ -23,11 +23,21 @@ def test_fembot_material_manufacturing_proof_classifies_source_candidates() -> N
         "MJF_PA12": 26,
     }
     assert report["summary"]["generated_mass_estimate_kg"] > 0.0
+    assert report["summary"]["generated_geometry_measurement_parts"] == 28
+    assert report["summary"]["generated_geometry_measurement_missing_parts"] == 0
+    assert report["summary"]["generated_preliminary_mass_property_parts"] == 28
+    assert report["summary"]["generated_preliminary_mass_property_missing_parts"] == 0
     assert report["summary"]["generated_wall_thickness_failures"] == 2
     assert report["summary"]["generated_adjusted_wall_thickness_failures"] == 0
+    assert report["summary"]["generated_adjusted_wall_thickness_ready_parts"] == 28
     assert report["summary"]["generated_draft_review_pending_parts"] == 26
+    assert report["summary"]["production_material_selection_pending_parts"] == 28
+    assert report["summary"]["production_tolerance_drawing_pending_parts"] == 28
+    assert report["summary"]["production_inspection_pending_parts"] == 28
     assert report["summary"]["material_properties_accepted"] is False
     assert report["summary"]["manufacturing_process_accepted"] is False
+    assert "generated geometry" in report["summary"]["acceptance_blocker"]
+    assert "measured hardware mass/inertia" in report["summary"]["acceptance_blocker"]
 
     groups = {group["group"]: group for group in report["body_groups"]}
     assert groups["arm"]["fabrication_class_counts"]["ALU_7075"] > 0
@@ -47,6 +57,8 @@ def test_fembot_material_manufacturing_proof_classifies_source_candidates() -> N
     assert parts["LEFT_TOE"]["material_class"] == "ALU_7075"
     assert parts["LEFT_TOE"]["wall_thickness_ok"] is False
     assert parts["LEFT_TOE"]["manufacturing_adjusted_wall_thickness_ok"] is True
+    assert parts["LEFT_TOE"]["geometry_measurements_present"] is True
+    assert parts["LEFT_TOE"]["preliminary_mass_properties_present"] is True
     assert parts["LEFT_TOE"]["mass_estimate_kg"] > 0.0
     assert parts["NECK_PITCH"]["material_class"] == "MJF_PA12"
     assert parts["NECK_PITCH"]["requires_draft_review"] is True
@@ -59,6 +71,12 @@ def test_fembot_inventory_surfaces_material_manufacturing_status() -> None:
     assert report["material_manufacturing"]["accepted"] is False
     assert report["material_manufacturing"]["summary"]["classification_ok"] is True
     assert report["material_manufacturing"]["summary"]["generated_part_records"] == 28
+    assert (
+        report["material_manufacturing"]["summary"][
+            "generated_geometry_measurement_missing_parts"
+        ]
+        == 0
+    )
     assert (
         report["material_manufacturing"]["summary"][
             "generated_adjusted_wall_thickness_failures"

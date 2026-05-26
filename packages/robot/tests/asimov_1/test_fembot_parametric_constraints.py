@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 from eliza_robot.asimov_1.fembot_inventory import (
     FEMBOT_BODY_GROUP_LINKS,
@@ -20,8 +21,24 @@ def _body_groups() -> list[dict[str, object]]:
     ]
 
 
+def _proof(name: str) -> dict | None:
+    path = Path("cad/asimov-feminine/proofs") / name
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+
 def test_fembot_parametric_constraints_manifest_links_parameters_to_proofs() -> None:
-    report = build_fembot_parametric_constraints_proof(_body_groups())
+    report = build_fembot_parametric_constraints_proof(
+        _body_groups(),
+        slimming_report=_proof("fembot-slimming-envelope.json"),
+        clearance_report=_proof("fembot-clearance-projection.json"),
+        generated_cad_report=_proof("fembot-generated-cad-envelope.json"),
+        material_report=_proof("fembot-material-manufacturing.json"),
+        surface_report=_proof("fembot-surface-quality.json"),
+        topology_report=_proof("fembot-topology.json"),
+        topology_promotion_report=_proof("fembot-topology-promotion.json"),
+        mold_dfm_report=_proof("fembot-mold-dfm.json"),
+        thinness_frontier_report=_proof("fembot-thinness-frontier.json"),
+    )
 
     assert report["schema"] == "asimov-fembot-parametric-constraints-v1"
     assert report["ok"] is True
@@ -31,14 +48,14 @@ def test_fembot_parametric_constraints_manifest_links_parameters_to_proofs() -> 
     assert report["summary"]["parameters"] == 84
     assert report["summary"]["dimension_parameters_per_link"] == 3
     assert report["summary"]["constraints"] == 228
-    assert report["summary"]["verified_constraints"] == 174
+    assert report["summary"]["verified_constraints"] == 176
     assert report["summary"]["production_blockers"] == 170
     assert report["summary"]["links_with_height_preserved"] == 28
     assert report["summary"]["links_with_keepout_adjusted_clearance"] == 28
     assert report["summary"]["links_with_topology_accepted"] == 28
     assert report["summary"]["links_with_promoted_topology_accepted"] == 28
     assert report["summary"]["links_with_full_cavity_clearance_candidate"] == 26
-    assert report["summary"]["links_with_full_cavity_clearance_verified"] == 25
+    assert report["summary"]["links_with_full_cavity_clearance_verified"] == 26
     assert report["summary"]["links_with_supplier_vendor_keepout_growth"] == 8
     assert report["summary"]["links_with_supplier_vendor_adjusted_bbox_fit"] == 8
     assert report["summary"]["supplier_vendor_adjusted_fit_fail"] == 0
@@ -57,7 +74,8 @@ def test_fembot_parametric_constraints_manifest_links_parameters_to_proofs() -> 
         "y_extent_m",
         "z_extent_m",
     }
-    assert all(parameter["verified"] for parameter in imu["parameters"])
+    assert all(parameter["proofs"] for parameter in imu["parameters"])
+    assert any(not parameter["verified"] for parameter in imu["parameters"])
     assert "internal_cavity_keepout" in imu["active_thinness_limiters"]
     assert {
         constraint["name"] for constraint in imu["constraints"]
@@ -124,13 +142,13 @@ def test_fembot_inventory_surfaces_parametric_constraints_status() -> None:
         report["parametric_constraints"]["summary"][
             "links_with_supplier_vendor_keepout_growth"
         ]
-        == 8
+        == 0
     )
     assert (
         report["parametric_constraints"]["summary"][
             "links_with_supplier_vendor_adjusted_bbox_fit"
         ]
-        == 8
+        == 0
     )
     assert (
         report["parametric_constraints"]["summary"][
@@ -142,7 +160,7 @@ def test_fembot_inventory_surfaces_parametric_constraints_status() -> None:
         report["parametric_constraints"]["summary"][
             "links_with_full_cavity_clearance_verified"
         ]
-        == 25
+        == 26
     )
     assert report["parametric_constraints"]["summary"]["supplier_vendor_adjusted_fit_fail"] == 0
 

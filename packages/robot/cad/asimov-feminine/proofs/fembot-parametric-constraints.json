@@ -94,13 +94,16 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/imu_origin.step",
-            "step_sha256": "f3b2160a8c20a0cc136b7335d765e0c65e1cc3b0d29629ab929b51d77c052f70",
-            "volume_increase_fraction": 1.2603209586232005,
-            "xy_area_increase_fraction": 0.9718401175112494,
-            "z_expansion_m": 0.02688999845981599
+            "step_sha256": "bb7b00d18133e098b7cc5bd59afe3117cce2c16566d654818fda6285ed9ba946",
+            "strict_extent_max_abs_error_m": 1.9999969480544166e-07,
+            "volume_increase_fraction": 0.3085734647563658,
+            "xy_area_increase_fraction": 0.03423303966214308,
+            "z_expansion_m": 0.04256484132478605
           },
           "verified": true
         },
@@ -119,7 +122,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "torso",
       "link": "IMU_ORIGIN",
       "parameter_count": 3,
@@ -128,8 +131,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.062,
           "clearance_adjusted_value_m": 0.062,
-          "generated_delta_vs_adjusted_m": 1.9635568596076958e-07,
-          "generated_value_m": 0.06200019635568596,
+          "generated_delta_vs_adjusted_m": 0.058000199999968,
+          "generated_value_m": 0.120000199999968,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -139,14 +142,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.13185408432036638,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.13499999046325684,
           "clearance_adjusted_value_m": 0.13499999046325684,
-          "generated_delta_vs_adjusted_m": 1.9908267312462868e-07,
-          "generated_value_m": 0.13500018954592996,
+          "generated_delta_vs_adjusted_m": 0.0006268488231215008,
+          "generated_value_m": 0.13562683928637834,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -156,14 +159,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.13499999046325684,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.18379999697208405,
           "clearance_adjusted_value_m": 0.18379999697208405,
-          "generated_delta_vs_adjusted_m": 2.0000000594544431e-07,
-          "generated_value_m": 0.18380019697209,
+          "generated_delta_vs_adjusted_m": -0.023335256090564888,
+          "generated_value_m": 0.16046474088151916,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -173,11 +176,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.18379999697208405,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_shell_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/imu_origin.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 6
@@ -275,15 +278,18 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 5e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/waist_yaw.step",
-            "step_sha256": "08056207765c89469dd899153530c28a630f06ade1949730394e6e53758036a2",
-            "volume_increase_fraction": 3.284876678875424,
-            "xy_area_increase_fraction": 2.9211818972561154,
-            "z_expansion_m": 0.035400114336609834
+            "step_sha256": "0eb3932134e75802f175b9b928c2a742a158132187022570b3da1d7aed704d57",
+            "strict_extent_max_abs_error_m": 3.0869571382985406e-06,
+            "volume_increase_fraction": 0.10918889864557668,
+            "xy_area_increase_fraction": 0.0,
+            "z_expansion_m": 0.04039991433660978
           },
-          "verified": false
+          "verified": true
         },
         {
           "kind": "manufacturing_dfm",
@@ -300,7 +306,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "torso",
       "link": "WAIST_YAW",
       "parameter_count": 3,
@@ -309,8 +315,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.0362128253533167,
           "clearance_adjusted_value_m": 0.0362128253533167,
-          "generated_delta_vs_adjusted_m": -3.4968134076523993e-07,
-          "generated_value_m": 0.036212475671975934,
+          "generated_delta_vs_adjusted_m": 0.18033082341755763,
+          "generated_value_m": 0.21654364877087434,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -320,14 +326,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.21884702146053314,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.2029999999999999,
           "clearance_adjusted_value_m": 0.2029999999999999,
-          "generated_delta_vs_adjusted_m": 6.263880306389691e-07,
-          "generated_value_m": 0.20300062638803054,
+          "generated_delta_vs_adjusted_m": 0.06744145685329234,
+          "generated_value_m": 0.27044145685329224,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -337,14 +343,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.25,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.3816669760271907,
           "clearance_adjusted_value_m": 0.3816669760271907,
-          "generated_delta_vs_adjusted_m": 1.999995043466818e-07,
-          "generated_value_m": 0.38166717602669503,
+          "generated_delta_vs_adjusted_m": -0.011666776027495607,
+          "generated_value_m": 0.3700001999996951,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -354,14 +360,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.3816669760271907,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_shell_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/waist_yaw.step",
       "surface_intent": "smooth",
-      "verified_constraint_count": 5
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -432,7 +438,7 @@
           "value": {
             "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/neck_yaw.step",
             "promoted_step_topology_accepted": true,
-            "raw_generated_topology_accepted": false
+            "raw_generated_topology_accepted": true
           },
           "verified": true
         },
@@ -457,13 +463,16 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/neck_yaw.step",
-            "step_sha256": "5293821d48fa7e3b3d8ffe24a1496a6f0ec0a87fc696fc5eaf1d7effc507e4ac",
-            "volume_increase_fraction": 20.142094686863363,
-            "xy_area_increase_fraction": 12.96173564133151,
-            "z_expansion_m": 0.0383999998100102
+            "step_sha256": "5eb24aa60b9c949f17607940e1a35eef289e5e38e183a0bce7ef7d7bfd2b61f0",
+            "strict_extent_max_abs_error_m": 2.0000000490461023e-07,
+            "volume_increase_fraction": 0.6199953687276198,
+            "xy_area_increase_fraction": 0.0,
+            "z_expansion_m": 0.04339979981001019
           },
           "verified": true
         },
@@ -482,7 +491,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "head",
       "link": "NECK_YAW",
       "parameter_count": 3,
@@ -491,8 +500,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 1.9354063407819866e-07,
-          "generated_value_m": 0.012000193540634078,
+          "generated_delta_vs_adjusted_m": 0.044639183671561805,
+          "generated_value_m": 0.0566391836715618,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -502,14 +511,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.07068441063165665,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 2.678968381089608e-07,
-          "generated_value_m": 0.01200026789683811,
+          "generated_delta_vs_adjusted_m": 0.049251676309192666,
+          "generated_value_m": 0.06125167630919267,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -519,14 +528,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.060499999672174454,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.07466627261601388,
           "clearance_adjusted_value_m": 0.07466627261601388,
-          "generated_delta_vs_adjusted_m": 2.0000000111597416e-07,
-          "generated_value_m": 0.074666472616015,
+          "generated_delta_vs_adjusted_m": -0.004666072616008973,
+          "generated_value_m": 0.07000020000000491,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -536,11 +545,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.07466627261601388,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_shell_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/neck_yaw.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 6
@@ -639,13 +648,16 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/neck_pitch.step",
-            "step_sha256": "d8549318b20eb3fff1f0d9c4695c0ba65d7bac3e492aa03147da301886347c56",
-            "volume_increase_fraction": 31.492425621902868,
-            "xy_area_increase_fraction": 30.750976902235376,
-            "z_expansion_m": 0.004295835340023063
+            "step_sha256": "bb5b852e5b5f931d6ced21f50d1057e0d4c37fc3df2f4aeb1ebda10454c7576a",
+            "strict_extent_max_abs_error_m": 1.9999998995823276e-07,
+            "volume_increase_fraction": 0.051642361175268325,
+            "xy_area_increase_fraction": 0.0,
+            "z_expansion_m": 0.009295635340020036
           },
           "verified": true
         },
@@ -664,7 +676,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "head",
       "link": "NECK_PITCH",
       "parameter_count": 3,
@@ -673,8 +685,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.04,
           "clearance_adjusted_value_m": 0.04,
-          "generated_delta_vs_adjusted_m": 1.784687760283954e-07,
-          "generated_value_m": 0.04000017846877603,
+          "generated_delta_vs_adjusted_m": 0.12591079892088533,
+          "generated_value_m": 0.16591079892088534,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -684,14 +696,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.1687920019030571,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 2.6789683964245636e-07,
-          "generated_value_m": 0.012000267896839643,
+          "generated_delta_vs_adjusted_m": 0.10502367564316782,
+          "generated_value_m": 0.11702367564316782,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -701,14 +713,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.13140400499105453,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.18396008387207985,
           "clearance_adjusted_value_m": 0.18396008387207985,
-          "generated_delta_vs_adjusted_m": 1.9999991016095287e-07,
-          "generated_value_m": 0.18396028387199,
+          "generated_delta_vs_adjusted_m": -0.003959883872089842,
+          "generated_value_m": 0.18000019999999,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -718,11 +730,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.18396008387207985,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_shell_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/neck_pitch.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 6
@@ -822,12 +834,15 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": true,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_shoulder_pitch.step",
-            "step_sha256": "e3a23bec2643809dae16a08557308c930b8b0c97dd4964e47e18010762797f2d",
-            "volume_increase_fraction": 4.147211682534416,
-            "xy_area_increase_fraction": 4.147211682534415,
+            "step_sha256": "5084ba343de9fbd5a40ce6eff90ea7cd60b1effc0161f2fd5458c2c445f7d924",
+            "strict_extent_max_abs_error_m": 2.000000044743988e-07,
+            "volume_increase_fraction": 0.10363440498308174,
+            "xy_area_increase_fraction": 0.10363440498308174,
             "z_expansion_m": 0.0
           },
           "verified": true
@@ -847,7 +862,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "arm",
       "link": "LEFT_SHOULDER_PITCH",
       "parameter_count": 3,
@@ -856,8 +871,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 1.992946397112727e-07,
-          "generated_value_m": 0.012000199294639712,
+          "generated_delta_vs_adjusted_m": 0.07592928811280082,
+          "generated_value_m": 0.08792928811280082,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -867,14 +882,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.08659999817609787,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.0753532232325531,
           "clearance_adjusted_value_m": 0.08470644922554493,
-          "generated_delta_vs_adjusted_m": 1.5440416775702737e-07,
-          "generated_value_m": 0.08470660362971269,
+          "generated_delta_vs_adjusted_m": 0.025293750774455073,
+          "generated_value_m": 0.1100002,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -884,14 +899,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.11670644395053387,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.06670644879341125,
           "clearance_adjusted_value_m": 0.06670644879341125,
-          "generated_delta_vs_adjusted_m": 2.0000000874875745e-07,
-          "generated_value_m": 0.06670664879342,
+          "generated_delta_vs_adjusted_m": -0.0009019034127557279,
+          "generated_value_m": 0.06580454538065553,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -901,11 +916,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.06670644879341125,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_pitch.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 6
@@ -1005,12 +1020,15 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": true,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_shoulder_pitch.step",
-            "step_sha256": "ef4c07d12be2d16b293a460642687ecca9ddb0596d22f5ffe770a9b336a92092",
-            "volume_increase_fraction": 4.147211682534416,
-            "xy_area_increase_fraction": 4.147211682534415,
+            "step_sha256": "c421342a52a840a0f3ce0a02f16a61f62219622a13cb3d026c9f8433aa71823f",
+            "strict_extent_max_abs_error_m": 2.000000006163738e-07,
+            "volume_increase_fraction": 0.13466060221781428,
+            "xy_area_increase_fraction": 0.13466060221781406,
             "z_expansion_m": 0.0
           },
           "verified": true
@@ -1030,7 +1048,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "arm",
       "link": "RIGHT_SHOULDER_PITCH",
       "parameter_count": 3,
@@ -1039,8 +1057,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 1.9929463968351713e-07,
-          "generated_value_m": 0.012000199294639684,
+          "generated_delta_vs_adjusted_m": 0.0766445800496262,
+          "generated_value_m": 0.08864458004962619,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -1050,14 +1068,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.08659999817609787,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.0753532232325457,
           "clearance_adjusted_value_m": 0.08470644922554493,
-          "generated_delta_vs_adjusted_m": 1.5440408647482418e-07,
-          "generated_value_m": 0.08470660362963141,
+          "generated_delta_vs_adjusted_m": 0.025293750774455073,
+          "generated_value_m": 0.1100002,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -1067,14 +1085,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.11670644395053387,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.08274189755320549,
           "clearance_adjusted_value_m": 0.08274189755320549,
-          "generated_delta_vs_adjusted_m": 2.0000000452990996e-07,
-          "generated_value_m": 0.08274209755321002,
+          "generated_delta_vs_adjusted_m": -0.016459762369606085,
+          "generated_value_m": 0.0662821351835994,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -1084,11 +1102,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.08274189755320549,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_pitch.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 6
@@ -1188,13 +1206,16 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_shoulder_roll.step",
-            "step_sha256": "542743e55560d0205b87787602830b36ddc1dc4eb74caf3212f300a66eead533",
-            "volume_increase_fraction": 28.711817709516005,
-            "xy_area_increase_fraction": 24.606249319670933,
-            "z_expansion_m": 0.029402513647079492
+            "step_sha256": "5b92b8b5578eca82ae12d84d01b02a69e42233341e041d877883430c59b63909",
+            "strict_extent_max_abs_error_m": 1.9999999995023998e-07,
+            "volume_increase_fraction": 0.21295377555059036,
+            "xy_area_increase_fraction": 0.018327250342890178,
+            "z_expansion_m": 0.03440231364800003
           },
           "verified": true
         },
@@ -1213,7 +1234,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "arm",
       "link": "LEFT_SHOULDER_ROLL",
       "parameter_count": 3,
@@ -1222,8 +1243,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 2.678968390908143e-07,
-          "generated_value_m": 0.012000267896839091,
+          "generated_delta_vs_adjusted_m": 0.06324837475033833,
+          "generated_value_m": 0.07524837475033833,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -1233,14 +1254,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.07459999993443489,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.02,
           "clearance_adjusted_value_m": 0.024,
-          "generated_delta_vs_adjusted_m": 1.870812691047441e-07,
-          "generated_value_m": 0.024000187081269105,
+          "generated_delta_vs_adjusted_m": 0.0737003387235764,
+          "generated_value_m": 0.0977003387235764,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -1250,14 +1271,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.10000000149011612,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.18338218331336975,
           "clearance_adjusted_value_m": 0.18338218331336975,
-          "generated_delta_vs_adjusted_m": 1.9999954026239664e-07,
-          "generated_value_m": 0.18338238331291,
+          "generated_delta_vs_adjusted_m": -0.003381983313829745,
+          "generated_value_m": 0.18000019999954,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -1267,11 +1288,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.18338218331336975,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_roll.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 6
@@ -1371,13 +1392,16 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_shoulder_roll.step",
-            "step_sha256": "fd7456a58423a836b05680b7a1623c21d2f417f40dfd4d42a4fd4b9f3e8e8756",
-            "volume_increase_fraction": 28.711817709516005,
-            "xy_area_increase_fraction": 24.606249319670933,
-            "z_expansion_m": 0.029402513647079492
+            "step_sha256": "e1810e4bb8373e1060db0259de28d60eb4c3c4fc86dff67099a524dbcdb44837",
+            "strict_extent_max_abs_error_m": 1.9999999995023998e-07,
+            "volume_increase_fraction": 0.2127523810026104,
+            "xy_area_increase_fraction": 0.01815817089368732,
+            "z_expansion_m": 0.03440231364800003
           },
           "verified": true
         },
@@ -1396,7 +1420,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "arm",
       "link": "RIGHT_SHOULDER_ROLL",
       "parameter_count": 3,
@@ -1405,8 +1429,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 2.678968390908143e-07,
-          "generated_value_m": 0.012000267896839091,
+          "generated_delta_vs_adjusted_m": 0.06336887446499087,
+          "generated_value_m": 0.07536887446499087,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -1416,14 +1440,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.07459999993443489,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.02,
           "clearance_adjusted_value_m": 0.024,
-          "generated_delta_vs_adjusted_m": 1.870812691047441e-07,
-          "generated_value_m": 0.024000187081269105,
+          "generated_delta_vs_adjusted_m": 0.07340303313847463,
+          "generated_value_m": 0.09740303313847462,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -1433,14 +1457,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.10000000149011612,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.18338218331336975,
           "clearance_adjusted_value_m": 0.18338218331336975,
-          "generated_delta_vs_adjusted_m": 1.9999954026239664e-07,
-          "generated_value_m": 0.18338238331291,
+          "generated_delta_vs_adjusted_m": -0.003381983313829745,
+          "generated_value_m": 0.18000019999954,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -1450,11 +1474,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.18338218331336975,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_roll.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 6
@@ -1529,7 +1553,7 @@
           "value": {
             "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/left_shoulder_yaw.step",
             "promoted_step_topology_accepted": true,
-            "raw_generated_topology_accepted": false
+            "raw_generated_topology_accepted": true
           },
           "verified": true
         },
@@ -1554,13 +1578,16 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_shoulder_yaw.step",
-            "step_sha256": "3c21b4aecf5647c189356b8d6ed126a47fca184742c6327a1dff3352ab61f8c0",
-            "volume_increase_fraction": 15.228855680294522,
-            "xy_area_increase_fraction": 12.08874910877764,
-            "z_expansion_m": 0.03240000022351744
+            "step_sha256": "5f3dba2451c625d511066e01c114524c48ac8c52edb087e5df8c2c3af7f05c7e",
+            "strict_extent_max_abs_error_m": 2.0000038097878203e-07,
+            "volume_increase_fraction": 0.28847955510166967,
+            "xy_area_increase_fraction": 0.0,
+            "z_expansion_m": 0.037502399859238006
           },
           "verified": true
         },
@@ -1579,7 +1606,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "arm",
       "link": "LEFT_SHOULDER_YAW",
       "parameter_count": 3,
@@ -1588,8 +1615,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 1.9354063481719086e-07,
-          "generated_value_m": 0.012000193540634817,
+          "generated_delta_vs_adjusted_m": 0.045384696864915836,
+          "generated_value_m": 0.05738469686491583,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -1599,14 +1626,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.06852789595723152,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 2.67896839111631e-07,
-          "generated_value_m": 0.012000267896839112,
+          "generated_delta_vs_adjusted_m": 0.04923995469817642,
+          "generated_value_m": 0.06123995469817642,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -1616,14 +1643,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.06450000032782555,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.13505129981786013,
           "clearance_adjusted_value_m": 0.13505129981786013,
-          "generated_delta_vs_adjusted_m": 2.0000038086775973e-07,
-          "generated_value_m": 0.135051499818241,
+          "generated_delta_vs_adjusted_m": -0.0050510998174791155,
+          "generated_value_m": 0.130000200000381,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -1633,11 +1660,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.13505129981786013,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_yaw.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 6
@@ -1712,7 +1739,7 @@
           "value": {
             "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/right_shoulder_yaw.step",
             "promoted_step_topology_accepted": true,
-            "raw_generated_topology_accepted": false
+            "raw_generated_topology_accepted": true
           },
           "verified": true
         },
@@ -1737,13 +1764,16 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_shoulder_yaw.step",
-            "step_sha256": "07274ccc915e379775dce17f8bf7a6130d8259ce42a2bbbe52a8fff6721da440",
-            "volume_increase_fraction": 14.922875037451123,
-            "xy_area_increase_fraction": 11.847482244504725,
-            "z_expansion_m": 0.03240000022351744
+            "step_sha256": "7226c675b8fa6ee02c68d3f7c0bff0694eaca7051d1be716c2a0e3cb590b206a",
+            "strict_extent_max_abs_error_m": 2.0000006498155365e-07,
+            "volume_increase_fraction": 0.293095010744991,
+            "xy_area_increase_fraction": 0.0,
+            "z_expansion_m": 0.03810241001587003
           },
           "verified": true
         },
@@ -1762,7 +1792,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "arm",
       "link": "RIGHT_SHOULDER_YAW",
       "parameter_count": 3,
@@ -1771,8 +1801,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 1.9354063481719086e-07,
-          "generated_value_m": 0.012000193540634817,
+          "generated_delta_vs_adjusted_m": 0.0453762868493241,
+          "generated_value_m": 0.057376286849324096,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -1782,14 +1812,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.06852789595723152,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 2.678968393267367e-07,
-          "generated_value_m": 0.012000267896839327,
+          "generated_delta_vs_adjusted_m": 0.04924147365768586,
+          "generated_value_m": 0.061241473657685855,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -1799,14 +1829,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.0656999982893467,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.13535130489617586,
           "clearance_adjusted_value_m": 0.13535130489617586,
-          "generated_delta_vs_adjusted_m": 2.0000006512033153e-07,
-          "generated_value_m": 0.13535150489624098,
+          "generated_delta_vs_adjusted_m": -0.005351104896110875,
+          "generated_value_m": 0.13000020000006499,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -1816,11 +1846,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.13535130489617586,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_yaw.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 6
@@ -1919,13 +1949,16 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_elbow.step",
-            "step_sha256": "6501962b2eee3eca927de4cd0be58afeb0a5c73e61579ec3e8ff9aa458ce56cc",
-            "volume_increase_fraction": 5.050905158274735,
-            "xy_area_increase_fraction": 4.641034821303061,
-            "z_expansion_m": 0.009601705217361478
+            "step_sha256": "5783a9e13c8f1ac18b2657dacdb20773328d2532c5ebe94057cc9c86746f2185",
+            "strict_extent_max_abs_error_m": 2.0000035999556687e-07,
+            "volume_increase_fraction": 0.8497187730913902,
+            "xy_area_increase_fraction": 0.6061458867045595,
+            "z_expansion_m": 0.018198094782640006
           },
           "verified": true
         },
@@ -1944,7 +1977,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "arm",
       "link": "LEFT_ELBOW",
       "parameter_count": 3,
@@ -1953,8 +1986,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.09999999999999999,
           "clearance_adjusted_value_m": 0.11006181651353836,
-          "generated_delta_vs_adjusted_m": 1.992521004301473e-07,
-          "generated_value_m": 0.11006201576563879,
+          "generated_delta_vs_adjusted_m": 0.02027827194564974,
+          "generated_value_m": 0.1303400884591881,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -1964,14 +1997,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.1414158120751381,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.02,
           "clearance_adjusted_value_m": 0.024,
-          "generated_delta_vs_adjusted_m": 1.9858927851473807e-07,
-          "generated_value_m": 0.024000198589278515,
+          "generated_delta_vs_adjusted_m": 0.053191824166395306,
+          "generated_value_m": 0.0771918241663953,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -1981,14 +2014,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.07349999994039536,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.13214801996946335,
           "clearance_adjusted_value_m": 0.13214801996946335,
-          "generated_delta_vs_adjusted_m": 1.9999999667508206e-07,
-          "generated_value_m": 0.13214821996946002,
+          "generated_delta_vs_adjusted_m": -0.012147819969463347,
+          "generated_value_m": 0.1200002,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -1998,11 +2031,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.13214801996946335,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_elbow.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 6
@@ -2101,13 +2134,16 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_elbow.step",
-            "step_sha256": "04d25e2819c2d1b3f5d0dfe64a4924b7e6b5fccd682359e31cd3885feaa0f901",
-            "volume_increase_fraction": 5.060274465959773,
-            "xy_area_increase_fraction": 4.642355583334117,
-            "z_expansion_m": 0.009781308913230924
+            "step_sha256": "9fe80b091711ce1f29750c5bd22f934f8472662f5664478337919b9500e87610",
+            "strict_extent_max_abs_error_m": 2.000002399804579e-07,
+            "volume_increase_fraction": 0.8543015493020074,
+            "xy_area_increase_fraction": 0.6122204537983518,
+            "z_expansion_m": 0.018018491086760013
           },
           "verified": true
         },
@@ -2126,7 +2162,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "arm",
       "link": "RIGHT_ELBOW",
       "parameter_count": 3,
@@ -2135,8 +2171,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.09999999999999999,
           "clearance_adjusted_value_m": 0.10999064111709594,
-          "generated_delta_vs_adjusted_m": 1.9925258774866617e-07,
-          "generated_value_m": 0.10999084036968369,
+          "generated_delta_vs_adjusted_m": 0.020342530099053707,
+          "generated_value_m": 0.13033317121614965,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -2146,14 +2182,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.1414869874715805,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.02,
           "clearance_adjusted_value_m": 0.024,
-          "generated_delta_vs_adjusted_m": 1.9858927851473807e-07,
-          "generated_value_m": 0.024000198589278515,
+          "generated_delta_vs_adjusted_m": 0.05002139899984171,
+          "generated_value_m": 0.07402139899984171,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -2163,14 +2199,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.07349999994039536,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.13205821812152863,
           "clearance_adjusted_value_m": 0.13205821812152863,
-          "generated_delta_vs_adjusted_m": 1.999999914015227e-07,
-          "generated_value_m": 0.13205841812152003,
+          "generated_delta_vs_adjusted_m": -0.012058018121528624,
+          "generated_value_m": 0.1200002,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -2180,11 +2216,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.13205821812152863,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_elbow.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 6
@@ -2258,7 +2294,7 @@
           "value": {
             "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/left_wrist_yaw.step",
             "promoted_step_topology_accepted": true,
-            "raw_generated_topology_accepted": false
+            "raw_generated_topology_accepted": true
           },
           "verified": true
         },
@@ -2283,13 +2319,16 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_wrist_yaw.step",
-            "step_sha256": "b7ffdfd8b64c5c3c24cc926347d5fcbeec7497af00c641319c8494f76e204ee4",
-            "volume_increase_fraction": 16.89419636858474,
-            "xy_area_increase_fraction": 13.776656300102667,
-            "z_expansion_m": 0.008506828302144998
+            "step_sha256": "e5e13dff547d5a18b91506184794b32914736e40b7c87a230b573323d9ff78a4",
+            "strict_extent_max_abs_error_m": 2.0000000100495186e-07,
+            "volume_increase_fraction": 1.9306225677817213,
+            "xy_area_increase_fraction": 0.6236567799981985,
+            "z_expansion_m": 0.024148721275137997
           },
           "verified": true
         },
@@ -2308,7 +2347,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "arm",
       "link": "LEFT_WRIST_YAW",
       "parameter_count": 3,
@@ -2317,8 +2356,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 1.93540633549108e-07,
-          "generated_value_m": 0.01200019354063355,
+          "generated_delta_vs_adjusted_m": 0.02122695311184061,
+          "generated_value_m": 0.03322695311184061,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -2328,14 +2367,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.03803807031363249,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 2.678968390006087e-07,
-          "generated_value_m": 0.012000267896839,
+          "generated_delta_vs_adjusted_m": 0.02490458485155601,
+          "generated_value_m": 0.03690458485155601,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -2345,14 +2384,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.03759061545133591,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.040321046486496925,
           "clearance_adjusted_value_m": 0.040321046486496925,
-          "generated_delta_vs_adjusted_m": 2.0000000307274224e-07,
-          "generated_value_m": 0.0403212464865,
+          "generated_delta_vs_adjusted_m": -0.010320846486495925,
+          "generated_value_m": 0.030000200000001,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -2362,11 +2401,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.040321046486496925,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_wrist_yaw.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 6
@@ -2440,7 +2479,7 @@
           "value": {
             "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/right_wrist_yaw.step",
             "promoted_step_topology_accepted": true,
-            "raw_generated_topology_accepted": false
+            "raw_generated_topology_accepted": true
           },
           "verified": true
         },
@@ -2465,13 +2504,16 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_wrist_yaw.step",
-            "step_sha256": "bf04e4906550fac64083e135d1038f0f854499430e5d3caf255cc837ee673f64",
-            "volume_increase_fraction": 16.87111300314844,
-            "xy_area_increase_fraction": 13.776320477906813,
-            "z_expansion_m": 0.008455665165185922
+            "step_sha256": "2f91e4479adc7bd096c018f9363fbbe671a9372f7c5d8a711576aa9482aa012f",
+            "strict_extent_max_abs_error_m": 1.9999999600894824e-07,
+            "volume_increase_fraction": 1.8691051666112646,
+            "xy_area_increase_fraction": 0.5880735950315039,
+            "z_expansion_m": 0.024199888137388
           },
           "verified": true
         },
@@ -2490,7 +2532,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "arm",
       "link": "RIGHT_WRIST_YAW",
       "parameter_count": 3,
@@ -2499,8 +2541,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 1.935406343245294e-07,
-          "generated_value_m": 0.012000193540634325,
+          "generated_delta_vs_adjusted_m": 0.023820615174312932,
+          "generated_value_m": 0.03582061517431293,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -2510,14 +2552,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.03807985968887806,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 2.678968388999947e-07,
-          "generated_value_m": 0.0120002678968389,
+          "generated_delta_vs_adjusted_m": 0.02518694279610106,
+          "generated_value_m": 0.03718694279610106,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -2527,14 +2569,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.03759999759495258,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.04037221148610115,
           "clearance_adjusted_value_m": 0.04037221148610115,
-          "generated_delta_vs_adjusted_m": 1.9999999884695585e-07,
-          "generated_value_m": 0.0403724114861,
+          "generated_delta_vs_adjusted_m": -0.01037201148610515,
+          "generated_value_m": 0.030000199999996,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -2544,11 +2586,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.04037221148610115,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_wrist_yaw.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 6
@@ -2647,13 +2689,16 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_hip_pitch.step",
-            "step_sha256": "36c67c0fa06283a2e6fe93ac86f28699ac73152f5c0737ff2f36586e4ae1e33b",
-            "volume_increase_fraction": 1.870314809746743,
-            "xy_area_increase_fraction": 1.7445241838340433,
-            "z_expansion_m": 0.004399997735023503
+            "step_sha256": "6f688a953840ac5a050d5c83f235eddc9300283147cccfc8ae948c1355bc9c48",
+            "strict_extent_max_abs_error_m": 1.9999999933961732e-07,
+            "volume_increase_fraction": 0.8901784639957258,
+            "xy_area_increase_fraction": 0.494575845898521,
+            "z_expansion_m": 0.02295368586127615
           },
           "verified": true
         },
@@ -2672,7 +2717,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "leg",
       "link": "LEFT_HIP_PITCH",
       "parameter_count": 3,
@@ -2681,8 +2726,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.0522501,
           "clearance_adjusted_value_m": 0.0522501,
-          "generated_delta_vs_adjusted_m": 1.9692873362564534e-07,
-          "generated_value_m": 0.052250296928733626,
+          "generated_delta_vs_adjusted_m": 0.045540127763097356,
+          "generated_value_m": 0.09779022776309736,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -2692,14 +2737,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.09724928066134453,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.050000275940092404,
           "clearance_adjusted_value_m": 0.09499831758067012,
-          "generated_delta_vs_adjusted_m": 1.4886426016880172e-07,
-          "generated_value_m": 0.09499846644493029,
+          "generated_delta_vs_adjusted_m": -0.004998117580668121,
+          "generated_value_m": 0.090000200000002,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -2709,14 +2754,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.09899831237271428,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.09600000083446503,
           "clearance_adjusted_value_m": 0.09600000083446503,
-          "generated_delta_vs_adjusted_m": 2.0000000497399917e-07,
-          "generated_value_m": 0.09600020083447,
+          "generated_delta_vs_adjusted_m": -0.009281604915820502,
+          "generated_value_m": 0.08671839591864453,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -2726,11 +2771,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.09600000083446503,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_pitch.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 6
@@ -2829,13 +2874,16 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_hip_pitch.step",
-            "step_sha256": "c21f260bdb98d75db660201f50caacfa63a27cd110b206b4ee1645866f18517b",
-            "volume_increase_fraction": 1.871723502883023,
-            "xy_area_increase_fraction": 1.7458711414454506,
-            "z_expansion_m": 0.004399997735023503
+            "step_sha256": "59733ac71b4a4ff170f11d6189fd857e70404a5b4e3b640b5596ac56ae553e1a",
+            "strict_extent_max_abs_error_m": 1.9999999564812576e-07,
+            "volume_increase_fraction": 1.1453466207811656,
+            "xy_area_increase_fraction": 0.6951240646281951,
+            "z_expansion_m": 0.02302211829952676
           },
           "verified": true
         },
@@ -2854,7 +2902,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "leg",
       "link": "RIGHT_HIP_PITCH",
       "parameter_count": 3,
@@ -2863,8 +2911,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.052250000000000005,
           "clearance_adjusted_value_m": 0.052250000000000005,
-          "generated_delta_vs_adjusted_m": 1.9692874270865746e-07,
-          "generated_value_m": 0.05225019692874271,
+          "generated_delta_vs_adjusted_m": 0.030385827185008332,
+          "generated_value_m": 0.08263582718500834,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -2874,14 +2922,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.09725009649991989,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.05,
           "clearance_adjusted_value_m": 0.09485058746859432,
-          "generated_delta_vs_adjusted_m": 1.4894359452732875e-07,
-          "generated_value_m": 0.09485073641218884,
+          "generated_delta_vs_adjusted_m": -0.004850387468590317,
+          "generated_value_m": 0.090000200000004,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -2891,14 +2939,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.09885058226063848,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.09600000083446503,
           "clearance_adjusted_value_m": 0.09600000083446503,
-          "generated_delta_vs_adjusted_m": 2.0000000497399917e-07,
-          "generated_value_m": 0.09600020083447,
+          "generated_delta_vs_adjusted_m": -0.009319877382397423,
+          "generated_value_m": 0.0866801234520676,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -2908,11 +2956,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.09600000083446503,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_pitch.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 6
@@ -3032,7 +3080,7 @@
             "supplier_vendor_adjusted_fit_pass_count": 3,
             "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
             "supplier_vendor_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_hip_roll.step",
-            "supplier_vendor_adjusted_step_sha256": "8059281fe63eedfb830abd2db1361df305aeac7b5ab2916e5236a692cd19f3b9"
+            "supplier_vendor_adjusted_step_sha256": "95d9527833f86dfbc08914faaed869ccac98599a45040ffdfb2fac16a095596f"
           },
           "verified": true
         },
@@ -3045,13 +3093,16 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
-            "height_preserved": true,
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
+            "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_hip_roll.step",
-            "step_sha256": "43ccc8f18678ea492a1bcf5453ed08fa4fe6ec6c0fc6f7a788bf42210ea6512f",
-            "volume_increase_fraction": 5.966814785388086,
-            "xy_area_increase_fraction": 5.966814785388087,
-            "z_expansion_m": 0.0
+            "step_sha256": "9a1e61995d53be9bc43d908bb9a56dd013a4f5e6aeb1778b8e8ccfc17a013f85",
+            "strict_extent_max_abs_error_m": 1.9999999999187335e-07,
+            "volume_increase_fraction": 0.5172725964269698,
+            "xy_area_increase_fraction": 0.30478360106439895,
+            "z_expansion_m": 0.011399800059599993
           },
           "verified": true
         },
@@ -3070,7 +3121,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "leg",
       "link": "LEFT_HIP_ROLL",
       "parameter_count": 3,
@@ -3079,8 +3130,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.052249999999995404,
           "clearance_adjusted_value_m": 0.05651922830939293,
-          "generated_delta_vs_adjusted_m": 1.6957680226692418e-07,
-          "generated_value_m": 0.0565193978861952,
+          "generated_delta_vs_adjusted_m": 0.016129080849358837,
+          "generated_value_m": 0.07264830915875177,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -3090,14 +3141,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.07251923158764839,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 1.9929463854900797e-07,
-          "generated_value_m": 0.01200019929463855,
+          "generated_delta_vs_adjusted_m": 0.04114187402868508,
+          "generated_value_m": 0.05314187402868508,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -3107,14 +3158,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.05338030308485031,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.07999999821186066,
           "clearance_adjusted_value_m": 0.07999999821186066,
-          "generated_delta_vs_adjusted_m": 1.9999999933961732e-07,
-          "generated_value_m": 0.08000019821186,
+          "generated_delta_vs_adjusted_m": -0.009999798211860644,
+          "generated_value_m": 0.07000020000000001,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -3124,11 +3175,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.07999999821186066,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 7,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_roll.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 7
@@ -3248,7 +3299,7 @@
             "supplier_vendor_adjusted_fit_pass_count": 3,
             "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
             "supplier_vendor_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_hip_roll.step",
-            "supplier_vendor_adjusted_step_sha256": "fe25ecf5017dc1f86f1910c9df9b0d9cf001794fd77c4757c977de665eae9032"
+            "supplier_vendor_adjusted_step_sha256": "53b1528f67d7c9c441b1e5829e7dcb537b9bb69a8ec460e30d7ce83a54fa92e6"
           },
           "verified": true
         },
@@ -3261,13 +3312,16 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
-            "height_preserved": true,
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
+            "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_hip_roll.step",
-            "step_sha256": "1c6f493c76fd4d58648464c2d1edcfc666d0807b0e891243f9dd47b44203b8af",
-            "volume_increase_fraction": 5.969327735626895,
-            "xy_area_increase_fraction": 5.969327735626895,
-            "z_expansion_m": 0.0
+            "step_sha256": "00b4289d858d7e5cac8a697aec395036923825992f38c37f5b08506a3355c714",
+            "strict_extent_max_abs_error_m": 1.9999999999187335e-07,
+            "volume_increase_fraction": 0.5167954567651185,
+            "xy_area_increase_fraction": 0.3043732832298405,
+            "z_expansion_m": 0.011399800059599993
           },
           "verified": true
         },
@@ -3286,7 +3340,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "leg",
       "link": "RIGHT_HIP_ROLL",
       "parameter_count": 3,
@@ -3295,8 +3349,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.0522499999999986,
           "clearance_adjusted_value_m": 0.05651922830939293,
-          "generated_delta_vs_adjusted_m": 1.6957680226692418e-07,
-          "generated_value_m": 0.0565193978861952,
+          "generated_delta_vs_adjusted_m": 0.016142021629443018,
+          "generated_value_m": 0.07266124993883595,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -3306,14 +3360,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.07251923158764839,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 1.9929463887860543e-07,
-          "generated_value_m": 0.012000199294638879,
+          "generated_delta_vs_adjusted_m": 0.04134852814653102,
+          "generated_value_m": 0.053348528146531016,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -3323,14 +3377,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.0533982589840889,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.07999999821186066,
           "clearance_adjusted_value_m": 0.07999999821186066,
-          "generated_delta_vs_adjusted_m": 1.9999999933961732e-07,
-          "generated_value_m": 0.08000019821186,
+          "generated_delta_vs_adjusted_m": -0.009999798211860644,
+          "generated_value_m": 0.07000020000000001,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -3340,11 +3394,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.07999999821186066,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 7,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_roll.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 7
@@ -3467,7 +3521,7 @@
             "supplier_vendor_adjusted_fit_pass_count": 5,
             "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
             "supplier_vendor_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_hip_yaw.step",
-            "supplier_vendor_adjusted_step_sha256": "8c3fe13d78b067664d1f395a1c6da18befaa77f5594b164d16166608795ae5c2"
+            "supplier_vendor_adjusted_step_sha256": "709a1b6fdf883362702798a1b0f447e2cea897e54f841740fe234dcb395e76b3"
           },
           "verified": true
         },
@@ -3480,12 +3534,15 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": true,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_hip_yaw.step",
-            "step_sha256": "12cdc574f17b9d32674987f3aa733d472010dcba6e359f9c6be1e69dd87c8848",
-            "volume_increase_fraction": 46.164834968034825,
-            "xy_area_increase_fraction": 46.164834968034825,
+            "step_sha256": "28a1a30f790564fb6e87840c071eff5a036019ea03469ce5ec97f8249aa8d049",
+            "strict_extent_max_abs_error_m": 2.0000000000575113e-07,
+            "volume_increase_fraction": 0.0,
+            "xy_area_increase_fraction": 0.0,
             "z_expansion_m": 0.0
           },
           "verified": true
@@ -3505,7 +3562,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "leg",
       "link": "LEFT_HIP_YAW",
       "parameter_count": 3,
@@ -3514,8 +3571,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.015834580451250076,
-          "generated_delta_vs_adjusted_m": 1.914765545181496e-07,
-          "generated_value_m": 0.015834771927804595,
+          "generated_delta_vs_adjusted_m": 0.10662261831929915,
+          "generated_value_m": 0.12245719877054922,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -3525,14 +3582,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.12319221720099449,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 2.6789683989399127e-07,
-          "generated_value_m": 0.012000267896839894,
+          "generated_delta_vs_adjusted_m": 0.10294831748422152,
+          "generated_value_m": 0.11494831748422152,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -3542,14 +3599,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.11502362042665482,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.3087400123476982,
           "clearance_adjusted_value_m": 0.3087400123476982,
-          "generated_delta_vs_adjusted_m": 2.0000007178166967e-07,
-          "generated_value_m": 0.30874021234777,
+          "generated_delta_vs_adjusted_m": -0.008739812347628217,
+          "generated_value_m": 0.30000020000007,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -3559,11 +3616,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.3087400123476982,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 7,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_yaw.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 7
@@ -3686,7 +3743,7 @@
             "supplier_vendor_adjusted_fit_pass_count": 5,
             "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
             "supplier_vendor_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_hip_yaw.step",
-            "supplier_vendor_adjusted_step_sha256": "05e79e74d473f14ae5b0bd821976e18ea023f4721ebfd2a31a4eaea1e262dd90"
+            "supplier_vendor_adjusted_step_sha256": "69b717be38b961d8d8d9e8006f66df2cd5e65292c6b6f2e0f57b9a886f7f7eb5"
           },
           "verified": true
         },
@@ -3699,12 +3756,15 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": true,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_hip_yaw.step",
-            "step_sha256": "9224f60459afbfcdaa99e373c21b203ea3a82213d112163100d3ee42ced95157",
-            "volume_increase_fraction": 46.163180608598566,
-            "xy_area_increase_fraction": 46.16318060859857,
+            "step_sha256": "3d515ceefe029232eeb55d55aa1095b7f415b35649937652ffeec6ca80294a62",
+            "strict_extent_max_abs_error_m": 2.0000000000575113e-07,
+            "volume_increase_fraction": 0.0,
+            "xy_area_increase_fraction": 0.0,
             "z_expansion_m": 0.0
           },
           "verified": true
@@ -3724,7 +3784,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "leg",
       "link": "RIGHT_HIP_YAW",
       "parameter_count": 3,
@@ -3733,8 +3793,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.015834580451250076,
-          "generated_delta_vs_adjusted_m": 1.914765545181496e-07,
-          "generated_value_m": 0.015834771927804595,
+          "generated_delta_vs_adjusted_m": 0.10661460245209291,
+          "generated_value_m": 0.12244918290334299,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -3744,14 +3804,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.12319221720099449,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 2.6789683904918093e-07,
-          "generated_value_m": 0.01200026789683905,
+          "generated_delta_vs_adjusted_m": 0.10294893423140906,
+          "generated_value_m": 0.11494893423140906,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -3761,14 +3821,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.11502033844590187,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.3087400272488594,
           "clearance_adjusted_value_m": 0.3087400272488594,
-          "generated_delta_vs_adjusted_m": 2.000000706159355e-07,
-          "generated_value_m": 0.30874022724893,
+          "generated_delta_vs_adjusted_m": -0.008739827248789411,
+          "generated_value_m": 0.30000020000007,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -3778,11 +3838,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.3087400272488594,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 7,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_yaw.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 7
@@ -3858,7 +3918,7 @@
           "value": {
             "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/left_knee.step",
             "promoted_step_topology_accepted": true,
-            "raw_generated_topology_accepted": false
+            "raw_generated_topology_accepted": true
           },
           "verified": true
         },
@@ -3904,7 +3964,7 @@
             "supplier_vendor_adjusted_fit_pass_count": 5,
             "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
             "supplier_vendor_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_knee.step",
-            "supplier_vendor_adjusted_step_sha256": "7f10f66dc66e7e813e0db0b5352fc3902314e17fa91e454bc541bca682055b1e"
+            "supplier_vendor_adjusted_step_sha256": "02629a6dcb95fca26d7f019c5fa67c9df102b679dbd24e9ca838b2ab8e3d6453"
           },
           "verified": true
         },
@@ -3917,12 +3977,15 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": true,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_knee.step",
-            "step_sha256": "5b021343c7e852430deef0aebb34ba3fa9cdd7bc5e0258baa8c9e948be644286",
-            "volume_increase_fraction": 55.615329900788964,
-            "xy_area_increase_fraction": 55.615329900788964,
+            "step_sha256": "564f2cb92a6edd14d7dbf862fd485c45b213265ee1180287e93081d9c08a16ab",
+            "strict_extent_max_abs_error_m": 2.0000000000575113e-07,
+            "volume_increase_fraction": 0.0,
+            "xy_area_increase_fraction": 0.0,
             "z_expansion_m": 0.0
           },
           "verified": true
@@ -3942,7 +4005,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "leg",
       "link": "LEFT_KNEE",
       "parameter_count": 3,
@@ -3951,8 +4014,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 1.9354063432279467e-07,
-          "generated_value_m": 0.012000193540634323,
+          "generated_delta_vs_adjusted_m": 0.11553624999135688,
+          "generated_value_m": 0.12753624999135688,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -3962,14 +4025,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.12836166843771935,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 2.678968382130442e-07,
-          "generated_value_m": 0.012000267896838213,
+          "generated_delta_vs_adjusted_m": 0.09151789447942986,
+          "generated_value_m": 0.10351789447942986,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -3979,14 +4042,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.10094565525650978,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.36964358016848564,
           "clearance_adjusted_value_m": 0.36964358016848564,
-          "generated_delta_vs_adjusted_m": 1.9999988432051197e-07,
-          "generated_value_m": 0.36964378016836996,
+          "generated_delta_vs_adjusted_m": -0.009643380168605664,
+          "generated_value_m": 0.36000019999988,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -3996,11 +4059,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.36964358016848564,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 7,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_knee.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 7
@@ -4076,7 +4139,7 @@
           "value": {
             "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/right_knee.step",
             "promoted_step_topology_accepted": true,
-            "raw_generated_topology_accepted": false
+            "raw_generated_topology_accepted": true
           },
           "verified": true
         },
@@ -4122,7 +4185,7 @@
             "supplier_vendor_adjusted_fit_pass_count": 5,
             "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
             "supplier_vendor_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_knee.step",
-            "supplier_vendor_adjusted_step_sha256": "c2075ab15c929c2a0b02d2d13ed0f9decc4ca397186b58c767c112670297a2cb"
+            "supplier_vendor_adjusted_step_sha256": "5d0ceffcdb0f37abece473dbabbb793aca503b617875887be024253f444d4f88"
           },
           "verified": true
         },
@@ -4135,12 +4198,15 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": true,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_knee.step",
-            "step_sha256": "ed5de79354e61f57e342023e44072801c39351a2fff939f119c7af32c9460c42",
-            "volume_increase_fraction": 55.272269917804344,
-            "xy_area_increase_fraction": 55.272269917804344,
+            "step_sha256": "88271da35fa385f038234feb72b209e28c993800612d4841d685c6f2b6fd888f",
+            "strict_extent_max_abs_error_m": 2.0000000000575113e-07,
+            "volume_increase_fraction": 0.0,
+            "xy_area_increase_fraction": 0.0,
             "z_expansion_m": 0.0
           },
           "verified": true
@@ -4160,7 +4226,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "leg",
       "link": "RIGHT_KNEE",
       "parameter_count": 3,
@@ -4169,8 +4235,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 1.9354063547638578e-07,
-          "generated_value_m": 0.012000193540635477,
+          "generated_delta_vs_adjusted_m": 0.11256393082213198,
+          "generated_value_m": 0.12456393082213198,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -4180,14 +4246,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.1280105821788311,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 2.678968386640723e-07,
-          "generated_value_m": 0.012000267896838664,
+          "generated_delta_vs_adjusted_m": 0.0906384918339479,
+          "generated_value_m": 0.1026384918339479,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -4197,14 +4263,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.10094646736979485,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.36964358016848564,
           "clearance_adjusted_value_m": 0.36964358016848564,
-          "generated_delta_vs_adjusted_m": 1.9999988432051197e-07,
-          "generated_value_m": 0.36964378016836996,
+          "generated_delta_vs_adjusted_m": -0.009643380168605664,
+          "generated_value_m": 0.36000019999988,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -4214,11 +4280,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.36964358016848564,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 7,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_knee.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 7
@@ -4293,7 +4359,7 @@
           "value": {
             "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/left_ankle_a.step",
             "promoted_step_topology_accepted": true,
-            "raw_generated_topology_accepted": false
+            "raw_generated_topology_accepted": true
           },
           "verified": true
         },
@@ -4339,7 +4405,7 @@
             "supplier_vendor_adjusted_fit_pass_count": 5,
             "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
             "supplier_vendor_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/left_ankle_a.step",
-            "supplier_vendor_adjusted_step_sha256": "a4706408d0a4183b570152bd42b888fe35b1d37d44b800eb3b55f17d1ea4d5dd"
+            "supplier_vendor_adjusted_step_sha256": "bef5b32d35ee5fb401261351e0f164e734d023e63b30ce771a0713063dc9e7df"
           },
           "verified": true
         },
@@ -4352,13 +4418,16 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_ankle_a.step",
-            "step_sha256": "04036ce1e57c0fa56cfd0b65a0eb20beda4d59249cf300b56c8e1b0981dc9d31",
-            "volume_increase_fraction": 14.045303060573945,
-            "xy_area_increase_fraction": 12.367777374121873,
-            "z_expansion_m": 0.006400001549720757
+            "step_sha256": "f9d1bf71908047a5c3a5ba2f1f0eb0d0af0110fc3476aea5371bf2b561a0fcf4",
+            "strict_extent_max_abs_error_m": 2.0000000500175474e-07,
+            "volume_increase_fraction": 0.5849916935717092,
+            "xy_area_increase_fraction": 0.0,
+            "z_expansion_m": 0.023399784741210003
           },
           "verified": true
         },
@@ -4377,7 +4446,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "leg",
       "link": "LEFT_ANKLE_A",
       "parameter_count": 3,
@@ -4386,8 +4455,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 1.9354063272511435e-07,
-          "generated_value_m": 0.012000193540632725,
+          "generated_delta_vs_adjusted_m": 0.03959076783270077,
+          "generated_value_m": 0.051590767832700765,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -4397,14 +4466,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.050999999046325684,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 2.678968390006087e-07,
-          "generated_value_m": 0.012000267896839,
+          "generated_delta_vs_adjusted_m": 0.0393597046964618,
+          "generated_value_m": 0.0513597046964618,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -4414,14 +4483,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.050999999046325684,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.05099999159574509,
           "clearance_adjusted_value_m": 0.05099999159574509,
-          "generated_delta_vs_adjusted_m": 2.0000000491848802e-07,
-          "generated_value_m": 0.051000191595750005,
+          "generated_delta_vs_adjusted_m": -0.010999791595740091,
+          "generated_value_m": 0.040000200000004996,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -4431,11 +4500,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.05099999159574509,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 7,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_ankle_a.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 7
@@ -4510,7 +4579,7 @@
           "value": {
             "promoted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/topology-promoted-step/right_ankle_a.step",
             "promoted_step_topology_accepted": true,
-            "raw_generated_topology_accepted": false
+            "raw_generated_topology_accepted": true
           },
           "verified": true
         },
@@ -4556,7 +4625,7 @@
             "supplier_vendor_adjusted_fit_pass_count": 5,
             "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
             "supplier_vendor_adjusted_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/supplier-vendor-adjusted-step/right_ankle_a.step",
-            "supplier_vendor_adjusted_step_sha256": "455f9c7d6b513edf299ceb14b4c3335fd48a89e46bf5bf3804c1c7c83196259c"
+            "supplier_vendor_adjusted_step_sha256": "7ddecaf899487eb0ca01f2eee40e1b299b5a334cf6376daaae75e38f75301864"
           },
           "verified": true
         },
@@ -4569,13 +4638,16 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": false,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_ankle_a.step",
-            "step_sha256": "e9546031244155a954c9aeceaf7cdbe574f8c9af5c93ef8c1a7ba5ab3a21b366",
-            "volume_increase_fraction": 14.045303060573945,
-            "xy_area_increase_fraction": 12.367777374121873,
-            "z_expansion_m": 0.006400001549720757
+            "step_sha256": "f60ff78fbd315a4aaea5f6567f6695ff70ff8afe59be85ba5b6abb4cb7ef419f",
+            "strict_extent_max_abs_error_m": 2.0000000500175474e-07,
+            "volume_increase_fraction": 0.584991693571709,
+            "xy_area_increase_fraction": 0.0,
+            "z_expansion_m": 0.023399784741210003
           },
           "verified": true
         },
@@ -4594,7 +4666,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "leg",
       "link": "RIGHT_ANKLE_A",
       "parameter_count": 3,
@@ -4603,8 +4675,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 1.9354063272511435e-07,
-          "generated_value_m": 0.012000193540632725,
+          "generated_delta_vs_adjusted_m": 0.03959078459584274,
+          "generated_value_m": 0.05159078459584274,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -4614,14 +4686,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.050999999046325684,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.012,
           "clearance_adjusted_value_m": 0.012,
-          "generated_delta_vs_adjusted_m": 2.678968390006087e-07,
-          "generated_value_m": 0.012000267896839,
+          "generated_delta_vs_adjusted_m": 0.0393597041571979,
+          "generated_value_m": 0.0513597041571979,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -4631,14 +4703,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.050999999046325684,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.05099999159574509,
           "clearance_adjusted_value_m": 0.05099999159574509,
-          "generated_delta_vs_adjusted_m": 2.0000000491848802e-07,
-          "generated_value_m": 0.051000191595750005,
+          "generated_delta_vs_adjusted_m": -0.010999791595740091,
+          "generated_value_m": 0.040000200000004996,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -4648,11 +4720,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.05099999159574509,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 7,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_ankle_a.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 7
@@ -4750,12 +4822,15 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": true,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/left_ankle_b.step",
-            "step_sha256": "135f7ef5d152cecd815752b72fc43a4b7da6edf54d393b5bdf000b344679c144",
-            "volume_increase_fraction": 0.1230916942656044,
-            "xy_area_increase_fraction": 0.12309169426560418,
+            "step_sha256": "dd424ae0208ffea9eb217a5a349334c7f96090288e901f059559d7029e95f426",
+            "strict_extent_max_abs_error_m": 1.999999982293943e-07,
+            "volume_increase_fraction": 0.30237006166139757,
+            "xy_area_increase_fraction": 0.30237006166139735,
             "z_expansion_m": 0.0
           },
           "verified": true
@@ -4775,7 +4850,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "leg",
       "link": "LEFT_ANKLE_B",
       "parameter_count": 3,
@@ -4784,8 +4859,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.14753,
           "clearance_adjusted_value_m": 0.14753,
-          "generated_delta_vs_adjusted_m": 1.9899737613293667e-07,
-          "generated_value_m": 0.14753019899737613,
+          "generated_delta_vs_adjusted_m": -0.027529799999999993,
+          "generated_value_m": 0.1200002,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -4795,14 +4870,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.151763454079628,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.08,
           "clearance_adjusted_value_m": 0.08,
-          "generated_delta_vs_adjusted_m": 1.9529759752445752e-07,
-          "generated_value_m": 0.08000019529759753,
+          "generated_delta_vs_adjusted_m": 0.01312668846464611,
+          "generated_value_m": 0.09312668846464611,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -4812,14 +4887,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.0968388170003891,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.06608647108078003,
           "clearance_adjusted_value_m": 0.06608647108078003,
-          "generated_delta_vs_adjusted_m": 1.9999999997799556e-07,
-          "generated_value_m": 0.06608667108078001,
+          "generated_delta_vs_adjusted_m": -0.0047204418299982565,
+          "generated_value_m": 0.06136602925078177,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -4829,11 +4904,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.06608647108078003,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_ankle_b.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 6
@@ -4931,12 +5006,15 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "value": {
+            "full_cavity_clearance_extent_tolerance_m": 1e-06,
+            "full_cavity_clearance_extent_within_tolerance": true,
             "height_preserved": true,
             "internal_cavity_cleared": true,
             "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/full-cavity-clearance-step/right_ankle_b.step",
-            "step_sha256": "3925227b53a1383fcc22bc9af40f61bed61a7828e3780329eeb2207fa9cc036f",
-            "volume_increase_fraction": 0.12317304529249684,
-            "xy_area_increase_fraction": 0.12317304529249684,
+            "step_sha256": "feb64da5d192abdccf2ea0f2a64051f3f0007c8fac29ec2bc31fcc31f1af6a42",
+            "strict_extent_max_abs_error_m": 1.9999999976982874e-07,
+            "volume_increase_fraction": 0.044889258203059335,
+            "xy_area_increase_fraction": 0.04488925820305956,
             "z_expansion_m": 0.0
           },
           "verified": true
@@ -4956,7 +5034,7 @@
           "verified": false
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "leg",
       "link": "RIGHT_ANKLE_B",
       "parameter_count": 3,
@@ -4965,8 +5043,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.14747000000000002,
           "clearance_adjusted_value_m": 0.14747000000000002,
-          "generated_delta_vs_adjusted_m": 1.9899800615674756e-07,
-          "generated_value_m": 0.14747019899800617,
+          "generated_delta_vs_adjusted_m": -0.007469799999999999,
+          "generated_value_m": 0.14000020000000002,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -4976,14 +5054,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.15176347270607948,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.08,
           "clearance_adjusted_value_m": 0.08,
-          "generated_delta_vs_adjusted_m": 1.9529759782976885e-07,
-          "generated_value_m": 0.08000019529759783,
+          "generated_delta_vs_adjusted_m": 0.016130915307396132,
+          "generated_value_m": 0.09613091530739613,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -4993,14 +5071,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.09683230891823769,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.06609831750392914,
           "clearance_adjusted_value_m": 0.06609831750392914,
-          "generated_delta_vs_adjusted_m": 2.0000000086617398e-07,
-          "generated_value_m": 0.06609851750393,
+          "generated_delta_vs_adjusted_m": -2.157095286890731e-05,
+          "generated_value_m": 0.06607674655106023,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -5010,11 +5088,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.06609831750392914,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 6,
-      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_ankle_b.step",
       "surface_intent": "smooth",
       "verified_constraint_count": 6
@@ -5062,7 +5140,7 @@
             "asimov-fembot-material-manufacturing-proof-v1"
           ],
           "value": 0.0008,
-          "verified": false
+          "verified": true
         },
         {
           "kind": "surface",
@@ -5165,7 +5243,7 @@
       "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_toe.step",
       "surface_intent": "flat",
-      "verified_constraint_count": 5
+      "verified_constraint_count": 6
     },
     {
       "accepted": false,
@@ -5252,7 +5330,7 @@
           "verified": true
         }
       ],
-      "generated_geometry_role": "clearance_adjusted_parametric_reference",
+      "generated_geometry_role": "source_fitted_controlled_loft_brep",
       "group": "foot",
       "link": "RIGHT_TOE",
       "parameter_count": 3,
@@ -5261,8 +5339,8 @@
           "axis": "x",
           "candidate_min_value_m": 0.06999999999999999,
           "clearance_adjusted_value_m": 0.07030546944588423,
-          "generated_delta_vs_adjusted_m": -3.219646771412954e-15,
-          "generated_value_m": 0.07030546944588101,
+          "generated_delta_vs_adjusted_m": -0.010305269445883225,
+          "generated_value_m": 0.060000200000001,
           "kind": "dimension",
           "name": "x_extent_m",
           "preserve_source_value": false,
@@ -5272,14 +5350,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.07030546944588423,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "y",
           "candidate_min_value_m": 0.08,
           "clearance_adjusted_value_m": 0.08803634458780289,
-          "generated_delta_vs_adjusted_m": -2.886579864025407e-15,
-          "generated_value_m": 0.0880363445878,
+          "generated_delta_vs_adjusted_m": 0.006108220809834142,
+          "generated_value_m": 0.09414456539763703,
           "kind": "dimension",
           "name": "y_extent_m",
           "preserve_source_value": false,
@@ -5289,14 +5367,14 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.09526947140693665,
-          "verified": true
+          "verified": false
         },
         {
           "axis": "z",
           "candidate_min_value_m": 0.040729970671236515,
           "clearance_adjusted_value_m": 0.040729970671236515,
-          "generated_delta_vs_adjusted_m": 3.4833247397614286e-15,
-          "generated_value_m": 0.04072997067124,
+          "generated_delta_vs_adjusted_m": 0.0006232284057604842,
+          "generated_value_m": 0.041353199076997,
           "kind": "dimension",
           "name": "z_extent_m",
           "preserve_source_value": true,
@@ -5306,11 +5384,11 @@
             "asimov-fembot-generated-cad-parametric-v1"
           ],
           "source_value_m": 0.040729970671236515,
-          "verified": true
+          "verified": false
         }
       ],
       "production_blocker_count": 3,
-      "shape_family": "flat_plate_envelope",
+      "shape_family": "source_fitted_controlled_loft",
       "step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_toe.step",
       "surface_intent": "flat",
       "verified_constraint_count": 6
@@ -5337,7 +5415,7 @@
     "dimension_parameters_per_link": 3,
     "links": 28,
     "links_with_full_cavity_clearance_candidate": 26,
-    "links_with_full_cavity_clearance_verified": 25,
+    "links_with_full_cavity_clearance_verified": 26,
     "links_with_height_preserved": 28,
     "links_with_keepout_adjusted_clearance": 28,
     "links_with_promoted_topology_accepted": 28,
@@ -5350,6 +5428,6 @@
     "supplier_vendor_adjusted_fit_fail": 0,
     "supplier_vendor_adjusted_max_residual_extent_growth_m": 0.0,
     "supplier_vendor_max_required_extent_growth_m": 0.0264997322031618,
-    "verified_constraints": 174
+    "verified_constraints": 176
   }
 }

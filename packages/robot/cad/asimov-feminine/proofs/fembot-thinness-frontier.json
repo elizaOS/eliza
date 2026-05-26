@@ -15,7 +15,7 @@
         0.18379999697208405
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
-      "candidate_to_generated_xy_area_delta_m2": 3.885118055740877e-08,
+      "candidate_to_generated_xy_area_delta_m2": 0.00951613469907401,
       "candidate_xy_area_m2": 0.008369999408721924,
       "clearance_adjusted_bbox_extent_m": [
         0.062,
@@ -23,14 +23,26 @@
         0.18379999697208405
       ],
       "clearance_adjusted_xy_area_m2": 0.008369999408721924,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.14317283331843433,
+        "xy_area_increase_fraction": 0.0,
+        "z_expansion_m": 0.02649034450784285
+      },
       "generated_bbox_extent_m": [
-        0.06200019635568596,
-        0.13500018954592996,
-        0.18380019697209
+        0.131854284320334,
+        0.13565076174803986,
+        0.18502354038719782
       ],
-      "generated_xy_area_m2": 0.008370038259902481,
+      "generated_xy_area_m2": 0.017886134107795933,
       "group": "torso",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "site": 1
+      },
       "internal_cavity_violation_count": 3,
       "keepout_limited": false,
       "keepout_point_count": 4,
@@ -43,21 +55,29 @@
         0.13499999046325684,
         0.18379999697208405
       ],
+      "source_envelope_abs_delta_m": [
+        1.999999676149944e-07,
+        0.0006507712847830249,
+        0.0012235434151137703
+      ],
+      "source_envelope_max_abs_delta_m": 0.0012235434151137703,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.5297832424412553,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.5297832424412553,
-      "source_to_generated_xy_reduction_fraction": 0.5297810598274633,
+      "source_to_generated_xy_reduction_fraction": -0.004822052515881081,
       "source_xy_area_m2": 0.017800300125790924,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.06200019635568596,
-        0.13500018954592996,
-        0.18380019697209
+        0.131854284320334,
+        0.13565076174803986,
+        0.18502354038719782
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.008370038259902481,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.017886134107795933,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 0.0012235434151137703,
       "z_height_preserved": true
     },
     {
@@ -74,7 +94,7 @@
         0.3816669760271907
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
-      "candidate_to_generated_xy_area_delta_m2": 4.736054373677412e-08,
+      "candidate_to_generated_xy_area_delta_m2": 0.04783706590219291,
       "candidate_xy_area_m2": 0.007351203546723286,
       "clearance_adjusted_bbox_extent_m": [
         0.0362128253533167,
@@ -82,14 +102,27 @@
         0.3816669760271907
       ],
       "clearance_adjusted_xy_area_m2": 0.007351203546723286,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.0927507434753414,
+        "xy_area_increase_fraction": 0.0,
+        "z_expansion_m": 0.035399914336609994
+      },
       "generated_bbox_extent_m": [
-        0.0362130232247276,
-        0.2030001986204597,
+        0.21925558801643,
+        0.25170747048317255,
         0.38166717602669503
       ],
-      "generated_xy_area_m2": 0.007351250907267023,
+      "generated_xy_area_m2": 0.055188269448916194,
       "group": "torso",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 4,
       "keepout_limited": false,
       "keepout_point_count": 4,
@@ -102,21 +135,29 @@
         0.25,
         0.3816669760271907
       ],
+      "source_envelope_abs_delta_m": [
+        0.0004085665558968554,
+        0.0017074704831725462,
+        1.999995043466818e-07
+      ],
+      "source_envelope_max_abs_delta_m": 0.0017074704831725462,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.8656375856036221,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.8656375856036221,
-      "source_to_generated_xy_reduction_fraction": 0.8656367199661843,
+      "source_to_generated_xy_reduction_fraction": -0.008709537476960127,
       "source_xy_area_m2": 0.054711755365133286,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.0362130232247276,
-        0.2030001986204597,
+        0.21925558801643,
+        0.25170747048317255,
         0.38166717602669503
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.007351250907267023,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.055188269448916194,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 1.999995043466818e-07,
       "z_height_preserved": true
     },
     {
@@ -134,7 +175,7 @@
         0.07466627261601388
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
-      "candidate_to_generated_xy_area_delta_m2": 5.5373015151805646e-09,
+      "candidate_to_generated_xy_area_delta_m2": 0.004265981666733449,
       "candidate_xy_area_m2": 0.000144,
       "clearance_adjusted_bbox_extent_m": [
         0.012,
@@ -142,14 +183,26 @@
         0.07466627261601388
       ],
       "clearance_adjusted_xy_area_m2": 0.000144,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.5142843697396484,
+        "xy_area_increase_fraction": 0.0,
+        "z_expansion_m": 0.03839979981001
+      },
       "generated_bbox_extent_m": [
-        0.012000193540634078,
-        0.01200026789683811,
+        0.07169070291273161,
+        0.06151399676052384,
         0.074666472616015
       ],
-      "generated_xy_area_m2": 0.00014400553730151518,
+      "generated_xy_area_m2": 0.004409981666733449,
       "group": "head",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 2,
       "keepout_limited": false,
       "keepout_point_count": 2,
@@ -162,21 +215,29 @@
         0.060499999672174454,
         0.07466627261601388
       ],
+      "source_envelope_abs_delta_m": [
+        0.0010062922810749608,
+        0.001013997088349386,
+        2.0000000111597416e-07
+      ],
+      "source_envelope_max_abs_delta_m": 0.001013997088349386,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.9663268706510599,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.9663268706510599,
-      "source_to_generated_xy_reduction_fraction": 0.9663255758019615,
+      "source_to_generated_xy_reduction_fraction": -0.03123529923867996,
       "source_xy_area_m2": 0.004276406820043072,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.012000193540634078,
-        0.01200026789683811,
+        0.06151399676052384,
+        0.07169070291273161,
         0.074666472616015
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.00014400553730151518,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.004409981666733449,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 2.0000000111597416e-07,
       "z_height_preserved": true
     },
     {
@@ -194,7 +255,7 @@
         0.18396008387207985
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
-      "candidate_to_generated_xy_area_delta_m2": 1.2857546709287883e-08,
+      "candidate_to_generated_xy_area_delta_m2": 0.021740158534644553,
       "candidate_xy_area_m2": 0.00048,
       "clearance_adjusted_bbox_extent_m": [
         0.04,
@@ -202,14 +263,27 @@
         0.18396008387207985
       ],
       "clearance_adjusted_xy_area_m2": 0.00048,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.0233508844931396,
+        "xy_area_increase_fraction": 0.0,
+        "z_expansion_m": 0.004295635340020004
+      },
       "generated_bbox_extent_m": [
-        0.04000017846877603,
-        0.012000267896839643,
+        0.16904818275672645,
+        0.1314427530204279,
         0.18396028387199
       ],
-      "generated_xy_area_m2": 0.0004800128575467093,
+      "generated_xy_area_m2": 0.022220158534644555,
       "group": "head",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 4,
       "keepout_limited": false,
       "keepout_point_count": 4,
@@ -222,21 +296,29 @@
         0.13140400499105453,
         0.18396008387207985
       ],
+      "source_envelope_abs_delta_m": [
+        0.00025618085366935217,
+        3.874802937336996e-05,
+        1.9999991016095287e-07
+      ],
+      "source_envelope_max_abs_delta_m": 0.00025618085366935217,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.9783588282707514,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.9783588282707514,
-      "source_to_generated_xy_reduction_fraction": 0.9783582485783007,
+      "source_to_generated_xy_reduction_fraction": -0.0018130556236919393,
       "source_xy_area_m2": 0.0221799450605194,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.012000267896839643,
-        0.04000017846877603,
+        0.1314427530204279,
+        0.16904818275672645,
         0.18396028387199
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0004800128575467093,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.022220158534644555,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 1.9999991016095287e-07,
       "z_height_preserved": true
     },
     {
@@ -255,7 +337,7 @@
         0.06670644879341125
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.00011223871191590195,
-      "candidate_to_generated_xy_area_delta_m2": 0.00011225744633796663,
+      "candidate_to_generated_xy_area_delta_m2": 0.009358951399291864,
       "candidate_xy_area_m2": 0.0009042386787906372,
       "clearance_adjusted_bbox_extent_m": [
         0.012,
@@ -263,14 +345,26 @@
         0.06670644879341125
       ],
       "clearance_adjusted_xy_area_m2": 0.0010164773907065392,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": true,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.054836683314557266,
+        "xy_area_increase_fraction": 0.054836683314557266,
+        "z_expansion_m": 0.0
+      },
       "generated_bbox_extent_m": [
-        0.012000199294639712,
-        0.08470660362971269,
-        0.06670664879342
+        0.08794006691198228,
+        0.11670664395053,
+        0.06715757241925391
       ],
-      "generated_xy_area_m2": 0.0010164961251286039,
+      "generated_xy_area_m2": 0.0102631900780825,
       "group": "arm",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 2,
       "keepout_limited": true,
       "keepout_point_count": 2,
@@ -283,21 +377,29 @@
         0.11670644395053387,
         0.06670644879341125
       ],
+      "source_envelope_abs_delta_m": [
+        0.0013400687358844088,
+        1.9999999613384833e-07,
+        0.0004511236258426532
+      ],
+      "source_envelope_max_abs_delta_m": 0.0013400687358844088,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.9105314578286908,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.8994261665313403,
-      "source_to_generated_xy_reduction_fraction": 0.8994243128819999,
+      "source_to_generated_xy_reduction_fraction": -0.015475975370977668,
       "source_xy_area_m2": 0.010106777833255101,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.012000199294639712,
-        0.06670664879342,
-        0.08470660362971269
+        0.06715757241925391,
+        0.08794006691198228,
+        0.11670664395053
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0008004930797985777,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0059058414121954846,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 0.0004511236258426532,
       "z_height_preserved": true
     },
     {
@@ -316,7 +418,7 @@
         0.08274189755320549
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.00011223871191599075,
-      "candidate_to_generated_xy_area_delta_m2": 0.0001122574463370777,
+      "candidate_to_generated_xy_area_delta_m2": 0.009480959760400292,
       "candidate_xy_area_m2": 0.0009042386787905484,
       "clearance_adjusted_bbox_extent_m": [
         0.012,
@@ -324,14 +426,26 @@
         0.08274189755320549
       ],
       "clearance_adjusted_xy_area_m2": 0.0010164773907065392,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": true,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.054836683314557044,
+        "xy_area_increase_fraction": 0.054836683314557044,
+        "z_expansion_m": 0.0
+      },
       "generated_bbox_extent_m": [
-        0.012000199294639684,
-        0.08470660362963141,
-        0.08274209755321002
+        0.08898549463553208,
+        0.11670664395053,
+        0.08347525677174303
       ],
-      "generated_xy_area_m2": 0.0010164961251276261,
+      "generated_xy_area_m2": 0.01038519843919084,
       "group": "arm",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 2,
       "keepout_limited": true,
       "keepout_point_count": 2,
@@ -344,21 +458,29 @@
         0.11670644395053387,
         0.08274189755320549
       ],
+      "source_envelope_abs_delta_m": [
+        0.0023854964594342137,
+        1.9999999613384833e-07,
+        0.0007333592185375382
+      ],
+      "source_envelope_max_abs_delta_m": 0.0023854964594342137,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.9105314578286996,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.8994261665313403,
-      "source_to_generated_xy_reduction_fraction": 0.8994243128820967,
+      "source_to_generated_xy_reduction_fraction": -0.02754790997973955,
       "source_xy_area_m2": 0.010106777833255101,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.012000199294639684,
-        0.08274209755321002,
-        0.08470660362963141
+        0.08347525677174303,
+        0.08898549463553208,
+        0.11670664395053
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0009929216606950387,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.007428087013661602,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 0.0007333592185375382,
       "z_height_preserved": true
     },
     {
@@ -377,7 +499,7 @@
         0.18338218331336975
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 4.8e-05,
-      "candidate_to_generated_xy_area_delta_m2": 4.800867454948595e-05,
+      "candidate_to_generated_xy_area_delta_m2": 0.00733675108606889,
       "candidate_xy_area_m2": 0.00024,
       "clearance_adjusted_bbox_extent_m": [
         0.012,
@@ -385,14 +507,27 @@
         0.18338218331336975
       ],
       "clearance_adjusted_xy_area_m2": 0.000288,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.1786728588153348,
+        "xy_area_increase_fraction": 0.015805370794615747,
+        "z_expansion_m": 0.029402313648000028
+      },
       "generated_bbox_extent_m": [
-        0.012000267896839091,
-        0.024000187081269105,
+        0.07535846210080281,
+        0.1005428040176018,
         0.18338238331291
       ],
-      "generated_xy_area_m2": 0.00028800867454948595,
+      "generated_xy_area_m2": 0.0075767510860688895,
       "group": "arm",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 4,
       "keepout_limited": true,
       "keepout_point_count": 4,
@@ -405,21 +540,29 @@
         0.10000000149011612,
         0.18338218331336975
       ],
+      "source_envelope_abs_delta_m": [
+        0.0007584621663679209,
+        0.0005428025274856751,
+        1.9999954026239664e-07
+      ],
+      "source_envelope_max_abs_delta_m": 0.0007584621663679209,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.9678284186816817,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.961394102418018,
-      "source_to_generated_xy_reduction_fraction": 0.9613929396097922,
+      "source_to_generated_xy_reduction_fraction": -0.015650265392174845,
       "source_xy_area_m2": 0.0074600001046061515,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.012000267896839091,
-        0.024000187081269105,
+        0.07535846210080281,
+        0.1005428040176018,
         0.18338238331291
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.00028800867454948595,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0075767510860688895,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 1.9999954026239664e-07,
       "z_height_preserved": true
     },
     {
@@ -438,7 +581,7 @@
         0.18338218331336975
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 4.8e-05,
-      "candidate_to_generated_xy_area_delta_m2": 4.800867454948595e-05,
+      "candidate_to_generated_xy_area_delta_m2": 0.007348537096412514,
       "candidate_xy_area_m2": 0.00024,
       "clearance_adjusted_bbox_extent_m": [
         0.012,
@@ -446,14 +589,27 @@
         0.18338218331336975
       ],
       "clearance_adjusted_xy_area_m2": 0.000288,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.17850356844864557,
+        "xy_area_increase_fraction": 0.015659472751388126,
+        "z_expansion_m": 0.029402313648000028
+      },
       "generated_bbox_extent_m": [
-        0.012000267896839091,
-        0.024000187081269105,
+        0.0754717265842201,
+        0.10054807859661649,
         0.18338238331291
       ],
-      "generated_xy_area_m2": 0.00028800867454948595,
+      "generated_xy_area_m2": 0.007588537096412514,
       "group": "arm",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 4,
       "keepout_limited": true,
       "keepout_point_count": 4,
@@ -466,21 +622,29 @@
         0.10000000149011612,
         0.18338218331336975
       ],
+      "source_envelope_abs_delta_m": [
+        0.000871726649785215,
+        0.000548077106500372,
+        1.9999954026239664e-07
+      ],
+      "source_envelope_max_abs_delta_m": 0.000871726649785215,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.9678284186816817,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.961394102418018,
-      "source_to_generated_xy_reduction_fraction": 0.9613929396097922,
+      "source_to_generated_xy_reduction_fraction": -0.01723015951796003,
       "source_xy_area_m2": 0.0074600001046061515,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.012000267896839091,
-        0.024000187081269105,
+        0.0754717265842201,
+        0.10054807859661649,
         0.18338238331291
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.00028800867454948595,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.007588537096412514,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 1.9999954026239664e-07,
       "z_height_preserved": true
     },
     {
@@ -488,8 +652,7 @@
       "active_limiters": [
         "z_height_preservation",
         "manufacturing_process_floor",
-        "internal_cavity_keepout",
-        "structural_safety_factor"
+        "internal_cavity_keepout"
       ],
       "adjusted_minimum_projected_clearance_m": 0.002,
       "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
@@ -499,7 +662,7 @@
         0.13505129981786013
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
-      "candidate_to_generated_xy_area_delta_m2": 5.5373015360785614e-09,
+      "candidate_to_generated_xy_area_delta_m2": 0.004375199201676211,
       "candidate_xy_area_m2": 0.000144,
       "clearance_adjusted_bbox_extent_m": [
         0.012,
@@ -507,14 +670,26 @@
         0.13505129981786013
       ],
       "clearance_adjusted_xy_area_m2": 0.000144,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.23990700041927182,
+        "xy_area_increase_fraction": 0.0,
+        "z_expansion_m": 0.032399800223518044
+      },
       "generated_bbox_extent_m": [
-        0.012000193540634817,
-        0.012000267896839112,
+        0.06909441674300767,
+        0.06540614154809479,
         0.135051499818241
       ],
-      "generated_xy_area_m2": 0.00014400553730153608,
+      "generated_xy_area_m2": 0.004519199201676211,
       "group": "arm",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 2,
       "keepout_limited": false,
       "keepout_point_count": 2,
@@ -527,36 +702,29 @@
         0.06450000032782555,
         0.13505129981786013
       ],
+      "source_envelope_abs_delta_m": [
+        0.0005665207857761534,
+        0.0009061412202692465,
+        2.0000038086775973e-07
+      ],
+      "source_envelope_max_abs_delta_m": 0.0009061412202692465,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.967421177945094,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.967421177945094,
-      "source_to_generated_xy_reduction_fraction": 0.9674199251759176,
+      "source_to_generated_xy_reduction_fraction": -0.022431851542239922,
       "source_xy_area_m2": 0.004420049311706628,
-      "structural_limited": true,
-      "structural_remediation": {
-        "adjusted_depth_m": 0.013320246824110316,
-        "adjusted_width_m": 0.013320246824110316,
-        "adjusted_xy_area_m2": 0.00017742897545522095,
-        "current_depth_m": 0.012,
-        "current_width_m": 0.012,
-        "current_xy_area_m2": 0.000144,
-        "depth_increase_m": 0.0013202468241103153,
-        "group": "arm",
-        "height_delta_m": 0.0,
-        "link": "LEFT_SHOULDER_YAW",
-        "max_minor_axis_increase_m": 0.0013202468241103153,
-        "width_increase_m": 0.0013202468241103153,
-        "xy_area_increase_fraction": 0.23214566288347876,
-        "xy_area_increase_m2": 3.3428975455220944e-05
-      },
+      "structural_limited": false,
+      "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.012000193540634817,
-        0.012000267896839112,
+        0.06540614154809479,
+        0.06909441674300767,
         0.135051499818241
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.00014400553730153608,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.004519199201676211,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 2.0000038086775973e-07,
       "z_height_preserved": true
     },
     {
@@ -564,8 +732,7 @@
       "active_limiters": [
         "z_height_preservation",
         "manufacturing_process_floor",
-        "internal_cavity_keepout",
-        "structural_safety_factor"
+        "internal_cavity_keepout"
       ],
       "adjusted_minimum_projected_clearance_m": 0.002,
       "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
@@ -575,7 +742,7 @@
         0.13535130489617586
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
-      "candidate_to_generated_xy_area_delta_m2": 5.537301538653542e-09,
+      "candidate_to_generated_xy_area_delta_m2": 0.004459141260969063,
       "candidate_xy_area_m2": 0.000144,
       "clearance_adjusted_bbox_extent_m": [
         0.012,
@@ -583,14 +750,26 @@
         0.13535130489617586
       ],
       "clearance_adjusted_xy_area_m2": 0.000144,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.2393752492693404,
+        "xy_area_increase_fraction": 0.0,
+        "z_expansion_m": 0.032399800223518044
+      },
       "generated_bbox_extent_m": [
-        0.012000193540634817,
-        0.012000267896839327,
+        0.06911344712588675,
+        0.06660268663180216,
         0.13535150489624098
       ],
-      "generated_xy_area_m2": 0.00014400553730153866,
+      "generated_xy_area_m2": 0.004603141260969063,
       "group": "arm",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 2,
       "keepout_limited": false,
       "keepout_point_count": 2,
@@ -603,36 +782,29 @@
         0.0656999982893467,
         0.13535130489617586
       ],
+      "source_envelope_abs_delta_m": [
+        0.0005855511686552323,
+        0.0009026883424554655,
+        2.0000006512033153e-07
+      ],
+      "source_envelope_max_abs_delta_m": 0.0009026883424554655,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.9680162239279336,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.9680162239279336,
-      "source_to_generated_xy_reduction_fraction": 0.9680149940403472,
+      "source_to_generated_xy_reduction_fraction": -0.02240166193697002,
       "source_xy_area_m2": 0.004502282647162639,
-      "structural_limited": true,
-      "structural_remediation": {
-        "adjusted_depth_m": 0.01333010279813105,
-        "adjusted_width_m": 0.01333010279813105,
-        "adjusted_xy_area_m2": 0.00017769164060874127,
-        "current_depth_m": 0.012,
-        "current_width_m": 0.012,
-        "current_xy_area_m2": 0.000144,
-        "depth_increase_m": 0.0013301027981310505,
-        "group": "arm",
-        "height_delta_m": 0.0,
-        "link": "RIGHT_SHOULDER_YAW",
-        "max_minor_axis_increase_m": 0.0013301027981310505,
-        "width_increase_m": 0.0013301027981310505,
-        "xy_area_increase_fraction": 0.2339697264495921,
-        "xy_area_increase_m2": 3.3691640608741265e-05
-      },
+      "structural_limited": false,
+      "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.012000193540634817,
-        0.012000267896839327,
+        0.06660268663180216,
+        0.06911344712588675,
         0.13535150489624098
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.00014400553730153866,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.004603141260969063,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 2.0000006512033153e-07,
       "z_height_preserved": true
     },
     {
@@ -650,7 +822,7 @@
         0.13214801996946335
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0006414835963249204,
-      "candidate_to_generated_xy_area_delta_m2": 0.0006415102355116337,
+      "candidate_to_generated_xy_area_delta_m2": 0.00897636443925597,
       "candidate_xy_area_m2": 0.002,
       "clearance_adjusted_bbox_extent_m": [
         0.11006181651353836,
@@ -658,14 +830,26 @@
         0.13214801996946335
       ],
       "clearance_adjusted_xy_area_m2": 0.0026414835963249205,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.5154861074334331,
+        "xy_area_increase_fraction": 0.41283371958448867,
+        "z_expansion_m": 0.009601505217360029
+      },
       "generated_bbox_extent_m": [
-        0.11006201576563879,
-        0.024000198589278515,
-        0.13214821996946002
+        0.14160370719549745,
+        0.07751466862447359,
+        0.13214821996946
       ],
-      "generated_xy_area_m2": 0.0026415102355116338,
+      "generated_xy_area_m2": 0.01097636443925597,
       "group": "arm",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 3,
       "keepout_limited": true,
       "keepout_point_count": 4,
@@ -678,21 +862,29 @@
         0.07349999994039536,
         0.13214801996946335
       ],
+      "source_envelope_abs_delta_m": [
+        0.00018789512035935485,
+        0.0040146686840782375,
+        1.9999999664732648e-07
+      ],
+      "source_envelope_max_abs_delta_m": 0.0040146686840782375,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.8075824479843159,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.7458660963527866,
-      "source_to_generated_xy_reduction_fraction": 0.7458635334292391,
+      "source_to_generated_xy_reduction_fraction": -0.05602258771682078,
       "source_xy_area_m2": 0.01039406217909361,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.024000198589278515,
-        0.11006201576563879,
-        0.13214821996946002
+        0.07751466862447359,
+        0.13214821996946,
+        0.14160370719549745
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0026415102355116338,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.010243425480246735,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 1.9999999664732648e-07,
       "z_height_preserved": true
     },
     {
@@ -710,7 +902,7 @@
         0.13205821812152863
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0006397753868103025,
-      "candidate_to_generated_xy_area_delta_m2": 0.0006398020118740409,
+      "candidate_to_generated_xy_area_delta_m2": 0.008492504927203215,
       "candidate_xy_area_m2": 0.002,
       "clearance_adjusted_bbox_extent_m": [
         0.10999064111709594,
@@ -718,14 +910,26 @@
         0.13205821812152863
       ],
       "clearance_adjusted_xy_area_m2": 0.0026397753868103026,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.5216793105004243,
+        "xy_area_increase_fraction": 0.41674585945062526,
+        "z_expansion_m": 0.009781108913240022
+      },
       "generated_bbox_extent_m": [
-        0.10999084036968369,
-        0.024000198589278515,
-        0.13205841812152003
+        0.1416581373664452,
+        0.07406920013398816,
+        0.13205841812152
       ],
-      "generated_xy_area_m2": 0.002639802011874041,
+      "generated_xy_area_m2": 0.010492504927203215,
       "group": "arm",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 3,
       "keepout_limited": true,
       "keepout_point_count": 4,
@@ -738,21 +942,29 @@
         0.07349999994039536,
         0.13205821812152863
       ],
+      "source_envelope_abs_delta_m": [
+        0.00017114989486469168,
+        0.0005692001935928004,
+        1.9999999137376712e-07
+      ],
+      "source_envelope_max_abs_delta_m": 0.0005692001935928004,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.807679244133502,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.7461582011454327,
-      "source_to_generated_xy_reduction_fraction": 0.7461556408692411,
+      "source_to_generated_xy_reduction_fraction": -0.008963239266338574,
       "source_xy_area_m2": 0.010399293570727886,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.024000198589278515,
-        0.10999084036968369,
-        0.13205841812152003
+        0.07406920013398816,
+        0.13205841812152,
+        0.1416581373664452
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.002639802011874041,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.009781461401220753,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 1.9999999137376712e-07,
       "z_height_preserved": true
     },
     {
@@ -770,7 +982,7 @@
         0.040321046486496925
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
-      "candidate_to_generated_xy_area_delta_m2": 5.537301519517373e-09,
+      "candidate_to_generated_xy_area_delta_m2": 0.001293500299272647,
       "candidate_xy_area_m2": 0.000144,
       "clearance_adjusted_bbox_extent_m": [
         0.012,
@@ -778,14 +990,26 @@
         0.040321046486496925
       ],
       "clearance_adjusted_xy_area_m2": 0.000144,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.793052086211727,
+        "xy_area_increase_fraction": 0.4806725757414396,
+        "z_expansion_m": 0.008506628302139996
+      },
       "generated_bbox_extent_m": [
-        0.01200019354063355,
-        0.012000267896839,
+        0.03810247293182552,
+        0.037727217911674146,
         0.0403212464865
       ],
-      "generated_xy_area_m2": 0.00014400553730151952,
+      "generated_xy_area_m2": 0.001437500299272647,
       "group": "arm",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 2,
       "keepout_limited": false,
       "keepout_point_count": 2,
@@ -798,21 +1022,29 @@
         0.03759061545133591,
         0.040321046486496925
       ],
+      "source_envelope_abs_delta_m": [
+        6.440261819302961e-05,
+        0.0001366024603382393,
+        2.0000000307274224e-07
+      ],
+      "source_envelope_max_abs_delta_m": 0.0001366024603382393,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.899291859074638,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.899291859074638,
-      "source_to_generated_xy_reduction_fraction": 0.8992879864958758,
+      "source_to_generated_xy_reduction_fraction": -0.005333213329164144,
       "source_xy_area_m2": 0.001429874473670635,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.01200019354063355,
-        0.012000267896839,
+        0.037727217911674146,
+        0.03810247293182552,
         0.0403212464865
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.00014400553730151952,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.001437500299272647,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 2.0000000307274224e-07,
       "z_height_preserved": true
     },
     {
@@ -830,7 +1062,7 @@
         0.04037221148610115
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
-      "candidate_to_generated_xy_area_delta_m2": 5.5373015276217845e-09,
+      "candidate_to_generated_xy_area_delta_m2": 0.001292077025476823,
       "candidate_xy_area_m2": 0.000144,
       "clearance_adjusted_bbox_extent_m": [
         0.012,
@@ -838,14 +1070,26 @@
         0.04037221148610115
       ],
       "clearance_adjusted_xy_area_m2": 0.000144,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.7949418131684551,
+        "xy_area_increase_fraction": 0.48411388011777556,
+        "z_expansion_m": 0.008455465165179997
+      },
       "generated_bbox_extent_m": [
-        0.012000193540634325,
-        0.0120002678968389,
+        0.038121420794858474,
+        0.03767113070640091,
         0.0403724114861
       ],
-      "generated_xy_area_m2": 0.00014400553730152763,
+      "generated_xy_area_m2": 0.0014360770254768231,
       "group": "arm",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 2,
       "keepout_limited": false,
       "keepout_point_count": 2,
@@ -858,21 +1102,29 @@
         0.03759999759495258,
         0.04037221148610115
       ],
+      "source_envelope_abs_delta_m": [
+        4.1561105980414403e-05,
+        7.11331114483238e-05,
+        1.9999999884695585e-07
+      ],
+      "source_envelope_max_abs_delta_m": 7.11331114483238e-05,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.8994274792422687,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.8994274792422687,
-      "source_to_generated_xy_reduction_fraction": 0.8994236118785686,
+      "source_to_generated_xy_reduction_fraction": -0.00298532260047768,
       "source_xy_area_m2": 0.0014318026327179469,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.012000193540634325,
-        0.0120002678968389,
+        0.03767113070640091,
+        0.038121420794858474,
         0.0403724114861
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.00014400553730152763,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0014360770254768231,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 1.9999999884695585e-07,
       "z_height_preserved": true
     },
     {
@@ -890,7 +1142,7 @@
         0.09600000083446503
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.00235115217552435,
-      "candidate_to_generated_xy_area_delta_m2": 0.002351178661624523,
+      "candidate_to_generated_xy_area_delta_m2": 0.007074491561894412,
       "candidate_xy_area_m2": 0.002612519417897422,
       "clearance_adjusted_bbox_extent_m": [
         0.0522501,
@@ -898,14 +1150,27 @@
         0.09600000083446503
       ],
       "clearance_adjusted_xy_area_m2": 0.004963671593421772,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.4531381552498055,
+        "xy_area_increase_fraction": 0.397793711090912,
+        "z_expansion_m": 0.003812766123933206
+      },
       "generated_bbox_extent_m": [
-        0.052250296928733626,
-        0.09499846644493029,
-        0.09600020083447
+        0.09785006610323538,
+        0.098998512372712,
+        0.09629621529115842
       ],
-      "generated_xy_area_m2": 0.004963698079521945,
+      "generated_xy_area_m2": 0.009687010979791834,
       "group": "leg",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 4,
       "keepout_limited": true,
       "keepout_point_count": 4,
@@ -918,21 +1183,29 @@
         0.09899831237271428,
         0.09600000083446503
       ],
+      "source_envelope_abs_delta_m": [
+        0.0006007854418908498,
+        1.9999999771591614e-07,
+        0.0002962144566933944
+      ],
+      "source_envelope_max_abs_delta_m": 0.0006007854418908498,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.7286403076161447,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.4844285606231239,
-      "source_to_generated_xy_reduction_fraction": 0.4844258095392674,
+      "source_to_generated_xy_reduction_fraction": -0.006179820745949138,
       "source_xy_area_m2": 0.009627514664933548,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.052250296928733626,
-        0.09499846644493029,
-        0.09600020083447
+        0.09629621529115842,
+        0.09785006610323538,
+        0.098998512372712
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.004963698079521945,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.009422591031731237,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 0.0002962144566933944,
       "z_height_preserved": true
     },
     {
@@ -950,7 +1223,7 @@
         0.09600000083446503
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0023434431952340535,
-      "candidate_to_generated_xy_area_delta_m2": 0.0023434696563731337,
+      "candidate_to_generated_xy_area_delta_m2": 0.007123229400163016,
       "candidate_xy_area_m2": 0.0026125000000000002,
       "clearance_adjusted_bbox_extent_m": [
         0.052250000000000005,
@@ -958,14 +1231,27 @@
         0.09600000083446503
       ],
       "clearance_adjusted_xy_area_m2": 0.004955943195234054,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.4464181397423419,
+        "xy_area_increase_fraction": 0.39827355196932857,
+        "z_expansion_m": 0.0033241843930589265
+      },
       "generated_bbox_extent_m": [
-        0.05225019692874271,
-        0.09485073641218884,
-        0.09600020083447
+        0.0984891487706451,
+        0.098850782260642,
+        0.09654499775962269
       ],
-      "generated_xy_area_m2": 0.004955969656373134,
+      "generated_xy_area_m2": 0.009735729400163016,
       "group": "leg",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 4,
       "keepout_limited": true,
       "keepout_point_count": 4,
@@ -978,21 +1264,29 @@
         0.09885058226063848,
         0.09600000083446503
       ],
+      "source_envelope_abs_delta_m": [
+        0.0012390522707252105,
+        2.0000000353070924e-07,
+        0.0005449969251576647
+      ],
+      "source_envelope_max_abs_delta_m": 0.0012390522707252105,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.728239066048118,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.48446631527300266,
-      "source_to_generated_xy_reduction_fraction": 0.4844635626973587,
+      "source_to_generated_xy_reduction_fraction": -0.012742933776496379,
       "source_xy_area_m2": 0.009613228663920361,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.05225019692874271,
-        0.09485073641218884,
-        0.09600020083447
+        0.09654499775962269,
+        0.0984891487706451,
+        0.098850782260642
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.004955969656373134,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.009508634647409078,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 0.0005449969251576647,
       "z_height_preserved": true
     },
     {
@@ -1012,7 +1306,7 @@
         0.07999999821186066
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 5.1230739712770294e-05,
-      "candidate_to_generated_xy_area_delta_m2": 5.124403864737023e-05,
+      "candidate_to_generated_xy_area_delta_m2": 0.0032568492711030407,
       "candidate_xy_area_m2": 0.0006269999999999449,
       "clearance_adjusted_bbox_extent_m": [
         0.05651922830939293,
@@ -1020,14 +1314,26 @@
         0.07999999821186066
       ],
       "clearance_adjusted_xy_area_m2": 0.0006782307397127152,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": true,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.30472533372864397,
+        "xy_area_increase_fraction": 0.30472533372864374,
+        "z_expansion_m": 0.0
+      },
       "generated_bbox_extent_m": [
-        0.0565193978861952,
-        0.01200019929463855,
+        0.0726501581273761,
+        0.053459612080864416,
         0.08000019821186
       ],
-      "generated_xy_area_m2": 0.0006782440386473151,
+      "generated_xy_area_m2": 0.0038838492711029855,
       "group": "leg",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 2,
       "keepout_limited": true,
       "keepout_point_count": 2,
@@ -1040,18 +1346,25 @@
         0.05338030308485031,
         0.07999999821186066
       ],
+      "source_envelope_abs_delta_m": [
+        0.0001309265397277104,
+        7.930899601410468e-05,
+        1.9999999933961732e-07
+      ],
+      "source_envelope_max_abs_delta_m": 0.0001309265397277104,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.8380304737743292,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.8247963132648095,
-      "source_to_generated_xy_reduction_fraction": 0.8247928778228055,
+      "source_to_generated_xy_reduction_fraction": -0.0032938219657465684,
       "source_xy_area_m2": 0.0038710985616291216,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.0125000002,
-        0.0565193978861952,
+        0.05395941298622586,
+        0.0726501581273761,
         0.08000019821186
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0007064924848813195,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0039201598859097,
       "supplier_vendor_growth": {
         "checked_supplier_codes": [
           "1600-0515-0006",
@@ -1078,7 +1391,8 @@
         "requires_growth": true
       },
       "supplier_vendor_limited": true,
-      "supplier_vendor_sorted_footprint_area_delta_m2": 2.8248446234004423e-05,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 3.6310614806714554e-05,
+      "z_extent_delta_m": 1.9999999933961732e-07,
       "z_height_preserved": true
     },
     {
@@ -1098,7 +1412,7 @@
         0.07999999821186066
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 5.123073971273191e-05,
-      "candidate_to_generated_xy_area_delta_m2": 5.1244038647350497e-05,
+      "candidate_to_generated_xy_area_delta_m2": 0.0032569338568475244,
       "candidate_xy_area_m2": 0.0006269999999999833,
       "clearance_adjusted_bbox_extent_m": [
         0.05651922830939293,
@@ -1106,14 +1420,26 @@
         0.07999999821186066
       ],
       "clearance_adjusted_xy_area_m2": 0.0006782307397127152,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": true,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.30435315412611175,
+        "xy_area_increase_fraction": 0.3043531541261115,
+        "z_expansion_m": 0.0
+      },
       "generated_bbox_extent_m": [
-        0.0565193978861952,
-        0.012000199294638879,
+        0.07266189200724645,
+        0.05345214320128314,
         0.08000019821186
       ],
-      "generated_xy_area_m2": 0.0006782440386473338,
+      "generated_xy_area_m2": 0.0038839338568475074,
       "group": "leg",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 2,
       "keepout_limited": true,
       "keepout_point_count": 2,
@@ -1126,18 +1452,25 @@
         0.0533982589840889,
         0.07999999821186066
       ],
+      "source_envelope_abs_delta_m": [
+        0.00014266041959805353,
+        5.388421719423886e-05,
+        1.9999999933961732e-07
+      ],
+      "source_envelope_max_abs_delta_m": 0.00014266041959805353,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.8380849382558953,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.8248552279149328,
-      "source_to_generated_xy_reduction_fraction": 0.8248517936281388,
+      "source_to_generated_xy_reduction_fraction": -0.0029782938460924946,
       "source_xy_area_m2": 0.003872400709644369,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.0125000002,
-        0.0565193978861952,
+        0.05395194410664426,
+        0.07266189200724645,
         0.08000019821186
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0007064924848813195,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.003920250336257982,
       "supplier_vendor_growth": {
         "checked_supplier_codes": [
           "1600-0515-0006",
@@ -1164,7 +1497,8 @@
         "requires_growth": true
       },
       "supplier_vendor_limited": true,
-      "supplier_vendor_sorted_footprint_area_delta_m2": 2.8248446233985775e-05,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 3.6316479410474205e-05,
+      "z_extent_delta_m": 1.9999999933961732e-07,
       "z_height_preserved": true
     },
     {
@@ -1174,7 +1508,6 @@
         "keepout_clearance",
         "manufacturing_process_floor",
         "internal_cavity_keepout",
-        "structural_safety_factor",
         "supplier_vendor_keepout"
       ],
       "adjusted_minimum_projected_clearance_m": 0.002,
@@ -1185,7 +1518,7 @@
         0.3087400123476982
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 4.601496541500091e-05,
-      "candidate_to_generated_xy_area_delta_m2": 4.6021505219015046e-05,
+      "candidate_to_generated_xy_area_delta_m2": 0.014034937921782302,
       "candidate_xy_area_m2": 0.000144,
       "clearance_adjusted_bbox_extent_m": [
         0.015834580451250076,
@@ -1193,14 +1526,27 @@
         0.3087400123476982
       ],
       "clearance_adjusted_xy_area_m2": 0.0001900149654150009,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": true,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.0,
+        "xy_area_increase_fraction": 0.0,
+        "z_expansion_m": 0.0
+      },
       "generated_bbox_extent_m": [
-        0.015834771927804595,
-        0.012000267896839894,
+        0.12322188648541042,
+        0.11506833993700544,
         0.30874021234777
       ],
-      "generated_xy_area_m2": 0.00019002150521901505,
+      "generated_xy_area_m2": 0.014178937921782302,
       "group": "leg",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 4,
       "keepout_limited": true,
       "keepout_point_count": 4,
@@ -1213,33 +1559,25 @@
         0.11502362042665482,
         0.3087400123476982
       ],
+      "source_envelope_abs_delta_m": [
+        2.9669284415931307e-05,
+        4.4719510350621494e-05,
+        2.0000007178166967e-07
+      ],
+      "source_envelope_max_abs_delta_m": 4.4719510350621494e-05,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.989837695886772,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.9865903481624185,
-      "source_to_generated_xy_reduction_fraction": 0.9865898866382711,
+      "source_to_generated_xy_reduction_fraction": -0.0006297164148107992,
       "source_xy_area_m2": 0.014170014830845207,
-      "structural_limited": true,
-      "structural_remediation": {
-        "adjusted_depth_m": 0.017547300841741182,
-        "adjusted_width_m": 0.017547300841741182,
-        "adjusted_xy_area_m2": 0.0003079077668305708,
-        "current_depth_m": 0.012,
-        "current_width_m": 0.015834580451250076,
-        "current_xy_area_m2": 0.0001900149654150009,
-        "depth_increase_m": 0.005547300841741182,
-        "group": "leg",
-        "height_delta_m": 0.0,
-        "link": "LEFT_HIP_YAW",
-        "max_minor_axis_increase_m": 0.005547300841741182,
-        "width_increase_m": 0.0017127203904911056,
-        "xy_area_increase_fraction": 0.620439559368847,
-        "xy_area_increase_m2": 0.00011789280141556987
-      },
+      "structural_limited": false,
+      "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.0125000002,
-        0.038500000100000015,
+        0.11556807224016555,
+        0.14588711465760584,
         0.30874021234777
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0004812500089500002,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.016859892605659507,
       "supplier_vendor_growth": {
         "checked_supplier_codes": [
           "1600-0515-0006",
@@ -1268,7 +1606,8 @@
         "requires_growth": true
       },
       "supplier_vendor_limited": true,
-      "supplier_vendor_sorted_footprint_area_delta_m2": 0.00029122850373098513,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.002680954683877204,
+      "z_extent_delta_m": 2.0000007178166967e-07,
       "z_height_preserved": true
     },
     {
@@ -1278,7 +1617,6 @@
         "keepout_clearance",
         "manufacturing_process_floor",
         "internal_cavity_keepout",
-        "structural_safety_factor",
         "supplier_vendor_keepout"
       ],
       "adjusted_minimum_projected_clearance_m": 0.002,
@@ -1289,7 +1627,7 @@
         0.3087400272488594
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 4.601496541500091e-05,
-      "candidate_to_generated_xy_area_delta_m2": 4.6021505219001656e-05,
+      "candidate_to_generated_xy_area_delta_m2": 0.014033673725833947,
       "candidate_xy_area_m2": 0.000144,
       "clearance_adjusted_bbox_extent_m": [
         0.015834580451250076,
@@ -1297,14 +1635,27 @@
         0.3087400272488594
       ],
       "clearance_adjusted_xy_area_m2": 0.0001900149654150009,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": true,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.0,
+        "xy_area_increase_fraction": 0.0,
+        "z_expansion_m": 0.0
+      },
       "generated_bbox_extent_m": [
-        0.015834771927804595,
-        0.01200026789683905,
+        0.12321409021149063,
+        0.11506536063772171,
         0.30874022724893
       ],
-      "generated_xy_area_m2": 0.00019002150521900166,
+      "generated_xy_area_m2": 0.014177673725833947,
       "group": "leg",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 4,
       "keepout_limited": true,
       "keepout_point_count": 4,
@@ -1317,33 +1668,25 @@
         0.11502033844590187,
         0.3087400272488594
       ],
+      "source_envelope_abs_delta_m": [
+        2.1873010496137324e-05,
+        4.502219181984346e-05,
+        2.000000706159355e-07
+      ],
+      "source_envelope_max_abs_delta_m": 4.502219181984346e-05,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.9898374059164332,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.9865899655325303,
-      "source_to_generated_xy_reduction_fraction": 0.9865895039952147,
+      "source_to_generated_xy_reduction_fraction": -0.0005690494784733602,
       "source_xy_area_m2": 0.01416961051635944,
-      "structural_limited": true,
-      "structural_remediation": {
-        "adjusted_depth_m": 0.01754730112404468,
-        "adjusted_width_m": 0.01754730112404468,
-        "adjusted_xy_area_m2": 0.00030790777673789964,
-        "current_depth_m": 0.012,
-        "current_width_m": 0.015834580451250076,
-        "current_xy_area_m2": 0.0001900149654150009,
-        "depth_increase_m": 0.005547301124044678,
-        "group": "leg",
-        "height_delta_m": 0.0,
-        "link": "RIGHT_HIP_YAW",
-        "max_minor_axis_increase_m": 0.005547301124044678,
-        "width_increase_m": 0.0017127206727946022,
-        "xy_area_increase_fraction": 0.6204396115085763,
-        "xy_area_increase_m2": 0.00011789281132289873
-      },
+      "structural_limited": false,
+      "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.0125000002,
-        0.038500000100000015,
+        0.11556509294088266,
+        0.14587931838368606,
         0.30874022724893
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0004812500089500002,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.016858556987163292,
       "supplier_vendor_growth": {
         "checked_supplier_codes": [
           "1600-0515-0006",
@@ -1372,7 +1715,8 @@
         "requires_growth": true
       },
       "supplier_vendor_limited": true,
-      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0002912285037309986,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0026808832613293455,
+      "z_extent_delta_m": 2.000000706159355e-07,
       "z_height_preserved": true
     },
     {
@@ -1381,7 +1725,6 @@
         "z_height_preservation",
         "manufacturing_process_floor",
         "internal_cavity_keepout",
-        "structural_safety_factor",
         "supplier_vendor_keepout"
       ],
       "adjusted_minimum_projected_clearance_m": 0.002,
@@ -1392,7 +1735,7 @@
         0.36964358016848564
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
-      "candidate_to_generated_xy_area_delta_m2": 5.537301519354743e-09,
+      "candidate_to_generated_xy_area_delta_m2": 0.013165341011142561,
       "candidate_xy_area_m2": 0.000144,
       "clearance_adjusted_bbox_extent_m": [
         0.012,
@@ -1400,14 +1743,27 @@
         0.36964358016848564
       ],
       "clearance_adjusted_xy_area_m2": 0.000144,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": true,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.0,
+        "xy_area_increase_fraction": 0.0,
+        "z_expansion_m": 0.0
+      },
       "generated_bbox_extent_m": [
-        0.012000193540634323,
-        0.012000267896838213,
+        0.12874843448920778,
+        0.10337477938233264,
         0.36964378016836996
       ],
-      "generated_xy_area_m2": 0.00014400553730151936,
+      "generated_xy_area_m2": 0.013309341011142561,
       "group": "leg",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 4,
       "keepout_limited": false,
       "keepout_point_count": 4,
@@ -1420,33 +1776,25 @@
         0.10094565525650978,
         0.36964358016848564
       ],
+      "source_envelope_abs_delta_m": [
+        0.00038676605148843524,
+        0.002429124125822857,
+        1.9999988432051197e-07
+      ],
+      "source_envelope_max_abs_delta_m": 0.002429124125822857,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.988886790353269,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.988886790353269,
-      "source_to_generated_xy_reduction_fraction": 0.9888863630116533,
+      "source_to_generated_xy_reduction_fraction": -0.027149284143484387,
       "source_xy_area_m2": 0.01295755273026443,
-      "structural_limited": true,
-      "structural_remediation": {
-        "adjusted_depth_m": 0.0186326119328198,
-        "adjusted_width_m": 0.0186326119328198,
-        "adjusted_xy_area_m2": 0.00034717422743905886,
-        "current_depth_m": 0.012,
-        "current_width_m": 0.012,
-        "current_xy_area_m2": 0.000144,
-        "depth_increase_m": 0.006632611932819801,
-        "group": "leg",
-        "height_delta_m": 0.0,
-        "link": "LEFT_KNEE",
-        "max_minor_axis_increase_m": 0.006632611932819801,
-        "width_increase_m": 0.006632611932819801,
-        "xy_area_increase_fraction": 1.4109321349934643,
-        "xy_area_increase_m2": 0.00020317422743905885
-      },
+      "structural_limited": false,
+      "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.0125000002,
-        0.038500000100000015,
+        0.10387458604169832,
+        0.15524816669236957,
         0.36964378016836996
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0004812500089500002,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.016126339048902465,
       "supplier_vendor_growth": {
         "checked_supplier_codes": [
           "1600-0515-0006",
@@ -1475,7 +1823,8 @@
         "requires_growth": true
       },
       "supplier_vendor_limited": true,
-      "supplier_vendor_sorted_footprint_area_delta_m2": 0.00033724447164848085,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.002816998037759904,
+      "z_extent_delta_m": 1.9999988432051197e-07,
       "z_height_preserved": true
     },
     {
@@ -1484,7 +1833,6 @@
         "z_height_preservation",
         "manufacturing_process_floor",
         "internal_cavity_keepout",
-        "structural_safety_factor",
         "supplier_vendor_keepout"
       ],
       "adjusted_minimum_projected_clearance_m": 0.002,
@@ -1495,7 +1843,7 @@
         0.36964358016848564
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
-      "candidate_to_generated_xy_area_delta_m2": 5.5373015385993315e-09,
+      "candidate_to_generated_xy_area_delta_m2": 0.013018065471912465,
       "candidate_xy_area_m2": 0.000144,
       "clearance_adjusted_bbox_extent_m": [
         0.012,
@@ -1503,14 +1851,27 @@
         0.36964358016848564
       ],
       "clearance_adjusted_xy_area_m2": 0.000144,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": true,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.0,
+        "xy_area_increase_fraction": 0.0,
+        "z_expansion_m": 0.0
+      },
       "generated_bbox_extent_m": [
-        0.012000193540635477,
-        0.012000267896838664,
+        0.12839601597338893,
+        0.10251147881909672,
         0.36964378016836996
       ],
-      "generated_xy_area_m2": 0.0001440055373015386,
+      "generated_xy_area_m2": 0.013162065471912465,
       "group": "leg",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 2,
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 4,
       "keepout_limited": false,
       "keepout_point_count": 4,
@@ -1523,33 +1884,25 @@
         0.10094646736979485,
         0.36964358016848564
       ],
+      "source_envelope_abs_delta_m": [
+        0.0003854337945578268,
+        0.0015650114493018785,
+        1.9999988432051197e-07
+      ],
+      "source_envelope_max_abs_delta_m": 0.0015650114493018785,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.9888564005302274,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.9888564005302274,
-      "source_to_generated_xy_reduction_fraction": 0.9888559720200157,
+      "source_to_generated_xy_reduction_fraction": -0.01856101259663645,
       "source_xy_area_m2": 0.012922216056903815,
-      "structural_limited": true,
-      "structural_remediation": {
-        "adjusted_depth_m": 0.0186326119328198,
-        "adjusted_width_m": 0.0186326119328198,
-        "adjusted_xy_area_m2": 0.00034717422743905886,
-        "current_depth_m": 0.012,
-        "current_width_m": 0.012,
-        "current_xy_area_m2": 0.000144,
-        "depth_increase_m": 0.006632611932819801,
-        "group": "leg",
-        "height_delta_m": 0.0,
-        "link": "RIGHT_KNEE",
-        "max_minor_axis_increase_m": 0.006632611932819801,
-        "width_increase_m": 0.006632611932819801,
-        "xy_area_increase_fraction": 1.4109321349934643,
-        "xy_area_increase_m2": 0.00020317422743905885
-      },
+      "structural_limited": false,
+      "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.0125000002,
-        0.038500000100000015,
+        0.10301128547846125,
+        0.15489574817655027,
         0.36964378016836996
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0004812500089500002,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.015956010134814465,
       "supplier_vendor_growth": {
         "checked_supplier_codes": [
           "1600-0515-0006",
@@ -1578,7 +1931,8 @@
         "requires_growth": true
       },
       "supplier_vendor_limited": true,
-      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0003372444716484616,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0027939446629020002,
+      "z_extent_delta_m": 1.9999988432051197e-07,
       "z_height_preserved": true
     },
     {
@@ -1597,7 +1951,7 @@
         0.05099999159574509
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
-      "candidate_to_generated_xy_area_delta_m2": 5.5373015096240284e-09,
+      "candidate_to_generated_xy_area_delta_m2": 0.0025056866009512315,
       "candidate_xy_area_m2": 0.000144,
       "clearance_adjusted_bbox_extent_m": [
         0.012,
@@ -1605,14 +1959,26 @@
         0.05099999159574509
       ],
       "clearance_adjusted_xy_area_m2": 0.000144,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.12548583347387465,
+        "xy_area_increase_fraction": 0.0,
+        "z_expansion_m": 0.006399801549719988
+      },
       "generated_bbox_extent_m": [
-        0.012000193540632725,
-        0.012000267896839,
+        0.051590767832700765,
+        0.0513597046964618,
         0.051000191595750005
       ],
-      "generated_xy_area_m2": 0.00014400553730150963,
+      "generated_xy_area_m2": 0.0026496866009512315,
       "group": "leg",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 2,
       "keepout_limited": false,
       "keepout_point_count": 2,
@@ -1625,18 +1991,25 @@
         0.050999999046325684,
         0.05099999159574509
       ],
+      "source_envelope_abs_delta_m": [
+        0.0005907687863750816,
+        0.00035970565013611344,
+        2.0000000491848802e-07
+      ],
+      "source_envelope_max_abs_delta_m": 0.0005907687863750816,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.9446366761301596,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.9446366761301596,
-      "source_to_generated_xy_reduction_fraction": 0.9446345472175426,
+      "source_to_generated_xy_reduction_fraction": -0.018718454458609868,
       "source_xy_area_m2": 0.0026009999027252206,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.0125000002,
-        0.038500000100000015,
-        0.051000191595750005
+        0.05149999825511728,
+        0.07785943689962281,
+        0.051590767832700765
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0004812500089500002,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.004009760864474988,
       "supplier_vendor_growth": {
         "checked_supplier_codes": [
           "1600-0515-0006",
@@ -1665,7 +2038,8 @@
         "requires_growth": true
       },
       "supplier_vendor_limited": true,
-      "supplier_vendor_sorted_footprint_area_delta_m2": 0.00033724447164849055,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0013904060846542951,
+      "z_extent_delta_m": 2.0000000491848802e-07,
       "z_height_preserved": true
     },
     {
@@ -1684,7 +2058,7 @@
         0.05099999159574509
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
-      "candidate_to_generated_xy_area_delta_m2": 5.5373015096240284e-09,
+      "candidate_to_generated_xy_area_delta_m2": 0.0025056874340802057,
       "candidate_xy_area_m2": 0.000144,
       "clearance_adjusted_bbox_extent_m": [
         0.012,
@@ -1692,14 +2066,26 @@
         0.05099999159574509
       ],
       "clearance_adjusted_xy_area_m2": 0.000144,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.12548583347387465,
+        "xy_area_increase_fraction": 0.0,
+        "z_expansion_m": 0.006399801549719988
+      },
       "generated_bbox_extent_m": [
-        0.012000193540632725,
-        0.012000267896839,
+        0.05159078459584274,
+        0.0513597041571979,
         0.051000191595750005
       ],
-      "generated_xy_area_m2": 0.00014400553730150963,
+      "generated_xy_area_m2": 0.0026496874340802058,
       "group": "leg",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "joint_axis": 1,
+        "motor_actuator": 1
+      },
       "internal_cavity_violation_count": 2,
       "keepout_limited": false,
       "keepout_point_count": 2,
@@ -1712,18 +2098,25 @@
         0.050999999046325684,
         0.05099999159574509
       ],
+      "source_envelope_abs_delta_m": [
+        0.0005907855495170533,
+        0.000359705110872216,
+        2.0000000491848802e-07
+      ],
+      "source_envelope_max_abs_delta_m": 0.0005907855495170533,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.9446366761301596,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.9446366761301596,
-      "source_to_generated_xy_reduction_fraction": 0.9446345472175426,
+      "source_to_generated_xy_reduction_fraction": -0.01871877476964623,
       "source_xy_area_m2": 0.0026009999027252206,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.0125000002,
-        0.038500000100000015,
-        0.051000191595750005
+        0.05149999825511728,
+        0.07785943636035891,
+        0.05159078459584274
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0004812500089500002,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.004009760836702899,
       "supplier_vendor_growth": {
         "checked_supplier_codes": [
           "1600-0515-0006",
@@ -1752,7 +2145,8 @@
         "requires_growth": true
       },
       "supplier_vendor_limited": true,
-      "supplier_vendor_sorted_footprint_area_delta_m2": 0.00033724447164849055,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0013904060843847681,
+      "z_extent_delta_m": 2.0000000491848802e-07,
       "z_height_preserved": true
     },
     {
@@ -1769,7 +2163,7 @@
         0.06608647108078003
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
-      "candidate_to_generated_xy_area_delta_m2": 4.473208351819802e-08,
+      "candidate_to_generated_xy_area_delta_m2": 0.0032905791700255805,
       "candidate_xy_area_m2": 0.0118024,
       "clearance_adjusted_bbox_extent_m": [
         0.14753,
@@ -1777,14 +2171,25 @@
         0.06608647108078003
       ],
       "clearance_adjusted_xy_area_m2": 0.0118024,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": true,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.0,
+        "xy_area_increase_fraction": 0.0,
+        "z_expansion_m": 0.0
+      },
       "generated_bbox_extent_m": [
-        0.14753019899737613,
-        0.08000019529759753,
-        0.06608667108078001
+        0.15176365407969,
+        0.09945055198855693,
+        0.067228702709352
       ],
-      "generated_xy_area_m2": 0.011802444732083518,
+      "generated_xy_area_m2": 0.01509297917002558,
       "group": "leg",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 1
+      },
       "internal_cavity_violation_count": 1,
       "keepout_limited": false,
       "keepout_point_count": 13,
@@ -1797,21 +2202,29 @@
         0.0968388170003891,
         0.06608647108078003
       ],
+      "source_envelope_abs_delta_m": [
+        2.0000006201170706e-07,
+        0.00261173498816783,
+        0.0011422316285719658
+      ],
+      "source_envelope_max_abs_delta_m": 0.00261173498816783,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.19692953915695188,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.19692953915695188,
-      "source_to_generated_xy_reduction_fraction": 0.19692649545271157,
+      "source_to_generated_xy_reduction_fraction": -0.02697127173854219,
       "source_xy_area_m2": 0.01469659335696405,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.06608667108078001,
-        0.08000019529759753,
-        0.14753019899737613
+        0.067228702709352,
+        0.09945055198855693,
+        0.15176365407969
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.005286946593030491,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.006685931593919649,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 0.0011422316285719658,
       "z_height_preserved": true
     },
     {
@@ -1828,7 +2241,7 @@
         0.06609831750392914
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
-      "candidate_to_generated_xy_area_delta_m2": 4.47204161081044e-08,
+      "candidate_to_generated_xy_area_delta_m2": 0.0030082278536606756,
       "candidate_xy_area_m2": 0.011797600000000002,
       "clearance_adjusted_bbox_extent_m": [
         0.14747000000000002,
@@ -1836,14 +2249,25 @@
         0.06609831750392914
       ],
       "clearance_adjusted_xy_area_m2": 0.011797600000000002,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": true,
+        "internal_cavity_cleared": true,
+        "required": true,
+        "volume_increase_fraction": 0.0,
+        "xy_area_increase_fraction": 0.0,
+        "z_expansion_m": 0.0
+      },
       "generated_bbox_extent_m": [
-        0.14747019899800617,
-        0.08000019529759783,
-        0.06609851750393
+        0.15176367270614002,
+        0.09755844458462204,
+        0.06826458393028967
       ],
-      "generated_xy_area_m2": 0.01179764472041611,
+      "generated_xy_area_m2": 0.014805827853660677,
       "group": "leg",
       "internal_cavity_limited": true,
+      "internal_cavity_violation_component_counts": {
+        "collision_keepout": 1
+      },
       "internal_cavity_violation_count": 1,
       "keepout_limited": false,
       "keepout_point_count": 13,
@@ -1856,21 +2280,29 @@
         0.09683230891823769,
         0.06609831750392914
       ],
+      "source_envelope_abs_delta_m": [
+        2.0000006054066155e-07,
+        0.0007261356663843532,
+        0.0021662664263605302
+      ],
+      "source_envelope_max_abs_delta_m": 0.0021662664263605302,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.19720229171772474,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.19720229171772474,
-      "source_to_generated_xy_reduction_fraction": 0.1971992486032299,
+      "source_to_generated_xy_reduction_fraction": -0.007500226329140602,
       "source_xy_area_m2": 0.014695607471579622,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.06609851750393,
-        0.08000019529759783,
-        0.14747019899800617
+        0.06826458393028967,
+        0.09755844458462204,
+        0.15176367270614002
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.005287894309196089,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.006659786628455445,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 0.0021662664263605302,
       "z_height_preserved": true
     },
     {
@@ -1887,7 +2319,7 @@
         0.04073064122349024
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0005894365345451118,
-      "candidate_to_generated_xy_area_delta_m2": 0.0005894365345446252,
+      "candidate_to_generated_xy_area_delta_m2": 0.0011336933886698557,
       "candidate_xy_area_m2": 0.0056,
       "clearance_adjusted_bbox_extent_m": [
         0.07030546944588423,
@@ -1895,14 +2327,23 @@
         0.04073064122349024
       ],
       "clearance_adjusted_xy_area_m2": 0.006189436534545112,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": false,
+        "required": false,
+        "volume_increase_fraction": null,
+        "xy_area_increase_fraction": null,
+        "z_expansion_m": null
+      },
       "generated_bbox_extent_m": [
-        0.07030546944588101,
-        0.0880363445878,
-        0.04073064122349
+        0.07030566944588101,
+        0.09577738810741615,
+        0.042946898863962274
       ],
-      "generated_xy_area_m2": 0.006189436534544625,
+      "generated_xy_area_m2": 0.006733693388669856,
       "group": "foot",
       "internal_cavity_limited": false,
+      "internal_cavity_violation_component_counts": {},
       "internal_cavity_violation_count": 0,
       "keepout_limited": true,
       "keepout_point_count": 11,
@@ -1915,21 +2356,29 @@
         0.09526947140693665,
         0.04073064122349024
       ],
+      "source_envelope_abs_delta_m": [
+        1.9999999678610436e-07,
+        0.0005079167004795049,
+        0.0022162576404720358
+      ],
+      "source_envelope_max_abs_delta_m": 0.0022162576404720358,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.16392515125036056,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.0759228188454828,
-      "source_to_generated_xy_reduction_fraction": 0.0759228188455554,
+      "source_to_generated_xy_reduction_fraction": -0.005334228831892274,
       "source_xy_area_m2": 0.006697964911125925,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.04073064122349,
-        0.07030546944588101,
-        0.0880363445878
+        0.042946898863962274,
+        0.07030566944588101,
+        0.09577738810741615
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0028635868520492176,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0030194104752554146,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 0.0022162576404720358,
       "z_height_preserved": true
     },
     {
@@ -1946,7 +2395,7 @@
         0.040729970671236515
       ],
       "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0005894365345451118,
-      "candidate_to_generated_xy_area_delta_m2": 0.0005894365345446252,
+      "candidate_to_generated_xy_area_delta_m2": 0.0011312564834183893,
       "candidate_xy_area_m2": 0.0056,
       "clearance_adjusted_bbox_extent_m": [
         0.07030546944588423,
@@ -1954,14 +2403,23 @@
         0.040729970671236515
       ],
       "clearance_adjusted_xy_area_m2": 0.006189436534545112,
+      "full_cavity_clearance_candidate": {
+        "height_preserved": false,
+        "internal_cavity_cleared": false,
+        "required": false,
+        "volume_increase_fraction": null,
+        "xy_area_increase_fraction": null,
+        "z_expansion_m": null
+      },
       "generated_bbox_extent_m": [
-        0.07030546944588101,
-        0.0880363445878,
-        0.04072997067124
+        0.07030566944588101,
+        0.09574272653217375,
+        0.04294595145747832
       ],
-      "generated_xy_area_m2": 0.006189436534544625,
+      "generated_xy_area_m2": 0.006731256483418389,
       "group": "foot",
       "internal_cavity_limited": false,
+      "internal_cavity_violation_component_counts": {},
       "internal_cavity_violation_count": 0,
       "keepout_limited": true,
       "keepout_point_count": 11,
@@ -1974,21 +2432,29 @@
         0.09526947140693665,
         0.040729970671236515
       ],
+      "source_envelope_abs_delta_m": [
+        1.9999999678610436e-07,
+        0.0004732551252371042,
+        0.002215980786241807
+      ],
+      "source_envelope_max_abs_delta_m": 0.002215980786241807,
+      "source_envelope_preserved": true,
       "source_to_candidate_xy_reduction_fraction": 0.16392515125036056,
       "source_to_clearance_adjusted_xy_reduction_fraction": 0.0759228188454828,
-      "source_to_generated_xy_reduction_fraction": 0.0759228188455554,
+      "source_to_generated_xy_reduction_fraction": -0.004970401119474888,
       "source_xy_area_m2": 0.006697964911125925,
       "structural_limited": false,
       "structural_remediation": null,
       "supplier_vendor_adjusted_sorted_extent_m": [
-        0.04072997067124,
-        0.07030546944588101,
-        0.0880363445878
+        0.04294595145747832,
+        0.07030566944588101,
+        0.09574272653217375
       ],
-      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.002863539708558493,
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.003019343867208323,
       "supplier_vendor_growth": null,
       "supplier_vendor_limited": false,
       "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_extent_delta_m": 0.002215980786241807,
       "z_height_preserved": true
     }
   ],
@@ -2007,29 +2473,41 @@
       "internal_cavity_keepout": 26,
       "keepout_clearance": 14,
       "manufacturing_process_floor": 18,
-      "structural_safety_factor": 6,
       "supplier_vendor_keepout": 8,
       "z_height_preservation": 28
     },
     "candidate_total_xy_area_m2": 0.06535269973092375,
     "clearance_adjusted_total_xy_area_m2": 0.073022395987995,
-    "generated_total_sorted_footprint_area_m2": 0.05310626248387023,
-    "generated_total_xy_area_m2": 0.07302283505238742,
+    "full_cavity_clearance_candidate_links": 26,
+    "full_cavity_clearance_height_preserved_links": 10,
+    "full_cavity_clearance_z_expansion_links": 16,
+    "generated_total_sorted_footprint_area_m2": 0.2663747740700306,
+    "generated_total_xy_area_m2": 0.2996646801810814,
     "height_preserved_links": 28,
     "internal_cavity_limited_links": 26,
+    "internal_cavity_violation_component_counts": {
+      "collision_keepout": 28,
+      "joint_axis": 21,
+      "motor_actuator": 23,
+      "site": 1
+    },
     "keepout_limited_links": 14,
     "links": 28,
     "missing_links": [],
     "process_floor_limited_links": 18,
+    "source_envelope_max_abs_delta_m": 0.0040146686840782375,
+    "source_envelope_preserved_links": 28,
+    "source_envelope_tolerance_m": 0.005,
     "source_to_candidate_xy_reduction_fraction": 0.779119153517378,
     "source_to_clearance_adjusted_xy_reduction_fraction": 0.7531969038092321,
-    "source_to_generated_xy_reduction_fraction": 0.7531954198473596,
+    "source_to_generated_xy_area_delta_fraction": 0.01281490270280905,
+    "source_to_generated_xy_reduction_fraction": -0.01281490270280905,
     "source_total_xy_area_m2": 0.2958730952530348,
-    "structural_limited_links": 6,
-    "supplier_vendor_adjusted_total_sorted_footprint_area_m2": 0.05509419427039412,
+    "structural_limited_links": 0,
+    "supplier_vendor_adjusted_total_sorted_footprint_area_m2": 0.2802009939791553,
     "supplier_vendor_limited_links": 8,
     "supplier_vendor_max_required_extent_growth_m": 0.0264997322031618,
-    "supplier_vendor_sorted_footprint_area_delta_m2": 0.001987931786523893,
+    "supplier_vendor_sorted_footprint_area_delta_m2": 0.013826219909124748,
     "supplier_vendor_worst_growth_links": [
       "LEFT_KNEE",
       "RIGHT_KNEE",

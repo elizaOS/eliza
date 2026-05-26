@@ -16,6 +16,7 @@ from eliza_robot.asimov_1.parametric_inventory import ASIMOV_PARAM_PROOFS
 
 FEMBOT_THINNESS_FRONTIER_SCHEMA = "asimov-fembot-thinness-frontier-proof-v1"
 AREA_TOLERANCE_M2 = 1e-12
+SOURCE_ENVELOPE_TOLERANCE_M = 0.005
 
 
 def _xy_area(extents: list[float]) -> float:
@@ -103,6 +104,12 @@ def _frontier_record(
     generated_area = _xy_area(generated_extents)
     internal_cavity = generated.get("internal_cavity") or {}
     internal_cavity_violations = int(internal_cavity.get("violation_count") or 0)
+    violating_internal_points = [
+        point
+        for point in internal_cavity.get("points", [])
+        if point.get("violates_internal_cavity")
+    ]
+    full_cavity_clearance = generated.get("full_cavity_clearance_candidate") or {}
     keepout_limited = bool(
         int(clearance.get("violation_count") or 0) > 0
         or adjusted_area > candidate_area + AREA_TOLERANCE_M2
@@ -133,6 +140,11 @@ def _frontier_record(
         limiters.append("structural_safety_factor")
     if supplier_growth_limited:
         limiters.append("supplier_vendor_keepout")
+    z_extent_delta = generated_extents[2] - source_extents[2]
+    source_envelope_abs_delta = [
+        abs(generated_extents[index] - source_extents[index])
+        for index in range(3)
+    ]
     return {
         "link": link,
         "group": group,
@@ -165,8 +177,13 @@ def _frontier_record(
         "candidate_to_clearance_adjusted_xy_area_increase_m2": adjusted_area
         - candidate_area,
         "candidate_to_generated_xy_area_delta_m2": generated_area - candidate_area,
+        "z_extent_delta_m": z_extent_delta,
+        "source_envelope_abs_delta_m": source_envelope_abs_delta,
+        "source_envelope_max_abs_delta_m": max(source_envelope_abs_delta),
+        "source_envelope_preserved": max(source_envelope_abs_delta)
+        <= SOURCE_ENVELOPE_TOLERANCE_M,
         "z_height_preserved": bool(slimming.get("z_height_preserved"))
-        and abs(generated_extents[2] - source_extents[2]) <= 1e-3,
+        and abs(z_extent_delta) <= SOURCE_ENVELOPE_TOLERANCE_M,
         "protected_anchor_count": int(slimming.get("protected_anchor_count") or 0),
         "keepout_point_count": int(clearance.get("keepout_point_count") or 0),
         "keepout_limited": keepout_limited,
@@ -177,6 +194,34 @@ def _frontier_record(
         "process_floor_limited": _process_floor_active(slimming),
         "internal_cavity_limited": internal_cavity_violations > 0,
         "internal_cavity_violation_count": internal_cavity_violations,
+        "internal_cavity_violation_component_counts": {
+            component_type: sum(
+                1
+                for point in violating_internal_points
+                if point.get("component_type") == component_type
+            )
+            for component_type in sorted(
+                {
+                    str(point.get("component_type"))
+                    for point in violating_internal_points
+                    if point.get("component_type")
+                }
+            )
+        },
+        "full_cavity_clearance_candidate": {
+            "required": bool(full_cavity_clearance.get("required")),
+            "internal_cavity_cleared": bool(
+                full_cavity_clearance.get("internal_cavity_cleared")
+            ),
+            "height_preserved": bool(full_cavity_clearance.get("height_preserved")),
+            "z_expansion_m": full_cavity_clearance.get("z_expansion_m"),
+            "xy_area_increase_fraction": full_cavity_clearance.get(
+                "xy_area_increase_fraction"
+            ),
+            "volume_increase_fraction": full_cavity_clearance.get(
+                "volume_increase_fraction"
+            ),
+        },
         "structural_limited": structural_limited,
         "structural_remediation": structural_remediation,
         "active_limiters": limiters,
@@ -240,9 +285,16 @@ def build_fembot_thinness_frontier_proof(
                 )
             )
     limiter_counts: dict[str, int] = {}
+    internal_component_counts: dict[str, int] = {}
     for record in records:
         for limiter in record["active_limiters"]:
             limiter_counts[limiter] = limiter_counts.get(limiter, 0) + 1
+        for component_type, count in record[
+            "internal_cavity_violation_component_counts"
+        ].items():
+            internal_component_counts[component_type] = (
+                internal_component_counts.get(component_type, 0) + int(count)
+            )
     source_area = sum(float(record["source_xy_area_m2"]) for record in records)
     candidate_area = sum(float(record["candidate_xy_area_m2"]) for record in records)
     adjusted_area = sum(float(record["clearance_adjusted_xy_area_m2"]) for record in records)
@@ -296,6 +348,19 @@ def build_fembot_thinness_frontier_proof(
                 source_area,
                 generated_area,
             ),
+            "source_to_generated_xy_area_delta_fraction": (
+                generated_area / source_area - 1.0
+                if source_area > 0.0
+                else None
+            ),
+            "source_envelope_tolerance_m": SOURCE_ENVELOPE_TOLERANCE_M,
+            "source_envelope_preserved_links": sum(
+                1 for record in records if record["source_envelope_preserved"]
+            ),
+            "source_envelope_max_abs_delta_m": max(
+                (float(record["source_envelope_max_abs_delta_m"]) for record in records),
+                default=0.0,
+            ),
             "height_preserved_links": sum(1 for record in records if record["z_height_preserved"]),
             "keepout_limited_links": sum(1 for record in records if record["keepout_limited"]),
             "process_floor_limited_links": sum(
@@ -303,6 +368,26 @@ def build_fembot_thinness_frontier_proof(
             ),
             "internal_cavity_limited_links": sum(
                 1 for record in records if record["internal_cavity_limited"]
+            ),
+            "internal_cavity_violation_component_counts": dict(
+                sorted(internal_component_counts.items())
+            ),
+            "full_cavity_clearance_candidate_links": sum(
+                1
+                for record in records
+                if record["full_cavity_clearance_candidate"]["required"]
+            ),
+            "full_cavity_clearance_height_preserved_links": sum(
+                1
+                for record in records
+                if record["full_cavity_clearance_candidate"]["required"]
+                and record["full_cavity_clearance_candidate"]["height_preserved"]
+            ),
+            "full_cavity_clearance_z_expansion_links": sum(
+                1
+                for record in records
+                if record["full_cavity_clearance_candidate"]["required"]
+                and not record["full_cavity_clearance_candidate"]["height_preserved"]
             ),
             "structural_limited_links": sum(
                 1 for record in records if record["structural_limited"]

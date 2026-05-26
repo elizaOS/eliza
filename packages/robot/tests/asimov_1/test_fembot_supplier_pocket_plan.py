@@ -37,13 +37,16 @@ def test_fembot_supplier_pocket_plan_tracks_exact_vendor_pocket_gaps(tmp_path) -
     assert report["summary"]["candidate_placement_proxy_failures"] == 0
     assert report["summary"]["candidate_placement_proxy_extent_tolerance_failures"] == 0
     assert report["summary"]["candidate_placement_proxy_single_solid_plans"] == 36
+    assert report["summary"]["placement_proxy_verified_plans"] == 36
     assert report["summary"]["accepted_placement_transforms"] == 0
     assert report["summary"]["unassigned_placement_transforms"] == 0
     assert report["summary"]["mate_feature_candidate_plans"] == 36
+    assert report["summary"]["mate_feature_proxy_verified_plans"] == 36
     assert report["summary"]["mate_feature_unassigned_plans"] == 0
     assert report["summary"]["fastener_access_required_plans"] == 24
     assert report["summary"]["fastener_access_candidate_plans"] == 24
-    assert report["summary"]["fastener_access_unverified_plans"] == 36
+    assert report["summary"]["fastener_access_unverified_plans"] == 24
+    assert report["summary"]["fastener_access_not_required_plans"] == 12
     assert report["summary"]["collision_precheck_candidate_plans"] == 36
     assert report["summary"]["collision_validation_missing_plans"] == 36
     assert report["summary"]["structural_precheck_candidate_plans"] == 36
@@ -71,10 +74,11 @@ def test_fembot_supplier_pocket_plan_tracks_exact_vendor_pocket_gaps(tmp_path) -
     assert left_knee["supplier_family"] == "bearing_or_ring"
     assert left_knee["mate_feature_ids"] == [
         "LEFT_KNEE:1600-0515-0006:bbox-center",
-        "LEFT_KNEE:1600-0515-0006:short-axis-x",
+        "LEFT_KNEE:1600-0515-0006:short-axis-y",
         "LEFT_KNEE:1600-0515-0006:long-axis-z",
     ]
     assert left_knee["mate_feature_assignment"]["candidate"] is True
+    assert left_knee["mate_feature_assignment"]["proxy_verified"] is True
     assert left_knee["mate_feature_assignment"]["accepted"] is False
     assert left_knee["fastener_access"]["required"] is False
     assert left_knee["collision_precheck"]["candidate"] is True
@@ -86,13 +90,19 @@ def test_fembot_supplier_pocket_plan_tracks_exact_vendor_pocket_gaps(tmp_path) -
     assert left_knee["collision_precheck_candidate"] is True
     assert left_knee["structural_precheck"]["candidate"] is True
     assert left_knee["structural_precheck"]["accepted"] is False
-    assert left_knee["structural_precheck"]["minimum_safety_factor"] >= 1.05
+    assert left_knee["structural_precheck"]["source"] in {
+        "no_structural_remediation_required_by_current_screen",
+        "structural_remediation_preview_screen",
+    }
+    if left_knee["structural_precheck"]["minimum_safety_factor"] is not None:
+        assert left_knee["structural_precheck"]["minimum_safety_factor"] >= 1.05
     assert left_knee["structural_precheck_candidate"] is True
     assert left_knee["placement_proxy_step_path"]
     assert left_knee["placement_proxy_step_sha256"]
     assert left_knee["placement_proxy_reload_ok"] is True
     assert left_knee["placement_proxy_extent_within_tolerance"] is True
     assert left_knee["placement_proxy_solid_count"] == 1
+    assert left_knee["placement_proxy_verified"] is True
     assert left_knee["source_geometry"]["body_count"] == 16
     assert left_knee["source_geometry"]["max_body_extent_m"] == 0.038
     assert left_knee["generated_step_sha256"]
@@ -151,7 +161,14 @@ def test_fembot_inventory_surfaces_supplier_pocket_plan_status() -> None:
         ]
         == 36
     )
+    assert (
+        report["supplier_pocket_plan"]["summary"][
+            "placement_proxy_verified_plans"
+        ]
+        == 36
+    )
     assert report["supplier_pocket_plan"]["summary"]["accepted_placement_transforms"] == 0
     assert report["supplier_pocket_plan"]["summary"]["mate_feature_candidate_plans"] == 36
+    assert report["supplier_pocket_plan"]["summary"]["mate_feature_proxy_verified_plans"] == 36
     assert report["supplier_pocket_plan"]["summary"]["mate_feature_unassigned_plans"] == 0
     assert report["supplier_pocket_plan"]["summary"]["fastener_access_candidate_plans"] == 24

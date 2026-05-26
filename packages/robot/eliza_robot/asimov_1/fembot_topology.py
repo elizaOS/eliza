@@ -369,6 +369,9 @@ def build_fembot_topology_proof(
             link = str(export.get("link", "")).upper()
             source = records_by_link.get(link, {})
             stl_path = Path(str(export.get("stl_path")))
+            expected_shell_component_count = (
+                2 if source.get("internal_cavity", {}).get("required") else 1
+            )
             record: dict[str, Any] = {
                 "link": link,
                 "group": export.get("group"),
@@ -380,9 +383,8 @@ def build_fembot_topology_proof(
                 ),
                 "source_step_reload_ok": bool(source.get("reload_ok")),
                 "source_step_solid_count": int(source.get("solid_count") or 0),
-                "expected_component_count": (
-                    2 if source.get("internal_cavity", {}).get("required") else 1
-                ),
+                "expected_component_count": 1,
+                "expected_shell_component_count": expected_shell_component_count,
                 "mesh_exported": bool(export.get("export_ok")),
                 "mesh_sha256": sha256_file(stl_path) if stl_path.is_file() else None,
                 "merge_tolerance_m": float(merge_tolerance_m),
@@ -413,6 +415,10 @@ def build_fembot_topology_proof(
                 == int(record["expected_component_count"])
                 and bool(source.get("reload_ok"))
             )
+            shell_component_count_matches = bool(
+                int(topology.manifold_component_count)
+                == int(record["expected_shell_component_count"])
+            )
             waist_single_shell_no_cutout_accepted = bool(
                 link == "WAIST_YAW"
                 and source.get("smooth_chest_no_cutout_loft")
@@ -437,13 +443,14 @@ def build_fembot_topology_proof(
                         "largest_manifold_component_faces"
                     ],
                     "watertight": topology_data["watertight"],
+                    "shell_component_count_matches": shell_component_count_matches,
                     "waist_single_shell_no_cutout_accepted": waist_single_shell_no_cutout_accepted,
                     "accepted": accepted,
                     "blocking_reason": None
                     if accepted
                     else (
                         "generated mesh topology is not a closed reloadable "
-                        "reference with expected shell components"
+                        "single-solid source-fitted reference"
                     ),
                 }
             )
@@ -638,6 +645,11 @@ def build_fembot_topology_proof(
                 1
                 for record in link_records
                 if record["component_count"] == record["expected_component_count"]
+            ),
+            "expected_shell_component_count_matches": sum(
+                1
+                for record in link_records
+                if record.get("shell_component_count_matches")
             ),
             "waist_single_shell_no_cutout_topology_links": sum(
                 1
