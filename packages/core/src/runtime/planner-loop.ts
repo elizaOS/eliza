@@ -230,12 +230,12 @@ export async function runPlannerLoop(
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
 					const refusalCandidate = getNonEmptyString(
-						plannerOutput.messageToUser,
+						lastPlannerExplicitMessageToUser,
 					);
 					if (refusalCandidate) lastTerminalRefusalText = refusalCandidate;
 					requiredToolMisses++;
 					if (
-						requiredToolMisses >= config.maxRequiredToolMisses &&
+						requiredToolMisses > config.maxRequiredToolMisses &&
 						lastTerminalRefusalText
 					) {
 						return finishWithCapturedRefusal({
@@ -352,7 +352,7 @@ export async function runPlannerLoop(
 					if (refusalCandidate) lastTerminalRefusalText = refusalCandidate;
 					requiredToolMisses++;
 					if (
-						requiredToolMisses >= config.maxRequiredToolMisses &&
+						requiredToolMisses > config.maxRequiredToolMisses &&
 						lastTerminalRefusalText
 					) {
 						return finishWithCapturedRefusal({

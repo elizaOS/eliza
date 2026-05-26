@@ -186,12 +186,12 @@ describe("planner-loop responseSchema/tools collision regression", () => {
 		// iterations, and the loop threw TrajectoryLimitExceeded — the caller
 		// then surfaced a generic apology instead of the planner's real answer.
 		// The fix captures the most recent terminal-only refusal and returns
-		// it as the final message when the limit is hit.
+		// it as the final message when the limit is exhausted.
 		const runtime = {
-			useModel: vi.fn(async () => ({
-				text: "I don't have a way to search the message history.",
-				toolCalls: [],
-			})),
+			useModel: vi.fn(
+				async () =>
+					`{"thought":"No available history search tool.","toolCalls":[],"messageToUser":"I don't have a way to search the message history."}`,
+			),
 		};
 
 		const result = await runPlannerLoop({
@@ -208,9 +208,9 @@ describe("planner-loop responseSchema/tools collision regression", () => {
 		expect(result.finalMessage).toBe(
 			"I don't have a way to search the message history.",
 		);
-		// One call for the initial miss; the threshold trips on the same iter
-		// so the loop returns instead of retrying.
-		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		// maxRequiredToolMisses=1 allows the initial miss; the next miss
+		// exhausts the cap and returns the captured explicit refusal.
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 	});
 
 	it("still throws TrajectoryLimitExceeded when the planner produces no usable refusal text", async () => {

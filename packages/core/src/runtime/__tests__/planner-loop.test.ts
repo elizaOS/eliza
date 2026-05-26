@@ -579,6 +579,18 @@ describe("v5 planner loop skeleton", () => {
 							},
 						},
 					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply-3",
+							name: "REPLY",
+							arguments: {
+								text: "I still can't search the Discord message history from here.",
+							},
+						},
+					],
 				}),
 			logger: { warn: vi.fn() },
 		};
@@ -600,9 +612,101 @@ describe("v5 planner loop skeleton", () => {
 
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toBe(
-			"I don't have a way to search the Discord message history.",
+			"I still can't search the Discord message history from here.",
 		);
-		// Two REPLY iterations; the second hits the cap and returns.
+		// maxRequiredToolMisses=2 allows two misses; the third exhausts the cap
+		// and returns the most recent captured refusal.
+		expect(runtime.useModel).toHaveBeenCalledTimes(3);
+	});
+
+	it("does not surface a captured refusal before the required-tool retry budget is exhausted", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply-1",
+							name: "REPLY",
+							arguments: {
+								text: "I can't answer without checking first.",
+							},
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "lookup-1",
+							name: "LOOKUP",
+							arguments: { query: "status" },
+						},
+					],
+				}),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "status ok",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Done.",
+			messageToUser: "Status is ok.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [
+				{
+					name: "LOOKUP",
+					description: "Lookup current status.",
+				},
+			],
+			requireNonTerminalToolCall: true,
+			config: { maxRequiredToolMisses: 1 },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.finalMessage).toBe("Status is ok.");
+		expect(executeToolCall).toHaveBeenCalledWith(
+			{ id: "lookup-1", name: "LOOKUP", params: { query: "status" } },
+			expect.objectContaining({ iteration: 2 }),
+		);
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not capture native text fallback as a required-tool refusal", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "I should answer after thinking through the tool choice.",
+				toolCalls: [],
+			})),
+		};
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				tools: [
+					{
+						name: "LOOKUP",
+						description: "Lookup current status.",
+					},
+				],
+				requireNonTerminalToolCall: true,
+				config: { maxRequiredToolMisses: 1 },
+				executeToolCall: vi.fn(),
+				evaluate: vi.fn(),
+			}),
+		).rejects.toMatchObject({
+			name: "TrajectoryLimitExceeded",
+			kind: "required_tool_misses",
+		});
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 	});
 
