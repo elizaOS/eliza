@@ -35,13 +35,6 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
-      - name: Run tests with coverage
-        run: bun test --coverage --coverage-reporter=lcov || true
-        env:
-          # Tests must produce coverage/lcov.info. If a package emits to a
-          # different path, surface it here.
-          BUN_COVERAGE_DIR: coverage
-
       - name: Determine changed files
         id: changed
         run: |
@@ -52,7 +45,39 @@ jobs:
             git diff --name-only "$BASE" "$HEAD" -- '*.ts' '*.tsx' '*.js' '*.jsx' \
               | grep -vE '(^|/)(__tests__|test|tests)/' || true
             echo 'EOF'
+            echo 'tests<<EOF'
+            git diff --name-only "$BASE" "$HEAD" -- \
+              '*.test.ts' '*.test.tsx' '*.test.js' '*.test.jsx' '*.test.mjs' \
+              '*.spec.ts' '*.spec.tsx' '*.spec.js' '*.spec.jsx' '*.spec.mjs' \
+              | while IFS= read -r file; do
+                  [ -f "$file" ] || continue
+                  case "$file" in
+                    *.e2e.test.*|*.real.e2e.test.*|*.live.test.*) continue ;;
+                  esac
+                  if grep -Eq "from ['\"]vitest['\"]|require\\(['\"]vitest['\"]\\)" "$file"; then
+                    echo "Skipping Vitest-only test in Bun coverage gate: $file" >&2
+                    continue
+                  fi
+                  echo "$file"
+                done
+            echo 'EOF'
           } >> "$GITHUB_OUTPUT"
+
+      - name: Run changed Bun tests with coverage
+        run: |
+          cat > "$RUNNER_TEMP/changed-tests.txt" <<'EOF'
+          ${{ steps.changed.outputs.tests }}
+          EOF
+          mapfile -t changed_tests < <(grep -v '^$' "$RUNNER_TEMP/changed-tests.txt" || true)
+          if [ "${#changed_tests[@]}" -eq 0 ]; then
+            echo "no changed Bun-native test files; skipping coverage run"
+            exit 0
+          fi
+          bun test "${changed_tests[@]}" --coverage --coverage-reporter=lcov --coverage-dir=coverage || true
+        env:
+          # Tests must produce coverage/lcov.info. If a package emits to a
+          # different path, surface it here.
+          BUN_COVERAGE_DIR: coverage
 
       - name: Apply coverage gate (advisory)
         env:
