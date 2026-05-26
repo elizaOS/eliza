@@ -207,6 +207,32 @@ function isLoopbackUrl(url: string): boolean {
   }
 }
 
+// Drop any http(s):// loopback URLs from `text` before the reply reaches a
+// user-facing channel. Sub-agents that curl-probe `http://127.0.0.1:<port>`
+// while diagnosing a build will paste those probes into their task report;
+// surfacing them to Discord leaks internal addresses, makes the bot look
+// broken (the user can't reach a 127.0.0.1 from their machine), and on
+// retry pulls a second sub-agent in to "fix" a non-public URL it should
+// never have been told about. Match the same host set as `isLoopbackUrl`
+// (localhost / 127.x.x.x / ::1) and strip trailing whitespace cleanly so
+// the surrounding sentence stays readable; if a line becomes only a
+// dangling colon / dash after stripping, drop the line.
+const LOOPBACK_URL_PATTERN =
+  /https?:\/\/(?:localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[?::1\]?)(?::\d{1,5})?(?:\/[^\s)<>"`]*)?/gi;
+export function redactLoopbackUrls(text: string): string {
+  if (!text || !LOOPBACK_URL_PATTERN.test(text)) return text;
+  LOOPBACK_URL_PATTERN.lastIndex = 0;
+  const stripped = text.replace(LOOPBACK_URL_PATTERN, "").replace(/[ \t]+\n/g, "\n");
+  // Drop lines that became orphan punctuation after the URL was removed
+  // (e.g. "- " or "* " markdown list bullets pointing at nothing).
+  return stripped
+    .split("\n")
+    .filter((line) => !/^[-*\s]*[:>→\->]?[\s]*$/.test(line) || line === "")
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function isTelemetryReportUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -549,7 +575,7 @@ export class SubAgentRouter extends Service {
     // claimed URL — and following an HTML page's own sub-resources —
     // turns the parent's reply from a hallucinated success into an
     // accurate status report.
-    let text = baseText;
+    let text = redactLoopbackUrls(baseText);
     let deadUrls: DeadUrl[] = [];
     let verifiedUrls: string[] = [];
     if (event === "task_complete") {
