@@ -106,16 +106,6 @@ describe("autoDownloadRecommendedLocalModelInBackground", () => {
         installedAt: new Date(0).toISOString(),
         source: "eliza-download",
       },
-      {
-        id: "eliza-1-0_8b-drafter",
-        displayName: "eliza-1-0.8B drafter",
-        path: "/models/eliza-1-0_8b.bundle/dflash/drafter-0_8b.gguf",
-        sizeBytes: 237_637_024,
-        installedAt: new Date(0).toISOString(),
-        source: "eliza-download",
-        runtimeRole: "dflash-drafter",
-        companionFor: "eliza-1-0_8b",
-      },
     ] as ModelHubSnapshot["installed"];
 
     vi.stubGlobal("window", { localStorage: stubLocalStorage() });

@@ -59,12 +59,6 @@ export {
 	totalRamMb,
 } from "./device-tier";
 export {
-	type DflashDoctorCheck,
-	type DflashDoctorReport,
-	type DflashDoctorStatus,
-	runDflashDoctor,
-} from "./dflash-doctor";
-export {
 	LocalInferenceEngine,
 	localInferenceEngine,
 	resolveIdleUnloadMs,

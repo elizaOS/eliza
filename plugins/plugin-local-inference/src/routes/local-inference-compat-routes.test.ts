@@ -362,7 +362,7 @@ describe("POST /api/local-inference/active", () => {
 			new CandidateModelActivationError({
 				modelId: "eliza-1-0_8b",
 				manifestVersion: "1.0.0-candidate.1",
-				failedEvals: ["textEval", "voiceRtf", "asrWer", "expressive", "dflash"],
+				failedEvals: ["textEval", "voiceRtf", "asrWer", "expressive"],
 			}),
 		);
 

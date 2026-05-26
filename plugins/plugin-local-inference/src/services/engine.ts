@@ -891,6 +891,7 @@ export class LocalInferenceEngine {
 	 * (over the text GGUF on `0_8b` / `2b`, over the `embedding/` GGUF on larger
 	 * tiers). `null` until the first `embed()` call. Torn down on `unload()`.
 	 */
+	private embeddingServer: { stop: () => Promise<void> | void } | null = null;
 
 	/**
 	 * The general onload/offload coordinator for this engine. Exposed so the
