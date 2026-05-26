@@ -285,40 +285,42 @@ export class SubAgentRouter extends Service {
   private readonly roundTripCounts = new Map<string, number>();
   private readonly capExceededSessions = new Set<string>();
   private readonly verifyRetryHandedOffSessions = new Set<string>();
-  // Maps origin message id → the FIRST session id that posted a
+  // Maps completion lineage key → the FIRST session id that posted a
   // task_complete for it. When a later task_complete arrives for the
-  // same origin from a DIFFERENT session, we absorb it: that's a
+  // same lineage from a DIFFERENT session, we absorb it: that's a
   // retry-cascade post (orchestrator dispatched a fresh sub-agent
   // after the first one already shipped) and the user should see one
   // reply, not 2-3+ overlapping messages with random page sub-
   // resources from each retry. Issue elizaOS/eliza#7967.
   //
   // Same-session progressive task_completes (a sub-agent reports
-  // partial progress then completion) still post both — the dedupe
-  // key includes sessionId so it does not collapse them.
+  // partial progress then completion) still post both. Parallel TASKS:create
+  // subtasks from the same user message also post independently because the
+  // lineage key includes the initial task text and agent type, not just the
+  // origin message id.
   //
   // The map is bounded (LRU via FIFO drop) to prevent unbounded growth
   // across long-running sessions. 1024 origin messages is well above
   // any reasonable workload — Discord channels typically see hundreds
   // of message-events per hour at most.
-  private readonly originFirstPostedSession: Map<string, string> = new Map();
-  private originHasPostedFromOtherSession(
-    originMessageId: string,
+  private readonly completionFirstPostedSession: Map<string, string> = new Map();
+  private completionHasPostedFromOtherSession(
+    completionKey: string,
     sessionId: string,
   ): boolean {
-    const firstSession = this.originFirstPostedSession.get(originMessageId);
+    const firstSession = this.completionFirstPostedSession.get(completionKey);
     return firstSession !== undefined && firstSession !== sessionId;
   }
-  private markOriginCompletionPosted(
-    originMessageId: string,
+  private markCompletionPosted(
+    completionKey: string,
     sessionId: string,
   ): void {
-    if (this.originFirstPostedSession.has(originMessageId)) return;
-    this.originFirstPostedSession.set(originMessageId, sessionId);
-    while (this.originFirstPostedSession.size > 1024) {
-      const oldestKey = this.originFirstPostedSession.keys().next().value;
+    if (this.completionFirstPostedSession.has(completionKey)) return;
+    this.completionFirstPostedSession.set(completionKey, sessionId);
+    while (this.completionFirstPostedSession.size > 1024) {
+      const oldestKey = this.completionFirstPostedSession.keys().next().value;
       if (!oldestKey) break;
-      this.originFirstPostedSession.delete(oldestKey);
+      this.completionFirstPostedSession.delete(oldestKey);
     }
   }
   private started = false;
@@ -418,6 +420,7 @@ export class SubAgentRouter extends Service {
     this.roundTripCounts.clear();
     this.capExceededSessions.clear();
     this.verifyRetryHandedOffSessions.clear();
+    this.completionFirstPostedSession.clear();
   }
 
   private async handleEvent(
@@ -599,19 +602,18 @@ export class SubAgentRouter extends Service {
     // partial progress, then full completion) still post both — the
     // dedupe key includes sessionId. Only cross-session retries are
     // suppressed.
-    if (event === "task_complete" && origin.parentMessageId) {
+    const completionKey =
+      event === "task_complete" ? completionLineageKey(session, origin) : null;
+    if (completionKey) {
       if (
-        this.originHasPostedFromOtherSession(
-          origin.parentMessageId,
-          sessionId,
-        )
+        this.completionHasPostedFromOtherSession(completionKey, sessionId)
       ) {
         this.log(
           "debug",
-          "suppressing duplicate sub-agent task_complete for origin; another session already posted for this prompt",
+          "suppressing duplicate sub-agent task_complete for lineage; another session already posted for this task",
           {
             sessionId,
-            originMessageId: origin.parentMessageId,
+            completionKey,
             event,
           },
         );
@@ -766,8 +768,8 @@ export class SubAgentRouter extends Service {
     // dedupe check compares sessionIds. Must run AFTER the handleMessage
     // / createMemory loop so an early failure doesn't poison future
     // retries that might actually succeed.
-    if (event === "task_complete" && origin.parentMessageId) {
-      this.markOriginCompletionPosted(origin.parentMessageId, sessionId);
+    if (completionKey) {
+      this.markCompletionPosted(completionKey, sessionId);
     }
   }
 
@@ -1090,6 +1092,20 @@ function readOrigin(session: SessionInfo): OriginInfo | null {
     label: pickLabel(meta) ?? session.name ?? session.id,
     source: typeof meta.source === "string" ? meta.source : undefined,
   };
+}
+
+function completionLineageKey(
+  session: SessionInfo,
+  origin: OriginInfo,
+): string | null {
+  if (!origin.parentMessageId) return null;
+  const meta = session.metadata as Record<string, unknown> | undefined;
+  const initialTask = pickPlainString(meta?.initialTask) ?? "";
+  return JSON.stringify({
+    originMessageId: origin.parentMessageId,
+    agentType: session.agentType,
+    initialTask,
+  });
 }
 
 function sessionTimeMs(value: Date | string | number | undefined): number {

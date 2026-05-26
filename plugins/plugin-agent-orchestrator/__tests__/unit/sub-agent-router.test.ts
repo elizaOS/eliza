@@ -538,10 +538,11 @@ describe("SubAgentRouter", () => {
     // user saw 3 overlapping replies including a junky analytics URL
     // pulled from python.org's page sub-resources.
     //
-    // The dedup is keyed on (originMessageId, sessionId): a second
-    // task_complete from a DIFFERENT session for the SAME parent
-    // prompt is absorbed silently. Same-session progressive
-    // task_completes are unaffected (covered by the test above).
+    // The dedup is keyed on a completion lineage: a second task_complete
+    // from a DIFFERENT session for the SAME parent prompt + task is absorbed
+    // silently. Same-session progressive task_completes are unaffected
+    // (covered by the test above), and distinct parallel tasks from the same
+    // prompt are covered below.
     const SESSION_ID_2 = "abcdef01-2345-6789-abcd-ef0123456789";
     const session2 = makeSession({
       id: SESSION_ID_2,
@@ -582,6 +583,59 @@ describe("SubAgentRouter", () => {
     });
     await new Promise((r) => setImmediate(r));
     expect(handleMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not absorb distinct parallel task completions for the same origin message", async () => {
+    const SESSION_ID_2 = "abcdef01-2345-6789-abcd-ef0123456789";
+    const first = makeSession({
+      id: SESSION_ID,
+      metadata: {
+        label: "frontend",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+        initialTask: "Review frontend changes",
+      },
+    });
+    const second = makeSession({
+      id: SESSION_ID_2,
+      name: "backend-task",
+      metadata: {
+        label: "backend",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+        initialTask: "Review backend changes",
+      },
+    });
+    const acp2: CapturedHandler = {};
+    const service = {
+      onSessionEvent: vi.fn((handler: typeof acp2.fn) => {
+        acp2.fn = handler;
+        return () => {
+          acp2.fn = undefined;
+        };
+      }),
+      getSession: vi.fn(async (id: string) => {
+        if (id === SESSION_ID) return first;
+        if (id === SESSION_ID_2) return second;
+        return null;
+      }),
+      listSessions: vi.fn(async () => [first, second]),
+    };
+    const { runtime, handleMessage } = makeRuntime({ acp: service });
+    await SubAgentRouter.start(runtime);
+
+    acp2.fn?.(SESSION_ID, "task_complete", { response: "frontend done" });
+    await new Promise((r) => setImmediate(r));
+    acp2.fn?.(SESSION_ID_2, "task_complete", { response: "backend done" });
+    await new Promise((r) => setImmediate(r));
+
+    expect(handleMessage).toHaveBeenCalledTimes(2);
   });
 
   it("skips sessions without origin metadata (no roomId)", async () => {
