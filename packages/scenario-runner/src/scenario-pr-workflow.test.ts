@@ -112,7 +112,7 @@ describe("scenario PR workflow contract", () => {
     );
     expect(workflow).toContain("bunx playwright install --with-deps chromium");
     expect(workflow).toContain(
-      'bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "captures onboarding, assistant home, chat suppression, and view pill states"',
+      'bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "captures first-run, assistant home, chat suppression, and view pill states"',
     );
     expect(workflow).toContain(
       'bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "drives the assistant home voice path with a scripted browser STT turn"',
