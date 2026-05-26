@@ -27,7 +27,7 @@
 	# build (packages/app-core/scripts/omnivoice-fuse/) grafts sources from
 	# this tree into the llama.cpp fork at fuse time.
 	path = plugins/plugin-local-inference/native/omnivoice.cpp
-	url = http://github.com/elizaOS/omnivoice.cpp
+	url = https://github.com/elizaOS/omnivoice.cpp.git
 	branch = master
 
 [submodule "plugins/plugin-local-inference/native/whisper.cpp"]
