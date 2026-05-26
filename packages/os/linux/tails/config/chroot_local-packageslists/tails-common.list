@@ -216,9 +216,9 @@ simple-scan
 # inherited sudoers policy.
 sudo
 # provides /usr/bin/syslinux used by create-usb-image-from-iso
-syslinux
+syslinux [amd64]
 # ships the *.c32 modules in syslinux 6.x packaging
-syslinux-common
+syslinux-common [amd64]
 system-config-printer-common
 synaptic
 torsocks

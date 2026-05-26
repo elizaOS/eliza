@@ -301,8 +301,9 @@ cache-clean:
     docker volume rm elizaos-acng elizaos-acng 2>/dev/null || true
     @echo "apt-cacher-ng cache volume removed."
 
-# Fast per-arch Dockerfile smoke. Validates ONLY the per-arch bootloader
-# package case in 2-5 min (no full chroot, no live-build, no apt-cacher).
+# Fast per-arch smoke. First validates the per-arch bootloader package
+# case in a tiny Docker build, then runs the real build.sh config path so
+# ELIZAOS_ARCH plumbing reaches live-build's architecture/kernel settings.
 # Use this when iterating on the multi-arch parameterization in
 # Dockerfile / build.sh — catches "Unable to locate package grub-pc-bin"
 # on arm64 / riscv64 in minutes instead of waiting hours for a real ISO
@@ -316,8 +317,7 @@ cache-clean:
 #   docker run --rm --privileged tonistiigi/binfmt --install all
 #
 # Update the inline Dockerfile here whenever the real Dockerfile's
-# per-arch case changes — the inline version is what the smoke
-# actually tests.
+# per-arch package case changes.
 smoke-arch arch="amd64":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -355,6 +355,9 @@ smoke-arch arch="amd64":
         --build-arg "TARGETARCH={{arch}}" \
         -t "elizaos-smoke-{{arch}}" \
         "$tmp"
+    echo
+    echo "=== config smoke {{arch}} (real build.sh/live-build path) ==="
+    ELIZAOS_ARCH="{{arch}}" ./build.sh config
     echo
     echo "✅ smoke passed for {{arch}}. To run the full ISO build:"
     echo "    ELIZAOS_ARCH={{arch}} just build"

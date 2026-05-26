@@ -39,14 +39,24 @@ Read_conffiles config/all config/bootstrap config/common config/binary
 Read_conffiles config/variables
 Set_defaults
 
-# Safeguards
-[ "${LB_ARCHITECTURE}" = "amd64" ] || exit 0
-
 # Seems like we'll have work to do
 Echo_message 'including GRUB EFI in the ISO filesystem'
 
 grub_dir="binary/EFI/debian/grub"
-platforms="x86_64-efi i386-efi"
+case "${LB_ARCHITECTURE}" in
+amd64)
+    platforms="x86_64-efi i386-efi"
+    ;;
+arm64)
+    platforms="arm64-efi"
+    ;;
+riscv64)
+    platforms="riscv64-efi"
+    ;;
+*)
+    exit 0
+    ;;
+esac
 
 efi_name() {
     local platform="$1"
@@ -56,6 +66,12 @@ efi_name() {
         ;;
     x86_64-efi)
         echo X64
+        ;;
+    arm64-efi)
+        echo AA64
+        ;;
+    riscv64-efi)
+        echo RISCV64
         ;;
     *)
         echo "E: invalid GRUB platform: $platform" >&2

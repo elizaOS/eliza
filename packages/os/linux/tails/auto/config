@@ -145,9 +145,11 @@ case "${ELIZAOS_ARCH}" in
             --syslinux-menu vesamenu \
             --syslinux-splash data/splash.png \
             --syslinux-timeout 4"
+        BOOTLOADER_ARGS=""
         ;;
     *)
         SYSLINUX_ARGS=""
+        BOOTLOADER_ARGS="--bootloader grub-efi"
         ;;
 esac
 
@@ -185,6 +187,7 @@ $RUN_LB_CONFIG \
     --packages-lists none \
     --tasks none \
     --linux-packages="$kernel_package" \
+    ${BOOTLOADER_ARGS} \
     ${SYSLINUX_ARGS} \
     --initramfs=live-boot \
     "${@}"
