@@ -543,11 +543,10 @@ function renderStaticViewRouterTab({
   onCharacterHeaderActionsChange?: (actions: ReactNode | null) => void;
   LifeOpsPageView: ComponentType | null | undefined;
 }): ReactNode {
-  const directViews: Record<string, ReactNode> = {
-    home: <HomeView />,
-    chat: <ChatView />,
-    home: <HomeView />,
-    browser: <BrowserWorkspaceView />,
+	  const directViews: Record<string, ReactNode> = {
+	    home: <HomeView />,
+	    chat: <ChatView />,
+	    browser: <BrowserWorkspaceView />,
     companion: <ChatView />,
     stream: <StreamView />,
     tasks: (
@@ -1651,20 +1650,7 @@ export function App() {
     // rendering (avoids a flash of login screen on refresh when cookies are valid).
   }
 
-  // OS chat-overlay window — render JUST the floating assistant pill +
-  // waveform over a transparent background, no app chrome.
-  if (shellMode === "chat-overlay") {
-    return (
-      <BugReportProvider value={bugReport}>
-        <ShellControllerProvider>
-          <ChatOverlayShell />
-        </ShellControllerProvider>
-        <BugReportModal />
-      </BugReportProvider>
-    );
-  }
-
-  // OS kiosk window — the locked appliance shell: a fullscreen in-window
+	  // OS kiosk window — the locked appliance shell: a fullscreen in-window
   // view-manager canvas plus an always-visible bottom chat pill. No app
   // chrome, no tabs. The pill is enabled here regardless of web/native gating.
   if (shellMode === "kiosk") {
