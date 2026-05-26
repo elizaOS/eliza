@@ -156,7 +156,7 @@ export interface OpenVinoHardwareProbe {
  * bundle-manifest layer's `Eliza1Kernel`
  * (`@elizaos/app-core/src/services/local-inference/manifest/schema`):
  * `turboquant_q3↔turbo3`, `turboquant_q4↔turbo4`, `qjl↔qjl_full`, with
- * `polarquant` / `turbo3_tcq` shared by name. The translation is
+ * `polarquant` / `turbo3_tcq` / `dflash` shared by name. The translation is
  * codified there by `ELIZA1_TO_RUNTIME_KERNEL` / `RUNTIME_TO_ELIZA1_KERNEL`.
  * `openvino` intentionally has no manifest-level Eliza-1 kernel equivalent.
  */
@@ -166,6 +166,7 @@ export type LocalRuntimeKernel =
   | "turbo3_tcq"
   | "qjl_full"
   | "polarquant"
+  | "dflash"
   | "openvino";
 
 /**
