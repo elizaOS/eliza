@@ -52,18 +52,21 @@ export async function narrate(
   const canCallLlm = typeof useModelFn === "function";
   const budget = Math.max(0, Math.floor(ctx.budget));
 
+  // `budget` caps LLM spend only — it must not suppress the deterministic
+  // fallback. Every drift always gets a rotCause; the LLM is opted into when
+  // (a) the runtime exposes useModel, and (b) the running llmCalls counter is
+  // still under budget. Once exhausted, remaining drifts get the heuristic.
   for (const drift of ctx.drifts) {
-    if (rotCauses.length >= budget) break;
     const idx = indexBySha.get(drift.sha);
     if (idx === undefined) continue;
     const point = ctx.timeline[idx];
     if (!point) continue;
     const before = ctx.timeline.slice(Math.max(0, idx - 3), idx);
     const after = ctx.timeline.slice(idx + 1, idx + 4);
-    const diff = scrubSecrets(
-      fetchDiffSnippet(ctx.repoRoot, point.sha, ctx.surfacePath, 8 * 1024),
-    );
-    if (canCallLlm && useModelFn) {
+    if (canCallLlm && useModelFn && llmCalls < budget) {
+      const diff = scrubSecrets(
+        fetchDiffSnippet(ctx.repoRoot, point.sha, ctx.surfacePath, 8 * 1024),
+      );
       try {
         const result = await callModel(useModelFn, buildPrompt(ctx.surfacePath, point, before, after, diff));
         llmCalls += 1;
