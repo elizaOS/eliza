@@ -59,12 +59,14 @@ import {
   configureDesktopLocalApiAuth,
   getAgentManager,
   getDiagnosticLogPath,
+  getHealthPollTimeoutMs,
   getStartupDiagnosticLogTail,
   getStartupDiagnosticsSnapshot,
   getStartupStatusPath,
 } from "./native/agent";
 import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
+import { getRemotePluginHost } from "./native/remote-plugin-host";
 import {
   enableVibrancy,
   ensureShadow,
@@ -80,7 +82,11 @@ import {
   isRendererApiProxyPath,
   resolveRendererProxyIdleTimeoutSeconds,
 } from "./renderer-api-proxy";
-import { resolveRendererAsset } from "./renderer-static";
+import {
+  getRendererAssetContentType,
+  resolveRendererAssetByteRange,
+  resolveRendererAsset,
+} from "./renderer-static";
 import {
   buildBunRpcHandlers,
   wireBrowserWorkspaceCaller,
@@ -264,7 +270,7 @@ async function resetTheAppFromApplicationMenu(): Promise<void> {
         message:
           "This will reset the agent: config, cloud keys, and local agent database (conversations / memory).",
         detail:
-          "Downloaded GGUF embedding models are kept. You will return to the onboarding wizard.",
+          "Downloaded GGUF embedding models are kept. You will return to first-run runtime setup.",
         buttons: ["Reset", "Cancel"],
         defaultId: 0,
         cancelId: 1,
@@ -681,23 +687,6 @@ async function startRendererServer(): Promise<string> {
 
   const port = await getPort(5174);
 
-  const mimeTypes: Record<string, string> = {
-    ".html": "text/html; charset=utf-8",
-    ".js": "application/javascript",
-    ".mjs": "application/javascript",
-    ".css": "text/css",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".svg": "image/svg+xml",
-    ".ico": "image/x-icon",
-    ".json": "application/json",
-    ".gz": "application/octet-stream",
-    ".wasm": "application/wasm",
-    ".glb": "model/gltf-binary",
-    ".gltf": "model/gltf+json",
-    ".vrm": "model/gltf-binary",
-  };
-
   // Seed the api-base-owner singleton with the initial value so the
   // HTML-inject path and the RPC push path both read the same source of
   // truth. Without this seeding, the static server would inject one value
@@ -740,6 +729,8 @@ async function startRendererServer(): Promise<string> {
         ".m4a",
         ".aac",
         ".flac",
+        ".mp4",
+        ".webm",
         ".glb",
       ].includes(mimeExt)
     ) {
@@ -818,13 +809,32 @@ async function startRendererServer(): Promise<string> {
         }
 
         const headers: Record<string, string> = {
-          "Content-Type": mimeTypes[mimeExt] ?? "application/octet-stream",
+          "Content-Type": getRendererAssetContentType(mimeExt),
           "Access-Control-Allow-Origin": "*",
           "Cache-Control": resolveRendererCacheControl(pathname, mimeExt),
+          "Accept-Ranges": "bytes",
+          "Content-Length": String(content.byteLength),
         };
 
         if (isGzipped) {
           headers["Content-Encoding"] = "gzip";
+        }
+
+        const byteRange = isGzipped
+          ? null
+          : resolveRendererAssetByteRange(
+              req.headers.get("range"),
+              content.byteLength,
+            );
+        if (byteRange) {
+          const body = content.subarray(byteRange.start, byteRange.end + 1);
+          headers["Content-Length"] = String(body.byteLength);
+          headers["Content-Range"] =
+            `bytes ${byteRange.start}-${byteRange.end}/${content.byteLength}`;
+          return new Response(body, {
+            status: 206,
+            headers,
+          });
         }
 
         return new Response(content, { headers });
@@ -1545,7 +1555,6 @@ async function _startAgent(win: BrowserWindow): Promise<void> {
     return;
   }
 
-  const agent = getAgentManager();
   recordStartupPhase("autostart_requested", {
     pid: process.pid,
     exec_path: process.execPath,
@@ -1553,7 +1562,14 @@ async function _startAgent(win: BrowserWindow): Promise<void> {
   });
 
   try {
-    const status = await agent.start();
+    const remotePluginHost = getRemotePluginHost();
+    remotePluginHost.startWorker("eliza.runtime");
+    await remotePluginHost.invokeWorker({
+      id: "eliza.runtime",
+      method: "runtime.start",
+      timeoutMs: getHealthPollTimeoutMs() + 5_000,
+    });
+    const status = getAgentManager().getStatus();
 
     if (status.state === "running" && status.port) {
       const apiBase = `http://127.0.0.1:${status.port}`;
@@ -1990,13 +2006,13 @@ function setupShutdown(): void {
 }
 
 /**
- * Load repo-root and ~/.eliza/.env into `process.env` (non-destructive) so the
+ * Load repo-root and state-dir `.env` into `process.env` (non-destructive) so the
  * main process can send the same `ELIZA_API_TOKEN` as `dev-server.ts` when
  * calling loopback APIs (app menu reset, export, etc.). The dev API child
  * already loads dotenv; Electrobun did not until this ran.
  *
  * Packaged desktop builds must not load these files. On machines that also
- * have a the app/Eliza dev checkout, ~/.eliza/.env can contain
+ * have an app/Eliza dev checkout, the state-dir `.env` can contain
  * ELIZA_DESKTOP_API_BASE and related overrides that switch the packaged app
  * into external mode and make launcher startup appear dead.
  */
@@ -2016,9 +2032,16 @@ async function loadTheAppEnvFilesForMain(): Promise<void> {
       "..",
       "..",
     );
+    const namespace = process.env.ELIZA_NAMESPACE?.trim() || BRAND.namespace;
+    const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
+    const stateHome = xdgStateHome
+      ? path.isAbsolute(xdgStateHome)
+        ? xdgStateHome
+        : path.join(os.homedir(), xdgStateHome)
+      : path.join(os.homedir(), ".local", "state");
     for (const envPath of [
       path.join(repoRootGuess, ".env"),
-      path.join(os.homedir(), ".eliza", ".env"),
+      path.join(stateHome, namespace, ".env"),
     ]) {
       if (fs.existsSync(envPath)) {
         config({ path: envPath, override: false });

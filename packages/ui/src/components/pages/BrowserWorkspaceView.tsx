@@ -20,7 +20,7 @@ import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
-import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
+import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import {

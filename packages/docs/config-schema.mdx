@@ -5,7 +5,7 @@ description: Complete reference for the eliza.json configuration file, organized
 ---
 
 Eliza is configured through a `eliza.json` file stored in the state
-directory (default: `~/.eliza/eliza.json`). All sections are optional; Eliza
+directory (default: `~/.local/state/eliza/eliza.json`). All sections are optional; Eliza
 uses sensible defaults when fields are omitted.
 
 Canonical runtime routing is persisted separately from legacy compatibility
@@ -1293,7 +1293,7 @@ Database provider and connection configuration.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `dataDir` | `string` | `~/.eliza/workspace/.eliza/.elizadb` | PGLite data directory |
+| `dataDir` | `string` | `~/.local/state/eliza/workspace/.elizadb` | PGLite data directory |
 
 ### `database.postgres`
 

@@ -312,7 +312,7 @@ export interface PluginPackageChannel {
 	id?: string;
 	/** Display label */
 	label?: string;
-	/** Selection label for onboarding */
+	/** Selection label for setup */
 	selectionLabel?: string;
 	/** Detail label */
 	detailLabel?: string;

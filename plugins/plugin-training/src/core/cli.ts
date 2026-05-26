@@ -897,7 +897,10 @@ export function formatListTrainingCollectionsSummary(
       .flatMap(([source, samples]) =>
         samples.slice(0, 1).map((sample) => {
           const id =
-            sample.trajectoryId ?? sample.scenarioId ?? sample.title ?? "sample";
+            sample.trajectoryId ??
+            sample.scenarioId ??
+            sample.title ??
+            "sample";
           const task = sample.task ? `:${sample.task}` : "";
           return `${source}:${id}${task}`;
         }),

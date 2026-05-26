@@ -143,13 +143,7 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	"4b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
-	"27b-256k": [
-		"turboquant_q4",
-		"qjl",
-		"polarquant",
-		"dflash",
-		"turbo3_tcq",
-	],
+	"27b-256k": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 };
 
 // Backends each tier is expected to support on shipped hardware.
@@ -439,17 +433,17 @@ export const Eliza1EvalsSchema = z.object({
 			passed: z.boolean(),
 		})
 		.optional(),
-		// Optional EAGLE3 speculative-decoding bench metadata.
-		eagle3: Eliza1Eagle3EvalSchema.optional(),
-		dflash: z
-			.object({
-				acceptanceRate: z.number().min(0).max(1).nullable(),
-				speedup: z.number().nonnegative().nullable(),
-				passed: z.boolean(),
-				failure: z.string().min(1).optional(),
-			})
-			.optional(),
-		// Voice Wave 2 (2026-05-14): semantic end-of-turn detector eval gates.
+	// Optional EAGLE3 speculative-decoding bench metadata.
+	eagle3: Eliza1Eagle3EvalSchema.optional(),
+	dflash: z
+		.object({
+			acceptanceRate: z.number().min(0).max(1).nullable(),
+			speedup: z.number().nonnegative().nullable(),
+			passed: z.boolean(),
+			failure: z.string().min(1).optional(),
+		})
+		.optional(),
+	// Voice Wave 2 (2026-05-14): semantic end-of-turn detector eval gates.
 	// Required when `files.turn` is non-empty (validator enforces). Thresholds
 	// applied by `eval_turn_detector.py` in `packages/training/scripts/turn_detector/`:
 	//   f1            ≥ TURN_DETECTOR_F1_THRESHOLD           (0.85)

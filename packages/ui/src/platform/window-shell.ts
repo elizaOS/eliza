@@ -68,7 +68,7 @@ export function isPillWindowShell(
   return route.mode === "pill";
 }
 
-export function shouldInstallMainWindowOnboardingPatches(
+export function shouldInstallMainWindowFirstRunPatches(
   route: WindowShellRoute,
 ): boolean {
   return route.mode === "main";

@@ -7,7 +7,7 @@
  * exercised via the structured `SpeakerEncoderUnavailableError`.
  *
  * The pure-function `averageEmbeddings` helper is fully covered here —
- * it sits at the heart of onboarding centroid construction.
+ * it sits at the heart of first-run centroid construction.
  */
 
 import { describe, expect, it } from "vitest";

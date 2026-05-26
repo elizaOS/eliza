@@ -25,6 +25,7 @@
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 
 import type { StreamingPcmDecoder } from "./types";
 
@@ -93,14 +94,7 @@ function resolveLibraryPath(): string | null {
 			libName,
 		),
 		// User-installed location populated by ensure-whisper-gguf.sh / installer.
-		path.join(
-			os.homedir(),
-			".eliza",
-			"local-inference",
-			"bin",
-			"whisper",
-			libName,
-		),
+		path.join(resolveStateDir(), "local-inference", "bin", "whisper", libName),
 		// Linux per-host packaged location.
 		`/usr/local/lib/${libName}`,
 		`/usr/lib/${libName}`,
@@ -124,8 +118,7 @@ function resolveModelPath(): string | null {
 			`ggml-${modelName}.bin`,
 		),
 		path.join(
-			os.homedir(),
-			".eliza",
+			resolveStateDir(),
 			"local-inference",
 			"whisper",
 			`ggml-${modelName}.bin`,

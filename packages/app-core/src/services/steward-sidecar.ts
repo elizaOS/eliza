@@ -13,7 +13,7 @@
  * database (PGLite when available, or standard Postgres via DATABASE_URL).
  *
  * Usage:
- *   const sidecar = new StewardSidecar({ dataDir: '~/.eliza/steward/' });
+ *   const sidecar = new StewardSidecar({ dataDir: '~/.local/state/eliza/steward/' });
  *   await sidecar.start();  // starts process + first-launch setup
  *   const client = sidecar.getClient();
  *   await sidecar.stop();
@@ -517,7 +517,7 @@ export class StewardSidecar {
  * Create a StewardSidecar with standard defaults.
  *
  * Uses environment variables for overrides:
- *   - STEWARD_DATA_DIR: data directory (default: ~/.eliza/steward/)
+ *   - STEWARD_DATA_DIR: data directory (default: ~/.local/state/eliza/steward/)
  *   - STEWARD_PORT: API port (default: 3200)
  *   - STEWARD_MASTER_PASSWORD: vault encryption password
  *   - STEWARD_ENTRY_POINT: path to steward API entry
@@ -527,12 +527,19 @@ export function createDesktopStewardSidecar(
   overrides?: Partial<StewardSidecarConfig>,
 ): StewardSidecar {
   const home = process.env.HOME || process.env.USERPROFILE || "";
+  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
+  const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
+  const stateHome = xdgStateHome
+    ? path.isAbsolute(xdgStateHome)
+      ? xdgStateHome
+      : path.join(home, xdgStateHome)
+    : path.join(home, ".local", "state");
 
   return new StewardSidecar({
     dataDir:
       process.env.STEWARD_DATA_DIR ||
       overrides?.dataDir ||
-      `${home}/.eliza/steward`,
+      path.join(stateHome, namespace, "steward"),
     port:
       parseInt(process.env.STEWARD_PORT || "", 10) ||
       overrides?.port ||

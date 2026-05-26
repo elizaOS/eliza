@@ -11,7 +11,7 @@ import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type {
   Conversation,
   ConversationMessage,
-  OnboardingOptions,
+  FirstRunOptions,
 } from "../api";
 import { type AgentStatus, client, type StreamEventEnvelope } from "../api";
 import { isIosInProcessLocalAgentBase } from "../api/ios-local-agent-transport";
@@ -20,8 +20,8 @@ import { dispatchElizaCloudStatusUpdated } from "../events";
 import {
   persistMobileRuntimeModeForServerTarget,
   readPersistedMobileRuntimeMode,
-} from "../onboarding/mobile-runtime-mode";
-import { enableForceFreshOnboarding } from "../platform";
+} from "../first-run/mobile-runtime-mode";
+import { enableForceFreshFirstRun } from "../platform";
 import {
   alertDesktopMessage,
   confirmDesktopAction,
@@ -38,7 +38,7 @@ import {
   loadPersistedActiveServer,
   parseAgentStatusFromMainMenuResetPayload,
 } from "./internal";
-import type { OnboardingMode, OnboardingStep } from "./types";
+import type { FirstRunMode, SetupStep } from "./types";
 
 // ── Helpers (file-local) ────────────────────────────────────────────
 
@@ -172,31 +172,31 @@ export interface UseChatLifecycleDeps {
   setElizaCloudStatusReason: (v: string | null) => void;
   setElizaCloudLoginError: (v: string | null) => void;
 
-  // Onboarding setters
-  onboardingCompletionCommittedRef: MutableRefObject<boolean>;
-  setOnboardingUiRevealNonce: (fn: (n: number) => number) => void;
-  setOnboardingLoading: (v: boolean) => void;
-  setOnboardingComplete: (v: boolean) => void;
-  setOnboardingStep: (v: OnboardingStep) => void;
-  setOnboardingMode: (v: OnboardingMode) => void;
-  setOnboardingActiveGuide: (v: string | null) => void;
-  setOnboardingDeferredTasks: (v: string[]) => void;
-  setPostOnboardingChecklistDismissed: (v: boolean) => void;
-  setOnboardingName: (v: string) => void;
-  setOnboardingStyle: (v: string) => void;
-  setOnboardingServerTarget: (v: AppState["onboardingServerTarget"]) => void;
-  setOnboardingProvider: (v: string) => void;
-  setOnboardingApiKey: (v: string) => void;
-  setOnboardingVoiceProvider: (v: string) => void;
-  setOnboardingVoiceApiKey: (v: string) => void;
-  setOnboardingPrimaryModel: (v: string) => void;
-  setOnboardingOpenRouterModel: (v: string) => void;
-  setOnboardingRemoteConnected: (v: boolean) => void;
-  setOnboardingRemoteApiBase: (v: string) => void;
-  setOnboardingRemoteToken: (v: string) => void;
-  setOnboardingSmallModel: (v: string) => void;
-  setOnboardingLargeModel: (v: string) => void;
-  setOnboardingOptions: (v: OnboardingOptions | null) => void;
+  // First-run setters
+  firstRunCompletionCommittedRef: MutableRefObject<boolean>;
+  setFirstRunUiRevealNonce: (fn: (n: number) => number) => void;
+  setFirstRunLoading: (v: boolean) => void;
+  setFirstRunComplete: (v: boolean) => void;
+  setSetupStep: (v: SetupStep) => void;
+  setFirstRunMode: (v: FirstRunMode) => void;
+  setFirstRunActiveGuide: (v: string | null) => void;
+  setFirstRunDeferredTasks: (v: string[]) => void;
+  setPostFirstRunChecklistDismissed: (v: boolean) => void;
+  setFirstRunName: (v: string) => void;
+  setFirstRunStyle: (v: string) => void;
+  setFirstRunRuntimeTarget: (v: AppState["firstRunRuntimeTarget"]) => void;
+  setFirstRunProvider: (v: string) => void;
+  setFirstRunApiKey: (v: string) => void;
+  setFirstRunVoiceProvider: (v: string) => void;
+  setFirstRunVoiceApiKey: (v: string) => void;
+  setFirstRunPrimaryModel: (v: string) => void;
+  setFirstRunOpenRouterModel: (v: string) => void;
+  setFirstRunRemoteConnected: (v: boolean) => void;
+  setFirstRunRemoteApiBase: (v: string) => void;
+  setFirstRunRemoteToken: (v: string) => void;
+  setFirstRunSmallModel: (v: string) => void;
+  setFirstRunLargeModel: (v: string) => void;
+  setFirstRunOptions: (v: FirstRunOptions | null) => void;
 
   // Character / avatar
   setSelectedVrmIndex: (v: number) => void;
@@ -215,7 +215,7 @@ export interface UseChatLifecycleDeps {
 // ── Hook ────────────────────────────────────────────────────────────
 
 export function useChatLifecycle(deps: UseChatLifecycleDeps) {
-  const defaultOnboardingStyle = getDefaultStylePreset();
+  const defaultFirstRunStyle = getDefaultStylePreset();
   const {
     agentStatus,
     setAgentStatus,
@@ -254,30 +254,30 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     setElizaCloudUserId,
     setElizaCloudStatusReason,
     setElizaCloudLoginError,
-    onboardingCompletionCommittedRef,
-    setOnboardingUiRevealNonce,
-    setOnboardingLoading,
-    setOnboardingComplete,
-    setOnboardingStep,
-    setOnboardingMode,
-    setOnboardingActiveGuide,
-    setOnboardingDeferredTasks,
-    setPostOnboardingChecklistDismissed,
-    setOnboardingName,
-    setOnboardingStyle,
-    setOnboardingServerTarget,
-    setOnboardingProvider,
-    setOnboardingApiKey,
-    setOnboardingVoiceProvider,
-    setOnboardingVoiceApiKey,
-    setOnboardingPrimaryModel,
-    setOnboardingOpenRouterModel,
-    setOnboardingRemoteConnected,
-    setOnboardingRemoteApiBase,
-    setOnboardingRemoteToken,
-    setOnboardingSmallModel,
-    setOnboardingLargeModel,
-    setOnboardingOptions,
+    firstRunCompletionCommittedRef,
+    setFirstRunUiRevealNonce,
+    setFirstRunLoading,
+    setFirstRunComplete,
+    setSetupStep,
+    setFirstRunMode,
+    setFirstRunActiveGuide,
+    setFirstRunDeferredTasks,
+    setPostFirstRunChecklistDismissed,
+    setFirstRunName,
+    setFirstRunStyle,
+    setFirstRunRuntimeTarget,
+    setFirstRunProvider,
+    setFirstRunApiKey,
+    setFirstRunVoiceProvider,
+    setFirstRunVoiceApiKey,
+    setFirstRunPrimaryModel,
+    setFirstRunOpenRouterModel,
+    setFirstRunRemoteConnected,
+    setFirstRunRemoteApiBase,
+    setFirstRunRemoteToken,
+    setFirstRunSmallModel,
+    setFirstRunLargeModel,
+    setFirstRunOptions,
     setSelectedVrmIndex,
     setCustomVrmUrl,
     setCustomBackgroundUrl,
@@ -632,7 +632,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
           //
           // Coupling guarantee: this runs in `clearElizaCloudSessionUi`,
           // which `complete-reset-local-state-after-wipe.ts` calls on
-          // line 43 — immediately before `markOnboardingReset()` on
+          // line 43 — immediately before `markFirstRunReset()` on
           // line 44. The two callbacks always fire as a pair, so the
           // token clear happens on every reset path that uses the
           // shared cascade. (The cascade is the sole caller; there
@@ -648,37 +648,36 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
             }
           }
         },
-        markOnboardingReset: () => {
-          enableForceFreshOnboarding();
-          onboardingCompletionCommittedRef.current = false;
-          setOnboardingUiRevealNonce((n) => n + 1);
-          setOnboardingLoading(false);
-          setOnboardingComplete(false);
-          setOnboardingStep("deployment");
-          setOnboardingMode("basic");
-          setOnboardingActiveGuide(null);
-          setOnboardingDeferredTasks([]);
-          setPostOnboardingChecklistDismissed(false);
-          setOnboardingName(defaultOnboardingStyle.name);
-          setOnboardingStyle(defaultOnboardingStyle.id);
+        markFirstRunReset: () => {
+          enableForceFreshFirstRun();
+          firstRunCompletionCommittedRef.current = false;
+          setFirstRunUiRevealNonce((n) => n + 1);
+          setFirstRunLoading(false);
+          setFirstRunComplete(false);
+          setSetupStep("connection");
+          setFirstRunMode("basic");
+          setFirstRunActiveGuide(null);
+          setFirstRunDeferredTasks([]);
+          setPostFirstRunChecklistDismissed(false);
+          setFirstRunName(defaultFirstRunStyle.name);
+          setFirstRunStyle(defaultFirstRunStyle.id);
           persistMobileRuntimeModeForServerTarget("");
-          setOnboardingServerTarget("");
-          setOnboardingProvider("");
-          setOnboardingApiKey("");
-          setOnboardingVoiceProvider("");
-          setOnboardingVoiceApiKey("");
-          setOnboardingPrimaryModel("");
-          setOnboardingOpenRouterModel("");
-          setOnboardingRemoteConnected(false);
-          setOnboardingRemoteApiBase("");
-          setOnboardingRemoteToken("");
-          setOnboardingSmallModel("");
-          setOnboardingLargeModel("");
-          // Return to splash so user can re-onboard from scratch
+          setFirstRunRuntimeTarget("");
+          setFirstRunProvider("");
+          setFirstRunApiKey("");
+          setFirstRunVoiceProvider("");
+          setFirstRunVoiceApiKey("");
+          setFirstRunPrimaryModel("");
+          setFirstRunOpenRouterModel("");
+          setFirstRunRemoteConnected(false);
+          setFirstRunRemoteApiBase("");
+          setFirstRunRemoteToken("");
+          setFirstRunSmallModel("");
+          setFirstRunLargeModel("");
           coordinatorResetRef.current?.();
         },
         resetAvatarSelection: () => {
-          setSelectedVrmIndex(defaultOnboardingStyle.avatarIndex);
+          setSelectedVrmIndex(defaultFirstRunStyle.avatarIndex);
           setCustomVrmUrl("");
           setCustomBackgroundUrl("");
         },
@@ -691,37 +690,37 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
           setSkills([]);
           setLogs([]);
         },
-        fetchOnboardingOptions: () => client.getOnboardingOptions(),
-        setOnboardingOptions,
+        fetchFirstRunOptions: () => client.getFirstRunOptions(),
+        setFirstRunOptions,
         logResetDebug,
         logResetWarn,
       });
     },
     [
       setAgentStatus,
-      setOnboardingComplete,
-      setOnboardingLoading,
-      setOnboardingOptions,
-      setOnboardingStep,
-      setOnboardingMode,
-      setOnboardingActiveGuide,
-      setOnboardingDeferredTasks,
-      setPostOnboardingChecklistDismissed,
-      setOnboardingName,
-      setOnboardingStyle,
-      setOnboardingServerTarget,
-      setOnboardingProvider,
-      setOnboardingApiKey,
-      setOnboardingVoiceProvider,
-      setOnboardingVoiceApiKey,
-      setOnboardingPrimaryModel,
-      setOnboardingOpenRouterModel,
-      setOnboardingRemoteConnected,
-      setOnboardingRemoteApiBase,
-      setOnboardingRemoteToken,
-      setOnboardingSmallModel,
-      setOnboardingLargeModel,
-      setOnboardingUiRevealNonce,
+      setFirstRunComplete,
+      setFirstRunLoading,
+      setFirstRunOptions,
+      setSetupStep,
+      setFirstRunMode,
+      setFirstRunActiveGuide,
+      setFirstRunDeferredTasks,
+      setPostFirstRunChecklistDismissed,
+      setFirstRunName,
+      setFirstRunStyle,
+      setFirstRunRuntimeTarget,
+      setFirstRunProvider,
+      setFirstRunApiKey,
+      setFirstRunVoiceProvider,
+      setFirstRunVoiceApiKey,
+      setFirstRunPrimaryModel,
+      setFirstRunOpenRouterModel,
+      setFirstRunRemoteConnected,
+      setFirstRunRemoteApiBase,
+      setFirstRunRemoteToken,
+      setFirstRunSmallModel,
+      setFirstRunLargeModel,
+      setFirstRunUiRevealNonce,
       setConversationMessages,
       setActiveConversationId,
       setConversations,
@@ -729,7 +728,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       setSkills,
       setLogs,
       activeConversationIdRef,
-      onboardingCompletionCommittedRef,
+      firstRunCompletionCommittedRef,
       elizaCloudPreferDisconnectedUntilLoginRef,
       setElizaCloudEnabled,
       setElizaCloudConnected,
@@ -747,7 +746,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       setSelectedVrmIndex,
       setCustomVrmUrl,
       setCustomBackgroundUrl,
-      defaultOnboardingStyle, // Return to splash so user can re-onboard from scratch
+      defaultFirstRunStyle,
       coordinatorResetRef.current,
     ],
   );
@@ -861,7 +860,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     logResetInfo("handleReset: showing confirm dialog");
     const confirmDetail =
       resetTarget.kind === "local"
-        ? "Downloaded GGUF embedding models are kept. You will return to the runtime picker."
+        ? "Downloaded GGUF embedding models are kept. You will return to first-run runtime setup."
         : "Local app settings and other runtime choices stay on this device. Only the selected agent is reset.";
     const confirmed = await confirmDesktopAction({
       title: `Reset ${resetTarget.label}`,

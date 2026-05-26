@@ -28,7 +28,7 @@ export interface DesktopBrandConfig {
   configExportFileName: string;
   /** User-facing description. */
   appDescription: string;
-  /** Default namespace for state directory (~/.eliza/ or ~/.eliza/). */
+  /** Default namespace for XDG state directory. */
   namespace: string;
   /** Config directory name (used under ~/.config/ on Unix, %APPDATA% on Windows). */
   configDirName: string;
@@ -144,6 +144,13 @@ function resolveBrandConfig(): DesktopBrandConfig {
     DEFAULT_CONFIG.appName;
   const appId =
     envFallback("ELIZA_APP_ID") || fileConfig.appId || DEFAULT_CONFIG.appId;
+  const envNamespace = envFallback("ELIZA_NAMESPACE");
+  const fileNamespace = fileConfig.namespace;
+  const namespace =
+    envNamespace &&
+    !(envNamespace === "eliza" && fileNamespace && fileNamespace !== "eliza")
+      ? envNamespace
+      : fileNamespace || DEFAULT_CONFIG.namespace;
 
   return {
     ...DEFAULT_CONFIG,
@@ -166,10 +173,7 @@ function resolveBrandConfig(): DesktopBrandConfig {
     configExportFileName:
       fileConfig.configExportFileName ??
       `${appName.toLowerCase().replace(/\s+/g, "-")}-config.json`,
-    namespace:
-      envFallback("ELIZA_NAMESPACE") ||
-      fileConfig.namespace ||
-      DEFAULT_CONFIG.namespace,
+    namespace,
     configDirName: fileConfig.configDirName ?? appName,
   };
 }

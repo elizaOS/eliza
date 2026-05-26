@@ -1,9 +1,9 @@
 import {
-	normalizeOnboardingProviderId,
+	normalizeFirstRunProviderId,
 	resolveDeploymentTargetInConfig,
 	resolveLinkedAccountsInConfig,
 	resolveServiceRoutingInConfig,
-} from "./onboarding.js";
+} from "./first-run-options.js";
 
 export type ElizaCloudService =
 	| "inference"
@@ -70,7 +70,7 @@ export function resolveElizaCloudTopology(
 	const deploymentTarget = resolveDeploymentTargetInConfig(config);
 	const routing = resolveServiceRoutingInConfig(config);
 	const provider =
-		(normalizeOnboardingProviderId(routing?.llmText?.backend) === "elizacloud"
+		(normalizeFirstRunProviderId(routing?.llmText?.backend) === "elizacloud"
 			? "elizacloud"
 			: null) ??
 		(deploymentTarget.provider === "elizacloud" ? "elizacloud" : null);
@@ -78,24 +78,24 @@ export function resolveElizaCloudTopology(
 	const resolvedServices = {
 		inference: Boolean(
 			routing?.llmText?.transport === "cloud-proxy" &&
-				normalizeOnboardingProviderId(routing.llmText.backend) === "elizacloud",
+				normalizeFirstRunProviderId(routing.llmText.backend) === "elizacloud",
 		),
 		tts: Boolean(
 			routing?.tts?.transport === "cloud-proxy" &&
-				normalizeOnboardingProviderId(routing.tts.backend) === "elizacloud",
+				normalizeFirstRunProviderId(routing.tts.backend) === "elizacloud",
 		),
 		media: Boolean(
 			routing?.media?.transport === "cloud-proxy" &&
-				normalizeOnboardingProviderId(routing.media.backend) === "elizacloud",
+				normalizeFirstRunProviderId(routing.media.backend) === "elizacloud",
 		),
 		embeddings: Boolean(
 			routing?.embeddings?.transport === "cloud-proxy" &&
-				normalizeOnboardingProviderId(routing.embeddings.backend) ===
+				normalizeFirstRunProviderId(routing.embeddings.backend) ===
 					"elizacloud",
 		),
 		rpc: Boolean(
 			routing?.rpc?.transport === "cloud-proxy" &&
-				normalizeOnboardingProviderId(routing.rpc.backend) === "elizacloud",
+				normalizeFirstRunProviderId(routing.rpc.backend) === "elizacloud",
 		),
 	} satisfies Record<ElizaCloudService, boolean>;
 	const cloudDeploymentSelected =

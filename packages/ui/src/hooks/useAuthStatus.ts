@@ -41,7 +41,7 @@ interface UseAuthStatusOptions {
   pollIntervalMs?: number;
   /**
    * When true the hook will NOT start its initial fetch.
-   * Useful when the app knows auth is not yet relevant (e.g. during onboarding).
+   * Useful when the app knows auth is not yet relevant (e.g. during first-run setup).
    */
   skip?: boolean;
   /**

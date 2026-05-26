@@ -24,7 +24,7 @@
  *
  * The SQLite path follows the Python store's default:
  *   - `ELIZA_BENCHMARK_RESULTS_DB` (env override) if set.
- *   - else `~/.eliza/benchmarks/results.db`.
+ *   - else `<stateDir>/benchmarks/results.db`.
  *
  * Mode notes
  * ==========
@@ -143,13 +143,26 @@ export function resolveBenchmarkResultsDbPath(
   if (override && override.length > 0) {
     return path.resolve(expandUserHome(override));
   }
-  return path.join(os.homedir(), ".eliza", "benchmarks", "results.db");
+  return path.join(resolveBenchmarkStateDir(env), "benchmarks", "results.db");
 }
 
 function expandUserHome(p: string): string {
   if (p === "~") return os.homedir();
   if (p.startsWith("~/")) return path.join(os.homedir(), p.slice(2));
   return p;
+}
+
+function resolveBenchmarkStateDir(env: NodeJS.ProcessEnv): string {
+  const explicit = env.ELIZA_STATE_DIR?.trim();
+  if (explicit) return path.resolve(expandUserHome(explicit));
+  const namespace = env.ELIZA_NAMESPACE?.trim() || "eliza";
+  const xdgStateHome = env.XDG_STATE_HOME?.trim();
+  const stateHome = xdgStateHome
+    ? path.isAbsolute(xdgStateHome)
+      ? xdgStateHome
+      : path.join(os.homedir(), xdgStateHome)
+    : path.join(os.homedir(), ".local", "state");
+  return path.join(stateHome, namespace);
 }
 
 // ---------------------------------------------------------------------------

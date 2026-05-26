@@ -7,7 +7,7 @@ This directory is a **scaffold only**. The types, consent state machine, ring-bu
 - macOS: AVAudioEngine / CoreAudio tap, request `NSMicrophoneUsageDescription`, handle device-change notifications.
 - Windows: WASAPI loopback + capture endpoint, MMDevice notifications for hot-swap.
 - Linux: PipeWire (preferred) or PulseAudio source-output, fall back to ALSA.
-- iOS: AVAudioSession with `.record` category; background audio entitlement is **out of scope** — onboarding must reflect this constraint.
+- iOS: AVAudioSession with `.record` category; background audio entitlement is **out of scope** — first-run setup must reflect this constraint.
 - Android: `AudioRecord` + `MediaRecorder.AudioSource.VOICE_RECOGNITION`, foreground service required for >5s capture.
 
 Frames must be normalized to 16 kHz mono Int16 before reaching `ReplayBuffer.push`.
@@ -36,7 +36,7 @@ Frames must be normalized to 16 kHz mono Int16 before reaching `ReplayBuffer.pus
 
 ## Consent UX integration
 
-- The onboarding flow (Workstream F) owns first-grant consent. This service must refuse to `start()` unless a `ConsentRecord` exists.
+- The first-run setup flow (Workstream F) owns first-grant consent. This service must refuse to `start()` unless a `ConsentRecord` exists.
 - Pause must be reachable from the desktop bar (Workstream H) in <=1 click.
 - An always-on indicator must reflect `mode()` continuously; the renderer is in `packages/ui/src/companion/desktop-bar/`.
 

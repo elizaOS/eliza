@@ -4,7 +4,7 @@
  * The HTTP surface this exposes (under `/api/accounts/...`) is the
  * source of truth for the React settings page. It joins three sources:
  *
- *   - on-disk credential records under `~/.eliza/auth/...`
+ *   - on-disk credential records under `<stateDir>/auth/...`
  *     (`account-storage.ts`),
  *   - rich `LinkedAccountConfig` records (label / enabled / priority /
  *     health / usage) owned by `AccountPool` in `@elizaos/app-core`,

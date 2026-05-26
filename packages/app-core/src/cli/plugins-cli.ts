@@ -508,7 +508,9 @@ export function registerPluginsCli(program: Command): void {
   // ── test ─────────────────────────────────────────────────────────────
   pluginsCommand
     .command("test")
-    .description("Validate custom drop-in plugins in ~/.eliza/plugins/custom/")
+    .description(
+      "Validate custom drop-in plugins in the XDG state-dir plugin store",
+    )
     .action(async () => {
       try {
         const nodePath = await import("node:path");

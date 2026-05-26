@@ -2,7 +2,7 @@
  * General-purpose helper functions extracted from server.ts.
  *
  * Utility functions for plugin services, UUID validation, state persistence,
- * onboarding, config, and package root resolution.
+ * config, and package root resolution.
  */
 
 import crypto from "node:crypto";
@@ -23,7 +23,7 @@ import {
 import type { ConversationMetadata } from "@elizaos/shared";
 import {
   normalizeCharacterLanguage,
-  normalizeOnboardingProviderId,
+  normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
   resolveStylePresetByAvatarIndex,
@@ -197,11 +197,11 @@ export interface ConversationMeta {
 }
 
 // ---------------------------------------------------------------------------
-// Onboarding & config helpers
+// First-run & config helpers
 // ---------------------------------------------------------------------------
 
-export function hasPersistedOnboardingState(config: ElizaConfig): boolean {
-  if (config.meta?.onboardingComplete === true) {
+export function hasPersistedFirstRunState(config: ElizaConfig): boolean {
+  if (config.meta?.firstRunComplete === true) {
     return true;
   }
 
@@ -211,7 +211,7 @@ export function hasPersistedOnboardingState(config: ElizaConfig): boolean {
   const llmText = resolveServiceRoutingInConfig(
     config as Record<string, unknown>,
   )?.llmText;
-  const backend = normalizeOnboardingProviderId(llmText?.backend);
+  const backend = normalizeFirstRunProviderId(llmText?.backend);
   const remoteApiBase =
     llmText?.remoteApiBase?.trim() ?? deploymentTarget.remoteApiBase?.trim();
   const hasCompleteCanonicalRouting =
@@ -311,7 +311,7 @@ export function resolveConversationGreetingText(
   const assistantName = uiConfig?.assistant?.name?.trim();
 
   // Prefer explicit UI selections over the loaded character card: users pick a
-  // style in onboarding/roster (avatar + preset) while `runtime.character.name`
+  // style in first-run/roster (avatar + preset) while `runtime.character.name`
   // can still reflect the bundled preset name until save/restart.
   const preset =
     resolveStylePresetByAvatarIndex(

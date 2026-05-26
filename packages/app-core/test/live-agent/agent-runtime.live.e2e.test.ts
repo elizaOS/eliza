@@ -1158,12 +1158,12 @@ describe("Agent Runtime E2E", () => {
     );
 
     itIf(hasModelProvider)(
-      "GET /api/onboarding/options has non-empty arrays",
+      "GET /api/first-run/options has non-empty arrays",
       async () => {
         const { data } = await http$(
           server?.port,
           "GET",
-          "/api/onboarding/options",
+          "/api/first-run/options",
         );
         expect((data.names as string[]).length).toBeGreaterThan(0);
         expect((data.styles as unknown[]).length).toBeGreaterThan(0);
@@ -1172,9 +1172,9 @@ describe("Agent Runtime E2E", () => {
     );
 
     itIf(hasModelProvider)(
-      "POST /api/onboarding writes agent name",
+      "POST /api/first-run writes agent name",
       async () => {
-        const { data } = await http$(server?.port, "POST", "/api/onboarding", {
+        const { data } = await http$(server?.port, "POST", "/api/first-run", {
           name: "OnboardTest",
         });
         expect(data.ok).toBe(true);

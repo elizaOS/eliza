@@ -32,7 +32,7 @@ vi.mock("@elizaos/shared", async (importOriginal) => {
   return {
     ...actual,
     isLoopbackBindHost: () => true,
-    normalizeOnboardingProviderId: () => null,
+    normalizeFirstRunProviderId: () => null,
     resolveDeploymentTargetInConfig: () => ({}),
     resolveServiceRoutingInConfig: () => ({}),
     resolveDesktopApiPort: () => 31337,

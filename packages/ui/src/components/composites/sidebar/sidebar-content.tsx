@@ -70,7 +70,7 @@ export function SidebarEmptyState({
       className={cn(
         "rounded-sm px-4 py-8 text-center text-sm",
         variant === "game-modal"
-          ? "bg-black/15 font-medium italic text-[color:var(--onboarding-text-muted)]"
+          ? "bg-black/15 font-medium italic text-[color:var(--first-run-text-muted)]"
           : "bg-bg-muted/50 text-muted",
         className,
       )}

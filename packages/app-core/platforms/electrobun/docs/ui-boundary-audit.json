@@ -284,7 +284,7 @@
     },
     {
       "id": "ui-onboarding",
-      "path": "packages/ui/src/onboarding and packages/ui/src/components/onboarding",
+      "path": "packages/ui/src/first-run and packages/ui/src/components/setup",
       "category": "app-specific",
       "shouldStayInPackagesUi": true,
       "shouldMoveToPackagesApp": true,
@@ -517,7 +517,7 @@
     "packages/ui/src/App.tsx",
     "packages/ui/src/components/pages",
     "packages/ui/src/components/character",
-    "packages/ui/src/onboarding",
+    "packages/ui/src/first-run",
     "packages/app/src/main.tsx",
     "packages/app-core/src/runtime/desktop"
   ],

@@ -242,7 +242,8 @@ export function formatOrchestratorDesktopDevBanner(p) {
       source: desktopDevLogPath
         ? "derived — orchestrator sets path + passes to children"
         : "default (disabled)",
-      change: "orchestrator writes .eliza/desktop-dev-console.log when enabled",
+      change:
+        "orchestrator writes <stateDir>/desktop-dev-console.log when enabled",
     },
     {
       setting: "Children spawned",

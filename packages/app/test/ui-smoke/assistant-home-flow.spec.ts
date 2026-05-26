@@ -298,7 +298,7 @@ test.describe("assistant home app flow", () => {
     await expectNoPageDiagnostics(page, testInfo.title);
   });
 
-  test("captures onboarding, assistant home, chat suppression, and view pill states", async ({
+  test("captures first-run, assistant home, chat suppression, and view pill states", async ({
     page,
   }) => {
     await rm(SCREENSHOT_DIR, { force: true, recursive: true });
@@ -309,14 +309,14 @@ test.describe("assistant home app flow", () => {
       sessionStorage.clear();
       localStorage.setItem("eliza:voice:prefix-done", "1");
     });
-    await page.route("**/api/onboarding/status", async (route) => {
+    await page.route("**/api/first-run/status", async (route) => {
       await fulfillJson(route, { complete: false, cloudProvisioned: false });
     });
     await openAppPath(page, "/");
     await expect(page.getByTestId("pre-agent-cloud-shell")).toBeVisible();
-    await screenshot(page, "01-onboarding-clouds");
+    await screenshot(page, "01-first-run-clouds");
 
-    await page.unroute("**/api/onboarding/status");
+    await page.unroute("**/api/first-run/status");
     await seedAppStorage(page);
     const assistantApi = await installAssistantFlowRoutes(page);
 
@@ -385,7 +385,9 @@ test.describe("assistant home app flow", () => {
     await expect(page.getByText("open terminal after reopen")).toBeVisible();
     await expect(page.getByText("I heard you.").last()).toBeVisible();
     await expect(
-      page.getByText("Opening the right view now and keeping voice ready.").last(),
+      page
+        .getByText("Opening the right view now and keeping voice ready.")
+        .last(),
     ).toBeVisible();
     expect(assistantApi.streamRequests).toEqual([
       "open wallet from the pill",

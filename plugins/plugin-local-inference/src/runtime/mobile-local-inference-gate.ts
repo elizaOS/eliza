@@ -8,7 +8,7 @@
  *     device-bridge WSS and dials whichever paired device connects. On the
  *     Capacitor APK the WebView's `@elizaos/capacitor-llama` is the intended
  *     dialer over loopback. The Capacitor build always exports this env so
- *     the bridge is ready as soon as onboarding picks the local mode.
+ *     the bridge is ready as soon as first-run picks the local mode.
  *
  *   - `ELIZA_LOCAL_LLAMA=1`: AOSP path that loads `libllama.so` directly
  *     inside the Android process via `bun:ffi`. Wired here so the gate is

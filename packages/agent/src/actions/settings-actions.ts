@@ -3,7 +3,7 @@
  * training, owner-name, and worldSettings-registry mutations.
  *
  * Ops:
- *   - update_ai_provider → applyOnboardingConnectionConfig + saveElizaConfig
+ *   - update_ai_provider → applyFirstRunConnectionConfig + saveElizaConfig
  *   - toggle_capability  → config.ui.capabilities.{wallet|browser|computerUse}
  *   - toggle_training    → app-training loadTrainingConfig/saveTrainingConfig
  *   - set_owner_name     → config.ui.ownerName via owner-name service
@@ -27,11 +27,11 @@ import {
   type WorldSettings,
 } from "@elizaos/core";
 import {
-  getOnboardingProviderOption,
-  normalizeOnboardingProviderId,
+  getFirstRunProviderOption,
+  normalizeFirstRunProviderId,
 } from "@elizaos/shared";
 import {
-  applyOnboardingConnectionConfig,
+  applyFirstRunConnectionConfig,
   createProviderSwitchConnection,
 } from "../api/provider-switch-config.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
@@ -139,11 +139,11 @@ async function handleUpdateAiProvider(
     );
   }
 
-  const normalizedProvider = normalizeOnboardingProviderId(rawProvider);
+  const normalizedProvider = normalizeFirstRunProviderId(rawProvider);
   if (!normalizedProvider) {
     return fail(
       "UNKNOWN_PROVIDER",
-      `Unknown AI provider: ${rawProvider}. Use one from the onboarding catalog (anthropic, openai, openrouter, gemini, grok, groq, deepseek, mistral, together, ollama, zai, elizacloud).`,
+      `Unknown AI provider: ${rawProvider}. Use one from the first-run catalog (anthropic, openai, openrouter, gemini, grok, groq, deepseek, mistral, together, ollama, zai, elizacloud).`,
       { provider: rawProvider },
     );
   }
@@ -181,7 +181,7 @@ async function handleUpdateAiProvider(
   }
 
   try {
-    await applyOnboardingConnectionConfig(config, connection);
+    await applyFirstRunConnectionConfig(config, connection);
 
     if (modelConfigs) {
       const models = (config.models ?? {}) as Record<string, unknown>;
@@ -204,7 +204,7 @@ async function handleUpdateAiProvider(
     );
   }
 
-  const providerOption = getOnboardingProviderOption(normalizedProvider);
+  const providerOption = getFirstRunProviderOption(normalizedProvider);
   return ok(
     `Switched AI provider to ${providerOption?.name ?? normalizedProvider}. Restart the agent to load the new provider.`,
     {

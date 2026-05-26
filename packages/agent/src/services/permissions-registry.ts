@@ -10,9 +10,13 @@
  */
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import path from "node:path";
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  resolveStateDir as resolveCoreStateDir,
+  Service,
+} from "@elizaos/core";
 import type {
   IPermissionsRegistry,
   PermissionId,
@@ -43,9 +47,7 @@ function defaultStateFor(id: PermissionId): PermissionState {
 }
 
 function resolveStateDir(): string {
-  const explicit = process.env.ELIZA_STATE_DIR ?? process.env.ELIZA_STATE_DIR;
-  if (explicit?.trim()) return explicit;
-  return path.join(os.homedir(), ".eliza");
+  return resolveCoreStateDir();
 }
 
 function resolvePersistencePath(): string {

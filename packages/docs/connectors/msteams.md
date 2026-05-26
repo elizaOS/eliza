@@ -23,7 +23,7 @@ Connect your agent to Microsoft Teams for DMs, team channels, and threaded conve
 
 The connector auto-enables when `botToken`, `token`, or `apiKey` is truthy in the connector config. The `appId`/`appPassword`/`tenantId` fields alone do not trigger auto-enable -- you must include one of the trigger fields or add the plugin to `plugins.allow`.
 
-Configure in `~/.eliza/eliza.json`:
+Configure in `~/.local/state/eliza/eliza.json`:
 
 ```json
 {

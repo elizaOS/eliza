@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "../../../../types/index.ts";
 import { logger } from "../../../../types/index.ts";
 import type { UUID } from "../../../../types/primitives.ts";
+import { resolveStateDir } from "../../../../utils/state-dir";
 import type {
 	CreateTodoInput,
 	EditTodoInput,
@@ -15,7 +15,7 @@ import type {
 const TODOS_DIR = "todos";
 
 function defaultTodosBasePath(): string {
-	return path.join(os.homedir(), ".eliza", TODOS_DIR);
+	return path.join(resolveStateDir(), TODOS_DIR);
 }
 
 function todosFilePath(basePath: string, agentId: UUID, userId: UUID): string {

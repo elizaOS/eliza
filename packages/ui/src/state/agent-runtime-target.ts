@@ -4,7 +4,7 @@ import {
   MOBILE_LOCAL_AGENT_API_BASE,
   MOBILE_LOCAL_AGENT_LABEL,
   type MobileRuntimeMode,
-} from "../onboarding/mobile-runtime-mode";
+} from "../first-run/mobile-runtime-mode";
 import type { PersistedActiveServer } from "./persistence";
 
 export type AgentRuntimeTargetKind = "local" | "cloud" | "remote";

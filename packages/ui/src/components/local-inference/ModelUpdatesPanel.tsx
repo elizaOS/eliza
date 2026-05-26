@@ -9,7 +9,7 @@
  *   `installedVersions` and `pinned` sets come from that API. Until the
  *   service routes are mounted we render the local catalog so the panel
  *   surface is testable.
- * - Toggle persistence lands in `~/.eliza/local-inference/voice-update-prefs.json`
+ * - Toggle persistence lands in `<stateDir>/local-inference/voice-update-prefs.json`
  *   via `POST /api/local-inference/voice-models/preferences` (route to be
  *   added in plugin-local-inference; the panel calls a tolerant stub that
  *   no-ops when the route is missing so the UI does not break in dev).

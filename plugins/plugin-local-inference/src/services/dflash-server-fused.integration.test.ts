@@ -21,16 +21,12 @@
  */
 
 import { existsSync, readdirSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 import { afterAll, describe, expect, it } from "vitest";
 
 function elizaStateDir(): string {
-	return (
-		process.env.ELIZA_STATE_DIR?.trim() ||
-		process.env.ELIZA_STATE_DIR?.trim() ||
-		path.join(os.homedir(), ".eliza")
-	);
+	return process.env.ELIZA_STATE_DIR?.trim() || resolveStateDir();
 }
 
 function backendKey(): string {

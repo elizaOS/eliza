@@ -9,7 +9,7 @@
  *
  * Persistence model:
  * - One JSON file per trajectory at
- *   `${ELIZA_TRAJECTORY_DIR ?? `${ELIZA_STATE_DIR ?? `${ELIZA_STATE_DIR ?? ~/.eliza`}/trajectories`}`}/<agentId>/<trajectoryId>.json`.
+ *   `${ELIZA_TRAJECTORY_DIR ?? `${resolveStateDir()}/trajectories`}/<agentId>/<trajectoryId>.json`.
  * - Atomic writes: write to `<id>.json.tmp`, rename to `<id>.json`.
  * - Append-only stages: `recordStage` rewrites the whole file (small files,
  *   sub-100 KB typical).
@@ -20,7 +20,6 @@
  */
 
 import fs from "node:fs/promises";
-import { homedir } from "node:os";
 import path from "node:path";
 import {
 	computeCallCostUsd,
@@ -28,6 +27,7 @@ import {
 } from "../features/trajectories/pricing";
 import type { EvaluationResult } from "../types/components";
 import type { ChatMessage, ToolChoice } from "../types/model";
+import { resolveStateDir } from "../utils/state-dir";
 
 // ---------------------------------------------------------------------------
 // Schema (mirrors PLAN.md §18.1)
@@ -357,18 +357,16 @@ function envFlagEnabled(key: string, defaultValue = false): boolean {
  * Resolve the on-disk trajectory directory. Precedence per PLAN.md §18.1:
  *   ELIZA_TRAJECTORY_DIR
  *   ELIZA_STATE_DIR/trajectories
- *   ELIZA_STATE_DIR/trajectories (legacy alias)
- *   ~/.eliza/trajectories
+ *   XDG state-dir/trajectories
  */
 export function resolveTrajectoryDir(): string {
 	const explicit = process.env.ELIZA_TRAJECTORY_DIR?.trim();
 	if (explicit) return explicit;
 
-	const elizaState =
-		process.env.ELIZA_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
+	const elizaState = process.env.ELIZA_STATE_DIR?.trim();
 	if (elizaState) return path.join(elizaState, "trajectories");
 
-	return path.join(homedir(), ".eliza", "trajectories");
+	return path.join(resolveStateDir(), "trajectories");
 }
 
 /**
@@ -1354,7 +1352,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 /**
  * Construct a JSON-file backed `TrajectoryRecorder`. The default rootDir is
  * resolved from `ELIZA_TRAJECTORY_DIR` → `ELIZA_STATE_DIR/trajectories` →
- * `ELIZA_STATE_DIR/trajectories` (legacy) → `~/.eliza/trajectories`.
+ * `resolveStateDir()/trajectories`.
  *
  * Pass `enabled: false` to short-circuit every method to a no-op (test
  * fixtures, opt-out at construction time).

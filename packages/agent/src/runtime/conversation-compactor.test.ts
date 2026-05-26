@@ -493,7 +493,7 @@ describe("CompactBench deterministic state fragments", () => {
   it("hybrid-ledger preserves buried forbidden behavior and primary entity even when the model omits them", async () => {
     const out = await hybridLedgerCompactor.compact(
       compactBenchTranscript(
-        "Starting the onboarding runbook with Priya Shah.\n" +
+        "Starting the setup runbook with Priya Shah.\n" +
           "Only one: never skip identity verification. Hard line.\n" +
           "With that rule in mind, what should our first step be?",
       ),

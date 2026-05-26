@@ -45,7 +45,7 @@ export {
 	isCloudInferenceSelectedInConfig,
 	migrateLegacyRuntimeConfig,
 	type StylePreset,
-} from "./contracts/onboarding";
+} from "./contracts/first-run-options";
 export {
 	DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
 	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
@@ -147,8 +147,8 @@ export { getOptimizationRootDir } from "./optimization-root-dir";
 export * from "./plugin";
 export * from "./plugins";
 export * from "./prompts";
-// Export onboarding providers
-export * from "./providers/onboarding-progress";
+// Export setup providers
+export * from "./providers/setup-progress";
 // Export skill eligibility provider
 export * from "./providers/skill-eligibility";
 // Provisioning (migrations, agent/entity/room, embedding dimension) - node only
@@ -253,10 +253,6 @@ export * from "./services/evaluator";
 export * from "./services/evaluator-priorities";
 export * from "./services/hook";
 export * from "./services/message";
-export * from "./services/onboarding-cli";
-export * from "./services/onboarding-rpc";
-// Export onboarding services
-export * from "./services/onboarding-state";
 export * from "./services/optimized-prompt";
 export * from "./services/pairing";
 export * from "./services/pairing-integration";
@@ -264,6 +260,10 @@ export * from "./services/pairing-migration";
 export * from "./services/plugin-hooks";
 export * from "./services/relationships-graph-builder";
 export * from "./services/runtime-capability-service";
+export * from "./services/setup-cli";
+export * from "./services/setup-rpc";
+// Export setup services
+export * from "./services/setup-state";
 export {
 	getTaskSchedulerAdapter,
 	markTaskSchedulerDirty,
@@ -283,7 +283,6 @@ export {
 	settingsDebugCloudSummary,
 } from "./settings-debug";
 export { sanitizeSpeechText } from "./spoken-text";
-export * from "./testing";
 export * from "./trajectory-context";
 export * from "./trajectory-utils";
 export type { ConnectorAccountCapability, ConnectorAccountRef } from "./types";
@@ -297,10 +296,10 @@ export {
 } from "./types";
 export * from "./types/agentEvent";
 export * from "./types/message-service";
-// Export onboarding types and utilities
-export * from "./types/onboarding";
 export * from "./types/plugin-manifest";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
+// Export setup types and utilities
+export * from "./types/setup";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
 export { addHeader, composePromptFromState, parseKeyValueXml } from "./utils";
@@ -330,7 +329,7 @@ export * from "./utils/prompt-compression";
 // Canonical env-var reader with legacy-alias back-compat
 export * from "./utils/read-env";
 export * from "./utils/server-health";
-// Eliza state-dir resolution (ELIZA_STATE_DIR → ~/.${ELIZA_NAMESPACE ?? "eliza"})
+// Eliza state-dir resolution (ELIZA_STATE_DIR → XDG state home)
 export * from "./utils/state-dir";
 // Export streaming utilities
 export * from "./utils/streaming";

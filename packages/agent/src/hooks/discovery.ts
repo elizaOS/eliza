@@ -1,12 +1,12 @@
 /**
- * Discover hooks from workspace, managed (~/.eliza/hooks/), and bundled dirs.
+ * Discover hooks from workspace, managed state-dir hooks, and bundled dirs.
  * Later sources win on name conflicts.
  */
 
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { logger } from "@elizaos/core";
+import { logger, resolveStateDir } from "@elizaos/core";
 import type {
   ElizaHookMetadata,
   Hook,
@@ -217,7 +217,7 @@ export async function discoverHooks(
     }
   }
 
-  const managedDir = join(homedir(), ".eliza", "hooks");
+  const managedDir = join(resolveStateDir(), "hooks");
   for (const entry of await scanHooksDir(managedDir, "eliza-managed")) {
     seen.set(entry.hook.name, entry);
   }

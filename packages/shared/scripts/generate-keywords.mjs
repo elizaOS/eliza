@@ -90,7 +90,7 @@ function generateTypeScript(entries, _locales) {
   );
   lines.push("");
   lines.push(
-    'import type { CharacterLanguage } from "../../contracts/onboarding.js";',
+    'import type { CharacterLanguage } from "../../contracts/first-run-options.js";',
   );
   lines.push("");
   lines.push("type ValidationKeywordDoc = {");

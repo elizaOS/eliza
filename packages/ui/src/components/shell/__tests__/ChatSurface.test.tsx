@@ -85,15 +85,17 @@ describe("ChatSurface", () => {
     ).toBe(true);
   });
 
-  it("renders a disabled mic placeholder when no voice handler is provided", () => {
+  it("renders a disabled voice toggle when no voice handler is provided", () => {
     render(<ChatSurface messages={[]} onSend={() => {}} canSend={true} />);
-    const mic = screen.getByRole("button", {
+    const voiceToggle = screen.getByRole("button", {
       name: /voice input/i,
     }) as HTMLButtonElement;
-    expect(mic.disabled).toBe(true);
+    expect(voiceToggle.disabled).toBe(true);
+    expect(voiceToggle.textContent).toBe("Not listening");
+    expect(voiceToggle.querySelector("svg")).toBeNull();
   });
 
-  it("enables the mic button and toggles voice capture when wired", () => {
+  it("enables the voice toggle and toggles voice capture when wired", () => {
     const onToggleRecording = vi.fn();
     render(
       <ChatSurface
@@ -103,11 +105,18 @@ describe("ChatSurface", () => {
         onToggleRecording={onToggleRecording}
       />,
     );
-    const mic = screen.getByRole("button", {
+    const voiceToggle = screen.getByRole("button", {
       name: /start voice input/i,
     }) as HTMLButtonElement;
-    expect(mic.disabled).toBe(false);
-    fireEvent.click(mic);
+    expect(voiceToggle.disabled).toBe(false);
+    expect(voiceToggle.textContent).toBe("Not listening");
+    expect(voiceToggle.querySelector("svg")).toBeNull();
+    const input = screen.getByLabelText("Message Eliza");
+    expect(
+      voiceToggle.compareDocumentPosition(input) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    fireEvent.click(voiceToggle);
     expect(onToggleRecording).toHaveBeenCalledTimes(1);
   });
 

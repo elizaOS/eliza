@@ -980,7 +980,7 @@ export function VoiceConfigView() {
           {currentMode === "own-key" && (
             <div className="flex flex-col gap-1.5">
               <span className="text-xs font-semibold">
-                {t("onboarding.elevenLabsApiKey")}
+                {t("settings.voice.elevenLabsApiKey")}
               </span>
               <Input
                 type="password"

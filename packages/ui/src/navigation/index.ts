@@ -1,5 +1,5 @@
 /**
- * Navigation — tabs + onboarding.
+ * Navigation — tabs + first-run setup.
  */
 
 import { Capacitor } from "@capacitor/core";

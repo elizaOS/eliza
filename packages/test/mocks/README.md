@@ -226,7 +226,7 @@ base URL:
 
 For manual Mockoon API testing, load
 `test/mocks/environments/lifeops-presence-active.json`. It exposes representative local
-LifeOps endpoints for onboarding affect, organization scans, email curation,
+LifeOps endpoints for first-run affect, organization scans, email curation,
 explicit preference memory, contact resolution, document proofread,
 long-running task polling, task advance, and edge variants for provider
 downtime, ambiguous recipients, too-broad bulk email requests, and rate limits.

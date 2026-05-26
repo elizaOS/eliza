@@ -5,10 +5,10 @@
  */
 import crypto from "node:crypto";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "../../types/index.ts";
 import { logger } from "../../types/index.ts";
+import { resolveStateDir } from "../../utils/state-dir";
 
 // --- Inlined types ---
 
@@ -61,7 +61,7 @@ export const TASK_CLIPBOARD_MAX_ITEMS = 5;
 // --- Config ---
 
 function defaultBasePath(): string {
-	return path.join(os.homedir(), ".eliza", "clipboard");
+	return path.join(resolveStateDir(), "clipboard");
 }
 
 function readStringSetting(

@@ -11,7 +11,7 @@ import {
 const CONFIG_PATH_CANONICAL_KEY = "ELIZA_CONFIG_PATH";
 
 function readEnvOverride(env: NodeJS.ProcessEnv): string | undefined {
-  return readEnv(CONFIG_PATH_CANONICAL_KEY, [], { env });
+  return readEnv(CONFIG_PATH_CANONICAL_KEY, ["MILADY_CONFIG_PATH"], { env });
 }
 
 export { getElizaNamespace, resolveOAuthDir, resolveStateDir, resolveUserPath };
@@ -86,7 +86,7 @@ const STEWARD_CREDENTIALS_FILENAME = "steward-credentials.json";
 
 /**
  * Canonical path to the persisted Steward credentials file.
- * Honors the `ELIZA_STATE_DIR` > `~/.${namespace}` resolver.
+ * Honors the canonical state-dir resolver.
  */
 export function resolveStewardCredentialsPath(
   env: NodeJS.ProcessEnv = process.env,

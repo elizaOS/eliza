@@ -330,8 +330,8 @@ export function warnReducedOptimizationLocalMode(detail: string): void {
 			`  ELIZA_LOCAL_ALLOW_STOCK_KV=1 is set, so the model is loading with stock\n` +
 			`  f16 KV cache instead of the Eliza-1 TurboQuant/QJL/PolarQuant KV kernels.\n` +
 			`  The voice pipeline will run, but slower and using more memory than a build\n` +
-				`  with the kernels dispatched (Metal: all 5; CUDA: ships them; Vulkan: source-\n` +
-				`  patched; CPU: SIMD TUs). Rebuild the bundled llama.cpp FFI runtime\n` +
+			`  with the kernels dispatched (Metal: all 5; CUDA: ships them; Vulkan: source-\n` +
+			`  patched; CPU: SIMD TUs). Rebuild the bundled llama.cpp FFI runtime\n` +
 			`  to get the optimized path. This mode is NOT publishable and NOT a default.\n`,
 	);
 }
@@ -380,8 +380,7 @@ export function decideBackend(input: {
 	const { override, catalog, llamaCppAvailable } = input;
 	const optimizations = catalog?.runtime?.optimizations;
 	const hasOptimizedRuntimeConfig =
-		catalog?.runtime?.mtp !== undefined ||
-		optimizations !== undefined;
+		catalog?.runtime?.mtp !== undefined || optimizations !== undefined;
 	const kernels = optimizations?.requiresKernel ?? [];
 	const preferredBackend = catalog?.runtime?.preferredBackend;
 	const unsatisfiedKernels = computeUnsatisfiedKernels(
@@ -550,11 +549,11 @@ export class BackendDispatcher implements LocalInferenceBackend {
 			if (localAllowStockKv()) {
 				// Reduced-optimization local mode: the build hasn't dispatched these
 				// kernels on this backend yet, but the user opted into running with
-					// stock f16 KV instead of hard-refusing. Strip any custom cache-type
-					// override from the plan so the FFI runtime uses f16, and warn
+				// stock f16 KV instead of hard-refusing. Strip any custom cache-type
+				// override from the plan so the FFI runtime uses f16, and warn
 				// loudly exactly once.
 				warnReducedOptimizationLocalMode(
-						`catalog model requires kernel(s) {${missing}}, not advertised by the installed llama.cpp FFI runtime`,
+					`catalog model requires kernel(s) {${missing}}, not advertised by the installed llama.cpp FFI runtime`,
 				);
 				if (
 					plan.overrides &&

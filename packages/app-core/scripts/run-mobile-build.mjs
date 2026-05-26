@@ -1810,9 +1810,13 @@ export function shouldRemoveAndroidJavaSourceRoot(
   return !protectedRoots.some((root) => normalized === path.resolve(root));
 }
 
-function removeStaleAndroidJavaSourceRoots(dstJava, { protectedRoots = [] } = {}) {
+function removeStaleAndroidJavaSourceRoots(
+  dstJava,
+  { protectedRoots = [] } = {},
+) {
   const candidates = [
     "ai.elizaos.app",
+    "ai.milady.milady",
     "com.elizaai.eliza",
     "com.elizaai.eliza",
     APP.appId,
@@ -2225,17 +2229,21 @@ function restoreAndroidManifestFromPlatformTemplateIfMissing() {
 }
 
 function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
-  const templateJava = path.join(
+  const templateJavaRoot = path.join(
     platformsDir,
     "android",
     "app",
     "src",
     "main",
     "java",
-    "ai",
-    "elizaos",
-    "app",
   );
+  const templateJava =
+    [
+      path.join(templateJavaRoot, "ai", "elizaos", "app"),
+      path.join(templateJavaRoot, "ai", "milady", "milady"),
+      path.join(templateJavaRoot, "app", "eliza"),
+    ].find((candidate) => fs.existsSync(candidate)) ??
+    path.join(templateJavaRoot, "ai", "elizaos", "app");
   const gradlePath = path.join(androidDir, "app", "build.gradle");
   const androidPackage = APP.appId;
   const dstJava = path.join(
@@ -2284,7 +2292,13 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       protectedRoots: protectedJavaRoots,
     });
     for (const staleJava of [legacyJava, appIdJava, defaultJava]) {
-      if (shouldRemoveAndroidJavaSourceRoot(staleJava, dstJava, protectedJavaRoots)) {
+      if (
+        shouldRemoveAndroidJavaSourceRoot(
+          staleJava,
+          dstJava,
+          protectedJavaRoots,
+        )
+      ) {
         fs.rmSync(staleJava, { recursive: true, force: true });
       }
     }
@@ -2323,7 +2337,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       if (!fs.existsSync(src)) continue;
       let code = fs.readFileSync(src, "utf8");
       code = code.replace(
-        /^package\s+(?:ai\.elizaos\.app|app\.eliza);/m,
+        /^package\s+(?:ai\.elizaos\.app|ai\.milady\.milady|app\.eliza);/m,
         `package ${androidPackage};`,
       );
       code = code.replaceAll(
@@ -2334,7 +2348,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       // from either the legacy package or the default package so R/BuildConfig
       // resolve after the package overlay.
       code = code.replaceAll(
-        /\bimport\s+(?:ai\.elizaos\.app|app\.eliza)\.(BuildConfig|R)\s*;/g,
+        /\bimport\s+(?:ai\.elizaos\.app|ai\.milady\.milady|app\.eliza)\.(BuildConfig|R)\s*;/g,
         `import ${androidPackage}.$1;`,
       );
       code = code.replaceAll("ai.elizaos.app://", `${APP.urlScheme}://`);
@@ -2354,7 +2368,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
         const legacyCode = fs
           .readFileSync(src, "utf8")
           .replaceAll(
-            /\bimport\s+(?:ai\.elizaos\.app|app\.eliza)\.(BuildConfig|R)\s*;/g,
+            /\bimport\s+(?:ai\.elizaos\.app|ai\.milady\.milady|app\.eliza)\.(BuildConfig|R)\s*;/g,
             `import ${androidPackage}.$1;`,
           );
         fs.writeFileSync(src, legacyCode, "utf8");
@@ -3886,9 +3900,9 @@ function resolveBrandSources() {
       path.join(appDir, "public", "apple-touch-icon.png"),
       path.join(appDir, "public", "favicon-256x256.png"),
     ]),
-    splashSource: firstExisting([
-      path.join(appDir, "public", "splash-bg.png"),
-      path.join(appDir, "public", "splash-bg.jpg"),
+    launchSource: firstExisting([
+      path.join(appDir, "public", "launch-bg.png"),
+      path.join(appDir, "public", "launch-bg.jpg"),
     ]),
   };
 }
@@ -3897,8 +3911,8 @@ async function generateIosBrandAssets() {
   const assetDir = path.join(iosDir, "App", "Assets.xcassets");
   if (!fs.existsSync(assetDir)) return;
 
-  const { iconSource, splashSource } = resolveBrandSources();
-  if (!iconSource && !splashSource) return;
+  const { iconSource, launchSource } = resolveBrandSources();
+  if (!iconSource && !launchSource) return;
 
   const imageTool = await loadImageToolForBrandAssets("iOS");
 
@@ -3925,7 +3939,7 @@ async function generateIosBrandAssets() {
     }
   }
 
-  if (splashSource) {
+  if (launchSource) {
     const splashSetDir = path.join(assetDir, "Splash.imageset");
     const contentsPath = path.join(splashSetDir, "Contents.json");
     if (fs.existsSync(contentsPath)) {
@@ -3934,7 +3948,7 @@ async function generateIosBrandAssets() {
         if (!image.filename) continue;
         await writeCoverPng(
           imageTool,
-          splashSource,
+          launchSource,
           path.join(splashSetDir, image.filename),
           2732,
           2732,
@@ -3950,8 +3964,8 @@ async function generateAndroidBrandAssets() {
   const resDir = path.join(androidDir, "app", "src", "main", "res");
   if (!fs.existsSync(resDir)) return;
 
-  const { iconSource, splashSource } = resolveBrandSources();
-  if (!iconSource && !splashSource) return;
+  const { iconSource, launchSource } = resolveBrandSources();
+  if (!iconSource && !launchSource) return;
 
   const imageTool = await loadImageToolForBrandAssets("Android");
 
@@ -3982,13 +3996,13 @@ async function generateAndroidBrandAssets() {
     }
   }
 
-  if (splashSource) {
+  if (launchSource) {
     for (const [dir, [width, height]] of Object.entries(ANDROID_SPLASH_SIZES)) {
       const out = path.join(resDir, dir);
       fs.mkdirSync(out, { recursive: true });
       await writeCoverPng(
         imageTool,
-        splashSource,
+        launchSource,
         path.join(out, "splash.png"),
         width,
         height,
@@ -5615,6 +5629,16 @@ function stripAndroidForCloud() {
       "java",
       packageNameToPath(androidPackage),
     ),
+    path.join(
+      androidDir,
+      "app",
+      "src",
+      "main",
+      "java",
+      "ai",
+      "milady",
+      "milady",
+    ),
     path.join(androidDir, "app", "src", "main", "java", "ai", "elizaos", "app"),
   ];
   let removedJavaCount = 0;
@@ -5705,6 +5729,16 @@ function stripAndroidForSmsGateway() {
       "main",
       "java",
       packageNameToPath(androidPackage),
+    ),
+    path.join(
+      androidDir,
+      "app",
+      "src",
+      "main",
+      "java",
+      "ai",
+      "milady",
+      "milady",
     ),
     path.join(androidDir, "app", "src", "main", "java", "ai", "elizaos", "app"),
   ];
@@ -6265,7 +6299,9 @@ function sha256File(filePath) {
 }
 
 function currentGitRevision() {
-  const result = runCaptureSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot });
+  const result = runCaptureSync("git", ["rev-parse", "HEAD"], {
+    cwd: repoRoot,
+  });
   if (result.status !== 0) return null;
   return result.stdout.trim() || null;
 }

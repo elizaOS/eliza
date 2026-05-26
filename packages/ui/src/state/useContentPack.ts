@@ -65,8 +65,8 @@ export function useContentPack(): UseContentPackResult {
     customVrmPreviewUrl,
     customBackgroundUrl,
     customWorldUrl,
-    onboardingName,
-    onboardingStyle,
+    firstRunName,
+    firstRunStyle,
   } = useApp();
 
   const [loadedPacks, setLoadedPacks] = useState<ResolvedContentPack[]>([]);
@@ -79,8 +79,8 @@ export function useContentPack(): UseContentPackResult {
     customVrmPreviewUrl: string;
     customBackgroundUrl: string;
     customWorldUrl: string;
-    onboardingName: string;
-    onboardingStyle: string;
+    firstRunName: string;
+    firstRunStyle: string;
   } | null>(null);
   const rehydratedRef = useRef(false);
   const canPickDirectory = useMemo(() => supportsDirectoryUpload(), []);
@@ -138,8 +138,8 @@ export function useContentPack(): UseContentPackResult {
           customVrmPreviewUrl,
           customBackgroundUrl,
           customWorldUrl,
-          onboardingName,
-          onboardingStyle,
+          firstRunName,
+          firstRunStyle,
         };
       }
 
@@ -153,8 +153,8 @@ export function useContentPack(): UseContentPackResult {
         setCustomBackgroundUrl: (url) => setState("customBackgroundUrl", url),
         setCustomWorldUrl: (url) => setState("customWorldUrl", url),
         setSelectedVrmIndex: (idx) => setState("selectedVrmIndex", idx),
-        setOnboardingName: (name) => setState("onboardingName", name),
-        setOnboardingStyle: (style) => setState("onboardingStyle", style),
+        setFirstRunName: (name) => setState("firstRunName", name),
+        setFirstRunStyle: (style) => setState("firstRunStyle", style),
         setCustomCatchphrase: (phrase) => setState("customCatchphrase", phrase),
         setCustomVoicePresetId: (id) => setState("customVoicePresetId", id),
       });
@@ -167,8 +167,8 @@ export function useContentPack(): UseContentPackResult {
       customVrmUrl,
       customVrmPreviewUrl,
       customWorldUrl,
-      onboardingName,
-      onboardingStyle,
+      firstRunName,
+      firstRunStyle,
       selectedVrmIndex,
       setState,
     ],
@@ -199,8 +199,8 @@ export function useContentPack(): UseContentPackResult {
       setState("customVrmPreviewUrl", baseline.customVrmPreviewUrl);
       setState("customBackgroundUrl", baseline.customBackgroundUrl);
       setState("customWorldUrl", baseline.customWorldUrl);
-      setState("onboardingName", baseline.onboardingName);
-      setState("onboardingStyle", baseline.onboardingStyle);
+      setState("firstRunName", baseline.firstRunName);
+      setState("firstRunStyle", baseline.firstRunStyle);
       baselineRef.current = null;
     }
     setError(null);

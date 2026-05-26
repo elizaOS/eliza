@@ -1,6 +1,6 @@
 /*
- * VoicePill — glassmorphic mic/chat pill ported from the onboarding prototype
- * at packages/docs/prototypes/onboarding-reimagined/index.html.
+ * VoicePill — glassmorphic mic/chat pill ported from the first-run prototype
+ * at packages/docs/prototypes/first-run-reimagined/index.html.
  *
  * All classes are scoped under `.elizaos-voice-pill` (BEM `__element--modifier`)
  * to avoid collisions with whatever CSS the host page may load alongside it

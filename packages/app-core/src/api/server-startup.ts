@@ -10,7 +10,7 @@ import {
 } from "@elizaos/agent";
 import { syncAppEnvToEliza, syncElizaEnvAliases } from "@elizaos/shared";
 
-const PACKAGE_ROOT_NAMES = new Set(["eliza", "elizaai", "elizaos", "eliza"]);
+const PACKAGE_ROOT_NAMES = new Set(["eliza", "elizaai", "elizaos", "milady"]);
 
 export function isSafeResetStateDir(
   ...args: Parameters<typeof upstreamIsSafeResetStateDir>
@@ -39,9 +39,8 @@ export function isSafeResetStateDir(
 
   return normalizedState.split(path.sep).some((segment) => {
     const lower = segment.trim().toLowerCase();
-    if (lower === ".eliza") return true;
-    // Also accept brand-specific state dirs (e.g. ".eliza")
     for (const name of PACKAGE_ROOT_NAMES) {
+      if (lower === name) return true;
       if (lower === `.${name}`) return true;
     }
     return false;

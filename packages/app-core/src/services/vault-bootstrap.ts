@@ -255,11 +255,14 @@ export async function runVaultBootstrap(
   const migratedKeys = [...json.migrated, ...env.migrated, ...proc.migrated];
   const skippedKeys = [...json.skipped, ...env.skipped];
   const failedKeys = [...json.failed, ...env.failed, ...proc.failed];
+  const persistentMigratedKeys = [...json.migrated, ...env.migrated];
+  const persistentFailedKeys = [...json.failed, ...env.failed];
 
-  const attempted = migratedKeys.length + failedKeys.length;
-  if (attempted > 0 && migratedKeys.length === 0) {
+  const persistentAttempted =
+    persistentMigratedKeys.length + persistentFailedKeys.length;
+  if (persistentAttempted > 0 && persistentMigratedKeys.length === 0) {
     throw new Error(
-      `[vault-bootstrap] all ${failedKeys.length} secret writes failed; vault unreachable`,
+      `[vault-bootstrap] all ${persistentFailedKeys.length} persistent secret writes failed; vault unreachable`,
     );
   }
 

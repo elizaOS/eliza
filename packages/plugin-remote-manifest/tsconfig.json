@@ -6,8 +6,8 @@
     "noEmit": true,
     "composite": false,
     "paths": {
-      "@elizaos/security": ["../security/dist/index.d.ts"],
-      "@elizaos/security/*": ["../security/dist/*"]
+      "@elizaos/security": ["../security/src/index.ts"],
+      "@elizaos/security/*": ["../security/src/*"]
     }
   },
   "include": ["src"],

@@ -255,7 +255,7 @@ export function VoiceProfileSection({
         >
           <Mic className="mx-auto mb-2 h-5 w-5 text-muted" aria-hidden />
           No voice profiles yet. They'll appear here automatically when the
-          agent hears a distinct voice (or you can add one in onboarding).
+          agent hears a distinct voice (or you can add one in first-run).
         </div>
       ) : (
         <ul

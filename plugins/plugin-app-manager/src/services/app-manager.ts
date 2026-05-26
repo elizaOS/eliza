@@ -1990,7 +1990,7 @@ export class AppManager {
             !_runtime)
         ) {
           // Runtime plugin manager unavailable — fall back to the direct
-          // installer which writes to ~/.eliza/plugins/installed and can be
+          // installer which writes to <stateDir>/plugins/installed and can be
           // picked up by the app-package-modules resolver without restart.
           const { installPlugin: installPluginDirect } = await import(
             "@elizaos/plugin-registry"

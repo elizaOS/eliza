@@ -38,7 +38,7 @@ export interface StartingRuntimeDeps {
   setAgentStatus: (v: import("../api").AgentStatus | null) => void;
   setConnected: (v: boolean) => void;
   setStartupError: (v: StartupErrorState | null) => void;
-  setOnboardingLoading: (v: boolean) => void;
+  setFirstRunLoading: (v: boolean) => void;
   setAuthRequired: (v: boolean) => void;
   setPairingEnabled: (v: boolean) => void;
   setPairingExpiresAt: (v: number | null) => void;
@@ -84,7 +84,7 @@ function mapLaunchProgressToAgentStatus(progress: LaunchSnapshot): AgentStatus {
   const lastError =
     progress.agent.error ||
     progress.auth.error ||
-    progress.onboarding.error ||
+    progress.firstRun.error ||
     progress.localModel.error ||
     null;
   if (lastError) startup.lastError = lastError;
@@ -186,7 +186,7 @@ export async function runStartingRuntime(
   while (!cancelled.current && effectRunRef.current === effectRunId) {
     if (Date.now() >= deadline) {
       deps.setStartupError(describeAgentFailure(lastErr, true, lastDiag));
-      deps.setOnboardingLoading(false);
+      deps.setFirstRunLoading(false);
       dispatch({ type: "AGENT_TIMEOUT" });
       return;
     }
@@ -201,7 +201,7 @@ export async function runStartingRuntime(
           deps.setAuthRequired(true);
           deps.setPairingEnabled(launchProgress.auth.pairingEnabled === true);
           deps.setPairingExpiresAt(null);
-          deps.setOnboardingLoading(false);
+          deps.setFirstRunLoading(false);
           dispatch({ type: "BACKEND_AUTH_REQUIRED" });
           return;
         }
@@ -227,7 +227,7 @@ export async function runStartingRuntime(
           deps.setStartupError(
             describeAgentFailure(lastErr, false, launchStatus.startup),
           );
-          deps.setOnboardingLoading(false);
+          deps.setFirstRunLoading(false);
           dispatch({
             type: "AGENT_ERROR",
             message: launchStatus.startup?.lastError ?? "Agent failed to start",
@@ -274,7 +274,7 @@ export async function runStartingRuntime(
           deps.setStartupError(
             describeAgentFailure(lastErr, false, bootStatus.startup),
           );
-          deps.setOnboardingLoading(false);
+          deps.setFirstRunLoading(false);
           dispatch({
             type: "AGENT_ERROR",
             message: bootStatus.startup?.lastError ?? "Agent failed to start",
@@ -324,7 +324,7 @@ export async function runStartingRuntime(
         deps.setStartupError(
           describeAgentFailure(lastErr, false, status.startup),
         );
-        deps.setOnboardingLoading(false);
+        deps.setFirstRunLoading(false);
         dispatch({
           type: "AGENT_ERROR",
           message: status.startup?.lastError ?? "Agent failed to start",
@@ -348,7 +348,7 @@ export async function runStartingRuntime(
           deps.setAuthRequired(true);
           deps.setPairingEnabled(auth.pairingEnabled);
           deps.setPairingExpiresAt(auth.expiresAt);
-          deps.setOnboardingLoading(false);
+          deps.setFirstRunLoading(false);
           dispatch({ type: "BACKEND_AUTH_REQUIRED" });
           return;
         }
@@ -370,7 +370,7 @@ export async function runStartingRuntime(
             auth.loginRequired &&
             auth.passwordConfigured === false;
           if (auth.authenticated || remotePasswordMissing) {
-            deps.setOnboardingLoading(false);
+            deps.setFirstRunLoading(false);
             dispatch({ type: "AGENT_RUNNING" });
             return;
           }

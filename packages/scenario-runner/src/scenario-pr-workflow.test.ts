@@ -21,20 +21,22 @@ const appScreenshotQualityPath = resolve(
 );
 const appDesignReviewPaths = [
   "../../app/test/design-review/run-design-review.ts",
-  "../../app/test/design-review/run-new-onboarding-review.ts",
-  "../../app/test/design-review/run-onboarding-review.ts",
 ].map((relativePath) => resolve(import.meta.dirname, relativePath));
 const voiceFlowPath = resolve(
   import.meta.dirname,
-  "../../ui/src/onboarding/__e2e__/assistant-voice-flow.test.tsx",
+  "../../ui/src/hooks/useVoiceChat.bidirectional.test.tsx",
+);
+const continuousChatFlowPath = resolve(
+  import.meta.dirname,
+  "../../ui/src/hooks/useContinuousChat.test.tsx",
 );
 const appTtsSttFlowPath = resolve(
   import.meta.dirname,
   "../../app/test/ui-smoke/tts-stt-e2e.spec.ts",
 );
-const viewManagerFlowPath = resolve(
+const dynamicViewLoaderPath = resolve(
   import.meta.dirname,
-  "../../ui/src/onboarding/__e2e__/assistant-view-manager-flow.test.tsx",
+  "../../ui/src/components/views/DynamicViewLoader.test.tsx",
 );
 const appViewManagerFlowPath = resolve(
   import.meta.dirname,
@@ -47,7 +49,7 @@ const appPackagedRegressionPath = resolve(
 const appCoreLiveScreenshotPaths = [
   "../../app-core/test/app/memory-relationships.real.e2e.test.ts",
   "../../app-core/test/app/qa-checklist.real.e2e.test.ts",
-  "../../app-core/test/app/onboarding-companion.live.e2e.test.ts",
+  "../../app-core/test/app/first-run-companion.live.e2e.test.ts",
 ].map((relativePath) => resolve(import.meta.dirname, relativePath));
 const computerUseBrowserPath = resolve(
   import.meta.dirname,
@@ -103,7 +105,7 @@ describe("scenario PR workflow contract", () => {
       "bunx vitest run --config test/mocks/vitest.config.ts test/mocks/__tests__/llm-proxy-plugin.test.ts",
     );
     expect(workflow).toContain(
-      "bun run --cwd packages/ui test:slow -- src/onboarding/__e2e__/assistant-view-manager-flow.test.tsx src/onboarding/__e2e__/assistant-voice-flow.test.tsx",
+      "bun run --cwd packages/ui test -- src/hooks/useVoiceChat.bidirectional.test.tsx src/hooks/useContinuousChat.test.tsx",
     );
     expect(workflow).toContain(
       "src/components/shell/__tests__/shell-assistant-flow.test.tsx",
@@ -168,7 +170,7 @@ describe("scenario PR workflow contract", () => {
       "stub local view API for deterministic shell actions",
     );
     expect(deterministicPrScenario).toContain(
-      "Interacted with view \"remote-ledger\"",
+      'Interacted with view "remote-ledger"',
     );
     expect(deterministicPrScenario).toContain(
       "view shell API received exact deterministic requests",
@@ -266,7 +268,9 @@ describe("scenario PR workflow contract", () => {
     );
 
     expect(browser).toContain("assertScreenshotBase64NotBlank");
-    expect(browser).toContain('page.screenshot({ encoding: "base64", type: "png" })');
+    expect(browser).toContain(
+      'page.screenshot({ encoding: "base64", type: "png" })',
+    );
     expect(screenshotQuality).toContain("screenshot is one color");
     expect(screenshotQuality).toContain("screenshot is effectively one color");
     expect(screenshotQuality).toContain("screenshot quality failed");
@@ -288,7 +292,7 @@ describe("scenario PR workflow contract", () => {
       "Close Eliza",
       "Open Eliza",
       "streamRequests",
-      "toHaveValue(\"\")",
+      'toHaveValue("")',
       "show me my pinned views",
     ]) {
       expect(appAssistantFlow).toContain(required);
@@ -297,18 +301,26 @@ describe("scenario PR workflow contract", () => {
 
   it("keeps bidirectional and always-on voice coverage in the PR gate", () => {
     const voiceFlow = readFileSync(voiceFlowPath, "utf8");
+    const continuousChatFlow = readFileSync(continuousChatFlowPath, "utf8");
     const appTtsSttFlow = readFileSync(appTtsSttFlowPath, "utf8");
 
     for (const required of [
-      "hmm, okay, that's a good idea, let me think for a second, and then the agent will wait",
-      "uses the real mic button to submit browser speech and speak the wait phrase back",
-      "uses the real continuous-chat Live control for always-on passive capture during the wait phrase",
-      "keeps Live capture open across assistant playback and submits a second spoken turn",
-      "button[data-mode='always-on']",
+      "hmm, okay, that's a good idea, let me think for a second",
+      "submits final microphone transcript through the real browser recognition path",
+      "submits final passive transcripts immediately while keeping always-on recognition alive",
+      "keeps hands-free capture alive while speaking the wait phrase",
       "speechSynthesisMock.speak",
       "recognition?.stopped).toBe(false)",
     ]) {
       expect(voiceFlow).toContain(required);
+    }
+
+    for (const required of [
+      "invokes voice.startListening('passive') when the toggle enters always-on",
+      "restores passive capture after an always-on turn completes",
+      "button[data-mode='always-on']",
+    ]) {
+      expect(continuousChatFlow).toContain(required);
     }
 
     for (const required of [
@@ -323,10 +335,10 @@ describe("scenario PR workflow contract", () => {
       "Always-on assistant heard the browser turn",
       "eliza:voice:continuous-chat-mode",
       "chat-view-continuous-chat-toggle",
-      "voiceSource: \"browser\"",
+      'voiceSource: "browser"',
       "audio/mpeg",
-      "types).toEqual([\"token\", \"done\"])",
-      "outputFormat: \"mp3_44100_128\"",
+      'types).toEqual(["token", "done"])',
+      'outputFormat: "mp3_44100_128"',
       "similarity_boost: 0.75",
       "installPageDiagnosticsGuard",
       "expectNoPageDiagnostics",
@@ -336,35 +348,19 @@ describe("scenario PR workflow contract", () => {
   });
 
   it("keeps PR-gated view manager coverage on local and remote create/edit/delete flows", () => {
-    const viewManagerFlow = readFileSync(viewManagerFlowPath, "utf8");
+    const dynamicViewLoader = readFileSync(dynamicViewLoaderPath, "utf8");
     const appViewManagerFlow = readFileSync(appViewManagerFlowPath, "utf8");
 
     for (const required of [
-      "Create a new remote ledger view and pin it as a tab",
-      "Remote ledger remote module loaded",
-      "Edit the remote ledger view title to Remote Ledger Updated and pin it as a tab",
-      "Delete the stale remote ledger dynamic view",
-      "Create a new local agent run trace view",
-      "Agent Run Trace local module loaded",
-      "Edit the local agent run trace view title to Agent Run Trace Updated",
-      "Agent Run Trace Updated local module loaded",
-      "Delete the local agent run trace dynamic view",
-      "DYNAMIC_VIEW_REGISTER",
-      "DYNAMIC_VIEW_UNREGISTER",
+      "imports absolute remote bundleUrl directly",
+      "registers remote view interact handlers after the bundle loads",
+      "fills inputs and clicks buttons through standard interact against the mounted DOM",
       "Remote Ledger Updated",
-      "Agent Run Trace Updated",
+      "dispatchViewInteract",
+      "remote.interactive",
     ]) {
-      expect(viewManagerFlow).toContain(required);
+      expect(dynamicViewLoader).toContain(required);
     }
-
-    expect(viewManagerFlow).toContain(
-      'expect(window.location.pathname).toBe("/apps/remote-ledger")',
-    );
-    expect(viewManagerFlow).toContain(
-      'expect(window.location.pathname).toBe("/apps/agent-run-trace")',
-    );
-    expect(viewManagerFlow).toContain("remoteBundleImport).toHaveBeenCalledWith");
-    expect(viewManagerFlow).toContain("remoteBundleImport).not.toHaveBeenCalled");
 
     for (const required of [
       "actual app view manager creates, updates, switches, opens, and deletes local and remote dynamic views",
@@ -372,7 +368,7 @@ describe("scenario PR workflow contract", () => {
       "actual-local-ledger",
       "Actual Local Ledger Updated",
       "actual-remote-ledger",
-      "Actual remote ledger module loaded",
+      "Actual Remote Ledger Updated",
       "dynamicViewRegister",
       "dynamicViewUnregister",
       "captureScreenshotWithQualityRetry",
@@ -385,11 +381,7 @@ describe("scenario PR workflow contract", () => {
     ]) {
       expect(appViewManagerFlow).toContain(required);
     }
-    expect(appViewManagerFlow).toContain(
-      "03-local-switched",
-    );
-    expect(appViewManagerFlow).toContain(
-      "04-remote-module-loaded",
-    );
+    expect(appViewManagerFlow).toContain("03-local-switched");
+    expect(appViewManagerFlow).toContain("04-remote-module-loaded");
   });
 });

@@ -3,7 +3,7 @@
 /**
  * Pre-agent / home-screen brand wiring test.
  *
- * Asserts that `App.tsx` wraps the StartupShell (pre-agent gate) in
+ * Asserts that `App.tsx` wraps the StartupScreen (pre-agent gate) in
  * `<CloudVideoBackground>` so the home screen renders over CLOUDS per brand,
  * and that the cloud component itself can produce either the expected `<video>`
  * element with cloud sources or a static poster for startup. Rendering the full <App> would require mocking the
@@ -83,7 +83,7 @@ import { CloudVideoBackground } from "./backgrounds/CloudVideoBackground";
 const APP_TSX = readFileSync(resolve(__dirname, "./App.tsx"), "utf8");
 
 describe("App pre-agent cloud wiring", () => {
-  it("wraps the pre-agent StartupShell in a full-screen CloudVideoBackground", () => {
+  it("wraps the pre-agent StartupScreen in a full-screen CloudVideoBackground", () => {
     // Pull the contents of the `if (startupCoordinator.phase !== "ready" …)`
     // pre-agent gate and assert clouds are wired there. We grep for the
     // testid we added so the assertion fails loudly if the wrapper is moved.
@@ -92,7 +92,7 @@ describe("App pre-agent cloud wiring", () => {
     );
     expect(APP_TSX).toContain('data-testid="pre-agent-cloud-shell"');
     expect(APP_TSX).toMatch(
-      /<CloudVideoBackground[\s\S]*<StartupShell[\s\S]*<\/CloudVideoBackground>/,
+      /<CloudVideoBackground[\s\S]*<StartupScreen[\s\S]*<\/CloudVideoBackground>/,
     );
     // The clouds are a true full-viewport background (fixed inset:0) with a
     // light scrim and theme-aware black text layered above.

@@ -4,7 +4,7 @@
  * Handles:
  *   GET  /api/wallet/os-store  — keychain/secret-service backend status
  *   POST /api/wallet/os-store  — migrate / delete wallet secrets in OS store
- *   GET  /api/wallet/keys      — EVM + Solana keys (loopback + onboarding gate)
+ *   GET  /api/wallet/keys      — EVM + Solana keys (loopback + first-run gate)
  *   GET  /api/wallet/nfts      — EVM NFT fetch
  */
 import type http from "node:http";
@@ -126,14 +126,14 @@ export async function handleWalletCompatRoutes(
     return true;
   }
 
-  // ── GET /api/wallet/keys (onboarding only, loopback only) ────────────
+  // ── GET /api/wallet/keys (first-run only, loopback only) ─────────────
   // Security note: this compat route exists only for the embedded desktop
-  // onboarding flow, where the renderer needs to display the keys already
+  // first-run flow, where the renderer needs to display the keys already
   // generated inside the local runtime. Electrobun injects a loopback
   // `http://127.0.0.1:<port>` API base plus a generated API token before the
   // renderer mounts, and ensureCompatSensitiveRouteAuthorized fails closed if
   // that token is missing. The route is also permanently disabled once
-  // onboardingComplete flips true so the backup screen cannot be reopened as a
+  // firstRunComplete flips true so the backup screen cannot be reopened as a
   // general-purpose key export endpoint.
   if (method === "GET" && url.pathname === "/api/wallet/keys") {
     if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
@@ -158,9 +158,9 @@ export async function handleWalletCompatRoutes(
     }
 
     const config = loadElizaConfig();
-    if (config.meta?.onboardingComplete === true) {
+    if (config.meta?.firstRunComplete === true) {
       sendJsonResponse(res, 403, {
-        error: "Wallet keys are only available during onboarding",
+        error: "Wallet keys are only available during first run",
       });
       return true;
     }

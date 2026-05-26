@@ -84,7 +84,7 @@ const ciExcludedRealPaths = [
   // These surfaces are covered by dedicated workflows or upstream package
   // suites instead of Eliza's required PR real-test lane.
   elizaWorkspacePattern(
-    "packages/app-core/test/app/onboarding-companion.live.e2e.test.ts",
+    "packages/app-core/test/app/first-run-companion.live.e2e.test.ts",
   ),
   elizaWorkspacePattern("packages/benchmarks/app-eval/evaluate.real.test.ts"),
   elizaWorkspacePattern(

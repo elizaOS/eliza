@@ -1,11 +1,11 @@
 import { Capacitor } from "@capacitor/core";
 import { getBootConfig } from "../config/boot-config";
-import { isAndroidLocalAgentUrl } from "../onboarding/local-agent-token";
+import { isAndroidLocalAgentUrl } from "../first-run/local-agent-token";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
   isMobileLocalAgentIpcUrl,
   mobileLocalAgentPathFromUrl,
-} from "../onboarding/mobile-runtime-mode";
+} from "../first-run/mobile-runtime-mode";
 import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 
 export interface NativeAgentRequestOptions {

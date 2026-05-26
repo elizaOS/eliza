@@ -7,7 +7,7 @@
  * the local-inference service, and the UI bridge all read from.
  *
  * Resolution order (highest precedence first):
- *   1. `config.deploymentTarget.runtime` — the persisted onboarding choice.
+ *   1. `config.deploymentTarget.runtime` — the persisted first-run choice.
  *   2. (local only) `config.cloud.enabled === false` collapses `local` to
  *      `local-only`.
  *

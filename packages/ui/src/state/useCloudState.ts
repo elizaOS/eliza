@@ -13,8 +13,8 @@
  * - `loadWalletConfig`       — from useWalletState, called after successful login
  * - `t`                      — translation function, used for auth-rejected notice key
  *
- * Note: `handleCloudOnboardingFinish` is kept in AppContext (one-liner that calls
- * `submitOnboardingAndComplete`, which is defined later in AppContext's render order).
+ * Note: `handleCloudFirstRunFinish` is kept in AppContext (one-liner that calls
+ * `submitFirstRunAndComplete`, which is defined later in AppContext's render order).
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -25,7 +25,7 @@ import {
 } from "../bridge";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { dispatchElizaCloudStatusUpdated } from "../events";
-import { isElizaCloudRuntimeLocked } from "../onboarding/mobile-runtime-mode";
+import { isElizaCloudRuntimeLocked } from "../first-run/mobile-runtime-mode";
 import {
   closeExternalBrowser,
   confirmDesktopAction,
@@ -231,7 +231,7 @@ export function useCloudState({
   /** Tracks whether the auth-rejected notice has already been sent for the current rejection. */
   const elizaCloudAuthNoticeSentRef = useRef(false);
   /**
-   * Forward ref so handleOnboardingNext (defined earlier in AppContext) can call
+   * Forward ref so handleFirstRunNext (defined earlier in AppContext) can call
    * handleCloudLogin (defined later).
    */
   const handleCloudLoginRef = useRef<() => Promise<void>>(async () => {});
@@ -333,7 +333,7 @@ export function useCloudState({
     }
     lastElizaCloudPollConnectedRef.current = isConnected;
     // Self-manage the recurring poll interval: start when connected, stop when not.
-    // This covers login during onboarding (interval wasn't started at mount) and
+    // This covers login during first-run setup (interval wasn't started at mount) and
     // disconnect (interval should stop to avoid useless API calls).
     if (isConnected && !elizaCloudPollInterval.current) {
       elizaCloudPollInterval.current = window.setInterval(() => {
@@ -597,7 +597,7 @@ export function useCloudState({
     ],
   );
 
-  // Keep forward ref in sync so handleOnboardingNext can call it.
+  // Keep forward ref in sync so handleFirstRunNext can call it.
   handleCloudLoginRef.current = handleCloudLogin;
 
   const handleCloudDisconnect = useCallback(

@@ -83,7 +83,7 @@ export function getBackendStartupTimeoutMs(): number {
   //    ~30s PGlite migration + ~30s agent registration before auth status
   //    responds, vs. <5s for cloud/remote backends.
   // Web / hosted-cloud builds keep the snappy 30s budget so a real
-  // backend outage surfaces fast instead of staring at the splash.
+  // backend outage surfaces fast instead of waiting on an unresolved boot gate.
   if (
     typeof navigator !== "undefined" &&
     /\bElizaOS\//.test(navigator.userAgent ?? "")

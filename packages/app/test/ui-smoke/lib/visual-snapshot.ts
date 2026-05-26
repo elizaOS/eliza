@@ -26,16 +26,16 @@
  *   assertMatchesBaseline,
  * } from "./lib/visual-snapshot";
  *
- * test("onboarding cold-start matches baseline", async () => {
- *   const opts = { name: "onboarding-cold-start" } as const;
+ * test("first-run cold-start matches baseline", async () => {
+ *   const opts = { name: "first-run-cold-start" } as const;
  *   const png = await captureDesktopScreenshot(opts);
  *   test.skip(png === null, "desktop screenshot server unavailable");
  *   await assertMatchesBaseline(png!, opts);
  * });
  * ```
  *
- * Planned consumers: `onboarding-full-flow.spec.ts` (Stage 1.1) and any
- * `electrobun-*.spec.ts` going forward.
+ * Planned consumers: first-run startup specs and any `electrobun-*.spec.ts`
+ * going forward.
  */
 
 import { Buffer } from "node:buffer";

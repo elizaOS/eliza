@@ -142,14 +142,13 @@ export { Z_GLOBAL_EMOTE, Z_SYSTEM_CRITICAL } from "./lib/floating-layers.ts";
 export { cn } from "./lib/utils.ts";
 export * from "./navigation/index.ts";
 export {
-  installOnboardingDeepLinkListener,
-  routeOnboardingDeepLink,
-} from "./onboarding/deep-link-handler.ts";
-export * from "./onboarding/flow.ts";
-export * from "./onboarding/mobile-runtime-mode.ts";
-export * from "./onboarding/pre-seed-local-runtime.ts";
-export * from "./onboarding/reload-into-runtime-picker.ts";
-export * from "./onboarding/server-target.ts";
+  installFirstRunDeepLinkListener,
+  routeFirstRunDeepLink,
+} from "./first-run/deep-link-handler.ts";
+export * from "./first-run/mobile-runtime-mode.ts";
+export * from "./first-run/pre-seed-local-runtime.ts";
+export * from "./first-run/reload-into-first-run-runtime.ts";
+export * from "./first-run/runtime-target.ts";
 export * from "./platform/index.ts";
 export * from "./slots/task-coordinator-slots.tsx";
 export * from "./state/CompanionSceneConfigContext.tsx";
