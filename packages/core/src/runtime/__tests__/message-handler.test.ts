@@ -69,12 +69,12 @@ describe("v5 message handler routing", () => {
 		}
 	});
 
-	it("plans against 'general' when candidateActions has tools, even if Stage 1 routed simple-path with requiresTool=false", () => {
+	it("plans against 'general' when candidateActions has validated tools, even if Stage 1 also routed simple-path", () => {
 		// Live regression on 2026-05-25 (trajectories tj-c227b5bbff288a and
 		// tj-d5e298b2542aa0). Probes "find files in /etc that contain the word
 		// hostname" and "what files are in /tmp right now" produced the
-		// self-contradictory envelope:
-		//   { contexts:["simple"], requiresTool:false, candidateActions:["BASH"],
+		// self-contradictory envelope after validation:
+		//   { contexts:["simple"], requiresTool:true, candidateActions:["BASH"],
 		//     replyText:"On it." }
 		// The model claimed simple-path (so no planner ran) while ALSO naming
 		// a specific exposed tool that could fulfill the request. The user saw
@@ -86,10 +86,10 @@ describe("v5 message handler routing", () => {
 			processMessage: "RESPOND" as const,
 			thought: "Tool would help here.",
 			plan: {
-				contexts: ["simple"],
-				requiresTool: false,
-				candidateActions: ["BASH"],
-				reply: "On it.",
+					contexts: ["simple"],
+					requiresTool: true,
+					candidateActions: ["BASH"],
+					reply: "On it.",
 			},
 		};
 
@@ -97,6 +97,25 @@ describe("v5 message handler routing", () => {
 		expect(route.type).toBe("planning_needed");
 		if (route.type === "planning_needed") {
 			expect(route.contexts).toEqual(["general"]);
+			}
+		});
+
+	it("keeps simple route for explicit non-tool candidate hints", () => {
+		const output = {
+			processMessage: "RESPOND" as const,
+			thought: "No runnable tool.",
+			plan: {
+				contexts: ["simple"],
+				requiresTool: false,
+				candidateActions: ["REFUSE"],
+				reply: "I can't help with that.",
+			},
+		};
+
+		const route = routeMessageHandlerOutput(output);
+		expect(route.type).toBe("final_reply");
+		if (route.type === "final_reply") {
+			expect(route.reply).toBe("I can't help with that.");
 		}
 	});
 

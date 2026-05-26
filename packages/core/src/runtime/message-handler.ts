@@ -220,7 +220,12 @@ export function routeMessageHandlerOutput(
 	// bans bare-ack on simple-path is a soft contract the model occasionally
 	// violates; this structural promotion catches the violation at the
 	// routing layer.
-	if ((requiresTool || hasCandidateActions) && nonSimpleContexts.length === 0) {
+		const candidateActionsRequestPlanning =
+			hasCandidateActions && output.plan.requiresTool !== false;
+		if (
+			(requiresTool || candidateActionsRequestPlanning) &&
+			nonSimpleContexts.length === 0
+		) {
 		return {
 			type: "planning_needed",
 			output,
