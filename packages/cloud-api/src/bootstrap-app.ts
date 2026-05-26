@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { logger as honoLogger } from "hono/logger";
 import { requestId } from "hono/request-id";
+import { secureHeaders } from "hono/secure-headers";
 import { runWithDbCacheAsync } from "@/db/client";
 import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
 import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
@@ -41,6 +42,49 @@ export function createApp(): Hono<AppEnv> {
 
   app.use("*", requestId());
   app.use("*", corsMiddleware);
+
+  // Security response headers for every API response. The SPA already ships
+  // these via Pages `_headers`, but the Worker (api.elizacloud.ai) shipped
+  // none — a ZAP scan flagged the missing X-Content-Type-Options and HSTS.
+  // Registered right after CORS: `credentials: true` makes the CORS middleware
+  // touch `c.res` on every request, so Hono re-wraps handler responses with a
+  // fresh (mutable) Headers — safe even for the raw `fetch()` passthrough
+  // routes (agent bridge/stream) whose upstream headers are otherwise frozen.
+  app.use(
+    "*",
+    secureHeaders({
+      xContentTypeOptions: "nosniff",
+      // Match the SPA's HSTS policy (2y + preload).
+      strictTransportSecurity: "max-age=63072000; includeSubDomains; preload",
+      // A JSON API must never be framed.
+      xFrameOptions: "DENY",
+      referrerPolicy: "strict-origin-when-cross-origin",
+      // OG images at /og are embedded cross-origin (<img>); the default
+      // `same-origin` CORP would block them.
+      crossOriginResourcePolicy: "cross-origin",
+      // No HTML is served, so a CSP adds breakage risk on the OpenAPI/OG
+      // surface with no benefit; COEP/COOP are meaningless for a windowless
+      // JSON API. Leave them off. `removePoweredBy` (default) drops X-Powered-By.
+      crossOriginEmbedderPolicy: false,
+      crossOriginOpenerPolicy: false,
+    }),
+  );
+
+  // Default unset JSON responses to `no-store` so dynamic/authenticated
+  // payloads aren't cached by proxies (ZAP "storable content" / cache-control
+  // findings). Routes that opt into caching (jwks, agent-card, openapi, og)
+  // already set their own Cache-Control and are left untouched.
+  app.use("*", async (c, next) => {
+    await next();
+    const headers = c.res.headers;
+    if (
+      !headers.has("Cache-Control") &&
+      headers.get("Content-Type")?.includes("application/json")
+    ) {
+      headers.set("Cache-Control", "no-store");
+    }
+  });
+
   app.use("*", honoLogger());
   app.use("*", async (c, next) => {
     c.set("requestId", c.get("requestId") ?? crypto.randomUUID());
