@@ -89,8 +89,8 @@ const USE_NAVIGATION_STATE_TS = readFileSync(
   resolve(__dirname, "./state/useNavigationState.ts"),
   "utf8",
 );
-const USE_STARTUP_COORDINATOR_TS = readFileSync(
-  resolve(__dirname, "./state/useStartupCoordinator.ts"),
+const USE_STARTUP_SHELL_CONTROLLER_TS = readFileSync(
+  resolve(__dirname, "./state/use-startup-shell-controller.ts"),
   "utf8",
 );
 const WINDOW_SHELL_TS = readFileSync(
@@ -180,7 +180,7 @@ describe("App pre-agent cloud wiring", () => {
     );
     expect(APP_TSX.indexOf('shellMode === "chat-overlay"')).toBeLessThan(
       APP_TSX.indexOf(
-        'startupCoordinator.phase !== "ready" || !onboardingComplete',
+        'startupCoordinator.phase !== "ready" || !firstRunComplete',
       ),
     );
   });
@@ -210,14 +210,15 @@ describe("App pre-agent cloud wiring", () => {
   });
 
   it("lets existing shell windows advance after onboarding finishes elsewhere", () => {
-    expect(USE_STARTUP_COORDINATOR_TS).toContain(
-      "ONBOARDING_COMPLETE_STORAGE_KEY",
+    expect(USE_STARTUP_SHELL_CONTROLLER_TS).toContain(".getFirstRunStatus()");
+    expect(USE_STARTUP_SHELL_CONTROLLER_TS).toContain(
+      "status.cloudProvisioned",
     );
-    expect(USE_STARTUP_COORDINATOR_TS).toContain(
-      'window.addEventListener("storage", onStorage)',
+    expect(USE_STARTUP_SHELL_CONTROLLER_TS).toContain(
+      'setState("firstRunComplete", true)',
     );
-    expect(USE_STARTUP_COORDINATOR_TS).toContain(
-      'dispatch({ type: "SPLASH_CONTINUE" })',
+    expect(USE_STARTUP_SHELL_CONTROLLER_TS).toContain(
+      'coordinatorDispatchRef.current({ type: "FIRST_RUN_COMPLETE" })',
     );
   });
 });
