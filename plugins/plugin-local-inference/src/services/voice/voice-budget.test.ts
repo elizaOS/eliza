@@ -192,8 +192,8 @@ describe("VoiceBudget.reserve()", () => {
 		// lower-priority to evict → must throw.
 		await expect(
 			budget.reserve({
-				modelId: "drafter",
-				role: "drafter",
+				modelId: "emotion",
+				role: "emotion",
 				bytes: 200 * MB,
 			}),
 		).rejects.toBeInstanceOf(BudgetExhaustedError);

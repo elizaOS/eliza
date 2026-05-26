@@ -67,18 +67,18 @@ describe("MemoryMonitor", () => {
 
 	it("under pressure, evicts the lowest-priority resident role first", async () => {
 		const registry = new SharedResourceRegistry();
-		const drafter = fakeRole("drafter", 800);
+		const emotion = fakeRole("emotion", 800);
 		const tts = fakeRole("tts", 300);
 		const text = fakeRole("text-target", 4000);
 		// Register out of priority order on purpose.
 		registry.acquire(text.resource);
 		registry.acquire(tts.resource);
-		registry.acquire(drafter.resource);
+		registry.acquire(emotion.resource);
 		const monitor = monitorWithFreeMb(registry, 200); // hard pressure
 
 		const first = await monitor.tick();
-		expect(first.evicted?.role).toBe("drafter");
-		expect(drafter.evictCount()).toBe(1);
+		expect(first.evicted?.role).toBe("emotion");
+		expect(emotion.evictCount()).toBe(1);
 		expect(tts.evictCount()).toBe(0);
 		expect(text.evictCount()).toBe(0);
 
@@ -101,28 +101,28 @@ describe("MemoryMonitor", () => {
 
 	it("re-loaded roles become evictable again on the next pressure tick", async () => {
 		const registry = new SharedResourceRegistry();
-		const drafter = fakeRole("drafter", 800);
-		registry.acquire(drafter.resource);
+		const emotion = fakeRole("emotion", 800);
+		registry.acquire(emotion.resource);
 		const monitor = monitorWithFreeMb(registry, 100);
 
 		const first = await monitor.tick();
-		expect(first.evicted?.role).toBe("drafter");
-		expect(drafter.evictCount()).toBe(1);
+		expect(first.evicted?.role).toBe("emotion");
+		expect(emotion.evictCount()).toBe(1);
 
 		// Nothing else resident → exhausted now.
 		const exhausted = await monitor.tick();
 		expect(exhausted.evicted).toBeNull();
 
 		// Caller re-loads the drafter on demand; pressure persists → it can be evicted again.
-		drafter.reload();
+		emotion.reload();
 		const second = await monitor.tick();
-		expect(second.evicted?.role).toBe("drafter");
-		expect(drafter.evictCount()).toBe(2);
+		expect(second.evicted?.role).toBe("emotion");
+		expect(emotion.evictCount()).toBe(2);
 	});
 
 	it("honours the eviction cooldown between ticks", async () => {
 		const registry = new SharedResourceRegistry();
-		registry.acquire(fakeRole("drafter", 100).resource);
+		registry.acquire(fakeRole("emotion", 100).resource);
 		registry.acquire(fakeRole("tts", 100).resource);
 		const monitor = new MemoryMonitor({
 			registry,
@@ -138,7 +138,7 @@ describe("MemoryMonitor", () => {
 		});
 		const t0 = 1_000_000;
 		const a = await monitor.tick(t0);
-		expect(a.evicted?.role).toBe("drafter");
+		expect(a.evicted?.role).toBe("emotion");
 		// Within the cooldown — no further eviction even though still under pressure.
 		const b = await monitor.tick(t0 + 5_000);
 		expect(b.evicted).toBeNull();
@@ -149,8 +149,8 @@ describe("MemoryMonitor", () => {
 
 	it("treats a huge llama-server RSS as pressure even when OS free looks fine", async () => {
 		const registry = new SharedResourceRegistry();
-		const drafter = fakeRole("drafter", 800);
-		registry.acquire(drafter.resource);
+		const emotion = fakeRole("emotion", 800);
+		registry.acquire(emotion.resource);
 		const monitor = new MemoryMonitor({
 			registry,
 			config: {
@@ -170,7 +170,7 @@ describe("MemoryMonitor", () => {
 		const sample = await monitor.sample();
 		expect(monitor.isUnderPressure(sample)).toBe(true);
 		const action = await monitor.tick();
-		expect(action.evicted?.role).toBe("drafter");
+		expect(action.evicted?.role).toBe("emotion");
 	});
 
 	it("start()/stop() arm and disarm the polling timer", () => {
