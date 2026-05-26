@@ -12,10 +12,10 @@ import { runAutonomousCli } from "./cli/index.ts";
 const _binDebugLog =
   process.env.ELIZA_PLATFORM === "android"
     ? (() => {
-        const stateDir =
-          process.env.ELIZA_STATE_DIR ||
-          process.env.ELIZA_STATE_DIR ||
-          `${process.env.HOME ?? "/data/local/tmp"}/.eliza`;
+        const xdgStateHome =
+          process.env.XDG_STATE_HOME ??
+          `${process.env.HOME ?? "/data/local/tmp"}/.local/state`;
+        const stateDir = process.env.ELIZA_STATE_DIR || `${xdgStateHome}/eliza`;
         const logPath = `${stateDir}/bin-debug.log`;
         try {
           _earlyFs.mkdirSync(stateDir, { recursive: true });

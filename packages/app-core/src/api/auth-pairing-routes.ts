@@ -17,7 +17,7 @@ import {
 import {
   type CompatRuntimeState,
   getCompatDrizzleDb,
-  hasCompatPersistedOnboardingState,
+  hasCompatPersistedFirstRunState,
   isTrustedLocalRequest,
   readCompatJsonBody,
 } from "./compat-route-shared";
@@ -25,7 +25,7 @@ import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
-import { isCloudProvisioned } from "./server-onboarding-helpers";
+import { isCloudProvisioned } from "./server-first-run-helpers";
 
 // ---------------------------------------------------------------------------
 // Pairing state & helpers
@@ -190,7 +190,7 @@ async function ensurePairedDeviceIdentityId(
 /**
  * Auth / pairing routes:
  *
- * - `GET  /api/onboarding/status`
+ * - `GET  /api/first-run/status`
  * - `GET  /api/auth/status`
  * - `GET  /api/auth/pair-code`
  * - `POST /api/auth/pair`
@@ -203,17 +203,17 @@ export async function handleAuthPairingCompatRoutes(
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
 
-  // ── GET /api/onboarding/status ──────────────────────────────────────
+  // ── GET /api/first-run/status ──────────────────────────────────────
   // Cloud-provisioned containers used to skip auth here entirely. That
   // bypass is gone: callers now need a trusted local request, a valid
   // cookie session, an allowed bearer token, or a bootstrap exchange.
-  if (method === "GET" && url.pathname === "/api/onboarding/status") {
+  if (method === "GET" && url.pathname === "/api/first-run/status") {
     if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
     const config = loadElizaConfig();
     sendJsonResponse(res, 200, {
-      complete: hasCompatPersistedOnboardingState(config),
+      complete: hasCompatPersistedFirstRunState(config),
       // Metadata only — no auth implication. The client uses this to decide
       // whether to show the bootstrap-token wizard step. Auth is enforced by
       // the exchange endpoint itself; this flag never grants access.

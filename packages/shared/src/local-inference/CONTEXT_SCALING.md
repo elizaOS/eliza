@@ -8,7 +8,7 @@
 > unless a distinct verified long-context catalog tier is introduced.
 
 This is the analysis behind the per-tier `contextLength` in `catalog.ts`, the
-`dflash.{contextSize,draftContextSize}` knobs in `runtimeFor()`, and the
+`mtp.{contextSize,draftContextSize}` knobs in `runtimeFor()`, and the
 RAM-budget / spill plumbing in `ram-budget.ts` + `kv-spill.ts`. It answers one
 question: **given a phone / 16 GB GPU / 24 GB GPU and an Eliza-1 tier, what is
 the largest context window that actually fits, and which optimization should run
@@ -52,7 +52,7 @@ That is why their per-token KV is much smaller than a dense model of the same
 parameter count would be.
 ‡ KV-bearing (full-attention) layer count, per the published 3:1 ratio.
 
-Bits-per-coordinate per cache layout (what the dflash-server actually loads —
+Bits-per-coordinate per cache layout (what the FFI runtime actually loads —
 see `kvCacheForContext()` in `catalog.ts`):
 
 | layout                       | K bits/coord | V bits/coord | combined B/coord | notes                                                          |
@@ -182,7 +182,7 @@ model's native ceiling". The numbers above show every device has slack:
 `maxFittingContext = floor((memBytes − weightBytes − workingSet) / kvBytesPerToken)`
 using the same `estimateQuantizedKvBytesPerToken` figure `kv-spill.ts` uses,
 clamp to `min(model.contextLength, baseModelNativeContext)`, and pass that as
-`dflash.contextSize` instead of the static `contextLength`. This is the
+`mtp.contextSize` instead of the static `contextLength`. This is the
 "largest model+context combo that fits the available RAM/VRAM with a safety
 margin, preferring qjl+polarq4" the task asks for.
 
@@ -311,7 +311,7 @@ error) stays — a slow voice session is worse than a clear "this device can't d
   for context > 8k) already applies to every tier. There is no obviously-too-
   conservative number to bump without verification evidence behind it.
 - **Recommended:** (1) a memory-aware *context*
-  selector in `recommendation.ts` that raises runtime `dflash.contextSize`
+  selector in `recommendation.ts` that raises runtime `mtp.contextSize`
   toward `min(tier.contextLength, baseNativeContext, maxFittingContext)` using
   the `estimateQuantizedKvBytesPerToken` figures; (2) an opt-in
   `preferAccurateKvWhenHeadroom` branch that picks f16/q8_0 KV on hosts with

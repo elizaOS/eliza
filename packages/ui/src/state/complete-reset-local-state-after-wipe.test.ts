@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AgentStatus, OnboardingOptions } from "../api/client";
+import type { AgentStatus, FirstRunOptions } from "../api/client";
 import {
   type CompleteResetLocalStateDeps,
   completeResetLocalStateAfterServerWipe,
@@ -30,7 +30,7 @@ const okOptions = {
   models: {},
   inventoryProviders: [],
   sharedStyleRules: "",
-} satisfies OnboardingOptions;
+} satisfies FirstRunOptions;
 
 function buildSpyDeps(overrides: Partial<CompleteResetLocalStateDeps> = {}): {
   deps: CompleteResetLocalStateDeps;
@@ -56,11 +56,11 @@ function buildSpyDeps(overrides: Partial<CompleteResetLocalStateDeps> = {}): {
     setClientBaseUrl: trace("setClientBaseUrl"),
     setClientToken: trace("setClientToken"),
     clearElizaCloudSessionUi: trace("clearElizaCloudSessionUi"),
-    markOnboardingReset: trace("markOnboardingReset"),
+    markFirstRunReset: trace("markFirstRunReset"),
     resetAvatarSelection: trace("resetAvatarSelection"),
     clearConversationLists: trace("clearConversationLists"),
-    fetchOnboardingOptions: traceAsync("fetchOnboardingOptions", okOptions),
-    setOnboardingOptions: trace("setOnboardingOptions"),
+    fetchFirstRunOptions: traceAsync("fetchFirstRunOptions", okOptions),
+    setFirstRunOptions: trace("setFirstRunOptions"),
     logResetDebug: () => {},
     logResetWarn: () => {},
     ...overrides,
@@ -80,21 +80,21 @@ describe("completeResetLocalStateAfterServerWipe", () => {
       "setClientBaseUrl",
       "setClientToken",
       "clearElizaCloudSessionUi",
-      "markOnboardingReset",
+      "markFirstRunReset",
       "resetAvatarSelection",
       "clearConversationLists",
-      "fetchOnboardingOptions",
-      "setOnboardingOptions",
+      "fetchFirstRunOptions",
+      "setFirstRunOptions",
     ]);
   });
 
-  it("token-clear (clearElizaCloudSessionUi) fires immediately before markOnboardingReset", async () => {
+  it("token-clear (clearElizaCloudSessionUi) fires immediately before markFirstRunReset", async () => {
     const { deps, calls } = buildSpyDeps();
     await completeResetLocalStateAfterServerWipe(null, deps);
     const tokenIdx = calls.indexOf("clearElizaCloudSessionUi");
-    const onboardingIdx = calls.indexOf("markOnboardingReset");
+    const firstRunResetIdx = calls.indexOf("markFirstRunReset");
     expect(tokenIdx).toBeGreaterThanOrEqual(0);
-    expect(onboardingIdx).toBe(tokenIdx + 1);
+    expect(firstRunResetIdx).toBe(tokenIdx + 1);
   });
 
   it("forwards the post-reset agent status to setAgentStatus", async () => {
@@ -111,31 +111,31 @@ describe("completeResetLocalStateAfterServerWipe", () => {
     expect(setAgentStatus).toHaveBeenCalledWith(status);
   });
 
-  it("absorbs fetchOnboardingOptions failure without rolling back the wipe", async () => {
-    const setOnboardingOptions = vi.fn();
+  it("absorbs fetchFirstRunOptions failure without rolling back the wipe", async () => {
+    const setFirstRunOptions = vi.fn();
     const logResetWarn = vi.fn();
     const { deps, calls } = buildSpyDeps({
-      fetchOnboardingOptions: async () => {
+      fetchFirstRunOptions: async () => {
         throw new Error("network down");
       },
-      setOnboardingOptions,
+      setFirstRunOptions,
       logResetWarn,
     });
     await expect(
       completeResetLocalStateAfterServerWipe(null, deps),
     ).resolves.toBeUndefined();
-    expect(setOnboardingOptions).not.toHaveBeenCalled();
+    expect(setFirstRunOptions).not.toHaveBeenCalled();
     expect(logResetWarn).toHaveBeenCalledWith(
-      "resetLocalState: getOnboardingOptions failed after reset",
+      "resetLocalState: getFirstRunOptions failed after reset",
       expect.any(Error),
     );
     expect(calls).toContain("clearConversationLists");
-    expect(calls).not.toContain("setOnboardingOptions");
+    expect(calls).not.toContain("setFirstRunOptions");
   });
 
   it("propagates a failure from any non-fetch callback (no silent swallow)", async () => {
     const { deps } = buildSpyDeps({
-      markOnboardingReset: () => {
+      markFirstRunReset: () => {
         throw new Error("setter exploded");
       },
     });

@@ -741,7 +741,7 @@ function HeartbeatsLayout() {
               setEditingId(null);
             }}
           >
-            {t("onboarding.back", {
+            {t("common.back", {
               defaultValue: "\u2190 Back",
             })}
           </button>

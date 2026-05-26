@@ -13,14 +13,22 @@ on:
         required: true
         type: string
     secrets:
+      # ANDROID_KEYSTORE_* are downgraded to `required: false` so the
+      # reusable-workflow secret contract does not block startup when
+      # called from release-all.yml / release-orchestrator.yml with
+      # `secrets: inherit`. The job body's signing step (gated on
+      # ANDROID_KEYSTORE_BASE64 being non-empty) skips with a clear
+      # warning when the secrets are absent, instead of aborting the
+      # whole release pipeline at workflow startup with no logs. Same
+      # pattern as publish-apt-repo.yml (PR #7976) and update-homebrew.yml.
       ANDROID_KEYSTORE_BASE64:
-        required: true
+        required: false
       ANDROID_KEYSTORE_PASSWORD:
-        required: true
+        required: false
       ANDROID_KEY_ALIAS:
-        required: true
+        required: false
       ANDROID_KEY_PASSWORD:
-        required: true
+        required: false
       PLAY_STORE_SERVICE_ACCOUNT_JSON:
         required: false
   workflow_dispatch:

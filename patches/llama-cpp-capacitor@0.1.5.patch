@@ -9,20 +9,20 @@ diff --git a/android/build.gradle b/android/build.gradle
 +    return rootProject.projectDir.toPath().resolve('../../..').normalize().toFile().absolutePath
 +}
 +
-+// Per-ABI resolver for the DFlash cross-compile output produced by
-+// `packages/app-core/scripts/build-llama-cpp-dflash.mjs` and
++// Per-ABI resolver for the MTP cross-compile output produced by
++// `packages/app-core/scripts/build-llama-cpp-mtp.mjs` and
 +// `packages/app-core/scripts/aosp/compile-libllama.mjs`. Each ABI has
-+// its own gradle property (`eliza.dflash.android.libdir.<abi>`) and env
-+// var (`ELIZA_DFLASH_ANDROID_LIBDIR_<ABI>`). For arm64-v8a the legacy
++// its own gradle property (`eliza.mtp.android.libdir.<abi>`) and env
++// var (`ELIZA_MTP_ANDROID_LIBDIR_<ABI>`). For arm64-v8a the legacy
 +// unsuffixed names are still honored for backwards compatibility.
 +// riscv64 has no Vulkan path yet (Wave 2 ships CPU-only), so only the
 +// `cpu` backend is searched on that ABI.
-+def resolveElizaDflashAndroidLibDir = { String abi ->
++def resolveElizaMtpAndroidLibDir = { String abi ->
 +    def propSuffix = abi == 'arm64-v8a' ? '' : ".${abi}"
 +    def envSuffix = abi == 'arm64-v8a' ? '' : "_${abi.replace('-', '_').toUpperCase()}"
-+    def fromProp = project.findProperty("eliza.dflash.android.libdir${propSuffix}")
++    def fromProp = project.findProperty("eliza.mtp.android.libdir${propSuffix}")
 +    if (fromProp) return fromProp.toString()
-+    def fromEnv = System.getenv("ELIZA_DFLASH_ANDROID_LIBDIR${envSuffix}")
++    def fromEnv = System.getenv("ELIZA_MTP_ANDROID_LIBDIR${envSuffix}")
 +    if (fromEnv) return fromEnv
 +    def stateDir = System.getenv('ELIZA_STATE_DIR') ?: "${System.getProperty('user.home')}/.eliza"
 +    def abiToken = [
@@ -33,12 +33,12 @@ diff --git a/android/build.gradle b/android/build.gradle
 +    if (abiToken == null) return ''
 +    def backends = abi == 'riscv64' ? ['cpu'] : ['vulkan', 'cpu']
 +    def candidates = backends.collect { backend ->
-+        "${stateDir}/local-inference/bin/dflash/${abiToken}-${backend}"
++        "${stateDir}/local-inference/bin/mtp/${abiToken}-${backend}"
 +    }
 +    return candidates.find { new File(it).isDirectory() } ?: ''
 +}
 +
-+def resolveElizaSkipDflashAndroidLib = { ->
++def resolveElizaSkipMtpAndroidLib = { ->
 +    return project.findProperty('elizaSkipForkLlamaLib') == 'true' ||
 +        System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1'
 +}
@@ -60,9 +60,9 @@ diff --git a/android/build.gradle b/android/build.gradle
 +        externalNativeBuild {
 +            cmake {
 +                arguments "-DELIZA_REPO_ROOT=${resolveElizaRepoRoot()}",
-+                    "-DELIZA_DFLASH_ANDROID_LIBDIR_ARM64_V8A=${resolveElizaDflashAndroidLibDir('arm64-v8a')}",
-+                    "-DELIZA_DFLASH_ANDROID_LIBDIR_RISCV64=${resolveElizaDflashAndroidLibDir('riscv64')}",
-+                    "-DELIZA_SKIP_DFLASH_ANDROID_LIB=${resolveElizaSkipDflashAndroidLib() ? 'ON' : 'OFF'}"
++                    "-DELIZA_MTP_ANDROID_LIBDIR_ARM64_V8A=${resolveElizaMtpAndroidLibDir('arm64-v8a')}",
++                    "-DELIZA_MTP_ANDROID_LIBDIR_RISCV64=${resolveElizaMtpAndroidLibDir('riscv64')}",
++                    "-DELIZA_SKIP_MTP_ANDROID_LIB=${resolveElizaSkipMtpAndroidLib() ? 'ON' : 'OFF'}"
 +            }
          }
      }
@@ -121,7 +121,7 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 +cmake_minimum_required(VERSION 3.22)
  
 -project(llama-cpp)
-+project(llama-cpp-capacitor-eliza-dflash)
++project(llama-cpp-capacitor-eliza-mtp)
  
  set(CMAKE_CXX_STANDARD 17)
 -set(LLAMACPP_LIB_DIR ${CMAKE_SOURCE_DIR}/../../../cpp)
@@ -132,19 +132,19 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 -    ${LLAMACPP_LIB_DIR}/ggml-cpu
 -    ${LLAMACPP_LIB_DIR}/tools/mtmd
 -)
-+option(ELIZA_SKIP_DFLASH_ANDROID_LIB "Build a no-op JNI library for Android smoke builds without DFlash libs" OFF)
++option(ELIZA_SKIP_MTP_ANDROID_LIB "Build a no-op JNI library for Android smoke builds without MTP libs" OFF)
 +
 +find_library(LOG_LIB log)
 +find_library(ANDROID_LIB android)
 +
-+if(ELIZA_SKIP_DFLASH_ANDROID_LIB)
-+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/eliza-dflash-stub.cpp" "extern \"C\" int eliza_dflash_stub() { return 0; }\n")
++if(ELIZA_SKIP_MTP_ANDROID_LIB)
++    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/eliza-mtp-stub.cpp" "extern \"C\" int eliza_mtp_stub() { return 0; }\n")
 +    if(ANDROID_ABI STREQUAL "riscv64")
 +        set(ELIZA_STUB_OUTPUT_NAME "llama-cpp-riscv64")
 +    else()
 +        set(ELIZA_STUB_OUTPUT_NAME "llama-cpp-arm64")
 +    endif()
-+    add_library(${ELIZA_STUB_OUTPUT_NAME} SHARED "${CMAKE_CURRENT_BINARY_DIR}/eliza-dflash-stub.cpp")
++    add_library(${ELIZA_STUB_OUTPUT_NAME} SHARED "${CMAKE_CURRENT_BINARY_DIR}/eliza-mtp-stub.cpp")
 +    target_link_libraries(${ELIZA_STUB_OUTPUT_NAME} PRIVATE ${LOG_LIB} ${ANDROID_LIB})
 +    set_target_properties(
 +        ${ELIZA_STUB_OUTPUT_NAME}
@@ -152,12 +152,12 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 +        OUTPUT_NAME "${ELIZA_STUB_OUTPUT_NAME}"
 +        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/${ANDROID_ABI}"
 +    )
-+    message(STATUS "Building Eliza DFlash JNI smoke stub for Android ${ANDROID_ABI}")
++    message(STATUS "Building Eliza MTP JNI smoke stub for Android ${ANDROID_ABI}")
 +    return()
 +endif()
 +
 +if(NOT DEFINED ELIZA_REPO_ROOT)
-+    message(FATAL_ERROR "ELIZA_REPO_ROOT is required for the Eliza DFlash Android JNI bridge")
++    message(FATAL_ERROR "ELIZA_REPO_ROOT is required for the Eliza MTP Android JNI bridge")
 +endif()
  
 -set(
@@ -231,47 +231,47 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 -    ${CMAKE_SOURCE_DIR}/jni-utils.h
 -    ${CMAKE_SOURCE_DIR}/jni.cpp
 +if(NOT DEFINED ELIZA_REPO_ROOT)
-+    message(FATAL_ERROR "ELIZA_REPO_ROOT is required for the Eliza DFlash Android JNI bridge")
++    message(FATAL_ERROR "ELIZA_REPO_ROOT is required for the Eliza MTP Android JNI bridge")
 +endif()
 +
-+# Per-ABI DFlash lib dirs are passed by android/build.gradle. Only the
++# Per-ABI MTP lib dirs are passed by android/build.gradle. Only the
 +# entry for the currently-building ABI is required; the other can be empty.
 +# riscv64 is CPU-only today (no ggml-vulkan.so produced yet).
 +if(ANDROID_ABI STREQUAL "arm64-v8a")
-+    set(ELIZA_DFLASH_LIBDIR "${ELIZA_DFLASH_ANDROID_LIBDIR_ARM64_V8A}")
++    set(ELIZA_MTP_LIBDIR "${ELIZA_MTP_ANDROID_LIBDIR_ARM64_V8A}")
 +    set(ELIZA_OUTPUT_NAME "llama-cpp-arm64")
 +    set(ELIZA_HAS_VULKAN TRUE)
 +elseif(ANDROID_ABI STREQUAL "riscv64")
-+    set(ELIZA_DFLASH_LIBDIR "${ELIZA_DFLASH_ANDROID_LIBDIR_RISCV64}")
++    set(ELIZA_MTP_LIBDIR "${ELIZA_MTP_ANDROID_LIBDIR_RISCV64}")
 +    set(ELIZA_OUTPUT_NAME "llama-cpp-riscv64")
 +    set(ELIZA_HAS_VULKAN FALSE)
 +else()
-+    message(FATAL_ERROR "Unsupported ANDROID_ABI for Eliza DFlash JNI bridge: ${ANDROID_ABI} (expected arm64-v8a or riscv64)")
++    message(FATAL_ERROR "Unsupported ANDROID_ABI for Eliza MTP JNI bridge: ${ANDROID_ABI} (expected arm64-v8a or riscv64)")
 +endif()
 +
-+if(NOT ELIZA_DFLASH_LIBDIR OR ELIZA_DFLASH_LIBDIR STREQUAL "")
-+    message(FATAL_ERROR "DFlash Android lib dir is empty for ABI ${ANDROID_ABI}; set -Peliza.dflash.android.libdir.${ANDROID_ABI} or ELIZA_DFLASH_ANDROID_LIBDIR_<ABI>, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs --target android-${ANDROID_ABI}-cpu (or aosp/compile-libllama.mjs)")
++if(NOT ELIZA_MTP_LIBDIR OR ELIZA_MTP_LIBDIR STREQUAL "")
++    message(FATAL_ERROR "MTP Android lib dir is empty for ABI ${ANDROID_ABI}; set -Peliza.mtp.android.libdir.${ANDROID_ABI} or ELIZA_MTP_ANDROID_LIBDIR_<ABI>, or run packages/app-core/scripts/build-llama-cpp-mtp.mjs --target android-${ANDROID_ABI}-cpu (or aosp/compile-libllama.mjs)")
 +endif()
 +
 +set(ELIZA_LLAMA_CPP_DIR "${ELIZA_REPO_ROOT}/plugins/plugin-local-inference/native/llama.cpp")
 +
-+# Resolve the Eliza DFlash JNI bridge source. The canonical workspace
++# Resolve the Eliza MTP JNI bridge source. The canonical workspace
 +# path moved during the os-linux cleanup: prefer the new location
 +# (packages/native/plugins/llama) but fall back to the historical
 +# alternates so older checkouts keep building.
 +foreach(candidate_jni
-+    "${ELIZA_REPO_ROOT}/packages/native/plugins/llama/android/eliza-dflash-jni.cpp"
-+    "${ELIZA_REPO_ROOT}/plugins/plugin-native-llama/android/eliza-dflash-jni.cpp"
-+    "${ELIZA_REPO_ROOT}/packages/native-plugins/llama/android/eliza-dflash-jni.cpp"
++    "${ELIZA_REPO_ROOT}/packages/native/plugins/llama/android/eliza-mtp-jni.cpp"
++    "${ELIZA_REPO_ROOT}/plugins/plugin-native-llama/android/eliza-mtp-jni.cpp"
++    "${ELIZA_REPO_ROOT}/packages/native-plugins/llama/android/eliza-mtp-jni.cpp"
  )
 +    if(EXISTS "${candidate_jni}")
-+        set(ELIZA_DFLASH_JNI_CPP "${candidate_jni}")
++        set(ELIZA_MTP_JNI_CPP "${candidate_jni}")
 +        break()
 +    endif()
 +endforeach()
 +
-+if(NOT DEFINED ELIZA_DFLASH_JNI_CPP)
-+    message(FATAL_ERROR "Could not locate eliza-dflash-jni.cpp under ${ELIZA_REPO_ROOT} (looked under packages/native/plugins/llama, plugins/plugin-native-llama, packages/native-plugins/llama)")
++if(NOT DEFINED ELIZA_MTP_JNI_CPP)
++    message(FATAL_ERROR "Could not locate eliza-mtp-jni.cpp under ${ELIZA_REPO_ROOT} (looked under packages/native/plugins/llama, plugins/plugin-native-llama, packages/native-plugins/llama)")
 +endif()
 +
 +set(_eliza_required_libs libllama.so libggml.so libggml-base.so libggml-cpu.so)
@@ -279,26 +279,26 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 +    list(APPEND _eliza_required_libs libggml-vulkan.so)
 +endif()
 +foreach(required_lib ${_eliza_required_libs})
-+    if(NOT EXISTS "${ELIZA_DFLASH_LIBDIR}/${required_lib}")
-+        message(FATAL_ERROR "Missing DFlash Android library: ${ELIZA_DFLASH_LIBDIR}/${required_lib}")
++    if(NOT EXISTS "${ELIZA_MTP_LIBDIR}/${required_lib}")
++        message(FATAL_ERROR "Missing MTP Android library: ${ELIZA_MTP_LIBDIR}/${required_lib}")
 +    endif()
 +endforeach()
 +
 +add_library(eliza_llama SHARED IMPORTED)
-+set_target_properties(eliza_llama PROPERTIES IMPORTED_LOCATION "${ELIZA_DFLASH_LIBDIR}/libllama.so")
++set_target_properties(eliza_llama PROPERTIES IMPORTED_LOCATION "${ELIZA_MTP_LIBDIR}/libllama.so")
 +
 +add_library(eliza_ggml SHARED IMPORTED)
-+set_target_properties(eliza_ggml PROPERTIES IMPORTED_LOCATION "${ELIZA_DFLASH_LIBDIR}/libggml.so")
++set_target_properties(eliza_ggml PROPERTIES IMPORTED_LOCATION "${ELIZA_MTP_LIBDIR}/libggml.so")
 +
 +add_library(eliza_ggml_base SHARED IMPORTED)
-+set_target_properties(eliza_ggml_base PROPERTIES IMPORTED_LOCATION "${ELIZA_DFLASH_LIBDIR}/libggml-base.so")
++set_target_properties(eliza_ggml_base PROPERTIES IMPORTED_LOCATION "${ELIZA_MTP_LIBDIR}/libggml-base.so")
 +
 +add_library(eliza_ggml_cpu SHARED IMPORTED)
-+set_target_properties(eliza_ggml_cpu PROPERTIES IMPORTED_LOCATION "${ELIZA_DFLASH_LIBDIR}/libggml-cpu.so")
++set_target_properties(eliza_ggml_cpu PROPERTIES IMPORTED_LOCATION "${ELIZA_MTP_LIBDIR}/libggml-cpu.so")
 +
 +if(ELIZA_HAS_VULKAN)
 +    add_library(eliza_ggml_vulkan SHARED IMPORTED)
-+    set_target_properties(eliza_ggml_vulkan PROPERTIES IMPORTED_LOCATION "${ELIZA_DFLASH_LIBDIR}/libggml-vulkan.so")
++    set_target_properties(eliza_ggml_vulkan PROPERTIES IMPORTED_LOCATION "${ELIZA_MTP_LIBDIR}/libggml-vulkan.so")
 +endif()
  
 -# Find Android libraries
@@ -350,7 +350,7 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 +add_library(
 +    ${ELIZA_OUTPUT_NAME}
 +    SHARED
-+    ${ELIZA_DFLASH_JNI_CPP}
++    ${ELIZA_MTP_JNI_CPP}
 +    ${ELIZA_LLAMA_CPP_DIR}/common/json-schema-to-grammar.cpp
 +)
 +
@@ -391,9 +391,9 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 +    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/${ANDROID_ABI}"
 +)
 +
-+message(STATUS "Building Eliza DFlash JNI bridge for Android ${ANDROID_ABI}")
++message(STATUS "Building Eliza MTP JNI bridge for Android ${ANDROID_ABI}")
 +message(STATUS "Eliza repo root: ${ELIZA_REPO_ROOT}")
-+message(STATUS "DFlash lib dir: ${ELIZA_DFLASH_LIBDIR}")
++message(STATUS "MTP lib dir: ${ELIZA_MTP_LIBDIR}")
 +message(STATUS "Vulkan backend: ${ELIZA_HAS_VULKAN}")
 diff --git a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java b/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
 --- a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
@@ -413,27 +413,27 @@ diff --git a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java b/
 -            
 +
              Log.i(TAG, "Loading native library for ABI: " + abi + " (library: " + libraryName + ")");
-+            // Preload DFlash dependency libraries before our JNI bridge so
++            // Preload MTP dependency libraries before our JNI bridge so
 +            // dlopen resolves the chain without ld.so probing LD_LIBRARY_PATH.
 +            // riscv64 currently has no ggml-vulkan.so (Wave 2 CPU-only); the
 +            // preload is wrapped in try/catch and an absent dependency is
 +            // logged as a warning rather than failing the load.
 +            if ("arm64-v8a".equals(abi) || "riscv64".equals(abi)) {
-+                java.util.List<String> dflashDependencies = new java.util.ArrayList<>();
-+                dflashDependencies.add("omp");
-+                dflashDependencies.add("ggml-base");
-+                dflashDependencies.add("ggml-cpu");
++                java.util.List<String> mtpDependencies = new java.util.ArrayList<>();
++                mtpDependencies.add("omp");
++                mtpDependencies.add("ggml-base");
++                mtpDependencies.add("ggml-cpu");
 +                if ("arm64-v8a".equals(abi)) {
-+                    dflashDependencies.add("ggml-vulkan");
++                    mtpDependencies.add("ggml-vulkan");
 +                }
-+                dflashDependencies.add("ggml");
-+                dflashDependencies.add("llama");
-+                for (String dependency : dflashDependencies) {
++                mtpDependencies.add("ggml");
++                mtpDependencies.add("llama");
++                for (String dependency : mtpDependencies) {
 +                    try {
 +                        System.loadLibrary(dependency);
-+                        Log.i(TAG, "Loaded DFlash dependency: " + dependency);
++                        Log.i(TAG, "Loaded MTP dependency: " + dependency);
 +                    } catch (UnsatisfiedLinkError dependencyError) {
-+                        Log.w(TAG, "Could not preload DFlash dependency " + dependency + ": " + dependencyError.getMessage());
++                        Log.w(TAG, "Could not preload MTP dependency " + dependency + ": " + dependencyError.getMessage());
 +                    }
 +                }
 +            }

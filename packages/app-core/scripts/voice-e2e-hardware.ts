@@ -319,7 +319,7 @@ function resolveDylib(
   const bundled = path.join(bundleRoot, "lib", libName());
   if (fs.existsSync(bundled)) return bundled;
 
-  const root = path.join(stateRoot(), "local-inference", "bin", "dflash");
+  const root = path.join(stateRoot(), "local-inference", "bin", "mtp");
   const preferred = path.join(
     root,
     `${platformTag()}-${backend}-fused`,

@@ -318,12 +318,6 @@ export function collectPluginNames(
     config as Record<string, unknown>,
   );
   const shellPluginDisabled = config.features?.shellEnabled === false;
-  const localEmbeddingsExplicitlyDisabled = (() => {
-    const raw = process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
-    if (!raw) return false;
-    const normalized = raw.trim().toLowerCase();
-    return normalized === "1" || normalized === "true" || normalized === "yes";
-  })();
   const cloudTopology = resolveElizaCloudTopology(
     config as Record<string, unknown>,
   );
@@ -437,10 +431,6 @@ export function collectPluginNames(
       "agent-orchestrator (@elizaos/plugin-agent-orchestrator)",
     );
   }
-  if (localEmbeddingsExplicitlyDisabled) {
-    pluginsToLoad.delete("@elizaos/plugin-local-inference");
-  }
-
   // Allow list is additive — extra plugins on top of auto-detection,
   // not an exclusive whitelist that blocks everything else.
   if (allowList && allowList.length > 0) {

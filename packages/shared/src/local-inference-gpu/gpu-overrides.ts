@@ -1,12 +1,12 @@
 /**
- * Runtime hand-off: produce the `Partial<DflashServerOptions>` overrides
- * the dflash-server should apply when launching `llama-server` on CUDA.
+ * Runtime hand-off: produce the `Partial<MtpServerOptions>` overrides
+ * the FFI runtime should apply when launching `llama-server` on CUDA.
  *
  * The actual integration site lives in
- * `packages/app-core/src/services/local-inference/dflash-server.ts` —
+ * `packages/app-core/src/services/local-inference/ffi-streaming-backend.ts` —
  * that file is owned by another agent. This module just produces the
  * patch object; the runtime is expected to merge it on top of the
- * catalog defaults before spawning the server. See `DFLASH_SERVER_PATCH`
+ * catalog defaults before spawning the server. See `MTP_SERVER_PATCH`
  * below for the documented integration diff (NOT applied here).
  *
  * Single-GPU only: no tensor-split, no NVLink. If `gpuOptions.nGpuLayers`
@@ -23,11 +23,11 @@ import {
 
 /**
  * Shape of the override patch the runtime applies. Mirrors the subset
- * of `DflashServerOptions` that the YAML profiles touch — keeping it
+ * of `MtpServerOptions` that the YAML profiles touch — keeping it
  * structural avoids an import cycle with app-core (which depends on
  * shared, not the other way around).
  */
-export interface DflashServerOverrides {
+export interface MtpServerOverrides {
   contextSize?: number;
   parallel?: number;
   batchSize?: number;
@@ -37,7 +37,7 @@ export interface DflashServerOverrides {
   mlock?: boolean;
   cacheTypeK?: KvCacheType;
   cacheTypeV?: KvCacheType;
-  // DFlash-specific.
+  // MTP-specific.
   draftMin?: number;
   draftMax?: number;
   draftGpuLayers?: number;
@@ -58,7 +58,7 @@ export type GpuOverridesResult =
       kind: "applied";
       bundleId: Eliza1TierId;
       gpuId: string;
-      overrides: DflashServerOverrides;
+      overrides: MtpServerOverrides;
     }
   | { kind: "no-recommendation"; bundleId: Eliza1TierId; gpuId: string };
 
@@ -66,7 +66,7 @@ export type GpuOverridesResult =
  * Compute the runtime override patch for a (bundle, profile) pair.
  *
  * - If the YAML has a `bundle_recommendations[<bundleId>]` entry, return
- *   `applied` with the merged DFlash + bundle flags.
+ *   `applied` with the merged MTP + bundle flags.
  * - If not, return `no-recommendation` — runtime keeps catalog defaults.
  *
  * Pure: no IO, no logging. Safe to call repeatedly.
@@ -90,8 +90,8 @@ function bundleToOverrides(
   rec: BundleRecommendation,
   profile: GpuYamlProfile,
   bundleId: Eliza1TierId,
-): DflashServerOverrides {
-  const out: DflashServerOverrides = {
+): MtpServerOverrides {
+  const out: MtpServerOverrides = {
     contextSize: rec.ctx_size,
     parallel: rec.parallel,
     batchSize: rec.batch_size,
@@ -102,19 +102,19 @@ function bundleToOverrides(
     cacheTypeV: rec.kv_cache_v,
   };
   if (rec.mlock !== undefined) out.mlock = rec.mlock;
-  if (profile.dflash.enabled && bundleId !== "eliza-1-0_8b") {
-    out.draftMin = profile.dflash.draft_min;
-    out.draftMax = profile.dflash.draft_max;
-    out.draftGpuLayers = profile.dflash.draft_gpu_layers;
+  if (profile.mtp.enabled && bundleId !== "eliza-1-0_8b") {
+    out.draftMin = profile.mtp.draft_min;
+    out.draftMax = profile.mtp.draft_max;
+    out.draftGpuLayers = profile.mtp.draft_gpu_layers;
   }
   return out;
 }
 
 /**
  * Documented 5-line integration patch for
- * `packages/app-core/src/services/local-inference/dflash-server.ts`.
+ * `packages/app-core/src/services/local-inference/ffi-streaming-backend.ts`.
  *
- * **NOT applied here.** Another agent owns dflash-server.ts. Producing
+ * **NOT applied here.** Another agent owns ffi-streaming-backend.ts. Producing
  * the diff in a string keeps the integration point reviewable without
  * touching the locked file.
  *
@@ -137,8 +137,8 @@ function bundleToOverrides(
  *
  * `resolveProfileForHost` is from `gpu-profile-loader.ts`;
  * `getGpuOverrides` is the function above. The merge is a shallow
- * `Object.assign` because every field of `DflashServerOverrides` is a
+ * `Object.assign` because every field of `MtpServerOverrides` is a
  * leaf scalar — there are no nested objects to deep-merge.
  */
-export const DFLASH_SERVER_PATCH_DOCS =
-  "see comment block above DFLASH_SERVER_PATCH_DOCS";
+export const MTP_SERVER_PATCH_DOCS =
+  "see comment block above MTP_SERVER_PATCH_DOCS";

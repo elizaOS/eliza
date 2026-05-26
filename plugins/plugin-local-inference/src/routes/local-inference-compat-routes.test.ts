@@ -61,7 +61,7 @@ vi.mock("./auth/sessions", async (importOriginal) => {
 	};
 });
 
-vi.mock("./server-onboarding-helpers", () => ({
+vi.mock("./server-first-run-helpers", () => ({
 	isCloudProvisioned: () => false,
 }));
 

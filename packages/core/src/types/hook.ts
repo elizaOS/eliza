@@ -17,7 +17,7 @@ import type { Service } from "./service";
  */
 export type HookSource =
 	| "bundled" // Built-in hooks from @elizaos/core
-	| "managed" // User-installed hooks (~/.elizaos/hooks/)
+	| "managed" // User-installed hooks (<stateDir>/hooks/)
 	| "workspace" // Project-local hooks (./hooks/)
 	| "plugin" // Plugin-registered hooks
 	| "runtime"; // Programmatic registration via API

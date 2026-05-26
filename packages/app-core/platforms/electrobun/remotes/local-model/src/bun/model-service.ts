@@ -302,7 +302,7 @@ function normalizeRuntimeCatalogEntry(value: unknown): LocalModelCatalogEntry {
 	const category = stringField(value, "category");
 	const roles = category === "drafter" ? ["drafter" as const] : ["chat" as const];
 	const capabilities = category === "drafter"
-		? ["dflash" as const]
+		? ["mtp" as const]
 		: ["text-generation" as const];
 	return {
 		id,

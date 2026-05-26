@@ -272,6 +272,7 @@ export * from "./shell/RestartBanner";
 export * from "./shell/ShellOverlays";
 export * from "./shell/ShortcutsOverlay";
 export * from "./shell/StartupFailureView";
+export * from "./shell/StartupScreen";
 export * from "./shell/StartupShell";
 export * from "./shell/SystemWarningBanner";
 export * from "./ui/accordion";

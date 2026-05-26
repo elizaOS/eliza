@@ -173,9 +173,9 @@ Used by the voice optimistic-rollback path. Mid-prefill snapshots cost
 | 4B / 9B | 8 | 8 192 |
 | 27B (incl. 256k) | 16 | 8 192 |
 
-### DFlash draft range
+### MTP draft range
 
-Per-card, picked from `dflashDraftMin` / `dflashDraftMax` in `gpu-profiles.ts`:
+Per-card, picked from `mtpDraftMin` / `mtpDraftMax` in `gpu-profiles.ts`:
 
 | Card | min | max |
 |---|---|---|
@@ -217,7 +217,7 @@ The autotune helper merges in this order (later wins):
 2. `packages/inference/configs/gpu/<id>.json` (this directory)
 3. Bundle-specific override block (`bundle_recommendations.<bundle>`)
 4. Per-call `overrides` arg to `selectGpuConfig()` (used by the CLI)
-5. Env vars: `ELIZA_LOCAL_*` (see `dflash-server.ts` for the full list,
+5. Env vars: `ELIZA_LOCAL_*` (see `ffi-streaming-backend.ts` for the full list,
    e.g. `ELIZA_LOCAL_UBATCH_SIZE`, `ELIZA_LOCAL_N_PARALLEL`).
 
 When `selectGpuConfig()` gets a GPU it doesn't recognize, it falls back

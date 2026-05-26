@@ -850,8 +850,8 @@ export function nativeModuleStubPlugin(
       const missingExports: Record<string, string> = {
         resolveSecretKeyAlias: "function(k){return k}",
         SECRET_KEY_ALIASES: "{}",
-        OnboardingStateMachine: "function(){}",
-        isOnboardingComplete: "function(){return false}",
+        SetupStateMachine: "function(){}",
+        isSetupComplete: "function(){return false}",
         AgentEventService: "function(){}",
         AutonomyService: "function(){}",
         createBasicCapabilitiesPlugin: "function(){return{name:'stub'}}",

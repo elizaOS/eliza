@@ -466,7 +466,6 @@ export function createElectrobunConfig(): ElectrobunConfig {
         external: [
           // Agent runtime packages — used only via type imports in the bun
           // src, but workspace TS resolution can drag the source graph in.
-          "@elizaos/core",
           "@elizaos/agent",
           "@elizaos/app-core",
           // Plugins — initialized by the API subprocess, never the bun shell.
@@ -485,10 +484,6 @@ export function createElectrobunConfig(): ElectrobunConfig {
           "onnxruntime-node",
           "onnxruntime-common",
           "onnxruntime-web",
-          // chalk is pulled in transitively via @elizaos/shared/dist/terminal/theme.js.
-          // The Electrobun bun shell never renders to a TTY, so this branch is dead at
-          // runtime — externalising it just keeps the bundler from trying to resolve it.
-          "chalk",
         ],
       },
       views: {},

@@ -391,49 +391,33 @@ if (!hasNode) {
 // coerceBoolean — imported from ./lib/dev-ui-onchain.mjs
 
 function resolveElizaStateDir() {
-  const brandedStateDir = process.env.ELIZA_STATE_DIR?.trim();
-  if (brandedStateDir) {
-    return path.resolve(brandedStateDir);
-  }
+  const explicitStateDir =
+    process.env.ELIZA_STATE_DIR?.trim() || process.env.MILADY_STATE_DIR?.trim();
+  if (explicitStateDir) return path.resolve(explicitStateDir);
 
-  const upstreamStateDir = process.env.ELIZA_STATE_DIR?.trim();
-  if (upstreamStateDir) {
-    return path.resolve(upstreamStateDir);
-  }
+  const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
+  const stateHome = xdgStateHome
+    ? path.isAbsolute(xdgStateHome)
+      ? xdgStateHome
+      : path.join(os.homedir(), xdgStateHome)
+    : path.join(os.homedir(), ".local", "state");
 
-  const brandedDefault = path.join(os.homedir(), ".eliza");
-  if (existsSync(brandedDefault)) {
-    return brandedDefault;
-  }
+  return path.join(stateHome, resolveElizaNamespace());
+}
 
-  return path.join(os.homedir(), ".eliza");
+function resolveElizaNamespace() {
+  return process.env.ELIZA_NAMESPACE?.trim() || cliName || "eliza";
 }
 
 function resolveElizaConfigPath() {
   const explicitConfigPath =
     process.env.ELIZA_CONFIG_PATH?.trim() ||
-    process.env.ELIZA_CONFIG_PATH?.trim();
+    process.env.MILADY_CONFIG_PATH?.trim();
   if (explicitConfigPath) {
     return path.resolve(explicitConfigPath);
   }
 
-  const brandedStateDir = process.env.ELIZA_STATE_DIR?.trim();
-  if (brandedStateDir) {
-    return path.join(path.resolve(brandedStateDir), "eliza.json");
-  }
-
-  const upstreamStateDir = process.env.ELIZA_STATE_DIR?.trim();
-  if (upstreamStateDir) {
-    return path.join(path.resolve(upstreamStateDir), "eliza.json");
-  }
-
-  const brandedDefault = path.join(os.homedir(), ".eliza", "eliza.json");
-  if (existsSync(brandedDefault)) {
-    return brandedDefault;
-  }
-
-  // Keep the legacy Eliza path as a fallback for older local dev setups.
-  return path.join(os.homedir(), ".eliza", "eliza.json");
+  return path.join(resolveElizaStateDir(), `${resolveElizaNamespace()}.json`);
 }
 
 function loadElizaConfigForDev() {

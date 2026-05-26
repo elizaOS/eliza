@@ -48,7 +48,7 @@ export const defaultProfiles: PersonalityProfile[] = [
 	{
 		name: "gentle",
 		description:
-			"Warm, professional, low-verbosity. For sensitive contexts and onboarding.",
+			"Warm, professional, low-verbosity. For sensitive contexts and setup.",
 		verbosity: "terse",
 		tone: "warm",
 		formality: "professional",

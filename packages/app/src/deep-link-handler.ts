@@ -1,11 +1,11 @@
 // === Phase 5D: extracted from main.tsx ===
 // App-shell deep-link dispatcher. Recognizes the white-label `<scheme>://`
 // links emitted by the iOS/Android intents, the desktop share target, and
-// onboarding redirects. Pure routing logic — share-target persistence and
+// first-run redirects. Pure routing logic — share-target persistence and
 // CONNECT event dispatch are injected so the dispatcher stays test-friendly.
 
 import { CONNECT_EVENT, dispatchAppEvent } from "@elizaos/ui/events";
-import { routeOnboardingDeepLink } from "@elizaos/ui/onboarding/deep-link-handler";
+import { routeFirstRunDeepLink } from "@elizaos/ui/first-run/deep-link-handler";
 import type { ShareTargetPayload } from "@elizaos/ui/platform";
 import { applyLaunchConnection } from "@elizaos/ui/platform/browser-launch";
 import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
@@ -23,7 +23,7 @@ export interface DeepLinkHandlerContext {
 
 export function createDeepLinkHandler(ctx: DeepLinkHandlerContext) {
   function handle(url: string): void {
-    if (routeOnboardingDeepLink(url, ctx.urlScheme)) {
+    if (routeFirstRunDeepLink(url, ctx.urlScheme)) {
       return;
     }
 

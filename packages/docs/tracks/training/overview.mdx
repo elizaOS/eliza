@@ -54,8 +54,8 @@ To include app/runtime trajectories that were already exported, pass the sanitiz
 
 ```bash
 bun run --cwd plugins/plugin-training training:cli run-collection \
-  --natural-sanitized-jsonl ~/.eliza/training/natural/trajectories.sanitized.jsonl \
-  --natural-raw-jsonl ~/.eliza/training/natural/trajectories.raw.jsonl \
+  --natural-sanitized-jsonl ~/.local/state/eliza/training/natural/trajectories.sanitized.jsonl \
+  --natural-raw-jsonl ~/.local/state/eliza/training/natural/trajectories.raw.jsonl \
   --natural-run-id app-run-1 \
   --natural-tasks response,action_planner
 ```

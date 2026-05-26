@@ -181,8 +181,8 @@ function validateRuntimeScripts(): void {
   );
   assert(
     vllmOnstart.includes("--speculative-config") &&
-      vllmOnstart.includes('"method": "dflash"'),
-    "onstart-vllm.sh must expose vLLM speculative/DFlash config",
+      vllmOnstart.includes('"method": "mtp"'),
+    "onstart-vllm.sh must expose vLLM speculative/MTP config",
   );
   assert(
     vllmOnstart.includes("VLLM_METAL_ADDITIONAL_CONFIG_JSON"),

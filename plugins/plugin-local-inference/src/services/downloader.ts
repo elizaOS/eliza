@@ -242,7 +242,7 @@ function collectBundleFiles(
 		"voice",
 		"asr",
 		"vision",
-		"dflash",
+		"mtp",
 		"cache",
 		"embedding",
 		"vad",
@@ -485,10 +485,7 @@ export class Downloader {
 	): Promise<void> {
 		try {
 			this.updateState(record, "downloading");
-			if (
-				catalogEntry.bundleManifestFile &&
-				catalogEntry.runtimeRole !== "dflash-drafter"
-			) {
+			if (catalogEntry.bundleManifestFile) {
 				await this.runBundleJob(catalogEntry, record);
 				return;
 			}
@@ -585,44 +582,14 @@ export class Downloader {
 				...(catalogEntry.runtimeRole
 					? { runtimeRole: catalogEntry.runtimeRole }
 					: {}),
-				...(catalogEntry.companionForModelId
-					? { companionFor: catalogEntry.companionForModelId }
-					: {}),
 			};
 			await upsertElizaModel(installed);
 
 			// First-light convenience: only default-eligible Eliza-1 downloads
 			// can fill empty slots. Ad-hoc Hugging Face downloads remain
 			// explicit opt-in even though Eliza owns the downloaded file.
-			if (
-				catalogEntry.runtimeRole !== "dflash-drafter" &&
-				isDefaultEligibleId(installed.id)
-			) {
+			if (isDefaultEligibleId(installed.id)) {
 				await ensureDefaultAssignment(installed.id);
-			}
-
-			for (const companionId of catalogEntry.companionModelIds ?? []) {
-				if (!this.isActive(companionId)) {
-					void this.start(companionId).catch((err) => {
-						const job: DownloadJob = {
-							jobId: randomUUID(),
-							modelId: companionId,
-							state: "failed",
-							received: 0,
-							total: 0,
-							bytesPerSec: 0,
-							etaMs: null,
-							startedAt: new Date().toISOString(),
-							updatedAt: new Date().toISOString(),
-							error: err instanceof Error ? err.message : String(err),
-						};
-						this.rememberTerminalDownload(job);
-						this.emit({
-							type: "failed",
-							job,
-						});
-					});
-				}
 			}
 
 			this.updateState(record, "completed");
@@ -767,42 +734,6 @@ export class Downloader {
 			...bundleMeta,
 		};
 		await upsertElizaModel(installed);
-
-		const companionId =
-			catalogEntry.runtime?.dflash?.drafterModelId ??
-			catalogEntry.companionModelIds?.[0];
-		const companion = companionId ? findCatalogModel(companionId) : undefined;
-		if (companion) {
-			const drafterEntry = manifest.files.dflash.find(
-				(entry) => entry.path === companion.ggufFile,
-			);
-			if (!drafterEntry) {
-				throw new Error(
-					`[local-inference] Bundle missing DFlash companion ${companion.ggufFile}`,
-				);
-			}
-			const drafterFile = downloaded.get(drafterEntry.path);
-			if (!drafterFile) {
-				throw new Error(
-					`[local-inference] Bundle did not install DFlash companion ${drafterEntry.path}`,
-				);
-			}
-			await upsertElizaModel({
-				id: companion.id,
-				displayName: companion.displayName,
-				path: drafterFile.path,
-				sizeBytes: drafterFile.sizeBytes,
-				hfRepo: companion.hfRepo,
-				installedAt: now,
-				lastUsedAt: null,
-				source: "eliza-download",
-				sha256: drafterFile.sha256,
-				lastVerifiedAt: now,
-				runtimeRole: "dflash-drafter",
-				companionFor: catalogEntry.id,
-				...bundleMeta,
-			});
-		}
 
 		// An empty default slot is filled only after the on-device verify pass
 		// succeeds. Without a verify hook the bundle is installed and visible,

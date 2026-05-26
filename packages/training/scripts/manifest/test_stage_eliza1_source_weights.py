@@ -30,7 +30,7 @@ def _args(tmp_path: Path, tier: str) -> argparse.Namespace:
     )
 
 
-def test_lite_tiers_are_source_only_and_keep_dflash_missing(
+def test_lite_tiers_are_source_only_and_keep_mtp_missing(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -40,9 +40,9 @@ def test_lite_tiers_are_source_only_and_keep_dflash_missing(
 
     kinds = [f["kind"] for f in report["files"]]
     assert "text" in kinds
-    assert "dflash" not in kinds
+    assert "mtp" not in kinds
     assert "unsloth/Qwen3.5-0.8B-GGUF" in report["sources"]
-    assert any("No upstream DFlash drafter" in b for b in report["blockers"])
+    assert any("No upstream MTP drafter" in b for b in report["blockers"])
 
 
 def test_mobile_tier_uses_qwen35_2b_source(
@@ -55,10 +55,10 @@ def test_mobile_tier_uses_qwen35_2b_source(
 
     assert "unsloth/Qwen3.5-2B-GGUF" in report["sources"]
     assert stage.DRAFTER_SOURCES["2b"] is None
-    assert any("No upstream DFlash drafter" in b for b in report["blockers"])
+    assert any("No upstream MTP drafter" in b for b in report["blockers"])
 
 
-def test_4b_tier_records_text_dflash_and_vision_sources(
+def test_4b_tier_records_text_mtp_and_vision_sources(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -66,9 +66,9 @@ def test_4b_tier_records_text_dflash_and_vision_sources(
 
     report = stage.stage_sources(_args(tmp_path, "4b"))
 
-    assert [f["kind"] for f in report["files"]] == ["text", "dflash", "vision"]
+    assert [f["kind"] for f in report["files"]] == ["text", "mtp", "vision"]
     assert "unsloth/Qwen3.5-4B-GGUF" in report["sources"]
-    assert "z-lab/Qwen3.5-4B-DFlash" in report["sources"]
+    assert "z-lab/Qwen3.5-4B-MTP" in report["sources"]
     assert any("not a final GGUF" in b for b in report["blockers"])
     assert all("final Eliza-1" not in f["destination"] for f in report["files"])
 
@@ -82,7 +82,7 @@ def test_stage_sources_accepts_large_active_tier(
     report = stage.stage_sources(_args(tmp_path, "27b"))
 
     assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]
-    assert "spiritbuun/Qwen3.6-27B-DFlash-GGUF" in report["sources"]
+    assert "spiritbuun/Qwen3.6-27B-MTP-GGUF" in report["sources"]
 
 
 def test_27b_class_tiers_use_qwen36_source(
@@ -95,27 +95,27 @@ def test_27b_class_tiers_use_qwen36_source(
     report = stage.stage_sources(_args(tmp_path, tier))
 
     assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]
-    assert "spiritbuun/Qwen3.6-27B-DFlash-GGUF" in report["sources"]
+    assert "spiritbuun/Qwen3.6-27B-MTP-GGUF" in report["sources"]
     assert all(
         "Qwen3.5-27B" not in f["repo"]
         for f in report["files"]
-        if f["kind"] in {"text", "dflash", "vision"}
+        if f["kind"] in {"text", "mtp", "vision"}
     )
-    drafter_files = [f for f in report["files"] if f["kind"] == "dflash"]
+    drafter_files = [f for f in report["files"] if f["kind"] == "mtp"]
     assert drafter_files == [
         {
-            "kind": "dflash",
-            "repo": "spiritbuun/Qwen3.6-27B-DFlash-GGUF",
-            "filename": "dflash-draft-3.6-q8_0.gguf",
-            "destination": f"source/dflash/qwen3.6-{tier}-dflash-q8_0.gguf",
+            "kind": "mtp",
+            "repo": "spiritbuun/Qwen3.6-27B-MTP-GGUF",
+            "filename": "mtp-draft-3.6-q8_0.gguf",
+            "destination": f"source/mtp/qwen3.6-{tier}-mtp-q8_0.gguf",
             "license": "mit",
             "status": "source-gguf",
             "notes": tuple(stage.DRAFTER_SOURCES[tier].notes),
-            "revision": "sha-spiritbuun/Qwen3.6-27B-DFlash-GGUF",
+            "revision": "sha-spiritbuun/Qwen3.6-27B-MTP-GGUF",
             "path": str(
                 tmp_path
                 / f"eliza-1-{tier}.bundle"
-                / f"source/dflash/qwen3.6-{tier}-dflash-q8_0.gguf"
+                / f"source/mtp/qwen3.6-{tier}-mtp-q8_0.gguf"
             ),
             "dryRun": True,
         }
@@ -123,23 +123,23 @@ def test_27b_class_tiers_use_qwen36_source(
     assert any("acceptance against the Eliza-1 text checkpoint" in b for b in report["blockers"])
 
 
-def test_known_dflash_sources_are_wired_without_faking_small_tiers() -> None:
+def test_known_mtp_sources_are_wired_without_faking_small_tiers() -> None:
     assert stage.DRAFTER_SOURCES["0_8b"] is None
     assert stage.DRAFTER_SOURCES["2b"] is None
 
-    assert stage.DRAFTER_SOURCES["4b"].repo == "z-lab/Qwen3.5-4B-DFlash"
+    assert stage.DRAFTER_SOURCES["4b"].repo == "z-lab/Qwen3.5-4B-MTP"
     assert stage.DRAFTER_SOURCES["4b"].filename == "model.safetensors"
     assert stage.DRAFTER_SOURCES["4b"].license == "mit"
 
-    assert stage.DRAFTER_SOURCES["9b"].repo == "z-lab/Qwen3.5-9B-DFlash"
+    assert stage.DRAFTER_SOURCES["9b"].repo == "z-lab/Qwen3.5-9B-MTP"
     assert stage.DRAFTER_SOURCES["9b"].filename == "model.safetensors"
     assert stage.DRAFTER_SOURCES["9b"].license == "mit"
 
     for tier in ("27b",):
         artifact = stage.DRAFTER_SOURCES[tier]
         assert artifact is not None
-        assert artifact.repo == "spiritbuun/Qwen3.6-27B-DFlash-GGUF"
-        assert artifact.filename == "dflash-draft-3.6-q8_0.gguf"
+        assert artifact.repo == "spiritbuun/Qwen3.6-27B-MTP-GGUF"
+        assert artifact.filename == "mtp-draft-3.6-q8_0.gguf"
         assert artifact.status == "source-gguf"
 
 

@@ -28,7 +28,7 @@ task-oriented front door on top of it.
 | `SSH_PUBKEY` | any vast provisioning | path to your ssh pubkey; default `~/.ssh/id_ed25519.pub` (or `--ssh-pubkey`) |
 | `HF_TOKEN` / `HUGGING_FACE_HUB_TOKEN` | `--task train` (gated dataset/model repos) | forwarded by `train_vast.sh` |
 | `NEBIUS_*` | `--task train --provider nebius` (fallback) | see `../train_nebius.sh` |
-| `ELIZA_DFLASH_SMOKE_MODEL` | `--task kernel-verify` graph smoke (optional) | path to a smoke GGUF; without it the runner does fixture-parity only and the emitted JSON is `passRecordable: false` (NOT a runtime-ready record) |
+| `ELIZA_MTP_SMOKE_MODEL` | `--task kernel-verify` graph smoke (optional) | path to a smoke GGUF; without it the runner does fixture-parity only and the emitted JSON is `passRecordable: false` (NOT a runtime-ready record) |
 
 ## Literal invocations
 

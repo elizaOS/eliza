@@ -2,7 +2,7 @@ import type http from "node:http";
 import { logger } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
-  normalizeOnboardingProviderId,
+  normalizeFirstRunProviderId,
   PostProviderSwitchRequestSchema,
 } from "@elizaos/shared";
 import type { SecretsManager } from "@elizaos/vault";
@@ -14,7 +14,7 @@ import {
   type RuntimeOperationManager,
 } from "../runtime/operations/index.ts";
 import {
-  applyOnboardingConnectionConfig,
+  applyFirstRunConnectionConfig,
   createProviderSwitchConnection,
 } from "./provider-switch-config.ts";
 
@@ -81,7 +81,7 @@ export async function handleProviderSwitchRoutes(
     const body = parsed.data;
     const useLocalEmbeddings = body.useLocalEmbeddings;
 
-    const normalizedProvider = normalizeOnboardingProviderId(body.provider);
+    const normalizedProvider = normalizeFirstRunProviderId(body.provider);
     if (!normalizedProvider) {
       error(res, "Invalid provider", 400);
       return true;
@@ -155,7 +155,7 @@ export async function handleProviderSwitchRoutes(
             process.env.OPENAI_API_KEY = trimmedApiKey;
           }
 
-          await applyOnboardingConnectionConfig(
+          await applyFirstRunConnectionConfig(
             config,
             connection,
             useLocalEmbeddings === undefined ? {} : { useLocalEmbeddings },

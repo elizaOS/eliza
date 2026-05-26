@@ -3,7 +3,7 @@
  *
  * Each bundle lives at `~/.eliza/local-inference/models/eliza-1-<size>.bundle/`
  * with a `manifest.json` describing release state, the embedded GGUF weights,
- * and the optional DFlash drafter. The benchmark aggregator uses this to label
+ * and the optional MTP drafter. The benchmark aggregator uses this to label
  * runs that exercise non-final ("local-standin") bundles via the `preRelease`
  * field already present on `RunMetrics` / `Report` (see `metrics-schema.ts`).
  *
@@ -49,7 +49,7 @@ export interface ElizaOneBundleManifest {
   final: { weights: boolean };
   /** Absolute filesystem path to the .gguf inside the bundle. */
   weightsPath: string;
-  /** Absolute filesystem path to the DFlash drafter, if present. */
+  /** Absolute filesystem path to the MTP drafter, if present. */
   draftersPath?: string;
   sha256: string;
 }

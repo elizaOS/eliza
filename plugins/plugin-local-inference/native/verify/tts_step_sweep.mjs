@@ -99,7 +99,7 @@ function libName() {
 
 function discoverEngine(backend, explicitBinDir) {
   if (explicitBinDir) return validateEngineDir(explicitBinDir);
-  const root = path.join(stateRoot(), "local-inference", "bin", "dflash");
+  const root = path.join(stateRoot(), "local-inference", "bin", "mtp");
   const plat = platformTag();
   const prefer = `${plat}-${backend}-fused`;
   const dirs = fs.existsSync(root)
@@ -135,7 +135,7 @@ function firstExisting(...candidates) {
 
 function bundleFiles(bundleDir) {
   const textDir = path.join(bundleDir, "text");
-  const dflashDir = path.join(bundleDir, "dflash");
+  const mtpDir = path.join(bundleDir, "mtp");
   const ttsDir = path.join(bundleDir, "tts");
   const asrDir = path.join(bundleDir, "asr");
   const ttsGgufs = fs.readdirSync(ttsDir).filter((f) => f.endsWith(".gguf"));
@@ -149,9 +149,9 @@ function bundleFiles(bundleDir) {
     ),
     drafter: firstExisting(
       ...fs
-        .readdirSync(dflashDir)
+        .readdirSync(mtpDir)
         .filter((f) => f.endsWith(".gguf"))
-        .map((f) => path.join(dflashDir, f)),
+        .map((f) => path.join(mtpDir, f)),
     ),
     ttsModel: path.join(
       ttsDir,
@@ -421,7 +421,7 @@ async function main() {
       DYLD_LIBRARY_PATH: `${engine.dir}${path.delimiter}${process.env.DYLD_LIBRARY_PATH || ""}`,
       ELIZA_OMNIVOICE_MODEL: files.ttsModel,
       ELIZA_OMNIVOICE_CODEC: files.ttsCodec,
-      ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT: "1",
+      ELIZA_MTP_SKIP_SERVER_STRUCTURED_OUTPUT: "1",
     };
     if (args.ggmlBackend) env.GGML_BACKEND = args.ggmlBackend;
     const serverArgs = [
@@ -430,7 +430,7 @@ async function main() {
       "-md",
       files.drafter,
       "--spec-type",
-      "dflash",
+      "mtp",
       "--spec-draft-n-min",
       "2",
       "--spec-draft-n-max",

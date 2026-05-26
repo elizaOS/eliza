@@ -73,6 +73,36 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 }
 
 describe("manifest evals — dflash bench slot", () => {
+	it("accepts the staged 0.8B bundle shape with DFlash metadata", () => {
+		const m = baseManifest("0_8b");
+		m.version = "1.0.0-weights-staged.2";
+		m.defaultEligible = false;
+		m.ramBudgetMb = { min: 2500, recommended: 3700 };
+		m.evals = {
+			...m.evals,
+			asrWer: { wer: 1.4444, passed: false },
+			expressive: {
+				tagFaithfulness: 0,
+				mosExpressive: 0,
+				tagLeakage: 1,
+				passed: false,
+			},
+			dflash: { acceptanceRate: 0.5, speedup: null, passed: false },
+		};
+		m.voice = {
+			version: "1",
+			frozen: true,
+			cache: {
+				speakerPreset: "cache/voice-preset-default.bin",
+				phraseCacheSeed: "cache/voice-preset-default.bin",
+			},
+			capabilities: ["tts", "emotion-tags", "singing"],
+		};
+
+		const result = validateManifest(m);
+		expect(result.ok).toBe(true);
+	});
+
 	it("accepts a non-default manifest with no dflash eval", () => {
 		const m = baseManifest();
 		m.defaultEligible = false;

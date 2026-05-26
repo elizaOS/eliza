@@ -41,6 +41,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 
 import type {
 	LlmCtxHandle,
@@ -280,10 +281,7 @@ interface VisionShimSymbols {
 export function resolveDesktopBinDir(
 	env: NodeJS.ProcessEnv = process.env,
 ): string {
-	const stateDir =
-		env.ELIZA_STATE_DIR ??
-		env.ELIZA_STATE_DIR ??
-		path.join(os.homedir(), ".eliza");
+	const stateDir = env.ELIZA_STATE_DIR ?? resolveStateDir(env);
 	const platform =
 		process.platform === "darwin"
 			? "darwin"
@@ -779,6 +777,10 @@ export class DesktopLlamaAdapter {
 			const mem = this.llama.llama_get_memory(ctx);
 			this.llama.llama_memory_clear(mem, true);
 		}
+		// llama.cpp MTP + mtmd/mmproj is still a moving target. Keep the
+		// vision ctx target-only so image embeddings cannot inherit a drafter
+		// attached by a previous text session on the same pooled ctx.
+		this.detachDrafterFromCtx(0);
 
 		// Reference args explicitly so unused-warnings stay quiet on the
 		// stub. Once the JS-side RGB decode + embedding-batch shim wrapper

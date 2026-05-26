@@ -45,7 +45,7 @@ function requiredModelIds(
   catalog: Map<string, CatalogModel>,
 ): string[] {
   const model = catalog.get(assignedModelId);
-  return [assignedModelId, ...(model?.companionModelIds ?? [])];
+  return model ? [assignedModelId] : [assignedModelId];
 }
 
 function statusFromJobs(

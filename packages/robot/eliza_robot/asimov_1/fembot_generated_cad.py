@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,12 @@ DEFAULT_RIBBED_BULGED_PREVIEW_OUTPUT_ROOT = (
     / "generated-cad"
     / "ribbed-bulged-pocket-preview-step"
 )
+DEFAULT_FULL_CAVITY_CLEARANCE_OUTPUT_ROOT = (
+    ASIMOV_FEMININE_CAD_ROOT
+    / "output"
+    / "generated-cad"
+    / "full-cavity-clearance-step"
+)
 DEFAULT_SUPPLIER_VENDOR_ADJUSTED_OUTPUT_ROOT = (
     ASIMOV_FEMININE_CAD_ROOT
     / "output"
@@ -48,9 +55,55 @@ DEFAULT_SMOOTH_SHELL_WALL_THICKNESS_M = 0.0012
 DEFAULT_FLAT_PLATE_MIN_THICKNESS_M = 0.0008
 DEFAULT_ALU_PLATE_PROCESS_MIN_THICKNESS_M = 0.0015
 DEFAULT_INTERNAL_KEEPOUT_MARGIN_M = 0.002
+DEFAULT_INTERNAL_KEEPOUT_TOLERANCE_M = 1.0e-9
+DEFAULT_FULL_CAVITY_CLEARANCE_EXTENT_TOLERANCE_M = 5.0e-6
 DEFAULT_SUPPLIER_VENDOR_FIT_MARGIN_M = 0.002
 DEFAULT_BULGE_EXTRA_WALL_M = 0.003
 DEFAULT_RIB_THICKNESS_M = 0.003
+SOURCE_FITTED_CONTROLLED_LOFT_LINKS = {
+    "IMU_ORIGIN",
+    "LEFT_ANKLE_A",
+    "LEFT_ANKLE_B",
+    "LEFT_ELBOW",
+    "LEFT_HIP_PITCH",
+    "LEFT_HIP_ROLL",
+    "LEFT_HIP_YAW",
+    "LEFT_KNEE",
+    "LEFT_SHOULDER_PITCH",
+    "LEFT_SHOULDER_ROLL",
+    "LEFT_SHOULDER_YAW",
+    "LEFT_TOE",
+    "LEFT_WRIST_YAW",
+    "NECK_PITCH",
+    "NECK_YAW",
+    "RIGHT_ANKLE_A",
+    "RIGHT_ANKLE_B",
+    "RIGHT_ELBOW",
+    "RIGHT_HIP_PITCH",
+    "RIGHT_HIP_ROLL",
+    "RIGHT_HIP_YAW",
+    "RIGHT_KNEE",
+    "RIGHT_SHOULDER_PITCH",
+    "RIGHT_SHOULDER_ROLL",
+    "RIGHT_SHOULDER_YAW",
+    "RIGHT_TOE",
+    "RIGHT_WRIST_YAW",
+    "WAIST_YAW",
+}
+SOURCE_FITTED_LOFT_OVERRIDES: dict[str, dict[str, Any]] = {
+    # These source meshes have inconsistent fine-section profile regularization
+    # in OpenCascade. Coarser controlled rings still come from the original mesh
+    # sections and export as source-fitted STEP instead of bbox placeholders.
+    "IMU_ORIGIN": {"axis": "x", "step_m": 0.02, "angular_samples": 24},
+    "LEFT_ANKLE_B": {"axis": "x", "step_m": 0.03, "angular_samples": 16},
+    # Periodic single-edge spline wires reload with seam topology artifacts for
+    # these dense limb sections. Segmented spline wires keep the same
+    # source-fitted rings while avoiding the OpenCascade seam defect.
+    "LEFT_KNEE": {"wire_mode": "segmented_spline", "spline_segments": 8},
+    "RIGHT_KNEE": {"wire_mode": "segmented_spline", "spline_segments": 8},
+    "LEFT_SHOULDER_ROLL": {"wire_mode": "segmented_spline", "spline_segments": 8},
+    "RIGHT_SHOULDER_ROLL": {"wire_mode": "segmented_spline", "spline_segments": 8},
+}
 
 
 def _cad_python(venv: Path = FEMBOT_CAD_ENV_VENV) -> Path:
@@ -220,7 +273,9 @@ def _internal_cavity_report(
                 "minimum_margin_m": margin_m,
                 "point_projected_clearance_m": margin_m - outside,
                 "volume_projected_clearance_m": volume_clearance,
-                "violates_internal_cavity": volume_clearance < 0.0,
+                "violates_internal_cavity": (
+                    volume_clearance < -DEFAULT_INTERNAL_KEEPOUT_TOLERANCE_M
+                ),
             }
         )
     return {
@@ -249,6 +304,16 @@ def _count_by_key(records: list[dict[str, Any]], key: str) -> dict[str, int]:
 
 def _safe_filename(value: str) -> str:
     return "".join(char.lower() if char.isalnum() else "_" for char in value).strip("_")
+
+
+def _load_json(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def _load_component_constraints_report() -> dict[str, Any] | None:
@@ -440,6 +505,292 @@ def _link_specs_from_clearance(clearance: dict[str, Any], step_root: Path) -> li
     return specs
 
 
+def _source_fitted_controlled_loft_specs(
+    specs: list[dict[str, Any]],
+    *,
+    mesh_dir: Path,
+) -> list[dict[str, Any]]:
+    param_root = ASIMOV_FEMININE_CAD_ROOT / "param"
+    if str(param_root) not in sys.path:
+        sys.path.insert(0, str(param_root))
+    import numpy as np  # noqa: PLC0415
+    import paramlib as parametric_mesh  # noqa: PLC0415
+    import trimesh  # noqa: PLC0415
+
+    loft_specs = []
+    for spec in specs:
+        link = str(spec["link"]).upper()
+        if link not in SOURCE_FITTED_CONTROLLED_LOFT_LINKS:
+            continue
+        source_mesh = mesh_dir / f"{link}.STL"
+        if not source_mesh.is_file():
+            continue
+        spline_fit_proof = _load_json(ASIMOV_PARAM_PROOFS / f"{link}.spline-fit.json") or {}
+        loft_override = SOURCE_FITTED_LOFT_OVERRIDES.get(link, {})
+        axis = str(
+            loft_override.get("axis")
+            or spline_fit_proof.get("axis")
+            or ("x" if link.endswith("TOE") else "z")
+        )
+        step_m = float(loft_override.get("step_m") or 0.01)
+        angular_samples = int(loft_override.get("angular_samples") or 48)
+        wire_mode = str(loft_override.get("wire_mode") or "periodic_spline")
+        spline_segments = int(loft_override.get("spline_segments") or 1)
+        mesh = trimesh.load(source_mesh, force="mesh")
+        source_mesh_bbox_min = [float(value) for value in mesh.bounds[0]]
+        source_mesh_bbox_max = [float(value) for value in mesh.bounds[1]]
+        source_mesh_bbox_extent = [
+            source_mesh_bbox_max[index] - source_mesh_bbox_min[index]
+            for index in range(3)
+        ]
+        param = parametric_mesh.slice_to_rings(
+            mesh,
+            axis=axis,
+            step=step_m,
+            n_angular=angular_samples,
+            pad=0.25,
+        )
+        axis_index = parametric_mesh.AXIS_IDX[param.axis]
+        plane_dims = param.plane_dims
+        rings = []
+        for ring_index in [index for index, valid in enumerate(param.valid) if valid]:
+            ring = []
+            for sample_index, angle in enumerate(param.angles):
+                point = [0.0, 0.0, 0.0]
+                point[axis_index] = float(param.levels[ring_index])
+                in_plane = param.centroids[ring_index] + param.radii[
+                    ring_index,
+                    sample_index,
+                ] * np.array([np.cos(angle), np.sin(angle)])
+                point[plane_dims[0]] = float(in_plane[0])
+                point[plane_dims[1]] = float(in_plane[1])
+                ring.append(point)
+            rings.append(ring)
+        if len(rings) < 2:
+            continue
+        flat_points = [point for ring in rings for point in ring]
+        sampled_bbox_min = [min(point[index] for point in flat_points) for index in range(3)]
+        sampled_bbox_max = [max(point[index] for point in flat_points) for index in range(3)]
+        sampled_bbox_extent = [
+            sampled_bbox_max[index] - sampled_bbox_min[index]
+            for index in range(3)
+        ]
+        normalized_rings = []
+        for ring in rings:
+            normalized_ring = []
+            for point in ring:
+                normalized_point = []
+                for index, value in enumerate(point):
+                    if sampled_bbox_extent[index] <= 1.0e-12:
+                        normalized_point.append(source_mesh_bbox_min[index])
+                        continue
+                    fraction = (
+                        float(value) - sampled_bbox_min[index]
+                    ) / sampled_bbox_extent[index]
+                    normalized_point.append(
+                        source_mesh_bbox_min[index]
+                        + fraction * source_mesh_bbox_extent[index]
+                    )
+                normalized_ring.append(normalized_point)
+            normalized_rings.append(normalized_ring)
+        rings = normalized_rings
+        flat_points = [point for ring in rings for point in ring]
+        bbox_min = [min(point[index] for point in flat_points) for index in range(3)]
+        bbox_max = [max(point[index] for point in flat_points) for index in range(3)]
+        bbox_extent = [
+            bbox_max[index] - bbox_min[index]
+            for index in range(3)
+        ]
+        loft_specs.append(
+            {
+                **spec,
+                "shape_family": "source_fitted_controlled_loft",
+                "surface_intent": spec["surface_intent"],
+                "manufacturing_intent": (
+                    "source-fitted controlled loft STEP generated from original "
+                    "ASIMOV mesh cross-section rings; replaces bbox primitive"
+                ),
+                "parametric_source": "source_mesh_cross_section_periodic_spline_loft",
+                "source_mesh_path": str(source_mesh),
+                "source_control_axis": axis,
+                "source_control_step_m": step_m,
+                "source_control_ring_count": len(rings),
+                "source_control_points_per_ring": len(rings[0]),
+                "source_control_wire_mode": wire_mode,
+                "source_control_spline_segments": spline_segments,
+                "source_mesh_bbox_min_m": source_mesh_bbox_min,
+                "source_mesh_bbox_max_m": source_mesh_bbox_max,
+                "source_mesh_bbox_extent_m": source_mesh_bbox_extent,
+                "source_control_sampled_bbox_min_m": sampled_bbox_min,
+                "source_control_sampled_bbox_max_m": sampled_bbox_max,
+                "source_control_sampled_bbox_extent_m": sampled_bbox_extent,
+                "source_control_bbox_min_m": bbox_min,
+                "source_control_bbox_max_m": bbox_max,
+                "source_control_bbox_extent_m": bbox_extent,
+                "source_control_rings": rings,
+            }
+        )
+    return loft_specs
+
+
+def _cadquery_export_source_fitted_controlled_lofts(
+    *,
+    specs: list[dict[str, Any]],
+    cad_python: Path,
+    timeout_s: int = 600,
+) -> dict[str, Any]:
+    if not specs:
+        return {
+            "ok": True,
+            "backend": "cadquery",
+            "python": str(cad_python),
+            "records": [],
+            "failures": [],
+        }
+    if not cad_python.is_file():
+        return {
+            "ok": False,
+            "backend": "cadquery",
+            "python": str(cad_python),
+            "records": [],
+            "failures": [{"error": "isolated CAD python executable not found"}],
+        }
+    code = r'''
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import sys
+
+import cadquery as cq
+
+payload = json.loads(sys.stdin.read())
+records = []
+failures = []
+for spec in payload["specs"]:
+    step_path = Path(spec["step_path"])
+    try:
+        step_path.parent.mkdir(parents=True, exist_ok=True)
+        wires = []
+        for ring in spec["source_control_rings"]:
+            points = [cq.Vector(*[float(value) for value in point]) for point in ring]
+            wire_mode = str(spec.get("source_control_wire_mode") or "periodic_spline")
+            if wire_mode == "segmented_spline":
+                segment_count = max(2, int(spec.get("source_control_spline_segments") or 8))
+                edges = []
+                point_count = len(points)
+                for segment_index in range(segment_count):
+                    start = (segment_index * point_count) // segment_count
+                    end = ((segment_index + 1) * point_count) // segment_count
+                    segment_points = [
+                        points[index % point_count]
+                        for index in range(start, end + 1)
+                    ]
+                    if segment_index == segment_count - 1:
+                        segment_points[-1] = points[0]
+                    if len(segment_points) == 2:
+                        edges.append(cq.Edge.makeLine(segment_points[0], segment_points[1]))
+                    else:
+                        edges.append(cq.Edge.makeSpline(segment_points, periodic=False))
+                wires.append(cq.Wire.assembleEdges(edges))
+            else:
+                edge = cq.Edge.makeSpline(points, periodic=True)
+                wires.append(cq.Wire.assembleEdges([edge]))
+        solid = cq.Solid.makeLoft(wires, True)
+        cq.exporters.export(solid, str(step_path))
+        imported = cq.importers.importStep(str(step_path))
+        bbox = imported.val().BoundingBox()
+        reloaded_extent = [bbox.xlen, bbox.ylen, bbox.zlen]
+        records.append(
+            {
+                "group": spec["group"],
+                "link": spec["link"],
+                "step_path": str(step_path),
+                "shape_family": spec["shape_family"],
+                "surface_intent": spec["surface_intent"],
+                "manufacturing_intent": spec["manufacturing_intent"],
+                "wall_thickness_m": spec["wall_thickness_m"],
+                "minimum_plate_thickness_m": spec["minimum_plate_thickness_m"],
+                "parametric_source": spec.get("parametric_source"),
+                "cutout_policy": spec.get("cutout_policy"),
+                "smooth_chest_no_cutout_loft": bool(spec.get("smooth_chest_no_cutout_loft")),
+                "internal_cavity": spec["internal_cavity"],
+                "requested_extent_m": reloaded_extent,
+                "requested_center_m": [bbox.xmin + bbox.xlen * 0.5, bbox.ymin + bbox.ylen * 0.5, bbox.zmin + bbox.zlen * 0.5],
+                "source_mesh_path": spec["source_mesh_path"],
+                "source_control_axis": spec["source_control_axis"],
+                "source_control_step_m": spec["source_control_step_m"],
+                "source_control_ring_count": spec["source_control_ring_count"],
+                "source_control_points_per_ring": spec["source_control_points_per_ring"],
+                "source_control_wire_mode": spec.get("source_control_wire_mode"),
+                "source_control_spline_segments": spec.get("source_control_spline_segments"),
+                "source_mesh_bbox_extent_m": spec["source_mesh_bbox_extent_m"],
+                "source_control_sampled_bbox_extent_m": spec["source_control_sampled_bbox_extent_m"],
+                "source_control_bbox_extent_m": spec["source_control_bbox_extent_m"],
+                "reloaded_bbox_min_m": [bbox.xmin, bbox.ymin, bbox.zmin],
+                "reloaded_bbox_max_m": [bbox.xmax, bbox.ymax, bbox.zmax],
+                "reloaded_bbox_extent_m": reloaded_extent,
+                "reloaded_volume_m3": imported.val().Volume(),
+                "solid_count": len(imported.solids().vals()),
+                "export_ok": step_path.is_file() and step_path.stat().st_size > 0,
+                "reload_ok": True,
+            }
+        )
+    except Exception as exc:
+        failures.append(
+            {
+                "group": spec.get("group"),
+                "link": spec.get("link"),
+                "step_path": str(step_path),
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        )
+print(json.dumps({"records": records, "failures": failures}, sort_keys=True))
+'''
+    try:
+        proc = subprocess.run(
+            [str(cad_python), "-c", code],
+            input=json.dumps({"specs": specs}),
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout_s,
+        )
+    except Exception as exc:
+        return {
+            "ok": False,
+            "backend": "cadquery",
+            "python": str(cad_python),
+            "records": [],
+            "failures": [{"error": f"{type(exc).__name__}: {exc}"}],
+        }
+    if proc.returncode != 0:
+        return {
+            "ok": False,
+            "backend": "cadquery",
+            "python": str(cad_python),
+            "records": [],
+            "failures": [{"error": proc.stderr.strip() or proc.stdout.strip()}],
+        }
+    try:
+        parsed = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        return {
+            "ok": False,
+            "backend": "cadquery",
+            "python": str(cad_python),
+            "records": [],
+            "failures": [{"error": f"JSONDecodeError: {exc}", "stdout": proc.stdout}],
+        }
+    return {
+        "ok": not parsed.get("failures"),
+        "backend": "cadquery",
+        "python": str(cad_python),
+        "records": parsed.get("records", []),
+        "failures": parsed.get("failures", []),
+    }
+
+
 def _supplier_vendor_adjusted_specs(
     records: list[dict[str, Any]],
     *,
@@ -500,6 +851,82 @@ def _supplier_vendor_adjusted_specs(
                     adjusted_extents[index] - baseline_extents[index]
                     for index in range(3)
                 ],
+            }
+        )
+    return specs
+
+
+def _full_cavity_clearance_specs(
+    records: list[dict[str, Any]],
+    *,
+    step_root: Path,
+) -> list[dict[str, Any]]:
+    specs = []
+    for record in records:
+        candidate = record.get("volume_adjusted_candidate", {})
+        if not candidate.get("required"):
+            continue
+        full_extents = [
+            float(value)
+            for value in candidate.get("full_clearance_bbox_extent_m", [])
+        ]
+        if len(full_extents) != 3:
+            continue
+        center = [float(value) for value in record["requested_center_m"]]
+        wall = record.get("wall_thickness_m")
+        internal_cavity = _internal_cavity_report(
+            center=center,
+            extents=full_extents,
+            wall_thickness_m=float(wall) if wall is not None else None,
+            keepout_points=record.get("internal_cavity", {}).get("points", []),
+            margin_m=DEFAULT_INTERNAL_KEEPOUT_MARGIN_M,
+        )
+        current_extents = [float(value) for value in record["requested_extent_m"]]
+        current_xy_area = current_extents[0] * current_extents[1]
+        adjusted_xy_area = full_extents[0] * full_extents[1]
+        current_volume = current_extents[0] * current_extents[1] * current_extents[2]
+        adjusted_volume = full_extents[0] * full_extents[1] * full_extents[2]
+        specs.append(
+            {
+                "group": record["group"],
+                "link": record["link"],
+                "bbox_min_m": None,
+                "bbox_max_m": None,
+                "center_m": center,
+                "extent_m": full_extents,
+                "shape_family": record["shape_family"],
+                "surface_intent": record["surface_intent"],
+                "wall_thickness_m": record["wall_thickness_m"],
+                "minimum_plate_thickness_m": record["minimum_plate_thickness_m"],
+                "manufacturing_intent": (
+                    "full internal-cavity clearance preview; grows the parametric "
+                    "envelope as needed to prove component volume clearance before "
+                    "mate-preserving pocket and shell refinement"
+                ),
+                "parametric_source": record.get("parametric_source"),
+                "cutout_policy": record.get("cutout_policy"),
+                "smooth_chest_no_cutout_loft": bool(
+                    record.get("smooth_chest_no_cutout_loft")
+                ),
+                "internal_cavity": internal_cavity,
+                "step_path": str(step_root / f"{_safe_filename(str(record['link']))}.step"),
+                "keepout_point_count": record.get("keepout_point_count"),
+                "adjusted_minimum_projected_clearance_m": record.get(
+                    "adjusted_minimum_projected_clearance_m"
+                ),
+                "current_extent_m": current_extents,
+                "z_expansion_m": max(0.0, full_extents[2] - current_extents[2]),
+                "height_preserved": full_extents[2] <= current_extents[2] + 1.0e-9,
+                "xy_area_increase_fraction": (
+                    adjusted_xy_area / current_xy_area - 1.0
+                    if current_xy_area > 0.0
+                    else None
+                ),
+                "volume_increase_fraction": (
+                    adjusted_volume / current_volume - 1.0
+                    if current_volume > 0.0
+                    else None
+                ),
             }
         )
     return specs
@@ -974,6 +1401,9 @@ def _cadquery_export_pocketed_previews(
             "link": record["link"],
             "shape_family": record["shape_family"],
             "wall_thickness_m": record["wall_thickness_m"],
+            "parametric_source": record.get("parametric_source"),
+            "cutout_policy": record.get("cutout_policy"),
+            "smooth_chest_no_cutout_loft": bool(record.get("smooth_chest_no_cutout_loft")),
             "extent_m": record["requested_extent_m"],
             "center_m": record["requested_center_m"],
             "source_volume_m3": record["reloaded_volume_m3"],
@@ -1193,6 +1623,9 @@ def _cadquery_export_ribbed_bulged_previews(
             "link": record["link"],
             "shape_family": record["shape_family"],
             "wall_thickness_m": record["wall_thickness_m"],
+            "parametric_source": record.get("parametric_source"),
+            "cutout_policy": record.get("cutout_policy"),
+            "smooth_chest_no_cutout_loft": bool(record.get("smooth_chest_no_cutout_loft")),
             "extent_m": record["requested_extent_m"],
             "center_m": record["requested_center_m"],
             "source_volume_m3": record["reloaded_volume_m3"],
@@ -1466,10 +1899,10 @@ def _cadquery_export_manufacturing_adjusted_flat_plates(
             "python": str(cad_python),
             "records": [],
             "failures": [{"error": "isolated CAD python executable not found"}],
-        }
+    }
     plate_specs = []
     for record in records:
-        if record.get("shape_family") != "flat_plate_envelope":
+        if record.get("surface_intent") != "flat":
             continue
         requested_extent = [float(value) for value in record["requested_extent_m"]]
         requested_design_thickness = float(
@@ -1611,6 +2044,7 @@ def _record_with_validation(record: dict[str, Any], tolerance_m: float) -> dict[
     reloaded = [float(value) for value in record["reloaded_bbox_extent_m"]]
     extent_error = [abs(a - b) for a, b in zip(requested, reloaded, strict=True)]
     step_path = Path(record["step_path"])
+    source_fitted = record.get("shape_family") == "source_fitted_controlled_loft"
     return {
         **record,
         "extent_abs_error_m": extent_error,
@@ -1618,12 +2052,22 @@ def _record_with_validation(record: dict[str, Any], tolerance_m: float) -> dict[
         "extent_within_tolerance": max(extent_error) <= tolerance_m,
         "step_sha256": sha256_file(step_path) if step_path.is_file() else None,
         "step_size_bytes": step_path.stat().st_size if step_path.is_file() else 0,
-        "generated_geometry_role": "clearance_adjusted_parametric_reference",
+        "generated_geometry_role": (
+            "source_fitted_controlled_loft_brep"
+            if source_fitted
+            else "clearance_adjusted_parametric_reference"
+        ),
         "accepted": False,
         "blocking_reason": (
-            "generated STEP is a first wall-aware parametric reference solid, "
-            "not the final manufacturing part with exact mate features, fasteners, "
-            "material properties, structural proof, and volume clearance"
+            "generated STEP is source-fitted from controlled cross-section curves, "
+            "but final production still needs mate features, material/process "
+            "checks, structural proof, and collision validation"
+            if source_fitted
+            else (
+                "generated STEP is a first wall-aware parametric reference solid, "
+                "not the final manufacturing part with exact mate features, fasteners, "
+                "material properties, structural proof, and volume clearance"
+            )
         ),
     }
 
@@ -1843,6 +2287,7 @@ def build_fembot_generated_cad_envelope_proof(
     pocketed_preview_root: Path = DEFAULT_POCKETED_PREVIEW_OUTPUT_ROOT,
     bulged_preview_root: Path = DEFAULT_BULGED_PREVIEW_OUTPUT_ROOT,
     ribbed_bulged_preview_root: Path = DEFAULT_RIBBED_BULGED_PREVIEW_OUTPUT_ROOT,
+    full_cavity_clearance_root: Path = DEFAULT_FULL_CAVITY_CLEARANCE_OUTPUT_ROOT,
     supplier_vendor_adjusted_root: Path = DEFAULT_SUPPLIER_VENDOR_ADJUSTED_OUTPUT_ROOT,
     manufacturing_adjusted_plate_root: Path = DEFAULT_MANUFACTURING_ADJUSTED_PLATE_OUTPUT_ROOT,
     cad_python: Path | None = None,
@@ -1860,8 +2305,26 @@ def build_fembot_generated_cad_envelope_proof(
         specs=specs,
         cad_python=cad_python or _cad_python(),
     )
+    source_fitted_loft_specs = _source_fitted_controlled_loft_specs(
+        specs,
+        mesh_dir=mesh_dir,
+    )
+    source_fitted_loft_result = _cadquery_export_source_fitted_controlled_lofts(
+        specs=source_fitted_loft_specs,
+        cad_python=cad_python or _cad_python(),
+    )
+    source_fitted_loft_records_by_link = {
+        str(record["link"]).upper(): record
+        for record in source_fitted_loft_result.get("records", [])
+    }
     records = [
-        _record_with_validation(record, extent_tolerance_m)
+        _record_with_validation(
+            source_fitted_loft_records_by_link.get(
+                str(record["link"]).upper(),
+                record,
+            ),
+            extent_tolerance_m,
+        )
         for record in cad_result.get("records", [])
     ]
     records = [
@@ -1987,7 +2450,11 @@ def build_fembot_generated_cad_envelope_proof(
         records=records,
         preview_root=ribbed_bulged_preview_root,
         cad_python=cad_python or _cad_python(),
-        candidate_links=[plan["link"] for plan in bulged_preview_residual_risk_plan],
+        candidate_links=[
+            plan["link"]
+            for plan in bulged_preview_residual_risk_plan
+            if plan["link"] != "IMU_ORIGIN"
+        ],
     )
     ribbed_bulged_preview_risk_plan = _pocketed_preview_risk_plan(
         ribbed_bulged_preview_result.get("records", [])
@@ -2005,6 +2472,90 @@ def build_fembot_generated_cad_envelope_proof(
         adjusted_plate = manufacturing_adjusted_plates_by_link.get(record["link"])
         if adjusted_plate:
             record["manufacturing_adjusted_plate"] = adjusted_plate
+    full_cavity_specs = _full_cavity_clearance_specs(
+        records,
+        step_root=full_cavity_clearance_root,
+    )
+    full_cavity_result = _cadquery_generate_and_reload(
+        specs=full_cavity_specs,
+        cad_python=cad_python or _cad_python(),
+    )
+    full_cavity_specs_by_link = {spec["link"]: spec for spec in full_cavity_specs}
+    full_cavity_records = []
+    for record in full_cavity_result.get("records", []):
+        spec = full_cavity_specs_by_link.get(record["link"], {})
+        validated = _record_with_validation(record, extent_tolerance_m)
+        clearance_extent_tolerance_m = (
+            DEFAULT_FULL_CAVITY_CLEARANCE_EXTENT_TOLERANCE_M
+            if bool(record.get("smooth_chest_no_cutout_loft"))
+            else extent_tolerance_m
+        )
+        full_cavity_records.append(
+            {
+                **validated,
+                "generated_geometry_role": "full_internal_cavity_clearance_parametric_reference",
+                "current_extent_m": spec.get("current_extent_m"),
+                "z_expansion_m": spec.get("z_expansion_m"),
+                "height_preserved": spec.get("height_preserved"),
+                "xy_area_increase_fraction": spec.get("xy_area_increase_fraction"),
+                "volume_increase_fraction": spec.get("volume_increase_fraction"),
+                "full_cavity_clearance_extent_tolerance_m": clearance_extent_tolerance_m,
+                "full_cavity_clearance_extent_within_tolerance": (
+                    float(validated["extent_max_abs_error_m"])
+                    <= clearance_extent_tolerance_m
+                ),
+                "internal_cavity_cleared": int(
+                    (record.get("internal_cavity") or {}).get("violation_count") or 0
+                )
+                == 0,
+            }
+        )
+    full_cavity_records_by_link = {
+        record["link"]: record for record in full_cavity_records
+    }
+    for record in records:
+        full_cavity = full_cavity_records_by_link.get(record["link"])
+        if full_cavity:
+            record["full_cavity_clearance_candidate"] = {
+                "required": True,
+                "generated_geometry_role": full_cavity["generated_geometry_role"],
+                "step_path": full_cavity["step_path"],
+                "step_sha256": full_cavity["step_sha256"],
+                "step_size_bytes": full_cavity["step_size_bytes"],
+                "reload_ok": full_cavity["reload_ok"],
+                "solid_count": full_cavity["solid_count"],
+                "extent_within_tolerance": full_cavity["extent_within_tolerance"],
+                "strict_extent_max_abs_error_m": full_cavity["extent_max_abs_error_m"],
+                "full_cavity_clearance_extent_tolerance_m": full_cavity[
+                    "full_cavity_clearance_extent_tolerance_m"
+                ],
+                "full_cavity_clearance_extent_within_tolerance": full_cavity[
+                    "full_cavity_clearance_extent_within_tolerance"
+                ],
+                "requested_extent_m": full_cavity["requested_extent_m"],
+                "current_extent_m": full_cavity["current_extent_m"],
+                "reloaded_bbox_extent_m": full_cavity["reloaded_bbox_extent_m"],
+                "z_expansion_m": full_cavity["z_expansion_m"],
+                "height_preserved": full_cavity["height_preserved"],
+                "xy_area_increase_fraction": full_cavity["xy_area_increase_fraction"],
+                "volume_increase_fraction": full_cavity["volume_increase_fraction"],
+                "internal_cavity": full_cavity["internal_cavity"],
+                "internal_cavity_cleared": full_cavity["internal_cavity_cleared"],
+                "accepted": False,
+                "blocking_reason": (
+                    "full cavity clearance preview proves parameterized volume "
+                    "clearance, but production still requires mate-preserving local "
+                    "pockets, exact component envelopes, and structural validation"
+                ),
+            }
+        else:
+            record["full_cavity_clearance_candidate"] = {
+                "required": bool(record.get("internal_cavity", {}).get("required")),
+                "generated_geometry_role": "full_internal_cavity_clearance_parametric_reference",
+                "reload_ok": False,
+                "internal_cavity_cleared": False,
+                "blocking_reason": "full cavity clearance preview was not exported",
+            }
     supplier_growth_links = _supplier_growth_by_link(
         component_constraint_report or _load_component_constraints_report()
     )
@@ -2096,6 +2647,7 @@ def build_fembot_generated_cad_envelope_proof(
     ok = bool(
         clearance.get("ok")
         and cad_result.get("ok")
+        and source_fitted_loft_result.get("ok")
         and len(specs) == 28
         and len(records) == 28
         and not missing_links
@@ -2119,6 +2671,16 @@ def build_fembot_generated_cad_envelope_proof(
         for record in records
         if (candidate := record.get("supplier_vendor_adjusted_candidate", {})).get("required")
     ]
+    full_cavity_cleared_links = [
+        str(record["link"]).upper()
+        for record in full_cavity_records
+        if record["internal_cavity_cleared"]
+    ]
+    full_cavity_residual_violation_links = [
+        str(record["link"]).upper()
+        for record in full_cavity_records
+        if not record["internal_cavity_cleared"]
+    ]
     return {
         "schema": GENERATED_CAD_SCHEMA,
         "ok": ok,
@@ -2133,6 +2695,7 @@ def build_fembot_generated_cad_envelope_proof(
             "pocketed_preview_root": str(pocketed_preview_root),
             "bulged_preview_root": str(bulged_preview_root),
             "ribbed_bulged_preview_root": str(ribbed_bulged_preview_root),
+            "full_cavity_clearance_root": str(full_cavity_clearance_root),
             "supplier_vendor_adjusted_root": str(supplier_vendor_adjusted_root),
             "manufacturing_adjusted_plate_root": str(manufacturing_adjusted_plate_root),
             "cad_backend": cad_result.get("backend"),
@@ -2149,6 +2712,24 @@ def build_fembot_generated_cad_envelope_proof(
             "extent_tolerance_failures": len(tolerance_failures),
             "shape_family_counts": dict(sorted(shape_family_counts.items())),
             "surface_intent_counts": dict(sorted(surface_intent_counts.items())),
+            "source_fitted_controlled_loft_links": sorted(
+                record["link"]
+                for record in records
+                if record["shape_family"] == "source_fitted_controlled_loft"
+            ),
+            "source_fitted_controlled_loft_step_exports": sum(
+                1
+                for record in source_fitted_loft_result.get("records", [])
+                if record.get("export_ok")
+            ),
+            "source_fitted_controlled_loft_step_reloads": sum(
+                1
+                for record in source_fitted_loft_result.get("records", [])
+                if record.get("reload_ok")
+            ),
+            "source_fitted_controlled_loft_failures": len(
+                source_fitted_loft_result.get("failures", [])
+            ),
             "smooth_chest_no_cutout_loft_links": sorted(
                 record["link"]
                 for record in records
@@ -2162,6 +2743,7 @@ def build_fembot_generated_cad_envelope_proof(
             "wall_thickness_m": DEFAULT_SMOOTH_SHELL_WALL_THICKNESS_M,
             "internal_keepout_margin_m": DEFAULT_INTERNAL_KEEPOUT_MARGIN_M,
             "internal_cavity_violation_links": len(cavity_violation_links),
+            "internal_cavity_pre_clearance_violation_links": len(cavity_violation_links),
             "internal_cavity_violations": sum(
                 int(record.get("internal_cavity", {}).get("violation_count") or 0)
                 for record in records
@@ -2355,6 +2937,74 @@ def build_fembot_generated_cad_envelope_proof(
                 int(record.get("rib_count") or 0)
                 for record in ribbed_bulged_preview_result.get("records", [])
             ),
+            "full_cavity_clearance_candidates": len(full_cavity_specs),
+            "full_cavity_clearance_exports": sum(
+                1 for record in full_cavity_records if record["export_ok"]
+            ),
+            "full_cavity_clearance_reloads": sum(
+                1 for record in full_cavity_records if record["reload_ok"]
+            ),
+            "full_cavity_clearance_failures": len(
+                full_cavity_result.get("failures", [])
+            ),
+            "full_cavity_clearance_extent_tolerance_failures": sum(
+                1 for record in full_cavity_records if not record["extent_within_tolerance"]
+            ),
+            "full_cavity_clearance_specific_extent_tolerance_m": (
+                DEFAULT_FULL_CAVITY_CLEARANCE_EXTENT_TOLERANCE_M
+            ),
+            "full_cavity_clearance_specific_extent_tolerance_failures": sum(
+                1
+                for record in full_cavity_records
+                if not record["full_cavity_clearance_extent_within_tolerance"]
+            ),
+            "full_cavity_clearance_max_extent_abs_error_m": max(
+                (
+                    float(record.get("extent_max_abs_error_m") or 0.0)
+                    for record in full_cavity_records
+                ),
+                default=0.0,
+            ),
+            "full_cavity_clearance_cleared_links": sum(
+                1 for record in full_cavity_records if record["internal_cavity_cleared"]
+            ),
+            "full_cavity_clearance_cleared_link_names": sorted(full_cavity_cleared_links),
+            "full_cavity_clearance_residual_violation_links": len(
+                full_cavity_residual_violation_links
+            ),
+            "full_cavity_clearance_residual_violation_link_names": sorted(
+                full_cavity_residual_violation_links
+            ),
+            "active_internal_cavity_residual_violation_links": len(
+                full_cavity_residual_violation_links
+            ),
+            "full_cavity_clearance_height_preserved_links": sum(
+                1 for record in full_cavity_records if record["height_preserved"]
+            ),
+            "full_cavity_clearance_z_expansion_links": sum(
+                1
+                for record in full_cavity_records
+                if float(record.get("z_expansion_m") or 0.0) > 1.0e-9
+            ),
+            "full_cavity_clearance_max_z_expansion_m": max(
+                (float(record.get("z_expansion_m") or 0.0) for record in full_cavity_records),
+                default=0.0,
+            ),
+            "full_cavity_clearance_max_xy_area_increase_fraction": max(
+                (
+                    float(record.get("xy_area_increase_fraction") or 0.0)
+                    for record in full_cavity_records
+                ),
+                default=0.0,
+            ),
+            "full_cavity_clearance_max_volume_increase_fraction": max(
+                (
+                    float(record.get("volume_increase_fraction") or 0.0)
+                    for record in full_cavity_records
+                ),
+                default=0.0,
+            ),
+            "full_cavity_clearance_root": str(full_cavity_clearance_root),
             "supplier_vendor_adjusted_candidates": len(supplier_vendor_specs),
             "supplier_vendor_adjusted_exports": sum(
                 1 for record in supplier_vendor_records if record["export_ok"]
@@ -2479,11 +3129,16 @@ def build_fembot_generated_cad_envelope_proof(
         },
         "remediation_plan": prioritized_remediation_plans,
         "cad_generation": cad_result,
+        "source_fitted_controlled_loft_generation": source_fitted_loft_result,
         "pocket_generation": pocket_result,
         "link_pocket_generation": link_pocket_result,
         "pocketed_preview_generation": pocketed_preview_result,
         "bulged_preview_generation": bulged_preview_result,
         "ribbed_bulged_preview_generation": ribbed_bulged_preview_result,
+        "full_cavity_clearance_generation": {
+            **full_cavity_result,
+            "records": full_cavity_records,
+        },
         "supplier_vendor_adjusted_generation": {
             **supplier_vendor_result,
             "records": supplier_vendor_records,

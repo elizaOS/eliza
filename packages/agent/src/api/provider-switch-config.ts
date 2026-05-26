@@ -9,21 +9,21 @@ import {
   asRecord,
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
-  deriveOnboardingCredentialPersistencePlan,
-  getOnboardingProviderOption,
-  getOnboardingProviderSignalEnvKeys,
-  getStoredOnboardingProviderId,
+  deriveFirstRunCredentialPersistencePlan,
+  type FirstRunConnection,
+  type FirstRunCredentialInputs,
+  type FirstRunLlmPersistenceSelection,
+  type FirstRunLocalProviderId,
+  getFirstRunProviderOption,
+  getFirstRunProviderSignalEnvKeys,
+  getStoredFirstRunProviderId,
   getStoredSubscriptionProvider,
   migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
-  normalizeOnboardingCredentialInputs,
-  normalizeOnboardingProviderId,
+  normalizeFirstRunCredentialInputs,
+  normalizeFirstRunProviderId,
   normalizeServiceRoutingConfig,
   normalizeSubscriptionProviderSelectionId,
-  type OnboardingConnection,
-  type OnboardingCredentialInputs,
-  type OnboardingLlmPersistenceSelection,
-  type OnboardingLocalProviderId,
   requiresAdditionalRuntimeProvider,
 } from "@elizaos/shared";
 import {
@@ -162,7 +162,7 @@ function persistServiceRouting(
   }
 }
 
-export function applyCanonicalOnboardingConfig(
+export function applyCanonicalFirstRunConfig(
   config: MutableElizaConfig,
   args: {
     deploymentTarget?: DeploymentTargetConfig | null;
@@ -309,7 +309,7 @@ function persistLinkedCloudApiKey(
   cloud.apiKey = normalizedApiKey;
   process.env.ELIZAOS_CLOUD_API_KEY = normalizedApiKey;
 
-  applyCanonicalOnboardingConfig(config, {
+  applyCanonicalFirstRunConfig(config, {
     linkedAccounts: {
       elizacloud: {
         status: "linked",
@@ -322,12 +322,12 @@ function persistLinkedCloudApiKey(
 function applyLocalProviderCapabilities(
   config: MutableElizaConfig,
   selection: {
-    backend: OnboardingLocalProviderId;
+    backend: FirstRunLocalProviderId;
     apiKey?: string;
     primaryModel?: string;
   },
 ): Promise<void> {
-  const normalizedProvider = normalizeOnboardingProviderId(selection.backend);
+  const normalizedProvider = normalizeFirstRunProviderId(selection.backend);
   if (!normalizedProvider || normalizedProvider === "elizacloud") {
     return Promise.resolve();
   }
@@ -338,7 +338,7 @@ function applyLocalProviderCapabilities(
 
   clearSubscriptionProviderConfig(config);
 
-  const storedProviderId = getStoredOnboardingProviderId(normalizedProvider);
+  const storedProviderId = getStoredFirstRunProviderId(normalizedProvider);
   if (
     storedProviderId &&
     normalizeSubscriptionProviderSelectionId(storedProviderId)
@@ -363,16 +363,14 @@ function applyLocalProviderCapabilities(
     return applySubscriptionCredentials(config);
   }
 
-  const providerOption = getOnboardingProviderOption(normalizedProvider);
+  const providerOption = getFirstRunProviderOption(normalizedProvider);
   if (providerOption?.envKey) {
     const apiKey = trimToUndefined(selection.apiKey);
     if (apiKey) {
       setEnvValue(config, providerOption.envKey, apiKey);
     }
   } else {
-    for (const envKey of getOnboardingProviderSignalEnvKeys(
-      normalizedProvider,
-    )) {
+    for (const envKey of getFirstRunProviderSignalEnvKeys(normalizedProvider)) {
       const value = trimToUndefined(selection.apiKey);
       if (value) {
         setEnvValue(config, envKey, value);
@@ -510,9 +508,9 @@ function applyDefaultModelNames(
   }
 }
 
-function toOnboardingConnectionFromSelection(
-  selection: OnboardingLlmPersistenceSelection,
-): OnboardingConnection | null {
+function toFirstRunConnectionFromSelection(
+  selection: FirstRunLlmPersistenceSelection,
+): FirstRunConnection | null {
   if (selection.transport === "cloud-proxy") {
     return {
       kind: "cloud-managed",
@@ -564,7 +562,7 @@ function toOnboardingConnectionFromSelection(
     };
   }
 
-  const normalizedProvider = normalizeOnboardingProviderId(selection.backend);
+  const normalizedProvider = normalizeFirstRunProviderId(selection.backend);
   if (!normalizedProvider || normalizedProvider === "elizacloud") {
     return null;
   }
@@ -593,7 +591,7 @@ function toOnboardingConnectionFromSelection(
 
   return {
     kind: "local-provider",
-    provider: normalizedProvider as OnboardingLocalProviderId,
+    provider: normalizedProvider as FirstRunLocalProviderId,
     ...(trimToUndefined(selection.apiKey)
       ? { apiKey: trimToUndefined(selection.apiKey) }
       : {}),
@@ -662,14 +660,12 @@ export function clearSubscriptionProviderConfig(
 }
 
 /**
- * Clear persisted onboarding state that should force the UI back through the
- * onboarding flow on the next load/reset.
+ * Clear persisted first-run state that should force the UI back through the
+ * first-run setup on the next load/reset.
  */
-export function clearPersistedOnboardingConfig(
-  config: MutableElizaConfig,
-): void {
+export function clearPersistedFirstRunConfig(config: MutableElizaConfig): void {
   if (config.meta && typeof config.meta === "object") {
-    delete (config.meta as Record<string, unknown>).onboardingComplete;
+    delete (config.meta as Record<string, unknown>).firstRunComplete;
   }
 
   config.agents = { list: [] };
@@ -690,7 +686,7 @@ export function clearPersistedOnboardingConfig(
     }
   }
 
-  // Clear voice settings so presets apply their correct voice on re-onboarding.
+  // Clear voice settings so presets apply their correct voice on first-run setup.
   const messages = asRecord(config.messages);
   if (messages) {
     delete messages.tts;
@@ -726,10 +722,10 @@ export function clearPersistedOnboardingConfig(
     "openrouter",
     "together",
     "zai",
-  ] as const satisfies readonly OnboardingLocalProviderId[];
+  ] as const satisfies readonly FirstRunLocalProviderId[];
 
   for (const providerId of signalProviders) {
-    for (const envKey of getOnboardingProviderSignalEnvKeys(providerId)) {
+    for (const envKey of getFirstRunProviderSignalEnvKeys(providerId)) {
       clearPersistedEnvValue(config, envKey);
       delete process.env[envKey];
     }
@@ -755,8 +751,8 @@ export function createProviderSwitchConnection(args: {
   provider: string;
   apiKey?: string;
   primaryModel?: string;
-}): OnboardingConnection | null {
-  const provider = normalizeOnboardingProviderId(args.provider);
+}): FirstRunConnection | null {
+  const provider = normalizeFirstRunProviderId(args.provider);
   if (!provider) {
     return null;
   }
@@ -776,14 +772,14 @@ export function createProviderSwitchConnection(args: {
   };
 }
 
-export interface ApplyOnboardingConnectionOptions {
+export interface ApplyFirstRunConnectionOptions {
   useLocalEmbeddings?: boolean;
 }
 
-export async function applyOnboardingConnectionConfig(
+export async function applyFirstRunConnectionConfig(
   config: MutableElizaConfig,
-  connection: OnboardingConnection,
-  options: ApplyOnboardingConnectionOptions = {},
+  connection: FirstRunConnection,
+  options: ApplyFirstRunConnectionOptions = {},
 ): Promise<void> {
   const normalizedConnection = connection;
   const excludeServices = options.useLocalEmbeddings
@@ -843,7 +839,7 @@ export async function applyOnboardingConnectionConfig(
       ...(excludeServices ? { excludeServices } : {}),
     });
 
-    applyCanonicalOnboardingConfig(config, {
+    applyCanonicalFirstRunConfig(config, {
       deploymentTarget: existingDeploymentTarget,
       linkedAccounts: apiKey
         ? {
@@ -881,7 +877,7 @@ export async function applyOnboardingConnectionConfig(
     clearRemoteProviderConfig(config);
     setPrimaryModel(config, undefined);
 
-    applyCanonicalOnboardingConfig(config, {
+    applyCanonicalFirstRunConfig(config, {
       deploymentTarget: {
         runtime: "remote",
         provider: "remote",
@@ -951,10 +947,10 @@ export async function applyOnboardingConnectionConfig(
       };
 
   if (requiresAdditionalRuntimeProvider(normalizedConnection.provider)) {
-    const currentBackend = normalizeOnboardingProviderId(
+    const currentBackend = normalizeFirstRunProviderId(
       normalizeServiceRoutingConfig(config.serviceRouting)?.llmText?.backend,
     );
-    applyCanonicalOnboardingConfig(config, {
+    applyCanonicalFirstRunConfig(config, {
       deploymentTarget: existingDeploymentTarget,
       linkedAccounts,
       clearRoutes:
@@ -964,7 +960,7 @@ export async function applyOnboardingConnectionConfig(
     return;
   }
 
-  applyCanonicalOnboardingConfig(config, {
+  applyCanonicalFirstRunConfig(config, {
     deploymentTarget: existingDeploymentTarget,
     linkedAccounts,
     serviceRouting,
@@ -972,28 +968,24 @@ export async function applyOnboardingConnectionConfig(
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
 }
 
-export async function applyOnboardingCredentialPersistence(
+export async function applyFirstRunCredentialPersistence(
   config: MutableElizaConfig,
   args: {
-    credentialInputs?: OnboardingCredentialInputs | null;
+    credentialInputs?: FirstRunCredentialInputs | null;
     deploymentTarget?: DeploymentTargetConfig | null;
     serviceRouting?: ServiceRoutingConfig | null;
   },
 ): Promise<string | null> {
-  const plan = deriveOnboardingCredentialPersistencePlan({
-    credentialInputs: normalizeOnboardingCredentialInputs(
-      args.credentialInputs,
-    ),
+  const plan = deriveFirstRunCredentialPersistencePlan({
+    credentialInputs: normalizeFirstRunCredentialInputs(args.credentialInputs),
     deploymentTarget: args.deploymentTarget,
     serviceRouting: args.serviceRouting,
   });
 
   if (plan.llmSelection) {
-    const llmConnection = toOnboardingConnectionFromSelection(
-      plan.llmSelection,
-    );
+    const llmConnection = toFirstRunConnectionFromSelection(plan.llmSelection);
     if (llmConnection) {
-      await applyOnboardingConnectionConfig(config, llmConnection);
+      await applyFirstRunConnectionConfig(config, llmConnection);
     }
   }
 
@@ -1007,10 +999,10 @@ export async function applyOnboardingCredentialPersistence(
     return null;
   }
 
-  const provider = normalizeOnboardingProviderId(plan.llmSelection.backend);
+  const provider = normalizeFirstRunProviderId(plan.llmSelection.backend);
   if (!provider || provider === "elizacloud") {
     return null;
   }
 
-  return getOnboardingProviderOption(provider)?.envKey ?? null;
+  return getFirstRunProviderOption(provider)?.envKey ?? null;
 }

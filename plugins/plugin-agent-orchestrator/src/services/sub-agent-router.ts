@@ -207,6 +207,36 @@ function isLoopbackUrl(url: string): boolean {
   }
 }
 
+// Drop any http(s):// loopback URLs from `text` before the reply reaches a
+// user-facing channel. Sub-agents that curl-probe `http://127.0.0.1:<port>`
+// while diagnosing a build will paste those probes into their task report;
+// surfacing them to Discord leaks internal addresses, makes the bot look
+// broken (the user can't reach a 127.0.0.1 from their machine), and on
+// retry pulls a second sub-agent in to "fix" a non-public URL it should
+// never have been told about. Match the same host set as `isLoopbackUrl`
+// (localhost / 127.x.x.x / ::1) and strip trailing whitespace cleanly so
+// the surrounding sentence stays readable; if a line becomes only a
+// dangling colon / dash after stripping, drop the line.
+const LOOPBACK_URL_PATTERN =
+  /https?:\/\/(?:localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[?::1\]?)(?::\d{1,5})?(?:\/[^\s)<>"`]*)?/gi;
+export function redactLoopbackUrls(text: string): string {
+  if (!text) return text;
+  LOOPBACK_URL_PATTERN.lastIndex = 0;
+  if (!LOOPBACK_URL_PATTERN.test(text)) return text;
+  LOOPBACK_URL_PATTERN.lastIndex = 0;
+  const stripped = text
+    .replace(LOOPBACK_URL_PATTERN, "")
+    .replace(/[ \t]+\n/g, "\n");
+  // Drop lines that became orphan punctuation after the URL was removed
+  // (e.g. "- " or "* " markdown list bullets pointing at nothing).
+  return stripped
+    .split("\n")
+    .filter((line) => !/^[-*\s]*[:>→\->]?[\s]*$/.test(line) || line === "")
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function isTelemetryReportUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -285,6 +315,44 @@ export class SubAgentRouter extends Service {
   private readonly roundTripCounts = new Map<string, number>();
   private readonly capExceededSessions = new Set<string>();
   private readonly verifyRetryHandedOffSessions = new Set<string>();
+  // Maps completion lineage key → the FIRST session id that posted a
+  // task_complete for it. When a later task_complete arrives for the
+  // same lineage from a DIFFERENT session, we absorb it: that's a
+  // retry-cascade post (orchestrator dispatched a fresh sub-agent
+  // after the first one already shipped) and the user should see one
+  // reply, not 2-3+ overlapping messages with random page sub-
+  // resources from each retry. Issue elizaOS/eliza#7967.
+  //
+  // Same-session progressive task_completes (a sub-agent reports
+  // partial progress then completion) still post both. Parallel TASKS:create
+  // subtasks from the same user message also post independently because the
+  // lineage key includes the initial task text and agent type, not just the
+  // origin message id.
+  //
+  // The map is bounded (LRU via FIFO drop) to prevent unbounded growth
+  // across long-running sessions. 1024 origin messages is well above
+  // any reasonable workload — Discord channels typically see hundreds
+  // of message-events per hour at most.
+  private readonly completionFirstPostedSession: Map<string, string> = new Map();
+  private completionHasPostedFromOtherSession(
+    completionKey: string,
+    sessionId: string,
+  ): boolean {
+    const firstSession = this.completionFirstPostedSession.get(completionKey);
+    return firstSession !== undefined && firstSession !== sessionId;
+  }
+  private markCompletionPosted(
+    completionKey: string,
+    sessionId: string,
+  ): void {
+    if (this.completionFirstPostedSession.has(completionKey)) return;
+    this.completionFirstPostedSession.set(completionKey, sessionId);
+    while (this.completionFirstPostedSession.size > 1024) {
+      const oldestKey = this.completionFirstPostedSession.keys().next().value;
+      if (!oldestKey) break;
+      this.completionFirstPostedSession.delete(oldestKey);
+    }
+  }
   private started = false;
   private roundTripCap = DEFAULT_ROUND_TRIP_CAP;
   private bindRetryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -382,6 +450,7 @@ export class SubAgentRouter extends Service {
     this.roundTripCounts.clear();
     this.capExceededSessions.clear();
     this.verifyRetryHandedOffSessions.clear();
+    this.completionFirstPostedSession.clear();
   }
 
   private async handleEvent(
@@ -510,7 +579,7 @@ export class SubAgentRouter extends Service {
     // claimed URL — and following an HTML page's own sub-resources —
     // turns the parent's reply from a hallucinated success into an
     // accurate status report.
-    let text = baseText;
+    let text = redactLoopbackUrls(baseText);
     let deadUrls: DeadUrl[] = [];
     let verifiedUrls: string[] = [];
     if (event === "task_complete") {
@@ -527,7 +596,7 @@ export class SubAgentRouter extends Service {
         this.runtime,
         routeVerification,
       );
-      text = verified.text;
+      text = redactLoopbackUrls(verified.text);
       deadUrls = verified.dead;
       verifiedUrls = verified.verifiedUrls;
     }
@@ -547,6 +616,36 @@ export class SubAgentRouter extends Service {
           "debug",
           "suppressing stale verification failure; newer continuation exists",
           { sessionId, deadCount: deadUrls.length },
+        );
+        return;
+      }
+    }
+    // Origin-message dedupe: if a DIFFERENT sub-agent session for the
+    // SAME user prompt has already posted a task_complete to the user,
+    // absorb this one silently. This catches the cascade case where the
+    // orchestrator dispatched a retry sub-agent for a different reason
+    // (state_lost, blocked, transient error) after the first task_complete
+    // already shipped — without this guard the user sees 2-3+ overlapping
+    // replies with random URL leakage (issue elizaOS/eliza#7967).
+    //
+    // Same-session progressive task_completes (a sub-agent reports
+    // partial progress, then full completion) still post both — the
+    // dedupe key includes sessionId. Only cross-session retries are
+    // suppressed.
+    const completionKey =
+      event === "task_complete" ? completionLineageKey(session, origin) : null;
+    if (completionKey) {
+      if (
+        this.completionHasPostedFromOtherSession(completionKey, sessionId)
+      ) {
+        this.log(
+          "debug",
+          "suppressing duplicate sub-agent task_complete for lineage; another session already posted for this task",
+          {
+            sessionId,
+            completionKey,
+            event,
+          },
         );
         return;
       }
@@ -690,6 +789,17 @@ export class SubAgentRouter extends Service {
           source: ACPX_ROUTER_SOURCE,
         });
       }
+    }
+
+    // Record this session as the "first poster" for this origin so any
+    // later retry sub-agent (different sessionId) for the same parent
+    // prompt is absorbed silently (issue elizaOS/eliza#7967). Same-
+    // session progressive task_completes are unaffected because the
+    // dedupe check compares sessionIds. Must run AFTER the handleMessage
+    // / createMemory loop so an early failure doesn't poison future
+    // retries that might actually succeed.
+    if (completionKey) {
+      this.markCompletionPosted(completionKey, sessionId);
     }
   }
 
@@ -1012,6 +1122,20 @@ function readOrigin(session: SessionInfo): OriginInfo | null {
     label: pickLabel(meta) ?? session.name ?? session.id,
     source: typeof meta.source === "string" ? meta.source : undefined,
   };
+}
+
+function completionLineageKey(
+  session: SessionInfo,
+  origin: OriginInfo,
+): string | null {
+  if (!origin.parentMessageId) return null;
+  const meta = session.metadata as Record<string, unknown> | undefined;
+  const initialTask = pickPlainString(meta?.initialTask) ?? "";
+  return JSON.stringify({
+    originMessageId: origin.parentMessageId,
+    agentType: session.agentType,
+    initialTask,
+  });
 }
 
 function sessionTimeMs(value: Date | string | number | undefined): number {

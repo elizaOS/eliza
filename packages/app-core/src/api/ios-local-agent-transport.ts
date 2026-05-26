@@ -10,7 +10,7 @@ import {
   isMobileLocalAgentUrl as isConfiguredMobileLocalAgentUrl,
   isMobileLocalAgentIpcUrl,
   mobileLocalAgentPathFromUrl,
-} from "@elizaos/ui/onboarding/mobile-runtime-mode";
+} from "@elizaos/ui/first-run/mobile-runtime-mode";
 
 let transport: AgentRequestTransport | null = null;
 let globalRequestHandlerInstalled = false;

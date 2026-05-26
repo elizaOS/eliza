@@ -172,11 +172,11 @@ export {
 	type VoicePipelineEvents,
 } from "./pipeline";
 export {
-	type MtpTextRunner,
-	mtpTextRunner,
+	MissingAsrTranscriber,
 	MtpDraftProposer,
 	MtpTargetVerifier,
-	MissingAsrTranscriber,
+	type MtpTextRunner,
+	mtpTextRunner,
 } from "./pipeline-impls";
 export {
 	type PrefillOptimisticArgs,
@@ -211,9 +211,9 @@ export {
 } from "./scheduler";
 export {
 	createMtpDraftHandle,
-	type MtpDraftHandle,
 	type KernelSet,
 	type MmapRegionHandle,
+	type MtpDraftHandle,
 	type RefCountedResource,
 	type SchedulerSlot,
 	SharedResourceRegistry,
@@ -453,7 +453,7 @@ export {
  *      - the fused kernel set (TurboQuant/QJL/Polar live in the
  *        same shipped llama.cpp library after the fusion build)
  *      - the scheduler queue (one queue, prioritised across surfaces)
- *      - the DFlash drafter (always wired — see AGENTS.md §3 #4)
+ *      - the MTP drafter (always wired — see AGENTS.md §3 #4)
  *
  *    Text and voice keep SEPARATE KV caches (different layer counts,
  *    different head configs, different quantizations — AGENTS.md §4

@@ -5,27 +5,27 @@
  * Wave-4-F bridged the iOS pipeline: previously
  * `run-mobile-build.mjs` invoked cmake against the upstream npm package's
  * bundled `ios/` source, which produced a stock llama.cpp framework with
- * none of the eliza kernels (TurboQuant / QJL / PolarQuant / DFlash).
+ * none of the eliza kernels (TurboQuant / QJL / PolarQuant / MTP).
  * That framework satisfied the patched podspec but violated AGENTS.md §3
  * (required-kernel contract).
  *
  * This script consumes the per-target static archives + headers produced
- * by `build-llama-cpp-dflash.mjs --target ios-arm64-metal` and
+ * by `build-llama-cpp-mtp.mjs --target ios-arm64-metal` and
  * `--target ios-arm64-simulator-metal` and assembles them into a
  * well-formed `.xcframework` bundle.
  *
  * Invocation:
  *   node build-xcframework.mjs --output <dir>
- *     [--device-archive-dir   <path>]   default: $ELIZA_STATE_DIR/local-inference/bin/dflash/ios-arm64-metal
- *     [--sim-archive-dir      <path>]   default: $ELIZA_STATE_DIR/local-inference/bin/dflash/ios-arm64-simulator-metal
- *     [--build-if-missing]              run build-llama-cpp-dflash.mjs first
+ *     [--device-archive-dir   <path>]   default: $ELIZA_STATE_DIR/local-inference/bin/mtp/ios-arm64-metal
+ *     [--sim-archive-dir      <path>]   default: $ELIZA_STATE_DIR/local-inference/bin/mtp/ios-arm64-simulator-metal
+ *     [--build-if-missing]              run build-llama-cpp-mtp.mjs first
  *     [--verify]                        symbol-grep + xcframework-info validation
  *
  * AGENTS.md §3 hard rules enforced here:
  *   - Missing per-target archive directory = hard error (no fallback to
  *     stock framework, no skip).
  *   - Missing required-kernel symbol in either slice = hard error after
- *     --verify (matches the build-llama-cpp-dflash.mjs CAPABILITIES gate).
+ *     --verify (matches the build-llama-cpp-mtp.mjs CAPABILITIES gate).
  *   - xcodebuild -create-xcframework failure = hard error.
  */
 
@@ -41,9 +41,9 @@ const __dirname = path.dirname(__filename);
 
 // packages/app-core/scripts/ios-xcframework → packages/app-core/scripts
 const SCRIPTS_DIR = path.resolve(__dirname, "..");
-const DFLASH_BUILD_SCRIPT = path.join(
+const MTP_BUILD_SCRIPT = path.join(
   SCRIPTS_DIR,
-  "build-llama-cpp-dflash.mjs",
+  "build-llama-cpp-mtp.mjs",
 );
 
 // Per AGENTS.md §3, the required kernels for any Eliza-1 binary.
@@ -72,11 +72,11 @@ const REQUIRED_IOS_KERNEL_SYMBOLS = [
     where: "libggml-cpu.a / libggml-base.a / libggml-metal.a",
   },
   {
-    kernel: "dflash",
-    // DFlash is a CLI/runtime feature in the fork; its CPU-side flash-attn
+    kernel: "mtp",
+    // MTP is a CLI/runtime feature in the fork; its CPU-side flash-attn
     // hook is what the iOS slice carries. The symbol surfaces as the
     // FA-ext entry point ggml-cpu wires for the v0.4.0-eliza fork.
-    symbolPattern: /dflash|flash[_-]?attn[_-]?ext/i,
+    symbolPattern: /mtp|flash[_-]?attn[_-]?ext/i,
     where: "libggml-cpu.a / libggml-metal.a",
   },
   {
@@ -175,15 +175,15 @@ Options:
   --output <dir>                Path of the LlamaCpp.xcframework to create.
   --device-archive-dir <path>   Override iOS-device slice input directory.
   --sim-archive-dir <path>      Override iOS-simulator slice input directory.
-  --build-if-missing            Invoke build-llama-cpp-dflash.mjs for any
+  --build-if-missing            Invoke build-llama-cpp-mtp.mjs for any
                                 missing slice before packaging.
   --verify                      Run nm symbol-grep + xcodebuild -create-xcframework
                                 validation against AGENTS.md §3 kernel set.
   -h, --help                    Print this message.
 
 Defaults for slice input dirs (per ELIZA_STATE_DIR):
-  device: $ELIZA_STATE_DIR/local-inference/bin/dflash/ios-arm64-metal
-  sim:    $ELIZA_STATE_DIR/local-inference/bin/dflash/ios-arm64-simulator-metal
+  device: $ELIZA_STATE_DIR/local-inference/bin/mtp/ios-arm64-metal
+  sim:    $ELIZA_STATE_DIR/local-inference/bin/mtp/ios-arm64-simulator-metal
 `);
 }
 
@@ -194,7 +194,7 @@ function elizaStateDir() {
 }
 
 function defaultSliceDir(target) {
-  return path.join(elizaStateDir(), "local-inference", "bin", "dflash", target);
+  return path.join(elizaStateDir(), "local-inference", "bin", "mtp", target);
 }
 
 function sliceUsesRealElizaInference(sliceDir) {
@@ -301,7 +301,7 @@ function loadSlice(dir, sliceName) {
   if (!fs.existsSync(dir)) {
     throw new Error(
       `[ios-xcframework] slice ${sliceName} input dir not found: ${dir}\n` +
-        `Run: node ${DFLASH_BUILD_SCRIPT} --target ${sliceName === "device" ? "ios-arm64-metal" : "ios-arm64-simulator-metal"}`,
+        `Run: node ${MTP_BUILD_SCRIPT} --target ${sliceName === "device" ? "ios-arm64-metal" : "ios-arm64-simulator-metal"}`,
     );
   }
   const archives = fs
@@ -310,7 +310,7 @@ function loadSlice(dir, sliceName) {
     .map((name) => path.join(dir, name));
   if (archives.length === 0) {
     throw new Error(
-      `[ios-xcframework] slice ${sliceName} (${dir}) contains no .a archives — re-run build-llama-cpp-dflash.mjs.`,
+      `[ios-xcframework] slice ${sliceName} (${dir}) contains no .a archives — re-run build-llama-cpp-mtp.mjs.`,
     );
   }
   const headerDir = path.join(dir, "include");
@@ -455,7 +455,7 @@ function verifyKernelSymbols(slices) {
       `[ios-xcframework] AGENTS.md §3 kernel-symbol audit FAILED:\n${lines.join(
         "\n",
       )}\n\n` +
-        `The static archives produced by build-llama-cpp-dflash.mjs do not\n` +
+        `The static archives produced by build-llama-cpp-mtp.mjs do not\n` +
         `contain symbols for every required Eliza-1 kernel. The xcframework\n` +
         `will NOT be assembled. Fix the build (most commonly: extend\n` +
         `kernel-patches/metal-kernels.mjs to handle the EMBED_LIBRARY=ON\n` +
@@ -572,16 +572,16 @@ async function main() {
   if (args.buildIfMissing) {
     if (!fs.existsSync(path.join(deviceDir, "CAPABILITIES.json"))) {
       console.log(
-        `[ios-xcframework] device slice missing — invoking dflash build`,
+        `[ios-xcframework] device slice missing — invoking mtp build`,
       );
-      run("node", [DFLASH_BUILD_SCRIPT, "--target", "ios-arm64-metal"]);
+      run("node", [MTP_BUILD_SCRIPT, "--target", "ios-arm64-metal"]);
     }
     if (!fs.existsSync(path.join(simDir, "CAPABILITIES.json"))) {
       console.log(
-        `[ios-xcframework] simulator slice missing — invoking dflash build`,
+        `[ios-xcframework] simulator slice missing — invoking mtp build`,
       );
       run("node", [
-        DFLASH_BUILD_SCRIPT,
+        MTP_BUILD_SCRIPT,
         "--target",
         "ios-arm64-simulator-metal",
       ]);

@@ -57,7 +57,7 @@ ELIZA_DESKTOP_VITE_WATCH=1 ELIZA_DESKTOP_VITE_BUILD_WATCH=1 bun eliza/packages/a
 | `--rollup-watch` | With `ELIZA_DESKTOP_VITE_WATCH=1`, use `vite build --watch` instead of `vite dev` |
 | `--no-api` | Electrobun only; no `dev-server.ts` child |
 | `ELIZA_DESKTOP_SCREENSHOT_SERVER` | **Default on** for `dev:desktop` / `bun run dev`: Electrobun listens on `127.0.0.1:ELIZA_SCREENSHOT_SERVER_PORT` (default **31339**); the Eliza API proxies **`GET /api/dev/cursor-screenshot`** (loopback) as a **full-screen PNG** for agents/tools (macOS needs Screen Recording permission). Set to **`0`**, **`false`**, **`no`**, or **`off`** to disable. |
-| `ELIZA_DESKTOP_DEV_LOG` | **Default on:** child logs (vite / api / electrobun) are mirrored to **`.eliza/desktop-dev-console.log`** at the repo root. **`GET /api/dev/console-log`** on the API (loopback) returns a tail (`?maxLines=`, `?maxBytes=`). Set to **`0`** / **`false`** / **`no`** / **`off`** to disable. |
+| `ELIZA_DESKTOP_DEV_LOG` | **Default on:** child logs (vite / api / electrobun) are mirrored to **`<stateDir>/desktop-dev-console.log`** at the repo root. **`GET /api/dev/console-log`** on the API (loopback) returns a tail (`?maxLines=`, `?maxBytes=`). Set to **`0`** / **`false`** / **`no`** / **`off`** to disable. |
 
 ### When default ports are busy
 
@@ -163,7 +163,7 @@ Script: `scripts/desktop-stack-status.mjs` (with `scripts/lib/desktop-stack-stat
 
 ### Aggregated console — file + `GET /api/dev/console-log`
 
-Prefixed **vite / api / electrobun** lines are mirrored to **`.eliza/desktop-dev-console.log`** (session banner on each orchestrator start). **`GET /api/dev/console-log`** (loopback) returns a **text tail**; query **`maxLines`** (default 400, cap 5000) and **`maxBytes`** (default 256000).
+Prefixed **vite / api / electrobun** lines are mirrored to **`<stateDir>/desktop-dev-console.log`** (session banner on each orchestrator start). **`GET /api/dev/console-log`** (loopback) returns a **text tail**; query **`maxLines`** (default 400, cap 5000) and **`maxBytes`** (default 256000).
 
 **Why a file:** agents can `read_file` the path from `desktopDevLog.filePath` without HTTP. **Why HTTP tail:** avoids reading multi-megabyte logs into context; caps prevent OOM. **Why basename allow-list:** `ELIZA_DESKTOP_DEV_LOG_PATH` could otherwise be pointed at arbitrary files.
 

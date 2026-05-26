@@ -64,11 +64,11 @@
       "failure": "no throughput parsed"
     },
     {
-      "log": "evidence/speculative/qwen35-4b-dflash-direct.log",
+      "log": "evidence/speculative/qwen35-4b-mtp-direct.log",
       "status": "fail",
       "promptTokensPerSecond": null,
       "generationTokensPerSecond": null,
-      "failure": "error loading model: error loading model vocabulary: cannot find tokenizer merges in model file; failed to load model; failed to load draft model, '/Users/shawwalters/.eliza/local-inference/models/qwen3.5-4b-dflash-drafter-q4/Qwen3.5-4B-DFlash-Q4_K_M.gguf'"
+      "failure": "error loading model: error loading model vocabulary: cannot find tokenizer merges in model file; failed to load model; failed to load draft model, '/Users/shawwalters/.eliza/local-inference/models/qwen3.5-4b-mtp-drafter-q4/Qwen3.5-4B-MTP-Q4_K_M.gguf'"
     },
     {
       "log": "evidence/speculative/qwen35-4b-external-baseline.log",
@@ -106,21 +106,21 @@
       "failure": null
     },
     {
-      "log": "evidence/speculative/qwen35-4b-dflash-bench.json",
+      "log": "evidence/speculative/qwen35-4b-mtp-bench.json",
       "status": "fail",
-      "failure": "drafter GGUF is missing dflash-draft.target_checkpoint_sha256; release validation cannot prove it was distilled against this text checkpoint"
+      "failure": "drafter GGUF is missing mtp-draft.target_checkpoint_sha256; release validation cannot prove it was distilled against this text checkpoint"
     },
     {
-      "log": "evidence/speculative/qwen35-4b-dflash-runtime.json",
+      "log": "evidence/speculative/qwen35-4b-mtp-runtime.json",
       "status": "metadata_invalid",
       "failure": [
-        "drafter GGUF is missing dflash-draft.target_checkpoint_sha256; release validation cannot prove it was distilled against this text checkpoint"
+        "drafter GGUF is missing mtp-draft.target_checkpoint_sha256; release validation cannot prove it was distilled against this text checkpoint"
       ]
     }
   ],
   "notes": [
     "MTP public GGUF tests used unsloth Qwen3.5 MTP GGUFs on local Metal.",
     "Eliza local target GGUFs contain no MTP/NextN tensors, so Eliza MTP cannot be profiled until regenerated.",
-    "Official local DFlash 4B draft artifact failed to load because tokenizer merges are missing; repaired plain-draft GGUF was slower than baseline."
+    "Official local MTP 4B draft artifact failed to load because tokenizer merges are missing; repaired plain-draft GGUF was slower than baseline."
   ]
 }

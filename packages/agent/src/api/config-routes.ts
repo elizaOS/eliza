@@ -12,7 +12,7 @@ import {
 import type { ElizaConfig } from "../config/config.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { buildCharacterFromConfig } from "../runtime/build-character-config.ts";
-import { applyCanonicalOnboardingConfig } from "./provider-switch-config.ts";
+import { applyCanonicalFirstRunConfig } from "./provider-switch-config.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -582,7 +582,7 @@ export async function handleConfigRoutes(
       canonicalLinkedAccountsRequested ||
       canonicalServiceRoutingRequested
     ) {
-      applyCanonicalOnboardingConfig(config, {
+      applyCanonicalFirstRunConfig(config, {
         deploymentTarget: normalizedDeploymentTarget,
         linkedAccounts: normalizedLinkedAccounts,
         serviceRouting: normalizedServiceRouting,

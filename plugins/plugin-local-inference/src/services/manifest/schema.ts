@@ -15,8 +15,9 @@
 //   layers map but are not the same enum.
 // - The schema URL `https://elizaos.ai/schemas/eliza-1.manifest.v1.json` is
 //   exported as a JSON Schema sibling file in this directory.
-// - Eliza-1 speculative decoding is native llama.cpp MTP. It is configured on
-//   the text GGUF at load time and does not ship a companion drafter file.
+// - Eliza-1 speculative decoding is native llama.cpp MTP. MTP-enabled tiers
+//   ship a bundled drafter GGUF under `files.mtp`; the runtime resolves it at
+//   load time and passes it as the draft model.
 // - Per-sub-model versioning (kokoro, omnivoice, turn-detector, voice-emotion,
 //   diarizer, speaker-encoder, vad, wakeword, embedding, asr) lives in
 //   `packages/shared/src/local-inference/voice-models.ts` and the matching
@@ -63,7 +64,6 @@ export const ELIZA_1_KERNELS = [
 	"turboquant_q4",
 	"qjl",
 	"polarquant",
-	"dflash",
 	"turbo3_tcq",
 ] as const;
 export type Eliza1Kernel = (typeof ELIZA_1_KERNELS)[number];
@@ -84,7 +84,6 @@ export type Eliza1RequiredRuntimeKernel = Exclude<
 //   turboquant_q4  ↔ turbo4       (Q4 KV-cache quant kernel)
 //   qjl            ↔ qjl_full     (QuIP#-JL fused-attention kernel)
 //   polarquant     ↔ polarquant   (same name on both layers)
-//   dflash         ↔ dflash       (same name on both layers)
 //   turbo3_tcq     ↔ turbo3_tcq   (same name on both layers)
 //
 // Every Eliza-1 custom-kernel member is covered (both are total maps over the
@@ -100,7 +99,6 @@ export const ELIZA1_TO_RUNTIME_KERNEL: Readonly<
 	turboquant_q4: "turbo4",
 	qjl: "qjl_full",
 	polarquant: "polarquant",
-	dflash: "dflash",
 	turbo3_tcq: "turbo3_tcq",
 };
 
@@ -111,7 +109,6 @@ export const RUNTIME_TO_ELIZA1_KERNEL: Readonly<
 	turbo4: "turboquant_q4",
 	qjl_full: "qjl",
 	polarquant: "polarquant",
-	dflash: "dflash",
 	turbo3_tcq: "turbo3_tcq",
 };
 
@@ -126,7 +123,9 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 
 // Required-kernel set per tier. Mirrors the active Eliza-1 release policy:
 // - All tiers require turboquant + qjl + polarquant.
-// - DFlash is a first-class runtime capability for companion drafter bundles.
+// - DFlash is required on every currently published tier (first-class runtime
+//   capability for companion drafter bundles). 0.8B has a tiny drafter
+//   companion and remains the low-memory fallback tier.
 // - All current text GGUFs ship at the 128k half-context floor or the 262k
 //   native tier, so every tier requires `turbo3_tcq`. The validator also
 //   enforces the same requirement dynamically for any bundle that declares
@@ -143,13 +142,7 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	"4b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
-	"27b-256k": [
-		"turboquant_q4",
-		"qjl",
-		"polarquant",
-		"dflash",
-		"turbo3_tcq",
-	],
+	"27b-256k": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 };
 
 // Backends each tier is expected to support on shipped hardware.
@@ -180,6 +173,7 @@ const lineageEntry = z.object({
 export const Eliza1LineageSchema = z.object({
 	text: lineageEntry,
 	voice: lineageEntry,
+	drafter: lineageEntry.optional(),
 	// Wave-6 (2026-05-10): manifest now records lineage for every shipped
 	// component so license/dataset provenance is auditable per component.
 	// All optional — a tier may omit ASR/embedding/vision/vad/wakeword by
@@ -223,7 +217,7 @@ export const Eliza1FilesSchema = z.object({
 	voice: z.array(Eliza1FileEntrySchema).min(1),
 	asr: z.array(Eliza1FileEntrySchema),
 	vision: z.array(Eliza1FileEntrySchema),
-	dflash: z.array(Eliza1FileEntrySchema),
+	mtp: z.array(Eliza1FileEntrySchema),
 	cache: z.array(Eliza1FileEntrySchema).min(1),
 	// Wave-6 (2026-05-10): the omni bundle ships a per-bundle dedicated
 	// embedding model (Qwen3-Embedding-GGUF on non-lite tiers), a
@@ -439,17 +433,24 @@ export const Eliza1EvalsSchema = z.object({
 			passed: z.boolean(),
 		})
 		.optional(),
-		// Optional EAGLE3 speculative-decoding bench metadata.
-		eagle3: Eliza1Eagle3EvalSchema.optional(),
-		dflash: z
-			.object({
-				acceptanceRate: z.number().min(0).max(1).nullable(),
-				speedup: z.number().nonnegative().nullable(),
-				passed: z.boolean(),
-				failure: z.string().min(1).optional(),
-			})
-			.optional(),
-		// Voice Wave 2 (2026-05-14): semantic end-of-turn detector eval gates.
+	mtp: z
+		.object({
+			acceptanceRate: z.number().min(0).max(1).nullable(),
+			speedup: z.number().nonnegative().nullable(),
+			passed: z.boolean(),
+		})
+		.optional(),
+	// Optional EAGLE3 speculative-decoding bench metadata.
+	eagle3: Eliza1Eagle3EvalSchema.optional(),
+	dflash: z
+		.object({
+			acceptanceRate: z.number().min(0).max(1).nullable(),
+			speedup: z.number().nonnegative().nullable(),
+			passed: z.boolean(),
+			failure: z.string().min(1).optional(),
+		})
+		.optional(),
+	// Voice Wave 2 (2026-05-14): semantic end-of-turn detector eval gates.
 	// Required when `files.turn` is non-empty (validator enforces). Thresholds
 	// applied by `eval_turn_detector.py` in `packages/training/scripts/turn_detector/`:
 	//   f1            ≥ TURN_DETECTOR_F1_THRESHOLD           (0.85)
@@ -561,6 +562,7 @@ export const ELIZA_1_PROVENANCE_SLOTS = [
 	"embedding",
 	"imagegen",
 	"vision",
+	"drafter",
 ] as const;
 export type Eliza1ProvenanceSlot = (typeof ELIZA_1_PROVENANCE_SLOTS)[number];
 

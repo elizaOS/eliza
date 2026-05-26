@@ -46,9 +46,9 @@
  */
 
 import type {
-	FfiDflashStreamingAbi,
 	FfiLlmHandle,
 	FfiLlmStreamingAbi,
+	FfiMtpStreamingAbi,
 	TokenCallback,
 } from "./ffi-llm-streaming-abi";
 
@@ -122,7 +122,7 @@ export interface MockState {
 // ---------------------------------------------------------------------------
 
 /**
- * Build a mock `FfiLlmStreamingAbi` (and a matching `FfiDflashStreamingAbi`
+ * Build a mock `FfiLlmStreamingAbi` (and a matching `FfiMtpStreamingAbi`
  * that delegates to the same synthetic stream) together with an observable
  * `MockState`.
  *
@@ -132,7 +132,7 @@ export interface MockState {
  */
 export function makeFfiLlmMock(): {
 	ffi: FfiLlmStreamingAbi &
-		FfiDflashStreamingAbi & {
+		FfiMtpStreamingAbi & {
 			llmStreamSupported(): boolean;
 			ttsStreamSupported(): boolean;
 		};
@@ -302,10 +302,10 @@ export function makeFfiLlmMock(): {
 			close(handle);
 		},
 
-		// DFlash (speculative decoding) — Phase 2 surface.
+		// MTP (speculative decoding) — Phase 2 surface.
 		// Delegates to the same synthetic stream; the drafter path is
 		// indistinguishable from single-model in the mock.
-		eliza_inference_dflash_stream_open(
+		eliza_inference_mtp_stream_open(
 			_drafterModelPath: string,
 			_verifierModelPath: string,
 			_contextSizeTokens: number,
@@ -316,7 +316,7 @@ export function makeFfiLlmMock(): {
 			return open();
 		},
 
-		eliza_inference_dflash_stream_prefill(
+		eliza_inference_mtp_stream_prefill(
 			_handle: FfiLlmHandle,
 			_promptTokens: Int32Array,
 			_slotId: number,
@@ -324,7 +324,7 @@ export function makeFfiLlmMock(): {
 			return prefill();
 		},
 
-		eliza_inference_dflash_stream_generate(
+		eliza_inference_mtp_stream_generate(
 			handle: FfiLlmHandle,
 			maxNewTokens: number,
 			temperature: number,
@@ -334,18 +334,18 @@ export function makeFfiLlmMock(): {
 			return generate(handle, maxNewTokens, temperature, topP, tokenCallback);
 		},
 
-		eliza_inference_dflash_stream_cancel(handle: FfiLlmHandle): void {
+		eliza_inference_mtp_stream_cancel(handle: FfiLlmHandle): void {
 			cancel(handle);
 		},
 
-		eliza_inference_dflash_stream_close(handle: FfiLlmHandle): void {
+		eliza_inference_mtp_stream_close(handle: FfiLlmHandle): void {
 			close(handle);
 		},
 		// TypeScript `satisfies` verifies the mock covers every required member.
 		// `generate` returns `Promise<number>` which is assignable to
 		// `number | Promise<number>` as declared in the interface.
 	} satisfies FfiLlmStreamingAbi &
-		FfiDflashStreamingAbi & {
+		FfiMtpStreamingAbi & {
 			llmStreamSupported(): boolean;
 			ttsStreamSupported(): boolean;
 		};

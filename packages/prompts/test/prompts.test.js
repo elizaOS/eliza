@@ -87,12 +87,86 @@ describe("prompt templates (src/index.ts)", () => {
     );
   });
 
-  it("messageHandlerTemplate forbids phantom action claims in replyText", () => {
-    // Regression coverage for the structural rule that prevents Stage 1
-    // from writing "I scanned/searched/checked/looked up/recalled/remembered"
-    // prose when no tool call this turn actually retrieved that content.
-    // Originally observed in production as the bot replying "I've scanned
-    // the recent chat..." with plannerIterations=0 and toolCallsExecuted=0.
+  it("messageHandlerTemplate forbids bare-acknowledgement replies + empty replyText on simple-path", () => {
+    // Regression for two failure shapes from the 2026-05-25 50-probe deepscan:
+    //   - Probes 20/21 ("what directory are you running in" / "how many cpu
+    //     cores"): bot replied with bare "On it." (iters=0 tools=0) — user
+    //     saw a fake acknowledgement, no follow-up.
+    //   - Probe 22 ("list the top-level dirs in /home/milady"): Stage 1
+    //     produced reply:"" (empty string) on simple-path — bot posted
+    //     literally nothing to Discord. trajectory tj-f61e23c88bdcbc.json.
+    //   - Probe 50 ("make me a pdf with 3 pages about elizaOS history"):
+    //     reply="Spawning the sub-agent now." with iters=0 tools=0 — no
+    //     sub-agent was actually spawned. Different article ("the" vs "a")
+    //     than the phantom rule's anti-example.
+    //
+    // The fix is structural: simple-path replyText must be non-empty AND
+    // must directly answer the question. Bare "I'll handle that" / "Sure"
+    // / "On it" acknowledgements are not answers — they are promises of
+    // work that never happens.
+    const src = readSrc();
+    const messageHandlerTemplateRe =
+      /export const messageHandlerTemplate = `([^`]+)`/;
+    const body = src.match(messageHandlerTemplateRe)[1];
+    assert.match(
+      body,
+      /simple-path \(simple=true\) replyText must be non-empty, must directly answer the question/,
+      "simple-path rule should require non-empty, answer-shaped replyText",
+    );
+    assert.match(
+      body,
+      /must not be a bare acknowledgement that promises work without doing it/,
+      "simple-path rule should explicitly forbid bare-acknowledgement promises",
+    );
+    assert.match(
+      body,
+      /"On it\.", "Sure\.", "Got it, working on that\.", "Spawning the sub-agent now\.", "One sec\.", "Let me handle that\./,
+      "simple-path rule should enumerate the common bare-acknowledgement variants seen in live trajectories",
+    );
+    assert.match(
+      body,
+      /Do not use them as the entire simple-path replyText regardless of which article \("a"\/"the"\) or tense the model picks/,
+      "rule should make article/tense irrelevance explicit so 'Spawning a sub-agent' and 'Spawning the sub-agent now' are both covered",
+    );
+    assert.match(
+      body,
+      /An empty replyText on simple-path is a bug: the user will see no reply at all/,
+      "rule should explicitly call out the empty-reply failure mode",
+    );
+    assert.match(
+      body,
+      /do not route to simple — set simple=false and pick the appropriate context with the right action surface; or set requiresTool=true with a real candidateAction/,
+      "rule should redirect to the correct escape hatch when the model can't directly answer",
+    );
+    // Interim acks are GOOD design on the non-simple path — the rule must
+    // not accidentally ban them or the bot can't say "On it." when a real
+    // planner iteration is about to run (probe 36 / spotify on 2026-05-25
+    // correctly used simple=false + requiresTool=true with reply="On it.").
+    assert.match(
+      body,
+      /Interim acknowledgements are perfectly fine on the non-simple path/,
+      "rule should explicitly green-light interim acks when simple=false + requiresTool=true",
+    );
+    assert.match(
+      body,
+      /simple=true means "this reply is the complete answer"; simple=false \+ requiresTool=true means "this reply is the interim ack, the planner will deliver the real result\."/,
+      "rule should state the simple/non-simple replyText contract explicitly",
+    );
+  });
+
+  it("messageHandlerTemplate forbids phantom action claims in replyText across every verb form", () => {
+    // Regression coverage for the structural rule that prevents Stage 1 from
+    // writing prose that claims/implies an investigative action when no tool
+    // ran this turn. Originally past-perfect only ("I have scanned..."),
+    // tightened across multiple live trajectories where the model worked
+    // around the listed examples by picking a different grammatical form:
+    //   - tj-fe07eedf943fb7 (2026-05-24) past-perfect "I have scanned"
+    //   - tj-063a9ea4fad748 (2026-05-24) bare past "I scanned the recent messages"
+    //   - tj-01270535922813 (2026-05-24) present-continuous "Spawning a sub-agent"
+    //   - tj-3a485428bd1250 (2026-05-25) bare present-participle "Scanning the chat history now"
+    // The current rule is intentionally abstract: it covers every grammatical
+    // form rather than enumerating individual verbs, so the model cannot
+    // pattern-match its way around the listed anti-examples.
     const src = readSrc();
     const messageHandlerTemplateRe =
       /export const messageHandlerTemplate = `([^`]+)`/;
@@ -104,35 +178,43 @@ describe("prompt templates (src/index.ts)", () => {
     const body = match[1];
     assert.match(
       body,
-      /Never write replyText that claims you have searched, scanned, checked, looked up, recalled, or remembered anything/,
-      "messageHandlerTemplate should carry the phantom-action-claim rule",
+      /Never write replyText that claims or implies an investigative action is happening, has happened, or is about to happen/,
+      "phantom-action-claim rule should cover all three tense-aspects (past / present / future)",
     );
     assert.match(
       body,
       /unless an actual tool call this turn returned that content/,
       "phantom-action-claim rule should bind the prohibition to actual tool execution this turn",
     );
-    // Strengthening: the original rule used present-perfect phrasing
-    // ("you have searched/scanned/...") which the model interpreted
-    // narrowly. Live probes (trajectories tj-fe07eedf943fb7 /
-    // tj-063a9ea4fad748 / tj-01270535922813 on 2026-05-24) showed bare
-    // past-tense ("I scanned the recent messages") and present-continuous
-    // ("Spawning a sub-agent to search the chat history for X") slipping
-    // through.
     assert.match(
       body,
-      /bare past-tense \("I scanned the chat", "I searched the messages"\)/,
-      "phantom-action-claim rule should cover bare past-tense verb forms",
+      /past-perfect \("I have scanned"\)/,
+      "rule should explicitly cover past-perfect form",
     );
     assert.match(
       body,
-      /present-continuous claims of in-flight action \("Spawning a sub-agent", "Looking into it"/,
-      "phantom-action-claim rule should cover present-continuous future-action claims",
+      /bare past-tense \("I scanned"\)/,
+      "rule should explicitly cover bare past-tense form",
     );
     assert.match(
       body,
-      /none of these belong in a simple-path replyText where no tool actually runs/,
-      "phantom-action-claim rule should anchor the prohibition to the simple-path contract",
+      /present-continuous with subject \("I'm checking now"\)/,
+      "rule should explicitly cover present-continuous with subject form",
+    );
+    assert.match(
+      body,
+      /bare present-participle without subject \("Scanning the chat history now", "Looking into it", "Pulling up the logs"\)/,
+      "rule should explicitly cover bare present-participle form — the variant that slipped past the prior version",
+    );
+    assert.match(
+      body,
+      /gerund headers \("Searching:"\)/,
+      "rule should explicitly cover gerund-header form",
+    );
+    assert.match(
+      body,
+      /If no tool ran this turn the action did not happen — saying it did, or is, makes the bot a liar and leaves the user waiting for a result that will never arrive/,
+      "rule should make the user-facing consequence explicit so the model treats this as a falsehood, not a stylistic preference",
     );
   });
 
@@ -236,6 +318,51 @@ describe("prompt templates (src/index.ts)", () => {
       body,
       /calling BROWSER to fetch nolo\.com \/ findlaw\.com/,
       "safety-scaffold rule should explicitly call out the failed-BROWSER-lookup anti-pattern",
+    );
+  });
+
+  it("messageHandlerTemplate forbids leaking LLM training-cutoff metadata to the user", () => {
+    // Live regression on 2026-05-25: probe "what is the latest version of
+    // nodejs" produced the reply: "I don't have real-time access to check
+    // the current Node.js release, but as of my last update (June 2024) the
+    // latest stable major version was Node 22..."
+    // The phrase "as of my last update (June 2024)" is the underlying LLM's
+    // training-cutoff bleeding through. The agent is supposed to be a
+    // character (e.g. Remilio Nubilio), not a model with a training cutoff.
+    // Breaks character + dates wrong (today is 2026-05-25). Issue #7961.
+    const src = readSrc();
+    const messageHandlerTemplateRe =
+      /export const messageHandlerTemplate = `([^`]+)`/;
+    const body = src.match(messageHandlerTemplateRe)[1];
+    assert.match(
+      body,
+      /Never write replyText that exposes the underlying LLM's training metadata to the user/,
+      "rule should explicitly forbid exposing LLM training metadata in replyText",
+    );
+    assert.match(
+      body,
+      /"as of my last update", "as of my training data", "my knowledge cutoff", "I was trained on", "I was last updated", "the latest information I have is from", "based on data through"/,
+      "rule should enumerate the common training-cutoff leak phrases for pattern coverage",
+    );
+    assert.match(
+      body,
+      /The agent has a character \(a name, a role, a persona\); the LLM beneath it does not exist to the user/,
+      "rule should state the character-vs-model distinction explicitly",
+    );
+    assert.match(
+      body,
+      /decline plainly \("I don't have live access to check the current X — try Y"\) without referring to model internals/,
+      "rule should provide the correct decline pattern",
+    );
+    assert.match(
+      body,
+      /if a BROWSER or fetch action is exposed, route there instead of answering from stale knowledge/,
+      "rule should redirect to BROWSER when one is exposed",
+    );
+    assert.match(
+      body,
+      /calling yourself a "language model" or "AI assistant" in third-person abstract terms when the character has its own name/,
+      "rule should also cover model-self-identification breaks",
     );
   });
 });

@@ -1,6 +1,6 @@
 /**
  * On-disk discovery for the Kokoro-only voice mode. Probes
- * `~/.eliza/local-inference/models/kokoro/` (or `$ELIZA_KOKORO_MODEL_DIR`)
+ * `<stateDir>/local-inference/models/kokoro/` (or `$ELIZA_KOKORO_MODEL_DIR`)
  * for a model file (preferred order: fused-GGUF → quantized ONNX → fp32
  * ONNX) plus at least one voice `.bin` under `voices/`. Callers can pass an
  * explicit model root to probe bundle-local Kokoro artifacts first. Returns
@@ -21,8 +21,8 @@
  */
 
 import { existsSync, readdirSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import { elizaModelsDir } from "../../paths";
 import type { KokoroModelLayout, KokoroVoicePack } from "./types";
 import {
 	KOKORO_DEFAULT_VOICE_ID,
@@ -76,13 +76,7 @@ export function kokoroEngineModelDir(rootOverride?: string): string {
 	if (explicit) return explicit;
 	const env = process.env.ELIZA_KOKORO_MODEL_DIR?.trim();
 	if (env) return env;
-	return path.join(
-		os.homedir(),
-		".eliza",
-		"local-inference",
-		"models",
-		"kokoro",
-	);
+	return path.join(elizaModelsDir(), "kokoro");
 }
 
 /**

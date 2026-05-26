@@ -191,7 +191,7 @@ function printOnboardingContinuationState() {
     ? fetchDeployedGetStartedChunk(body)
     : { status: 1, stdout: "", stderr: "app shell missing" };
   const hasOnboardingSession = chunk.stdout.includes("onboardingSession");
-  const hasOnboardingChatApi = chunk.stdout.includes("/api/eliza-app/onboarding/chat");
+  const hasOnboardingChatApi = chunk.stdout.includes("/api/eliza-app/first-run/chat");
   const hasBlooioPlatform = chunk.stdout.includes("blooio");
   const passed =
     httpCode === "200" &&

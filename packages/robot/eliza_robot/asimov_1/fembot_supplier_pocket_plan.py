@@ -14,8 +14,8 @@ from eliza_robot.asimov_1.fembot_component_constraints import (
 )
 from eliza_robot.asimov_1.fembot_generated_cad import (
     DEFAULT_EXTENT_TOLERANCE_M,
-    build_fembot_generated_cad_envelope_proof,
     _cad_python,
+    build_fembot_generated_cad_envelope_proof,
 )
 from eliza_robot.asimov_1.fembot_parametric_constraints import (
     build_fembot_parametric_constraints_proof,
@@ -75,6 +75,18 @@ def _parametric_supplier_links(report: dict[str, Any]) -> set[str]:
             and constraint.get("name") == "supplier_vendor_keepout_growth"
             for constraint in record.get("constraints", [])
         ):
+            links.add(link)
+    return links
+
+
+def _generated_supplier_adjusted_links(report: dict[str, Any]) -> set[str]:
+    links: set[str] = set()
+    for record in report.get("link_steps", []):
+        if not isinstance(record, dict):
+            continue
+        link = str(record.get("link", "")).upper()
+        candidate = record.get("supplier_vendor_adjusted_candidate") or {}
+        if link and candidate.get("required") and candidate.get("reload_ok"):
             links.add(link)
     return links
 
@@ -298,8 +310,12 @@ def _attach_placement_proxy_results(
                     "placement_proxy_reload_ok": False,
                     "placement_proxy_extent_within_tolerance": False,
                     "placement_proxy_solid_count": 0,
+                    "placement_proxy_verified": False,
                 }
             )
+            mate = record.get("mate_feature_assignment")
+            if isinstance(mate, dict):
+                mate["proxy_verified"] = False
             continue
         step_path = Path(str(proxy["step_path"]))
         requested = [float(value) for value in proxy.get("requested_extent_m", [])]
@@ -325,8 +341,19 @@ def _attach_placement_proxy_results(
                 "placement_proxy_reload_ok": bool(proxy.get("reload_ok")),
                 "placement_proxy_extent_within_tolerance": extent_within_tolerance,
                 "placement_proxy_solid_count": int(proxy.get("solid_count") or 0),
+                "placement_proxy_verified": bool(
+                    proxy.get("reload_ok")
+                    and extent_within_tolerance
+                    and int(proxy.get("solid_count") or 0) == 1
+                ),
             }
         )
+        mate = record.get("mate_feature_assignment")
+        if isinstance(mate, dict):
+            mate["proxy_verified"] = bool(
+                record["placement_proxy_verified"]
+                and len(record.get("mate_feature_ids") or []) >= 3
+            )
 
 
 def _candidate_placement_transform(
@@ -367,12 +394,201 @@ def _candidate_placement_transform(
         }
         if len(axis_indices) == 3
         else None,
+        "required_sorted_extent_m": required,
         "available_minus_required_sorted_extent_m": slack,
         "minimum_sorted_extent_slack_m": min(slack) if slack else None,
         "accepted": False,
         "blocking_reason": (
             "axis-aligned bbox-center transform is a placement hypothesis; exact "
             "STEP assembly transform and mate faces are not assigned"
+        ),
+    }
+
+
+def _supplier_code_family(supplier_code: str) -> str:
+    if supplier_code.startswith(("1600", "1602")):
+        return "bearing_or_ring"
+    if supplier_code.startswith(("2806", "2920")) or supplier_code.startswith("91390"):
+        return "fastener_or_thread"
+    return "vendor_off_the_shelf"
+
+
+def _candidate_mate_feature_ids(
+    *,
+    link: str,
+    supplier_code: str,
+    placement_transform: dict[str, Any],
+) -> list[str]:
+    axis_alignment = placement_transform.get("axis_alignment") or {}
+    return [
+        f"{link}:{supplier_code}:bbox-center",
+        f"{link}:{supplier_code}:short-axis-{axis_alignment.get('short_axis', 'unknown')}",
+        f"{link}:{supplier_code}:long-axis-{axis_alignment.get('long_axis', 'unknown')}",
+    ]
+
+
+def _tool_access_candidate(
+    *,
+    supplier_family: str,
+    placement_transform: dict[str, Any],
+) -> dict[str, Any]:
+    slack = [
+        float(value)
+        for value in placement_transform.get("available_minus_required_sorted_extent_m", [])
+    ]
+    minimum_slack = min(slack) if slack else None
+    family_requires_fastener_tooling = supplier_family == "fastener_or_thread"
+    return {
+        "required": family_requires_fastener_tooling,
+        "candidate": bool(
+            family_requires_fastener_tooling
+            and minimum_slack is not None
+            and minimum_slack >= 0.0
+        ),
+        "minimum_sorted_extent_slack_m": minimum_slack,
+        "source": "sorted_bbox_slack_screen",
+        "verified": False,
+        "blocking_reason": (
+            "fastener/tool access has only an axis-aligned bbox slack screen; "
+            "tool approach cone and exact thread/mate geometry are not assigned"
+        )
+        if family_requires_fastener_tooling
+        else None,
+    }
+
+
+def _generated_bbox_bounds(generated: dict[str, Any]) -> tuple[list[float], list[float]] | None:
+    center = [
+        float(value)
+        for value in generated.get("requested_center_m", generated.get("center_m", []))
+    ]
+    extents = [
+        float(value)
+        for value in generated.get("requested_extent_m", generated.get("extent_m", []))
+    ]
+    if len(center) != 3 or len(extents) != 3 or any(value <= 0.0 for value in extents):
+        return None
+    half = [value / 2.0 for value in extents]
+    return (
+        [center[index] - half[index] for index in range(3)],
+        [center[index] + half[index] for index in range(3)],
+    )
+
+
+def _pocket_bounds_from_transform(
+    *,
+    placement_transform: dict[str, Any],
+) -> tuple[list[float], list[float]] | None:
+    center = [float(value) for value in placement_transform.get("translation_m", [])]
+    extents = _placement_proxy_extent_xyz(
+        {
+            "placement_transform_m": placement_transform,
+            "required_sorted_extent_m": placement_transform.get(
+                "required_sorted_extent_m",
+                [],
+            ),
+        }
+    )
+    if len(center) != 3 or extents is None:
+        return None
+    half = [value / 2.0 for value in extents]
+    return (
+        [center[index] - half[index] for index in range(3)],
+        [center[index] + half[index] for index in range(3)],
+    )
+
+
+def _bbox_containment_margin_m(
+    *,
+    outer_bounds: tuple[list[float], list[float]] | None,
+    inner_bounds: tuple[list[float], list[float]] | None,
+) -> float | None:
+    if outer_bounds is None or inner_bounds is None:
+        return None
+    outer_min, outer_max = outer_bounds
+    inner_min, inner_max = inner_bounds
+    margins = [
+        inner_min[index] - outer_min[index]
+        for index in range(3)
+    ] + [
+        outer_max[index] - inner_max[index]
+        for index in range(3)
+    ]
+    return min(margins)
+
+
+def _collision_precheck_candidate(
+    *,
+    generated: dict[str, Any],
+    placement_transform: dict[str, Any],
+    fit_report: dict[str, Any],
+) -> dict[str, Any]:
+    containment_margin = _bbox_containment_margin_m(
+        outer_bounds=_generated_bbox_bounds(generated),
+        inner_bounds=_pocket_bounds_from_transform(placement_transform=placement_transform),
+    )
+    minimum_slack = placement_transform.get("minimum_sorted_extent_slack_m")
+    sorted_clearance_margin = (
+        float(minimum_slack) / 2.0 if minimum_slack is not None else None
+    )
+    candidate = bool(
+        fit_report.get("passes_after_adjustment")
+        and minimum_slack is not None
+        and float(minimum_slack) >= 0.0
+    )
+    return {
+        "source": "generated_bbox_proxy_containment_screen",
+        "candidate": candidate,
+        "accepted": False,
+        "minimum_sorted_extent_slack_m": minimum_slack,
+        "adjusted_sorted_extent_clearance_margin_m": sorted_clearance_margin,
+        "proxy_bbox_containment_margin_m": containment_margin,
+        "blocking_reason": (
+            "adjusted bbox slack proves only an axis-aligned candidate pocket volume; "
+            "raw proxy containment may exceed the pre-growth source bbox, and final "
+            "collision validation needs exact subtracted pocket geometry in the "
+            "assembled MuJoCo/STEP model"
+        ),
+    }
+
+
+def _structural_screen_by_link(report: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        str(record.get("link", "")).upper(): record
+        for record in report.get("structural_remediation_preview_screen", [])
+        if record.get("link")
+    }
+
+
+def _structural_precheck_candidate(
+    *,
+    link: str,
+    structural_screens_by_link: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    screen = structural_screens_by_link.get(link.upper())
+    if screen is None:
+        return {
+            "source": "no_structural_remediation_required_by_current_screen",
+            "candidate": True,
+            "accepted": False,
+            "minimum_safety_factor": None,
+            "max_deflection_m": None,
+            "blocking_reason": (
+                "link is not in the current structural remediation set, but final "
+                "validation still needs exact pocket subtraction edge-distance, "
+                "load-path, buckling, and deflection analysis"
+            ),
+        }
+    return {
+        "source": "structural_remediation_preview_screen",
+        "candidate": bool(screen.get("accepted")),
+        "accepted": False,
+        "minimum_safety_factor": screen.get("minimum_safety_factor"),
+        "max_deflection_m": screen.get("max_deflection_m"),
+        "blocking_reason": (
+            "structural remediation preview passes the analytic screen, but final "
+            "validation still needs exact pocket subtraction edge-distance, load-path, "
+            "buckling, and deflection analysis"
         ),
     }
 
@@ -384,6 +600,7 @@ def _plan_record(
     supplier_code: str,
     supplier_target: dict[str, Any],
     fit_report: dict[str, Any],
+    structural_screens_by_link: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     candidate = generated.get("supplier_vendor_adjusted_candidate") or {}
     placement_transform = _candidate_placement_transform(
@@ -391,9 +608,29 @@ def _plan_record(
         candidate=candidate,
         fit_report=fit_report,
     )
+    supplier_family = _supplier_code_family(supplier_code)
+    mate_feature_ids = _candidate_mate_feature_ids(
+        link=link,
+        supplier_code=supplier_code,
+        placement_transform=placement_transform,
+    )
+    fastener_access = _tool_access_candidate(
+        supplier_family=supplier_family,
+        placement_transform=placement_transform,
+    )
+    collision_precheck = _collision_precheck_candidate(
+        generated=generated,
+        placement_transform=placement_transform,
+        fit_report=fit_report,
+    )
+    structural_precheck = _structural_precheck_candidate(
+        link=link,
+        structural_screens_by_link=structural_screens_by_link,
+    )
     return {
         "link": link,
         "supplier_code": supplier_code,
+        "supplier_family": supplier_family,
         "source_paths": supplier_target.get("paths", []),
         "source_geometry": _supplier_code_body_summary(supplier_target),
         "generated_step_path": candidate.get("step_path"),
@@ -410,9 +647,25 @@ def _plan_record(
         "placement_frame": "generated_link_local_bbox_center",
         "placement_transform_m": placement_transform,
         "placement_transform_accepted": False,
-        "mate_feature_ids": [],
-        "fastener_access_verified": False,
+        "placement_proxy_verified": False,
+        "mate_feature_ids": mate_feature_ids,
+        "mate_feature_assignment": {
+            "source": "generated_bbox_axis_alignment_candidate",
+            "candidate": True,
+            "proxy_verified": False,
+            "accepted": False,
+            "blocking_reason": (
+                "candidate mate identifiers are derived from the generated bbox and "
+                "supplier axis alignment; exact STEP faces/bores are not assigned"
+            ),
+        },
+        "fastener_access": fastener_access,
+        "fastener_access_verified": bool(fastener_access["verified"]),
+        "collision_precheck": collision_precheck,
+        "collision_precheck_candidate": bool(collision_precheck["candidate"]),
         "collision_validation_at_placed_pocket": False,
+        "structural_precheck": structural_precheck,
+        "structural_precheck_candidate": bool(structural_precheck["candidate"]),
         "structural_validation_at_placed_pocket": False,
         "accepted": False,
         "blocking_reason": (
@@ -429,6 +682,7 @@ def build_fembot_supplier_pocket_plan_proof(
     component_constraint_report: dict[str, Any] | None = None,
     generated_cad_report: dict[str, Any] | None = None,
     parametric_constraint_report: dict[str, Any] | None = None,
+    structural_report: dict[str, Any] | None = None,
     placement_proxy_root: Path = DEFAULT_PLACEMENT_PROXY_OUTPUT_ROOT,
     cad_python: Path | None = None,
     extent_tolerance_m: float = DEFAULT_EXTENT_TOLERANCE_M,
@@ -443,6 +697,14 @@ def build_fembot_supplier_pocket_plan_proof(
         or _load_json(ASIMOV_PARAM_PROOFS / "fembot-generated-cad-envelope.json")
         or build_fembot_generated_cad_envelope_proof(body_groups)
     )
+    persisted_generated = _load_json(
+        ASIMOV_PARAM_PROOFS / "fembot-generated-cad-envelope.json"
+    )
+    supplier_generated = (
+        generated
+        if _generated_supplier_adjusted_links(generated)
+        else (persisted_generated or generated)
+    )
     parametric = (
         parametric_constraint_report
         or _load_json(ASIMOV_PARAM_PROOFS / "fembot-parametric-constraints.json")
@@ -452,8 +714,17 @@ def build_fembot_supplier_pocket_plan_proof(
         )
     )
     supplier_targets = _supplier_targets_by_code(component)
-    generated_links = _generated_by_link(generated)
-    supplier_links = sorted(_parametric_supplier_links(parametric))
+    generated_links = _generated_by_link(supplier_generated)
+    supplier_links = sorted(
+        _parametric_supplier_links(parametric)
+        or _generated_supplier_adjusted_links(supplier_generated)
+    )
+    structural = (
+        structural_report
+        or _load_json(ASIMOV_PARAM_PROOFS / "fembot-structural-sanity.json")
+        or {}
+    )
+    structural_screens_by_link = _structural_screen_by_link(structural)
     pocket_records = []
     missing_links = []
     for link in supplier_links:
@@ -473,6 +744,7 @@ def build_fembot_supplier_pocket_plan_proof(
                     supplier_code=supplier_code,
                     supplier_target=supplier_target,
                     fit_report=fit_report,
+                    structural_screens_by_link=structural_screens_by_link,
                 )
             )
     proxy_specs = _placement_proxy_specs(
@@ -518,6 +790,12 @@ def build_fembot_supplier_pocket_plan_proof(
         "source": {
             "component_constraint_schema": component.get("schema"),
             "generated_cad_schema": generated.get("schema"),
+            "supplier_generated_cad_schema": supplier_generated.get("schema"),
+            "supplier_generated_source": (
+                "provided_generated_cad_report"
+                if supplier_generated is generated
+                else "persisted_generated_cad_report"
+            ),
             "parametric_constraint_schema": parametric.get("schema"),
             "placement_proxy_backend": proxy_result.get("backend"),
             "placement_proxy_python": proxy_result.get("python"),
@@ -544,22 +822,55 @@ def build_fembot_supplier_pocket_plan_proof(
             "candidate_placement_proxy_failures": proxy_failures,
             "candidate_placement_proxy_extent_tolerance_failures": proxy_extent_failures,
             "candidate_placement_proxy_single_solid_plans": proxy_single_solid,
+            "placement_proxy_verified_plans": sum(
+                1 for record in pocket_records if record["placement_proxy_verified"]
+            ),
             "accepted_placement_transforms": sum(
                 1 for record in pocket_records if record["placement_transform_accepted"]
             ),
             "unassigned_placement_transforms": sum(
                 1 for record in pocket_records if record["placement_transform_m"] is None
             ),
+            "mate_feature_candidate_plans": sum(
+                1
+                for record in pocket_records
+                if record.get("mate_feature_assignment", {}).get("candidate")
+            ),
+            "mate_feature_proxy_verified_plans": sum(
+                1
+                for record in pocket_records
+                if record.get("mate_feature_assignment", {}).get("proxy_verified")
+            ),
             "mate_feature_unassigned_plans": sum(
                 1 for record in pocket_records if not record["mate_feature_ids"]
             ),
+            "fastener_access_required_plans": sum(
+                1 for record in pocket_records if record.get("fastener_access", {}).get("required")
+            ),
+            "fastener_access_candidate_plans": sum(
+                1 for record in pocket_records if record.get("fastener_access", {}).get("candidate")
+            ),
             "fastener_access_unverified_plans": sum(
-                1 for record in pocket_records if not record["fastener_access_verified"]
+                1
+                for record in pocket_records
+                if record.get("fastener_access", {}).get("required")
+                and not record["fastener_access_verified"]
+            ),
+            "fastener_access_not_required_plans": sum(
+                1
+                for record in pocket_records
+                if not record.get("fastener_access", {}).get("required")
+            ),
+            "collision_precheck_candidate_plans": sum(
+                1 for record in pocket_records if record["collision_precheck_candidate"]
             ),
             "collision_validation_missing_plans": sum(
                 1
                 for record in pocket_records
                 if not record["collision_validation_at_placed_pocket"]
+            ),
+            "structural_precheck_candidate_plans": sum(
+                1 for record in pocket_records if record["structural_precheck_candidate"]
             ),
             "structural_validation_missing_plans": sum(
                 1
@@ -568,9 +879,10 @@ def build_fembot_supplier_pocket_plan_proof(
             ),
             "accepted": False,
             "acceptance_blocker": (
-                "supplier pocket plans are bbox-cleared but exact placement, mate "
-                "features, fastener/tool access, collision validation, and structural "
-                "validation remain unaccepted"
+                "supplier pocket plans are bbox-cleared with reloadable placement "
+                "proxy STEP artifacts and proxy mate identifiers; exact assembly "
+                "placement, STEP face/bores, fastener/tool access, collision "
+                "validation, and structural validation remain unaccepted"
             ),
         },
         "pocket_plans": pocket_records,

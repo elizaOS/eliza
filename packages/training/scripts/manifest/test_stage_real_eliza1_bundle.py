@@ -115,7 +115,7 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     assert "drafter" in manifest["lineage"]
     assert sorted(f["ctx"] for f in manifest["files"]["text"]) == [131072, 262144]
     assert manifest["files"]["text"][0]["path"] == "text/eliza-1-0_8b-128k.gguf"
-    assert manifest["files"]["dflash"][0]["path"] == "dflash/drafter-0_8b.gguf"
+    assert manifest["files"]["mtp"][0]["path"] == "mtp/drafter-0_8b.gguf"
     assert manifest["files"]["vision"][0]["path"] == "vision/mmproj-0_8b.gguf"
     assert manifest["files"]["vad"][0]["path"] == "vad/silero-vad-v5.gguf"
     assert manifest["evals"]["vadLatencyMs"]["boundaryMs"] == 0.0
@@ -127,15 +127,15 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     assert release["final"]["weights"] is True
     assert release["final"]["evals"] is False
 
-    target_meta = json.loads((bundle / "dflash" / "target-meta.json").read_text())
+    target_meta = json.loads((bundle / "mtp" / "target-meta.json").read_text())
     assert target_meta["status"] == "weights-staged"
-    assert target_meta["dflashEnabled"] is True
+    assert target_meta["mtpEnabled"] is True
     assert target_meta["targetText"]["path"] == "text/eliza-1-0_8b-256k.gguf"
     assert target_meta["targetText"]["finalElizaWeights"] is True
-    assert target_meta["drafter"]["path"] == "dflash/drafter-0_8b.gguf"
+    assert target_meta["drafter"]["path"] == "mtp/drafter-0_8b.gguf"
     assert target_meta["kernelCaps"]["required"]
-    assert not (bundle / "dflash" / "dflash-disabled-0_8b.release-policy.json").exists()
-    assert (bundle / "dflash" / "drafter-0_8b.gguf").is_file()
+    assert not (bundle / "mtp" / "mtp-disabled-0_8b.release-policy.json").exists()
+    assert (bundle / "mtp" / "drafter-0_8b.gguf").is_file()
 
     # wakeword lineage entry must have been dropped (no wakeword files staged).
     lineage = json.loads((bundle / "lineage.json").read_text())

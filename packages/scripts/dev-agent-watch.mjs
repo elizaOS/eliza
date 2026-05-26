@@ -123,7 +123,9 @@ const watchers = watchDirs.map((dir) =>
       filePath.endsWith(".d.ts") ||
       filePath.endsWith(".d.ts.map") ||
       filePath.endsWith(".map") ||
-      filePath.endsWith(".log")
+      filePath.endsWith(".log") ||
+      filePath.endsWith(".md") ||
+      filePath.endsWith(".tsbuildinfo")
     ) {
       return;
     }

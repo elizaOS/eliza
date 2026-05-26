@@ -31,7 +31,7 @@ export interface KokoroVoicePack {
 
 /** Where the runtime expects to find Kokoro on disk. */
 export interface KokoroModelLayout {
-  /** Directory under `~/.eliza/local-inference/models/kokoro/`. */
+  /** Directory under `<stateDir>/local-inference/models/kokoro/`. */
   root: string;
   /** ONNX file — usually `kokoro-v1.0.onnx` (or quantised variant). */
   modelFile: string;

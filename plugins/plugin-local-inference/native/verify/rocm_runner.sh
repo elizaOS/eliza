@@ -11,11 +11,11 @@
 #   ROCM_TARGET                 default linux-x64-rocm
 #   ROCM_BUILD_FORK             default 1; build the target before verifying
 #   ROCM_SKIP_GRAPH_SMOKE       default 0; set 1 only for preflight bring-up
-#   ELIZA_DFLASH_CMAKE_FLAGS    default gfx90a/gfx942/RDNA3 HIP arch list
-#   ELIZA_DFLASH_HARDWARE_REPORT_DIR
+#   ELIZA_MTP_CMAKE_FLAGS    default gfx90a/gfx942/RDNA3 HIP arch list
+#   ELIZA_MTP_HARDWARE_REPORT_DIR
 #                               graph-smoke log directory, default verify/hardware-results
-#   ELIZA_DFLASH_SMOKE_MODEL    required unless ROCM_SKIP_GRAPH_SMOKE=1
-#   ELIZA_DFLASH_SMOKE_CACHE_TYPES/TOKENS/NGL/PROMPT/EXTRA_ARGS
+#   ELIZA_MTP_SMOKE_MODEL    required unless ROCM_SKIP_GRAPH_SMOKE=1
+#   ELIZA_MTP_SMOKE_CACHE_TYPES/TOKENS/NGL/PROMPT/EXTRA_ARGS
 #                               forwarded to runtime_graph_smoke.sh
 
 set -euo pipefail
@@ -23,7 +23,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$HERE" rev-parse --show-toplevel)"
 TARGET="${ROCM_TARGET:-linux-x64-rocm}"
-REPORT_PATH="${ELIZA_DFLASH_HARDWARE_REPORT:-}"
+REPORT_PATH="${ELIZA_MTP_HARDWARE_REPORT:-}"
 STARTED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 FAIL_REASON=""
 GPU_INFO=""
@@ -66,7 +66,7 @@ on_error() {
 }
 
 model_sha256() {
-    local model="${ELIZA_DFLASH_SMOKE_MODEL:-}"
+    local model="${ELIZA_MTP_SMOKE_MODEL:-}"
     [[ -n "$model" && -f "$model" ]] || return 0
     if command -v sha256sum >/dev/null 2>&1; then
         sha256sum "$model" | awk '{print $1}'
@@ -91,8 +91,8 @@ write_report() {
     TARGET="$TARGET" \
     GPU_INFO="$GPU_INFO" \
     TOOLCHAIN_INFO="$TOOLCHAIN_INFO" \
-    CMAKE_FLAGS="${ELIZA_DFLASH_CMAKE_FLAGS:-}" \
-    MODEL="${ELIZA_DFLASH_SMOKE_MODEL:-}" \
+    CMAKE_FLAGS="${ELIZA_MTP_CMAKE_FLAGS:-}" \
+    MODEL="${ELIZA_MTP_SMOKE_MODEL:-}" \
     MODEL_SHA256="$(model_sha256)" \
     GRAPH_SMOKE_STATUS="$GRAPH_SMOKE_STATUS" \
     REPORT_PATH="$REPORT_PATH" \
@@ -154,7 +154,7 @@ for cmd in hipcc rocminfo; do
     fi
 done
 
-ROCINFO_LOG="${ELIZA_DFLASH_HARDWARE_REPORT_DIR:-$HERE/hardware-results}/rocm-rocminfo.log"
+ROCINFO_LOG="${ELIZA_MTP_HARDWARE_REPORT_DIR:-$HERE/hardware-results}/rocm-rocminfo.log"
 mkdir -p "$(dirname "$ROCINFO_LOG")"
 if ! rocminfo >"$ROCINFO_LOG" 2>&1; then
     fail "rocminfo failed; see $ROCINFO_LOG"
@@ -168,13 +168,13 @@ GPU_INFO="$(grep -Ei 'Name:[[:space:]]+gfx|Marketing Name' "$ROCINFO_LOG" | head
 printf '%s\n' "$TOOLCHAIN_INFO"
 printf '%s\n' "$GPU_INFO"
 
-if [[ -z "${ELIZA_DFLASH_CMAKE_FLAGS:-}" ]]; then
+if [[ -z "${ELIZA_MTP_CMAKE_FLAGS:-}" ]]; then
     # MI250/MI300 + RDNA3 defaults; operators can override for a narrower lab.
-    export ELIZA_DFLASH_CMAKE_FLAGS='-DCMAKE_HIP_ARCHITECTURES=gfx90a;gfx942;gfx1100;gfx1101;gfx1102'
+    export ELIZA_MTP_CMAKE_FLAGS='-DCMAKE_HIP_ARCHITECTURES=gfx90a;gfx942;gfx1100;gfx1101;gfx1102'
 fi
 
 if [[ "${ROCM_BUILD_FORK:-1}" != "0" ]]; then
-    node "$REPO_ROOT/packages/app-core/scripts/build-llama-cpp-dflash.mjs" --target "$TARGET"
+    node "$REPO_ROOT/packages/app-core/scripts/build-llama-cpp-mtp.mjs" --target "$TARGET"
 fi
 
 if [[ "${ROCM_SKIP_GRAPH_SMOKE:-0}" == "1" ]]; then

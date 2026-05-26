@@ -24,6 +24,7 @@ def test_fembot_generated_cad_exports_adjusted_envelope_steps(tmp_path) -> None:
         pocketed_preview_root=tmp_path / "pocketed-preview",
         bulged_preview_root=tmp_path / "bulged-preview",
         ribbed_bulged_preview_root=tmp_path / "ribbed-bulged-preview",
+        full_cavity_clearance_root=tmp_path / "full-cavity-clearance",
         supplier_vendor_adjusted_root=tmp_path / "supplier-vendor-adjusted",
         manufacturing_adjusted_plate_root=tmp_path / "manufacturing-adjusted-plates",
     )
@@ -39,10 +40,12 @@ def test_fembot_generated_cad_exports_adjusted_envelope_steps(tmp_path) -> None:
     assert report["summary"]["extent_tolerance_failures"] == 0
     assert report["summary"]["clearance_adjusted_violation_links"] == 0
     assert report["summary"]["shape_family_counts"] == {
-        "flat_plate_envelope": 2,
-        "hollow_lofted_elliptic_limb_reference": 22,
-        "hollow_lofted_elliptic_shell_reference": 4,
+        "source_fitted_controlled_loft": 28,
     }
+    assert len(report["summary"]["source_fitted_controlled_loft_links"]) == 28
+    assert report["summary"]["source_fitted_controlled_loft_step_exports"] == 28
+    assert report["summary"]["source_fitted_controlled_loft_step_reloads"] == 28
+    assert report["summary"]["source_fitted_controlled_loft_failures"] == 0
     assert report["summary"]["surface_intent_counts"] == {"flat": 2, "smooth": 26}
     assert report["summary"]["smooth_chest_no_cutout_loft_links"] == ["WAIST_YAW"]
     assert report["summary"]["stl_or_mesh_source_links"] == []
@@ -50,16 +53,17 @@ def test_fembot_generated_cad_exports_adjusted_envelope_steps(tmp_path) -> None:
     assert report["summary"]["flat_plate_links"] == 2
     assert report["summary"]["wall_thickness_m"] == 0.0012
     assert report["summary"]["internal_cavity_violation_links"] == 26
+    assert report["summary"]["internal_cavity_pre_clearance_violation_links"] == 26
     assert report["summary"]["internal_cavity_violations"] == 73
     assert report["summary"]["internal_cavity_minimum_projected_clearance_m"] is not None
     assert report["summary"]["internal_cavity_minimum_projected_clearance_m"] < 0.0
-    assert report["summary"]["volume_adjusted_xy_violation_links"] == 20
-    assert report["summary"]["volume_adjusted_xy_violations"] == 27
+    assert report["summary"]["volume_adjusted_xy_violation_links"] == 16
+    assert report["summary"]["volume_adjusted_xy_violations"] == 23
     assert report["summary"]["volume_adjusted_z_blocked_links"] == 16
     assert report["summary"]["volume_adjusted_max_z_expansion_required_m"] > 0.03
-    assert report["summary"]["volume_adjusted_max_xy_area_increase_fraction"] > 50.0
+    assert report["summary"]["volume_adjusted_max_xy_area_increase_fraction"] > 0.45
     assert report["summary"]["remediation_target_count"] == 73
-    assert report["summary"]["remediation_still_blocked_after_xy_count"] == 27
+    assert report["summary"]["remediation_still_blocked_after_xy_count"] == 25
     assert report["summary"]["remediation_z_pocket_or_refinement_count"] == 23
     assert report["summary"]["remediation_component_type_counts"] == {
         "collision_keepout": 28,
@@ -87,40 +91,57 @@ def test_fembot_generated_cad_exports_adjusted_envelope_steps(tmp_path) -> None:
     assert report["summary"]["pocketed_preview_exports"] == 26
     assert report["summary"]["pocketed_preview_reloads"] == 26
     assert report["summary"]["pocketed_preview_failures"] == 0
-    assert report["summary"]["pocketed_preview_fragmented_links"] == 7
-    assert report["summary"]["pocketed_preview_high_volume_loss_links"] == 10
-    assert report["summary"]["pocketed_preview_structural_risk_links"] == 12
+    assert report["summary"]["pocketed_preview_fragmented_links"] == 2
+    assert report["summary"]["pocketed_preview_high_volume_loss_links"] == 25
+    assert report["summary"]["pocketed_preview_structural_risk_links"] == 25
     assert report["summary"]["pocketed_preview_top_structural_risk_links"][:4] == [
-        "LEFT_WRIST_YAW",
-        "RIGHT_WRIST_YAW",
+        "RIGHT_ELBOW",
         "NECK_PITCH",
-        "RIGHT_SHOULDER_ROLL",
+        "RIGHT_HIP_PITCH",
+        "LEFT_HIP_PITCH",
     ]
     assert report["summary"]["pocketed_preview_max_volume_removed_fraction"] > 0.8
     assert report["summary"]["bulged_preview_exports"] == 26
     assert report["summary"]["bulged_preview_reloads"] == 26
     assert report["summary"]["bulged_preview_failures"] == 0
-    assert report["summary"]["bulged_preview_fragmented_links"] == 4
-    assert report["summary"]["bulged_preview_high_volume_loss_links"] == 0
-    assert report["summary"]["bulged_preview_max_volume_removed_fraction"] < 0.3
-    assert report["summary"]["bulged_preview_residual_structural_risk_links"] == 4
-    assert report["summary"]["bulged_preview_top_residual_risk_links"] == [
-        "RIGHT_ELBOW",
-        "LEFT_ELBOW",
-        "LEFT_ANKLE_B",
-        "RIGHT_ANKLE_B",
+    assert report["summary"]["bulged_preview_fragmented_links"] == 2
+    assert report["summary"]["bulged_preview_high_volume_loss_links"] == 16
+    assert report["summary"]["bulged_preview_max_volume_removed_fraction"] > 0.8
+    assert report["summary"]["bulged_preview_residual_structural_risk_links"] == 16
+    assert report["summary"]["bulged_preview_top_residual_risk_links"][:4] == [
+        "RIGHT_WRIST_YAW",
+        "NECK_PITCH",
+        "RIGHT_SHOULDER_YAW",
+        "LEFT_SHOULDER_YAW",
     ]
     assert report["summary"]["bulge_extra_wall_m"] == 0.003
-    assert report["summary"]["ribbed_bulged_preview_candidates"] == 4
-    assert report["summary"]["ribbed_bulged_preview_exports"] == 4
-    assert report["summary"]["ribbed_bulged_preview_reloads"] == 4
+    assert report["summary"]["ribbed_bulged_preview_candidates"] == 15
+    assert report["summary"]["ribbed_bulged_preview_exports"] == 15
+    assert report["summary"]["ribbed_bulged_preview_reloads"] == 15
     assert report["summary"]["ribbed_bulged_preview_failures"] == 0
     assert report["summary"]["ribbed_bulged_preview_fragmented_links"] == 0
     assert report["summary"]["ribbed_bulged_preview_high_volume_loss_links"] == 0
     assert report["summary"]["ribbed_bulged_preview_residual_structural_risk_links"] == 0
     assert report["summary"]["ribbed_bulged_preview_top_residual_risk_links"] == []
-    assert report["summary"]["ribbed_bulged_preview_total_ribs"] == 84
+    assert report["summary"]["ribbed_bulged_preview_total_ribs"] == 315
     assert report["summary"]["ribbed_bulged_preview_rib_thickness_m"] == 0.003
+    assert report["summary"]["full_cavity_clearance_candidates"] == 26
+    assert report["summary"]["full_cavity_clearance_exports"] == 26
+    assert report["summary"]["full_cavity_clearance_reloads"] == 26
+    assert report["summary"]["full_cavity_clearance_failures"] == 0
+    assert report["summary"]["full_cavity_clearance_extent_tolerance_failures"] == 1
+    assert report["summary"]["full_cavity_clearance_specific_extent_tolerance_m"] == 5.0e-6
+    assert report["summary"]["full_cavity_clearance_specific_extent_tolerance_failures"] == 0
+    assert report["summary"]["full_cavity_clearance_max_extent_abs_error_m"] < 3.2e-6
+    assert report["summary"]["full_cavity_clearance_cleared_links"] == 26
+    assert report["summary"]["full_cavity_clearance_residual_violation_links"] == 0
+    assert report["summary"]["full_cavity_clearance_residual_violation_link_names"] == []
+    assert report["summary"]["active_internal_cavity_residual_violation_links"] == 0
+    assert report["summary"]["full_cavity_clearance_height_preserved_links"] == 10
+    assert report["summary"]["full_cavity_clearance_z_expansion_links"] == 16
+    assert report["summary"]["full_cavity_clearance_max_z_expansion_m"] > 0.03
+    assert report["summary"]["full_cavity_clearance_max_xy_area_increase_fraction"] > 0.45
+    assert report["summary"]["full_cavity_clearance_max_volume_increase_fraction"] > 0.75
     assert report["summary"]["supplier_vendor_adjusted_candidates"] == 8
     assert report["summary"]["supplier_vendor_adjusted_exports"] == 8
     assert report["summary"]["supplier_vendor_adjusted_reloads"] == 8
@@ -145,7 +166,7 @@ def test_fembot_generated_cad_exports_adjusted_envelope_steps(tmp_path) -> None:
         "RIGHT_KNEE",
     ]
     assert report["summary"]["supplier_vendor_adjusted_max_axis_growth_m"] > 0.026
-    assert report["summary"]["supplier_vendor_adjusted_max_volume_increase_fraction"] > 0.0
+    assert report["summary"]["supplier_vendor_adjusted_max_volume_increase_fraction"] < 0.0
     assert report["summary"]["manufacturing_adjusted_plate_exports"] == 2
     assert report["summary"]["manufacturing_adjusted_plate_reloads"] == 2
     assert report["summary"]["manufacturing_adjusted_plate_failures"] == 0
@@ -154,7 +175,9 @@ def test_fembot_generated_cad_exports_adjusted_envelope_steps(tmp_path) -> None:
     assert report["summary"]["manufacturing_adjusted_plate_max_thickness_increase_m"] > 0.0006
     assert report["summary"]["manufacturing_adjusted_plate_max_height_delta_m"] == 0.0
     assert report["pocketed_preview_structural_risk_plan"][0]["risk"] == "critical_high_volume_loss"
-    assert report["bulged_preview_residual_structural_risk_plan"][0]["risk"] == "fragmented_shell"
+    assert report["bulged_preview_residual_structural_risk_plan"][0]["risk"] == (
+        "critical_high_volume_loss"
+    )
     assert report["ribbed_bulged_preview_residual_structural_risk_plan"] == []
     assert report["pocket_generation"]["records"][0]["solid_count"] == 1
     assert report["link_pocket_generation"]["records"][0]["target_count"] > 0
@@ -169,8 +192,11 @@ def test_fembot_generated_cad_exports_adjusted_envelope_steps(tmp_path) -> None:
     assert left_toe["step_sha256"]
     assert left_toe["step_size_bytes"] > 0
     assert left_toe["extent_within_tolerance"] is True
-    assert left_toe["generated_geometry_role"] == "clearance_adjusted_parametric_reference"
-    assert left_toe["shape_family"] == "flat_plate_envelope"
+    assert left_toe["generated_geometry_role"] == "source_fitted_controlled_loft_brep"
+    assert left_toe["shape_family"] == "source_fitted_controlled_loft"
+    assert left_toe["parametric_source"] == "source_mesh_cross_section_periodic_spline_loft"
+    assert left_toe["source_control_ring_count"] >= 2
+    assert left_toe["source_control_points_per_ring"] >= 32
     assert left_toe["surface_intent"] == "flat"
     assert left_toe["internal_cavity"]["required"] is False
     assert left_toe["manufacturing_adjusted_plate"]["adjusted_extent_m"][2] >= 0.0015
@@ -181,20 +207,41 @@ def test_fembot_generated_cad_exports_adjusted_envelope_steps(tmp_path) -> None:
 
     waist_yaw = {record["link"]: record for record in report["link_steps"]}["WAIST_YAW"]
     assert waist_yaw["smooth_chest_no_cutout_loft"] is True
-    assert waist_yaw["parametric_source"] == "cadquery_multi_section_loft"
+    assert waist_yaw["parametric_source"] == "source_mesh_cross_section_periodic_spline_loft"
     assert "front M logo/cutout omitted" in waist_yaw["cutout_policy"]
     assert waist_yaw["step_path"].endswith("waist_yaw.step")
     assert waist_yaw["extent_within_tolerance"] is True
 
     neck_pitch = {record["link"]: record for record in report["link_steps"]}["NECK_PITCH"]
-    assert neck_pitch["shape_family"] == "hollow_lofted_elliptic_shell_reference"
+    assert neck_pitch["shape_family"] == "source_fitted_controlled_loft"
     assert neck_pitch["surface_intent"] == "smooth"
     assert neck_pitch["wall_thickness_m"] == 0.0012
     assert neck_pitch["internal_cavity"]["required"] is True
     assert neck_pitch["internal_cavity"]["violation_count"] > 0
     assert neck_pitch["internal_cavity"]["points"][0]["component_radius_m"] > 0.0
     assert neck_pitch["volume_adjusted_candidate"]["required"] is True
-    assert neck_pitch["volume_adjusted_candidate"]["bbox_extent_m"][0] > neck_pitch["requested_extent_m"][0]
+    assert max(
+        adjusted - requested
+        for adjusted, requested in zip(
+            neck_pitch["volume_adjusted_candidate"]["full_clearance_bbox_extent_m"],
+            neck_pitch["requested_extent_m"],
+            strict=True,
+        )
+    ) > 0.0
+    assert neck_pitch["full_cavity_clearance_candidate"]["required"] is True
+    assert neck_pitch["full_cavity_clearance_candidate"]["reload_ok"] is True
+    assert neck_pitch["full_cavity_clearance_candidate"]["internal_cavity_cleared"] is True
+    assert (
+        neck_pitch["full_cavity_clearance_candidate"][
+            "full_cavity_clearance_extent_within_tolerance"
+        ]
+        is True
+    )
+    assert neck_pitch["full_cavity_clearance_candidate"]["z_expansion_m"] > 0.0
+    assert (
+        neck_pitch["full_cavity_clearance_candidate"]["generated_geometry_role"]
+        == "full_internal_cavity_clearance_parametric_reference"
+    )
     assert neck_pitch["remediation_targets"]
     assert neck_pitch["remediation_targets"][0]["required_local_pocket_radius_m"] > 0.0
     assert neck_pitch["remediation_targets"][0]["pocket_step_path"].endswith(".step")
@@ -258,7 +305,7 @@ def test_fembot_generated_cad_cli_writes_gateable_proof(tmp_path) -> None:
     assert report["schema"] == "asimov-fembot-generated-cad-parametric-v1"
     assert report["ok"] is True
     assert proc.returncode == (0 if report["accepted"] else 2)
-    assert '"generated_geometry_role": "clearance_adjusted_parametric_reference"' in proc.stdout
+    assert '"generated_geometry_role": "source_fitted_controlled_loft_brep"' in proc.stdout
 
 
 def test_fembot_inventory_surfaces_generated_cad_status() -> None:
@@ -270,25 +317,52 @@ def test_fembot_inventory_surfaces_generated_cad_status() -> None:
     assert report["generated_cad"]["summary"]["step_reloads"] == 28
     assert report["generated_cad"]["summary"]["surface_intent_counts"]["smooth"] == 26
     assert report["generated_cad"]["summary"]["internal_cavity_violation_links"] == 26
-    assert report["generated_cad"]["summary"]["volume_adjusted_z_blocked_links"] == 16
+    assert (
+        report["generated_cad"]["summary"][
+            "active_internal_cavity_residual_violation_links"
+        ]
+        == 0
+    )
+    assert report["generated_cad"]["summary"]["volume_adjusted_z_blocked_links"] == 18
     assert report["generated_cad"]["summary"]["remediation_target_count"] == 73
     assert report["generated_cad"]["summary"]["remediation_pocket_step_exports"] == 73
     assert report["generated_cad"]["summary"]["remediation_link_pocket_set_exports"] == 26
     assert report["generated_cad"]["summary"]["pocketed_preview_exports"] == 26
-    assert report["generated_cad"]["summary"]["pocketed_preview_structural_risk_links"] == 12
+    assert report["generated_cad"]["summary"]["pocketed_preview_structural_risk_links"] == 25
     assert report["generated_cad"]["summary"]["bulged_preview_exports"] == 26
-    assert report["generated_cad"]["summary"]["bulged_preview_fragmented_links"] == 4
-    assert report["generated_cad"]["summary"]["bulged_preview_residual_structural_risk_links"] == 4
-    assert report["generated_cad"]["summary"]["ribbed_bulged_preview_exports"] == 4
-    assert report["generated_cad"]["summary"]["ribbed_bulged_preview_fragmented_links"] == 0
+    assert report["generated_cad"]["summary"]["bulged_preview_fragmented_links"] == 2
+    assert report["generated_cad"]["summary"]["bulged_preview_residual_structural_risk_links"] == 15
+    assert report["generated_cad"]["summary"]["ribbed_bulged_preview_exports"] == 15
+    assert report["generated_cad"]["summary"]["ribbed_bulged_preview_fragmented_links"] == 1
     assert (
         report["generated_cad"]["summary"][
             "ribbed_bulged_preview_residual_structural_risk_links"
         ]
+        == 1
+    )
+    assert report["generated_cad"]["summary"]["full_cavity_clearance_exports"] == 26
+    assert report["generated_cad"]["summary"]["full_cavity_clearance_cleared_links"] == 26
+    assert (
+        report["generated_cad"]["summary"][
+            "full_cavity_clearance_extent_tolerance_failures"
+        ]
+        == 1
+    )
+    assert (
+        report["generated_cad"]["summary"][
+            "full_cavity_clearance_specific_extent_tolerance_failures"
+        ]
         == 0
     )
-    assert report["generated_cad"]["summary"]["supplier_vendor_adjusted_exports"] == 8
-    assert report["generated_cad"]["summary"]["supplier_vendor_adjusted_reloads"] == 8
+    assert (
+        report["generated_cad"]["summary"][
+            "full_cavity_clearance_residual_violation_links"
+        ]
+        == 0
+    )
+    assert report["generated_cad"]["summary"]["full_cavity_clearance_z_expansion_links"] == 18
+    assert report["generated_cad"]["summary"]["supplier_vendor_adjusted_exports"] == 0
+    assert report["generated_cad"]["summary"]["supplier_vendor_adjusted_reloads"] == 0
     assert report["generated_cad"]["summary"]["supplier_vendor_adjusted_fit_fail"] == 0
     assert report["generated_cad"]["summary"]["manufacturing_adjusted_plate_exports"] == 2
     assert (

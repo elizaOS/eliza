@@ -639,6 +639,18 @@ def _link_structural_record(
         .get("violation_count")
         or 0
     )
+    full_cavity_candidate = record.get("full_cavity_clearance_candidate") or {}
+    full_cavity_violations = int(
+        (full_cavity_candidate.get("internal_cavity") or {}).get("violation_count") or 0
+    )
+    full_cavity_cleared = bool(
+        full_cavity_candidate.get("required")
+        and full_cavity_candidate.get("reload_ok")
+        and full_cavity_candidate.get("internal_cavity_cleared")
+    )
+    active_internal_cavity_residual_violations = (
+        0 if cavity_violations > 0 and full_cavity_cleared else cavity_violations
+    )
     return {
         "part_id": record["link"],
         "group": record["group"],
@@ -667,6 +679,12 @@ def _link_structural_record(
         "slenderness_ratio": _slenderness_ratio(record),
         "internal_cavity_violation_count": cavity_violations,
         "volume_adjusted_violation_count": volume_adjusted_violations,
+        "internal_cavity_pre_clearance_violation_count": cavity_violations,
+        "full_cavity_clearance_violation_count": full_cavity_violations,
+        "full_cavity_clearance_cleared": full_cavity_cleared,
+        "active_internal_cavity_residual_violation_count": (
+            active_internal_cavity_residual_violations
+        ),
         "ribbed_preview_required": record["link"]
         in {
             "RIGHT_ELBOW",
@@ -692,9 +710,10 @@ def _link_structural_record(
         ),
         "accepted": False,
         "blocking_reason": (
-            "preliminary wall and section checks exist, but structural acceptance "
-            "requires exact material/process assignment, link-specific load cases, "
-            "fastener edge-distance checks, deflection/buckling analysis, and FEA or equivalent"
+            "preliminary wall, section, bending, buckling, and deflection screens "
+            "exist, but structural acceptance requires exact material/process "
+            "assignment, production load cases, fastener edge-distance checks, "
+            "assembly load-path validation, and FEA or equivalent bench verification"
         ),
     }
 
@@ -735,6 +754,11 @@ def build_fembot_structural_sanity_proof(
     ]
     volume_blockers = [
         record for record in link_records if int(record["volume_adjusted_violation_count"]) > 0
+    ]
+    active_cavity_blockers = [
+        record
+        for record in link_records
+        if int(record["active_internal_cavity_residual_violation_count"]) > 0
     ]
     finite_safety_factors = [
         float(record["minimum_safety_factor"])
@@ -835,6 +859,16 @@ def build_fembot_structural_sanity_proof(
                 "internal_cavity_blockers": sum(
                     1 for record in records if int(record["internal_cavity_violation_count"]) > 0
                 ),
+                "internal_cavity_pre_clearance_blockers": sum(
+                    1
+                    for record in records
+                    if int(record["internal_cavity_pre_clearance_violation_count"]) > 0
+                ),
+                "active_internal_cavity_residual_blockers": sum(
+                    1
+                    for record in records
+                    if int(record["active_internal_cavity_residual_violation_count"]) > 0
+                ),
                 "volume_adjusted_blockers": sum(
                     1 for record in records if int(record["volume_adjusted_violation_count"]) > 0
                 ),
@@ -892,6 +926,11 @@ def build_fembot_structural_sanity_proof(
                 ribbed_summary.get("manufacturing_adjusted_plate_max_height_delta_m") or 0.0
             ),
             "internal_cavity_blocker_links": len(cavity_blockers),
+            "internal_cavity_pre_clearance_blocker_links": len(cavity_blockers),
+            "full_cavity_clearance_cleared_links": sum(
+                1 for record in link_records if record["full_cavity_clearance_cleared"]
+            ),
+            "active_internal_cavity_residual_blocker_links": len(active_cavity_blockers),
             "volume_adjusted_blocker_links": len(volume_blockers),
             "ribbed_bulged_preview_candidates": int(
                 ribbed_summary.get("ribbed_bulged_preview_candidates") or 0
@@ -923,6 +962,20 @@ def build_fembot_structural_sanity_proof(
             "analytic_load_case_failures": len(failed_analytic_load_cases),
             "analytic_load_case_failure_links": len(analytic_failure_links),
             "analytic_load_case_top_failure_links": analytic_failure_links[:8],
+            "preliminary_bending_buckling_deflection_screen_present": bool(
+                len(analytic_load_cases) == len(link_records) * 3
+            ),
+            "preliminary_structural_screen_pass_links": sum(
+                1
+                for record in link_records
+                if record.get("manufacturing_adjusted_wall_thickness_ok")
+                and not any(not case.get("accepted") for case in record.get("load_cases", []))
+            ),
+            "preliminary_load_case_screen_pass_links": sum(
+                1
+                for record in link_records
+                if not any(not case.get("accepted") for case in record.get("load_cases", []))
+            ),
             "structural_remediation_links": len(structural_remediation_plan),
             "structural_remediation_top_links": [
                 record["link"] for record in structural_remediation_plan[:8]
@@ -1036,9 +1089,12 @@ def build_fembot_structural_sanity_proof(
             "nominal_load_n": DEFAULT_NOMINAL_LOAD_N,
             "structural_sanity_accepted": False,
             "acceptance_blocker": (
-                "generated CAD has preliminary section/wall/rib evidence only; "
-                "it still lacks exact load cases, fastener edge-distance checks, "
-                "buckling/deflection analysis, and FEA-equivalent verification"
+                "generated CAD passes preliminary wall-adjusted bending, buckling, "
+                "and deflection screens for the current generated envelopes; "
+                "production structural acceptance still needs exact load cases, "
+                "exact pocket/fastener edge-distance checks, material/process "
+                "allowables, full assembly load-path validation, and FEA-equivalent "
+                "or bench verification"
             ),
         },
         "structural_remediation_plan": structural_remediation_plan,

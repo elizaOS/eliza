@@ -4,7 +4,7 @@
  * Shared contracts referenced by the server-side service in
  * `@elizaos/app-core` and the UI client in `@elizaos/ui`.
  *
- * Server-only logic (KV cache management, llama-server lifecycle,
+ * Server-only logic (KV cache management, native runtime lifecycle,
  * conversation registry, metrics scraping) stays in `app-core`; only
  * the type contracts live here.
  */
@@ -33,7 +33,7 @@ export interface InstalledModel {
     /**
      * Eliza-1 bundle root when this installed model came from a multi-file
      * manifest. `path` still points at the primary GGUF used for loading the
-     * model; sibling voice/cache/drafter files live under this root.
+     * model; sibling voice/cache files live under this root.
      */
     bundleRoot?: string;
     /** Absolute path to the validated `eliza-1.manifest.json`, when present. */
@@ -69,11 +69,11 @@ export interface InstalledModel {
      * must not be auto-selected as the recommended default.
      */
     bundleVerifiedAt?: string;
-    runtimeRole?: "chat";
+    runtimeRole?: "chat" | "mtp-drafter";
     companionFor?: string;
 }
 export type ModelBucket = "small" | "mid" | "large" | "xl";
-export type ModelCategory = "chat" | "code" | "tools" | "tiny" | "reasoning" | "drafter";
+export type ModelCategory = "chat" | "code" | "tools" | "tiny" | "reasoning";
 export type LocalRuntimeBackend = "capacitor-llama" | "llama-cpp";
 export type OpenVinoDeviceKind = "CPU" | "GPU" | "NPU";
 export interface OpenVinoHardwareProbe {
@@ -126,7 +126,7 @@ export interface OpenVinoHardwareProbe {
  * codified there by `ELIZA1_TO_RUNTIME_KERNEL` / `RUNTIME_TO_ELIZA1_KERNEL`.
  * `openvino` intentionally has no manifest-level Eliza-1 kernel equivalent.
  */
-export type LocalRuntimeKernel = "turbo3" | "turbo4" | "turbo3_tcq" | "qjl_full" | "polarquant" | "openvino";
+export type LocalRuntimeKernel = "turbo3" | "turbo4" | "turbo3_tcq" | "qjl_full" | "polarquant" | "dflash" | "openvino";
 /**
  * llama.cpp optimization knobs that the dispatcher can wire into the
  * FFI runtime. Values come from catalog metadata (per-model) and
@@ -194,6 +194,8 @@ export interface LocalRuntimeOptimizations {
     alias?: string;
     /** Flash attention. */
     flashAttention?: boolean;
+    /** Use native MTP verifier events when the runtime advertises support. */
+    nativeMtpEvents?: boolean;
     /**
      * Specialised kernels this model requires from optimized llama.cpp.
      * The dispatcher uses this to pick `llama-cpp` over `capacitor-llama`
@@ -219,11 +221,28 @@ export interface LocalRuntimeAcceleration {
     mtp?: {
         /** Native llama.cpp MTP speculative mode. */
         specType: "draft-mtp";
+        /** Bundle-relative path to the MTP drafter GGUF. */
+        drafterFile: string;
         /** Default draft range passed to the native MTP runner. */
         draftMin: number;
         draftMax: number;
         /** GPU layer placement for MTP heads when the runtime exposes it. */
         gpuLayers: number | "auto";
+    };
+    dflash?: {
+        /** Hidden companion model id containing the DFlash drafter GGUF. */
+        drafterModelId: string;
+        specType: "dflash";
+        /** Target and drafter context sizes passed to llama-server. */
+        contextSize: number;
+        draftContextSize: number;
+        draftMin: number;
+        draftMax: number;
+        gpuLayers: number | "auto";
+        draftGpuLayers: number | "auto";
+        disableThinking: boolean;
+        /** Catalog-side rollout gate for tiers that are intentionally disabled. */
+        disabledReason?: string;
     };
     kvCache?: {
         /**
@@ -236,12 +255,8 @@ export interface LocalRuntimeAcceleration {
     };
 }
 /**
- * Tokenizer family identifier used to verify that a DFlash target and its
- * paired drafter share a vocabulary. Speculative decoding requires the
- * target and drafter to emit token ids drawn from the same vocabulary —
- * see `docs/porting/dflash-drafter-strategy.md` for why mismatched
- * tokenizers cannot be bridged by metadata repair. Add new families here
- * as the catalog grows.
+ * Tokenizer family identifier for local GGUF catalog entries. Add new
+ * families here as the catalog grows.
  */
 export type TokenizerFamily = "qwen35" | "eliza1" | "sentencepiece" | (string & {});
 export type CatalogHub = "huggingface" | "modelscope";
@@ -304,7 +319,7 @@ export interface CatalogModel {
      */
     hiddenFromCatalog?: boolean;
     /** Runtime role for non-standard entries. */
-    runtimeRole?: "chat";
+    runtimeRole?: "chat" | "mtp-drafter";
     /** Parent chat model id when this entry is a hidden companion. */
     companionForModelId?: string;
     /** Extra catalog model ids to download alongside this model. */
@@ -337,7 +352,7 @@ export interface CatalogModel {
      */
     sourceModel?: {
         finetuned: false;
-        components: Partial<Record<"text" | "voice" | "asr" | "vad" | "embedding" | "vision", {
+        components: Partial<Record<"text" | "voice" | "asr" | "vad" | "embedding" | "vision" | "mtp", {
             repo: string;
             file?: string;
         }>>;
@@ -373,6 +388,8 @@ export interface MobileHardwareProbe {
     lowPowerMode?: boolean;
     thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
     gpuSupported?: boolean;
+    mtpSupported?: boolean;
+    mtpReason?: string;
     source?: "native" | "adapter-fallback";
 }
 export interface CpuFeatureProbe {
@@ -414,7 +431,7 @@ export interface HardwareProbe {
     source: "capacitor-llama" | "os-fallback";
     /** OpenVINO CPU/GPU/NPU availability hints for Intel hosts. */
     openvino?: OpenVinoHardwareProbe;
-    /** Mobile-only details used for minspec, storage, and native DFlash gating. */
+    /** Mobile-only details used for minspec, storage, and native runtime gating. */
     mobile?: MobileHardwareProbe;
 }
 export type DownloadState = "queued" | "downloading" | "completed" | "failed" | "cancelled";

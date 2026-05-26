@@ -3,8 +3,8 @@
  * pipeline.
  *
  * Tiers:
- * - `small`     — Qwen3.5 0.8B GGUF via the dflash local-llama-cpp fork
- *                 (`~/.cache/eliza-dflash/eliza-llama-cpp`) or Ollama as
+ * - `small`     — Qwen3.5 0.8B GGUF via the mtp local-llama-cpp fork
+ *                 (`~/.cache/eliza-mtp/eliza-llama-cpp`) or Ollama as
  *                 fallback. Tier-A smoke lane.
  * - `mid`       — Qwen3.5 2B GGUF via the same fork. Tier-B manual /
  *                 scheduled.
@@ -43,7 +43,7 @@ export const DEFAULT_TIERS: Record<ModelTier, TierSpec> = {
     modelName: "qwen3.5-0.8b-q8_0",
     bundlePath: "~/.eliza/local-inference/models/eliza-1-0_8b.bundle",
     contextWindow: 32_768,
-    notes: "Tier-A smoke lane; dflash fork or Ollama fallback",
+    notes: "Tier-A smoke lane; mtp fork or Ollama fallback",
   },
   mid: {
     tier: "mid",

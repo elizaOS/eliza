@@ -31,7 +31,7 @@ arch (`brand.eliza.json` = x86_64, `brand.eliza-arm64.json`,
 ## Emulator + build entry point
 
 `Makefile` here is the front door for the AOSP fork, parallel to
-`packages/os/linux/elizaos/Makefile` for the Debian fork. `ARCH` selects
+`packages/os/linux/Justfile` for the canonical Debian fork. `ARCH` selects
 the brand config + Cuttlefish device dir; the eliza overlay (launcher,
 splash, permissions) is arch-agnostic and shared across all three:
 
@@ -60,7 +60,7 @@ command is `node packages/scripts/distro-android/build-aosp.mjs
 > Note on orchestration: a second, divergent AOSP build/emulator stack
 > exists at `packages/app-core/scripts/aosp/` (wired into app-core's vitest
 > + agent-payload staging). It currently ships only the x86_64 `milady`
-> variant, so the eliza arm64/riscv64 images come from the
+> product path, so the eliza arm64/riscv64 images come from the
 > `distro-android` stack that this Makefile drives. The two stacks share an
 > identical-purpose core of ~11 files that have drifted; collapsing them to
 > one canonical core is tracked as follow-up cleanup.

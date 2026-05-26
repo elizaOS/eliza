@@ -57,7 +57,15 @@ describe("local inference catalog", () => {
 
   it("does not expose hidden companion entries in the hub", () => {
     const visible = localInferenceService.getCatalog();
-    expect(visible.some((model) => model.category === "drafter")).toBe(false);
+    const visibleIds = new Set(visible.map((model) => model.id));
+    const hiddenCompanionIds = MODEL_CATALOG.filter(
+      (model) =>
+        model.hiddenFromCatalog || model.runtimeRole === "dflash-drafter",
+    ).map((model) => model.id);
+    expect(hiddenCompanionIds.filter((id) => visibleIds.has(id))).toEqual([]);
+    expect(visible.flatMap((model) => model.companionModelIds ?? [])).toEqual(
+      [],
+    );
   });
 
   it("keeps the visible model hub focused on Eliza-1 only", () => {
@@ -141,16 +149,11 @@ describe("local inference catalog", () => {
     }
   });
 
-  it("attaches a tiny DFlash companion to the 0.8B tier", () => {
-    const model = findCatalogModel("eliza-1-0_8b");
-
-    expect(model, "eliza-1-0_8b missing").toBeTruthy();
-    expect(model?.displayName).toBe("eliza-1-0.8B");
-    expect(model?.companionModelIds ?? []).toEqual(["eliza-1-0_8b-drafter"]);
-    expect(model?.runtime?.dflash?.drafterModelId).toBe("eliza-1-0_8b-drafter");
-    expect(
-      MODEL_CATALOG.some((entry) => entry.id === "eliza-1-0_8b-drafter"),
-    ).toBe(true);
+  it("does not publish external drafter companions", () => {
+    const drafters = MODEL_CATALOG.filter(
+      (model) => model.runtimeRole === "dflash-drafter",
+    );
+    expect(drafters).toEqual([]);
   });
 
   it("does not ship non-Eliza local model entries", () => {

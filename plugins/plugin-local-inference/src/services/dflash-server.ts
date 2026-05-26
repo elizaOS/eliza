@@ -565,8 +565,14 @@ export function logDflashDevDisabledWarning(): void {
 }
 
 function managedDflashBinaryPath(): string {
-	const dir = path.join(localInferenceRoot(), "bin", "dflash", platformKey());
-	return findServerBinaryInDir(dir) ?? path.join(dir, serverBinaryNames()[0]);
+	const key = platformKey();
+	const resolved = findDflashBinaryByBuildKey(key, {
+		allowPrefix: true,
+		excludeFused: true,
+	});
+	if (resolved) return resolved;
+	const dir = path.join(localInferenceRoot(), "bin", "dflash", key);
+	return path.join(dir, serverBinaryNames()[0]);
 }
 
 function runtimePlatformKey(
@@ -587,6 +593,76 @@ function findServerBinaryInDir(dir: string): string | null {
 	for (const name of serverBinaryNames()) {
 		const candidate = path.join(dir, name);
 		if (fs.existsSync(candidate)) return candidate;
+	}
+	return null;
+}
+
+function defaultLocalInferenceRoot(): string {
+	const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
+	return path.join(os.homedir(), `.${namespace}`, "local-inference");
+}
+
+function localInferenceBinaryRoots(
+	options: { includeDefaultRoot?: boolean } = {},
+): string[] {
+	const roots = [localInferenceRoot()];
+	if (options.includeDefaultRoot !== false) {
+		roots.push(defaultLocalInferenceRoot());
+	}
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const root of roots) {
+		const resolved = path.resolve(root);
+		const key =
+			process.platform === "win32" ? resolved.toLowerCase() : resolved;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push(resolved);
+	}
+	return out;
+}
+
+function listDflashBuildDirs(root: string): string[] {
+	const parent = path.join(root, "bin", "dflash");
+	try {
+		return fs
+			.readdirSync(parent, { withFileTypes: true })
+			.filter((entry) => entry.isDirectory())
+			.map((entry) => path.join(parent, entry.name))
+			.sort((a, b) => {
+				const aTime = fs.statSync(a).mtimeMs;
+				const bTime = fs.statSync(b).mtimeMs;
+				return bTime - aTime || a.localeCompare(b);
+			});
+	} catch {
+		return [];
+	}
+}
+
+function findDflashBinaryByBuildKey(
+	key: string,
+	options: {
+		allowPrefix?: boolean;
+		excludeFused?: boolean;
+		includeDefaultRoot?: boolean;
+	} = {},
+): string | null {
+	for (const root of localInferenceBinaryRoots({
+		includeDefaultRoot: options.includeDefaultRoot,
+	})) {
+		const exact = path.join(root, "bin", "dflash", key);
+		const exactBinary = findServerBinaryInDir(exact);
+		if (exactBinary) return exactBinary;
+
+		if (!options.allowPrefix) continue;
+		const prefix = `${key}-`;
+		for (const dir of listDflashBuildDirs(root)) {
+			const name = path.basename(dir);
+			if (!name.startsWith(prefix)) continue;
+			if (options.excludeFused && name.includes("-fused")) continue;
+			const binary = findServerBinaryInDir(dir);
+			if (binary) return binary;
+		}
 	}
 	return null;
 }
@@ -668,6 +744,39 @@ function managedFusedDflashDir(): string {
 	return path.join(localInferenceRoot(), "bin", "dflash", fusedBackendKey());
 }
 
+function backendPreference(): string[] {
+	const forced = process.env.ELIZA_DFLASH_BACKEND?.trim().toLowerCase();
+	if (forced) return [forced];
+	if (process.platform === "darwin") return ["metal", "cpu"];
+	if (process.env.HIP_VISIBLE_DEVICES || process.env.ROCR_VISIBLE_DEVICES) {
+		return ["rocm", "cuda", "vulkan", "cpu"];
+	}
+	if (
+		process.env.CUDA_VISIBLE_DEVICES &&
+		process.env.CUDA_VISIBLE_DEVICES !== "-1"
+	) {
+		return ["cuda", "vulkan", "rocm", "cpu"];
+	}
+	return ["cuda", "vulkan", "rocm", "metal", "cpu"];
+}
+
+function resolveInstalledDflashBinary(
+	suffix: "" | "-fused",
+	options: { includeDefaultRoot?: boolean } = {},
+): string | null {
+	const platform = runtimePlatformKey();
+	for (const backend of backendPreference()) {
+		const key = `${platform}-${process.arch}-${backend}${suffix}`;
+		const binary = findDflashBinaryByBuildKey(key, {
+			allowPrefix: true,
+			excludeFused: suffix === "",
+			includeDefaultRoot: options.includeDefaultRoot,
+		});
+		if (binary) return binary;
+	}
+	return null;
+}
+
 /**
  * Path of the fused `llama-server` (`<...>/<platform>-<arch>-<backend>-
  * fused/llama-server`), or null when no fused build is installed for the
@@ -679,17 +788,33 @@ function managedFusedDflashDir(): string {
  */
 export function resolveFusedDflashBinary(): string | null {
 	if (readBool("ELIZA_DFLASH_DISABLE_FUSED_SERVER")) return null;
-	const dir = managedFusedDflashDir();
-	const bin = findServerBinaryInDir(dir);
-	if (!bin) return null;
-	const caps = readCapabilitiesAt(path.join(dir, "CAPABILITIES.json"));
-	if (!caps) return null;
-	const fused =
-		caps.fused === true ||
-		caps.binaries.some(
-			(b) => /omnivoice/i.test(b) || /libelizainference/i.test(b),
-		);
-	return fused ? bin : null;
+	const dirs = [
+		managedFusedDflashDir(),
+		...localInferenceBinaryRoots().flatMap((root) =>
+			listDflashBuildDirs(root).filter((dir) =>
+				path.basename(dir).includes("-fused"),
+			),
+		),
+	];
+	const seen = new Set<string>();
+	for (const dir of dirs) {
+		const resolved = path.resolve(dir);
+		const key =
+			process.platform === "win32" ? resolved.toLowerCase() : resolved;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		const bin = findServerBinaryInDir(resolved);
+		if (!bin) continue;
+		const caps = readCapabilitiesAt(path.join(resolved, "CAPABILITIES.json"));
+		if (!caps) continue;
+		const fused =
+			caps.fused === true ||
+			caps.binaries.some(
+				(b) => /omnivoice/i.test(b) || /libelizainference/i.test(b),
+			);
+		if (fused) return bin;
+	}
+	return null;
 }
 
 /**
@@ -1128,8 +1253,7 @@ export function appendBackendSafeStartupFlags(
 	args: string[],
 	binaryPath: string,
 ): void {
-	const caps = readDflashBinaryCapabilities(binaryPath);
-	if (!isCompressedKvGraphUnsafeBackend(caps?.backend)) return;
+	if (!isCompressedKvGraphUnsafeBinary(binaryPath)) return;
 	const help = llamaServerHelpText(binaryPath);
 	if (/(^|\n)\s*(?:-fit,|-fit\b|--fit\b)/.test(help)) {
 		// The automatic fit probe constructs a temporary context before normal
@@ -1157,7 +1281,7 @@ const RUNTIME_COMPRESSED_KV_FALLBACK = "q8_0";
 const RUNTIME_COMPRESSED_KV_UNSAFE = new Set(
 	Object.keys(CACHE_TYPE_REQUIRED_KERNEL),
 );
-const compressedKvGraphUnsafeBackends = new Set(["metal", "vulkan"]);
+const compressedKvGraphUnsafeBackends = new Set(["metal", "vulkan", "cuda"]);
 const runtimeCompressedKvWarnings = new Set<string>();
 
 function normalizedBackendName(backend: unknown): string | null {
@@ -1187,9 +1311,30 @@ function hasAnyArg(args: string[], flags: readonly string[]): boolean {
 	);
 }
 
-function isCompressedKvGraphUnsafeBackend(backend: unknown): boolean {
-	const normalized = normalizedBackendName(backend);
-	return normalized !== null && compressedKvGraphUnsafeBackends.has(normalized);
+function inferBackendNameFromBinaryPath(binaryPath: string): string | null {
+	const dir = path.basename(path.dirname(binaryPath)).toLowerCase();
+	for (const backend of ["metal", "vulkan", "cuda", "rocm", "cpu"] as const) {
+		if (
+			dir.includes(`-${backend}-`) ||
+			dir.endsWith(`-${backend}`) ||
+			dir.includes(`${backend}-fused`)
+		) {
+			return backend;
+		}
+	}
+	return null;
+}
+
+function runtimeBackendNameForBinary(binaryPath: string): string | null {
+	return (
+		normalizedBackendName(readDflashBinaryCapabilities(binaryPath)?.backend) ??
+		inferBackendNameFromBinaryPath(binaryPath)
+	);
+}
+
+function isCompressedKvGraphUnsafeBinary(binaryPath: string): boolean {
+	const backend = runtimeBackendNameForBinary(binaryPath);
+	return backend !== null && compressedKvGraphUnsafeBackends.has(backend);
 }
 
 function allowsUnsafeCompressedKv(backend: string): boolean {
@@ -1208,6 +1353,9 @@ function compressedKvGraphFallbackReason(backend: string): string {
 	if (backend === "vulkan") {
 		return "Vulkan runtime graph dispatch for Qwen3.5 recurrent layers routes compressed QJL/Polar KV tensors through SET_ROWS, which ggml-vulkan cannot execute on those pre-allocated KV buffers; using q8_0 KV keeps the fused Vulkan+DFlash+voice path live until compressed-KV SET_ROWS is implemented in the backend.";
 	}
+	if (backend === "cuda") {
+		return "CUDA runtime graph dispatch for Qwen3.5 recurrent layers routes compressed QJL/Polar KV tensors through SET_ROWS on the current fused Windows build; using q8_0 KV keeps the fused CUDA+DFlash+voice path live until compressed-KV SET_ROWS is verified on this backend.";
+	}
 	return `${backend} runtime graph dispatch is not yet verified with compressed QJL/Polar KV tensors; using q8_0 KV keeps the fused local path live until that backend is verified.`;
 }
 
@@ -1223,8 +1371,7 @@ export function resolveRuntimeCacheTypes(opts: {
 	downgraded: boolean;
 	reason: string | null;
 } {
-	const caps = readDflashBinaryCapabilities(opts.binaryPath);
-	const backend = normalizedBackendName(caps?.backend);
+	const backend = runtimeBackendNameForBinary(opts.binaryPath);
 	const k = opts.cacheTypeK?.trim();
 	const v = opts.cacheTypeV?.trim();
 	const kLower = k?.toLowerCase();
@@ -1283,16 +1430,7 @@ export function dflashEnabled(): boolean {
 	// See dflashDevDisabled() — this is a debug-only hatch, never a product path.
 	if (dflashDevDisabled()) return false;
 	if (readBool("ELIZA_DFLASH_ENABLED")) return true;
-	// A fused build's `llama-server` (omnivoice-grafted; voice still goes
-	// through the in-process `bun:ffi` binding, not this binary's HTTP)
-	// counts as an installed managed binary for the text/DFlash path.
-	if (
-		!fs.existsSync(managedDflashBinaryPath()) &&
-		resolveFusedDflashBinary() === null
-	) {
-		return false;
-	}
-	return true;
+	return resolveDflashBinary() !== null;
 }
 
 export function dflashRequired(): boolean {
@@ -1308,9 +1446,27 @@ function candidateBinaryPaths(): string[] {
 	// synthesis goes through `plugin-omnivoice`'s `bun:ffi` binding. An
 	// explicit override (ELIZA_DFLASH_LLAMA_SERVER) still wins.
 	if (!explicit) {
+		const primaryFused = resolveInstalledDflashBinary("-fused", {
+			includeDefaultRoot: false,
+		});
+		if (primaryFused) out.push(primaryFused);
 		const fused = resolveFusedDflashBinary();
 		if (fused) out.push(fused);
 	}
+	const primaryInstalled = resolveInstalledDflashBinary("", {
+		includeDefaultRoot: false,
+	});
+	if (primaryInstalled) out.push(primaryInstalled);
+	if (!explicit) {
+		const defaultFused = resolveInstalledDflashBinary("-fused", {
+			includeDefaultRoot: true,
+		});
+		if (defaultFused) out.push(defaultFused);
+	}
+	const installed = resolveInstalledDflashBinary("", {
+		includeDefaultRoot: true,
+	});
+	if (installed) out.push(installed);
 	out.push(managedDflashBinaryPath());
 	if (readBool("ELIZA_DFLASH_ENABLED")) out.push(...serverBinaryNames());
 	return out;

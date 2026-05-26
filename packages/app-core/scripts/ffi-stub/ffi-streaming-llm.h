@@ -2,7 +2,7 @@
  * libelizainference streaming-LLM FFI ABI.
  *
  * Additive surface on top of the v3 omnivoice ABI declared in `ffi.h`. The
- * symbols here are what `dflash-server.ts`'s in-process replacement
+ * symbols here are what `ffi-streaming-backend.ts`'s in-process replacement
  * (`packages/app-core/src/services/local-inference/ffi-streaming-runner.ts`)
  * expects to find on the loaded `libelizainference.{dylib,so}` when it asks
  * `llmStreamSupported()`. They replace the previous "spawn `llama-server`
@@ -25,7 +25,7 @@
  * library built from an older fused checkout can still load — the runner
  * falls back to the HTTP `llama-server` path on desktop only.  Mobile
  * builds require these symbols and surface a hard error when absent
- * (`buildDflashAdapter` in `aosp-dflash-adapter.ts`).
+ * (`buildMtpAdapter` in `aosp-mtp-adapter.ts`).
  *
  * Error / status conventions match `ffi.h`:
  *   - non-negative return = success (typical: `ELIZA_OK` or count written).
@@ -35,7 +35,7 @@
  *     programmer error — the library is permitted to crash.
  *
  * CMake integration:
- *   - The fused build (`build-llama-cpp-dflash.mjs` + `cmake-graft.mjs`)
+ *   - The fused build (`build-llama-cpp-mtp.mjs` + `cmake-graft.mjs`)
  *     adds `omnivoice/src/streaming_llm.cpp` (or equivalent) into the
  *     `elizainference` SHARED target.  Symbols declared here are exported
  *     with `__attribute__((visibility("default")))` on POSIX and
@@ -96,7 +96,7 @@ int eliza_inference_llm_stream_supported(void);
  * NUL-terminated UTF-8 string the caller owns for the duration of the
  * `_open` call; the library copies it internally.
  *
- * `dflash_drafter_path` is the absolute on-disk path of the drafter GGUF.
+ * `mtp_drafter_path` is the absolute on-disk path of the drafter GGUF.
  * NULL disables speculative decoding for this session.  `draft_min` and
  * `draft_max` bound the per-step draft length; both `0` also disables
  * speculative decoding.
@@ -114,7 +114,7 @@ typedef struct {
     const char * prompt_cache_key;   /* NULL ok */
     int32_t draft_min;
     int32_t draft_max;
-    const char * dflash_drafter_path;/* NULL disables speculative */
+    const char * mtp_drafter_path;/* NULL disables speculative */
     int32_t disable_thinking;        /* 0/1 */
 } eliza_llm_stream_config_t;
 
@@ -122,7 +122,7 @@ typedef struct {
  *
  * Opaque streaming-LLM session.  One per active generation.  The session
  * owns the prompt-cache slot binding, the per-call sampling chain, and
- * the speculative-decoding state (if `dflash_drafter_path` is set). */
+ * the speculative-decoding state (if `mtp_drafter_path` is set). */
 typedef struct eliza_llm_stream_session eliza_llm_stream_session_t;
 
 /* Open a session anchored to `ctx`.  Returns NULL on failure with
@@ -158,7 +158,7 @@ int eliza_inference_llm_stream_prefill(
  * kernel boundary.  The library finishes the current decode step and
  * returns `ELIZA_ERR_CANCELLED` from `_generate`.
  *
- * Speculative decoding note: when DFlash is active the runtime commits
+ * Speculative decoding note: when MTP is active the runtime commits
  * accepted draft tokens in a batch.  The library calls `on_token` once
  * per accepted token id (in stream order); the JS-side runner reconstructs
  * per-step batches by counting the calls between successive returns of

@@ -29,6 +29,21 @@ fi
 # get git branch or tag so we can set the basename appropriately.
 GIT_BRANCH="$(git_current_branch)"
 GIT_BASE_BRANCH_SHORT_ID="$(echo "$BASE_BRANCH_GIT_COMMIT" | head --bytes=10)"
+# Target architecture for this ISO build, driven from build.sh's
+# ELIZAOS_ARCH env (defaulted to amd64 there as well). Drives the ISO
+# filename's arch tag, the lb config --architecture / --linux-flavours,
+# the dpkg --print-architecture sanity check, and the syslinux-only
+# bootloader options. Validate it strictly so a typo in the env can't
+# silently produce an ISO with the wrong kernel/bootloader.
+ELIZAOS_ARCH="${ELIZAOS_ARCH:-amd64}"
+case "${ELIZAOS_ARCH}" in
+    amd64|arm64|riscv64) ;;
+    *)
+        fatal "ELIZAOS_ARCH=${ELIZAOS_ARCH} is not supported."\
+              "Supported values: amd64 (default), arm64, riscv64."
+        ;;
+esac
+
 if [ -n "${GIT_BRANCH}" ]; then
     CLEAN_GIT_BRANCH=$(echo "$GIT_BRANCH" | sed 's,/,_,g')
     BASE_BRANCH_PART=''
@@ -36,11 +51,11 @@ if [ -n "${GIT_BRANCH}" ]; then
         CLEAN_GIT_BASE_BRANCH=$(base_branch | sed 's,/,_,g')
         BASE_BRANCH_PART="+${CLEAN_GIT_BASE_BRANCH}@${GIT_BASE_BRANCH_SHORT_ID}"
     fi
-    BUILD_BASENAME="tails-amd64-${CLEAN_GIT_BRANCH}@${GIT_SHORT_ID}${BASE_BRANCH_PART}-${DATETIME_NOW}"
+    BUILD_BASENAME="tails-${ELIZAOS_ARCH}-${CLEAN_GIT_BRANCH}@${GIT_SHORT_ID}${BASE_BRANCH_PART}-${DATETIME_NOW}"
 else
     if git_on_a_tag; then
         CLEAN_GIT_TAG=$(git_current_tag | tr '/-' '_~')
-        BUILD_BASENAME="tails-amd64-${CLEAN_GIT_TAG}"
+        BUILD_BASENAME="tails-${ELIZAOS_ARCH}-${CLEAN_GIT_TAG}"
     else
         # this shouldn't reasonably happen (e.g. only if you checkout a
         # tag, remove the tag and then build)
@@ -62,8 +77,12 @@ if grep -qs -E '^Pin:\s+release\s+.*o=Debian Backports' \
     fatal "Found unsupported 'o=Debian Backports' syntax," \
         "in config/chroot_apt/preferences. Use o=Debian instead. Exiting."
 fi
-if [ "$(dpkg --print-architecture)" != amd64 ]; then
-    fatal "Only amd64 build systems are supported"
+if [ "$(dpkg --print-architecture)" != "${ELIZAOS_ARCH}" ]; then
+    fatal "Build host arch is $(dpkg --print-architecture) but"\
+          "ELIZAOS_ARCH=${ELIZAOS_ARCH}. Re-run build.sh — it pins"\
+          "docker --platform linux/${ELIZAOS_ARCH} so the container"\
+          "sees the right architecture (requires qemu-user-static +"\
+          "binfmt_misc on non-native hosts)."
 fi
 
 # space-separated list of additional packages debootstrap installs
@@ -114,11 +133,31 @@ else
     kernel_package=linux-image
 fi
 
+# Syslinux/isolinux are x86-only. On arm64 and riscv64 there is no
+# binary syslinux package in Debian, and passing --syslinux-* to lb
+# config makes it try to install isolinux/syslinux-common during build
+# which fails with "Unable to locate package". UEFI-only boot via
+# grub-efi-<arch>-bin is the only path on those archs, so drop the
+# syslinux args entirely there.
+case "${ELIZAOS_ARCH}" in
+    amd64)
+        SYSLINUX_ARGS="\
+            --syslinux-menu vesamenu \
+            --syslinux-splash data/splash.png \
+            --syslinux-timeout 4"
+        BOOTLOADER_ARGS=""
+        ;;
+    *)
+        SYSLINUX_ARGS=""
+        BOOTLOADER_ARGS="--bootloader grub-efi"
+        ;;
+esac
+
 # set general options
 $RUN_LB_CONFIG \
     --verbose \
     --apt-recommends false \
-    --architecture amd64 \
+    --architecture "${ELIZAOS_ARCH}" \
     --backports false \
     --volatile true \
     --binary-images iso \
@@ -136,7 +175,7 @@ $RUN_LB_CONFIG \
     --iso-application="elizaOS" \
     --iso-publisher="https://elizaos.ai/" \
     --iso-volume="ELIZAOS ${TAILS_FULL_VERSION}" \
-    --linux-flavours amd64 \
+    --linux-flavours "${ELIZAOS_ARCH}" \
     --memtest none \
     --mirror-binary "$DEBIAN_MIRROR" \
     --mirror-bootstrap "$DEBIAN_MIRROR" \
@@ -148,9 +187,8 @@ $RUN_LB_CONFIG \
     --packages-lists none \
     --tasks none \
     --linux-packages="$kernel_package" \
-    --syslinux-menu vesamenu \
-    --syslinux-splash data/splash.png \
-    --syslinux-timeout 4 \
+    ${BOOTLOADER_ARGS} \
+    ${SYSLINUX_ARGS} \
     --initramfs=live-boot \
     "${@}"
 

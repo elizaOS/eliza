@@ -10,7 +10,7 @@
 import { expect, test } from "@playwright/test";
 
 test.describe("billing top-up flow", () => {
-  test.beforeEach(async ({ page, context }) => {
+  test.beforeEach(async ({ context }) => {
     await context.addInitScript(() => {
       window.localStorage.setItem(
         "steward_session_token",

@@ -3,7 +3,7 @@
  *
  * Covers two related surfaces:
  *
- *   1. `scripts/probe-sd-cpp.mjs` — onboarding probe used by the
+ *   1. `scripts/probe-sd-cpp.mjs` — first-run probe used by the
  *      Settings flow and CI bundle-prep. Forks the script under both
  *      "binary missing" (SD_CPP_BIN points at a path that doesn't
  *      exist) and "binary available" (SD_CPP_BIN points at a tiny shell
@@ -93,7 +93,7 @@ function runProbe(env: Record<string, string | undefined>): ProbeResult {
 	return JSON.parse(firstLine) as ProbeResult;
 }
 
-describe("WS3 sd-cpp probe — onboarding script", () => {
+describe("WS3 sd-cpp probe — first-run script", () => {
 	it("reports unavailable when SD_CPP_BIN points at a missing path", () => {
 		const probe = runProbe({
 			SD_CPP_BIN: "/definitely/does/not/exist/sd-fake-bin",
@@ -250,7 +250,7 @@ describe("WS3 sd-cpp backend — binary missing yields structured error", () => 
 		}
 	});
 
-	it("error message references SD_CPP_BIN so onboarding can surface a fix", async () => {
+	it("error message references SD_CPP_BIN so first-run can surface a fix", async () => {
 		try {
 			await loadSdCppImageGenBackend({
 				modelKey: "imagegen-sd-1_5-q5_0",

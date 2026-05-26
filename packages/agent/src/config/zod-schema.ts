@@ -378,7 +378,7 @@ export const ElizaSchema = z
   .object({
     meta: z
       .object({
-        onboardingComplete: z.boolean().optional(),
+        firstRunComplete: z.boolean().optional(),
         lastTouchedVersion: z.string().optional(),
         lastTouchedAt: z.string().optional(),
       })

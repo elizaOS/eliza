@@ -1,5 +1,5 @@
 // Real Metal kernel-shipment helpers — replace the fork's decorative
-// log no-ops in build-llama-cpp-dflash.mjs.
+// log no-ops in build-llama-cpp-mtp.mjs.
 //
 // What this module does:
 //
@@ -227,7 +227,7 @@ function copyStandalonesIntoFork(cacheDir, { dryRun }) {
       // in-fork draft.
       const stamped =
         `// ${SENTINEL} — copied verbatim from packages/inference/metal/${name}\n` +
-        `// at build time by build-llama-cpp-dflash.mjs. Do not edit in place;\n` +
+        `// at build time by build-llama-cpp-mtp.mjs. Do not edit in place;\n` +
         `// edit the standalone source and rerun the build.\n` +
         text;
       fs.writeFileSync(dst, stamped, "utf8");
@@ -2221,7 +2221,7 @@ export function patchMetalDispatch(cacheDir, { dryRun = false } = {}) {
   };
 }
 
-// Public entry point used by build-llama-cpp-dflash.mjs.
+// Public entry point used by build-llama-cpp-mtp.mjs.
 // Throws on any failure. Idempotent across runs.
 export function patchMetalKernels(cacheDir, { dryRun = false } = {}) {
   if (!cacheDir || !fs.existsSync(cacheDir)) {

@@ -2,6 +2,7 @@
 
 import os
 import re
+import subprocess
 import sys
 from argparse import ArgumentParser
 
@@ -86,6 +87,40 @@ def main():
 
     if args.dry_run:
         print(uri)
+        return
+
+    # file:// URIs go to the elizaOS WebKit shell, not Tor Browser.
+    #
+    # Tor Browser runs inside a flatpak sandbox that has no read access to
+    # /usr/share/doc/, so routing offline help through it produces a
+    # "Access to the file was denied" error page (reproduced 2026-05-25 in
+    # QEMU: clicking the elizaOS Documentation launcher loads the URI in
+    # Tor Browser and the flatpak sandbox refuses the read). The fix is
+    # not to weaken the Tor Browser sandbox; it is to route local help
+    # through a different WebKit instance. elizaos-webkit-shell is the
+    # same WebKit2GTK widget the main Milady app uses, already runs as
+    # the amnesia user, and has full file:// access.
+    #
+    # Remote https:// URIs continue to go through Tor Browser so external
+    # documentation links keep their privacy guarantee.
+    if uri.startswith("file://"):
+        # Distinguish the docs window from the main agent shell in the
+        # taskbar / Alt-Tab. ELIZAOS_SHELL_TITLE was added in PR #7972
+        # specifically for this — without it, both windows render as
+        # "elizaOS" and users cannot tell them apart (the wm_class stays
+        # "elizaOS" intentionally so GNOME keeps them grouped under the
+        # same .desktop icon). WebKit may replace this title from the
+        # loaded HTML <title> once the page renders; that is expected.
+        env = os.environ.copy()
+        env["ELIZAOS_SHELL_TITLE"] = "elizaOS — Documentation"
+        subprocess.Popen(
+            ["/usr/local/lib/elizaos/elizaos-webkit-shell", uri],
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
         return
 
     os.environ["TOR_BROWSER_SKIP_OFFLINE_WARNING"] = "yes"

@@ -488,7 +488,7 @@ verifier issues nonce
       reproducible image manifest), revokedMeasurements, minSecurityVersion,
       expectedNonce, maxAgeMs, requiredClaims
  → trusted → KMS releases the data-encryption key WRAPPED TO epk
- → agent unseals model weights / user data; ~/.milady private volume mounts
+ → agent unseals model weights / user data; ~/.local/state/milady private volume mounts
 ```
 
 The negative path is enforced by **data unavailability, not a software check**: a

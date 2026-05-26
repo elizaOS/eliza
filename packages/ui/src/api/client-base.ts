@@ -14,8 +14,8 @@ import {
   NETWORK_STATUS_CHANGE_EVENT,
   type NetworkStatusChangeDetail,
 } from "../events";
-import { hydrateAndroidLocalAgentTokenForUrl } from "../onboarding/local-agent-token";
-import { isMobileLocalAgentIpcUrl } from "../onboarding/mobile-runtime-mode";
+import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
+import { isMobileLocalAgentIpcUrl } from "../first-run/mobile-runtime-mode";
 import {
   clearElizaApiBase,
   clearElizaApiToken,

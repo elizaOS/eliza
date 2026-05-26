@@ -4,6 +4,7 @@ import { createVerifyBundleOnDevice } from "./verify-on-device";
 const engineMock = {
 	load: vi.fn(async () => {}),
 	generate: vi.fn(async () => "ok"),
+	ensureActiveBundleVoiceReady: vi.fn(async () => ({})),
 	startVoice: vi.fn(() => {}),
 	armVoice: vi.fn(async () => {}),
 	synthesizeSpeech: vi.fn(async () => new Uint8Array([1, 2, 3, 4])),
@@ -46,10 +47,14 @@ describe("verifyBundleOnDevice", () => {
 	it("loads, runs a 1-token text gen, and unloads for a text-only bundle", async () => {
 		manifestState.voiceFiles = 0;
 		await verifier()(ARGS);
-		expect(engineMock.load).toHaveBeenCalledWith(ARGS.textGgufPath);
+		expect(engineMock.load).toHaveBeenCalledWith(ARGS.textGgufPath, {
+			modelPath: ARGS.textGgufPath,
+			modelId: ARGS.modelId,
+		});
 		expect(engineMock.generate).toHaveBeenCalledWith(
 			expect.objectContaining({ maxTokens: 1 }),
 		);
+		expect(engineMock.ensureActiveBundleVoiceReady).not.toHaveBeenCalled();
 		expect(engineMock.startVoice).not.toHaveBeenCalled();
 		expect(engineMock.unload).toHaveBeenCalled();
 	});
@@ -57,12 +62,9 @@ describe("verifyBundleOnDevice", () => {
 	it("also runs a 1-phrase voice gen + barge-in cancel when the bundle ships voice", async () => {
 		manifestState.voiceFiles = 1;
 		await verifier()(ARGS);
-		expect(engineMock.startVoice).toHaveBeenCalledWith(
-			expect.objectContaining({
-				bundleRoot: ARGS.bundleRoot,
-				useFfiBackend: true,
-			}),
-		);
+		expect(engineMock.ensureActiveBundleVoiceReady).toHaveBeenCalled();
+		expect(engineMock.startVoice).not.toHaveBeenCalled();
+		expect(engineMock.armVoice).not.toHaveBeenCalled();
 		expect(engineMock.synthesizeSpeech).toHaveBeenCalled();
 		expect(engineMock.triggerBargeIn).toHaveBeenCalled();
 		expect(engineMock.stopVoice).toHaveBeenCalled();

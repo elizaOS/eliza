@@ -126,11 +126,6 @@
       "import": "./dist/content-packs/index.js",
       "default": "./dist/content-packs/index.js"
     },
-    "./desktop-runtime": {
-      "types": "./dist/desktop-runtime/index.d.ts",
-      "import": "./dist/desktop-runtime/index.js",
-      "default": "./dist/desktop-runtime/index.js"
-    },
     "./events": {
       "types": "./dist/events/index.d.ts",
       "import": "./dist/events/index.js",
@@ -140,6 +135,11 @@
       "types": "./dist/genui/index.d.ts",
       "import": "./dist/genui/index.js",
       "default": "./dist/genui/index.js"
+    },
+    "./first-run/*": {
+      "types": "./dist/first-run/*.d.ts",
+      "import": "./dist/first-run/*.js",
+      "default": "./dist/first-run/*.js"
     },
     "./hooks": {
       "types": "./dist/hooks/index.d.ts",

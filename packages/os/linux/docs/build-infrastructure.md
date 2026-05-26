@@ -11,7 +11,7 @@ Tails upstream builds inside a Vagrant + libvirt VM (`rake build` drives
 `vagrant up` → a `vmdb2`-built builder box → `lb config && lb build`
 inside the VM). We tried that path first. It failed on a deep stack of
 host-specific problems — builder-box interface naming on Trixie hosts,
-missing `ifupdown`/`dhcp-client` in the minimal debootstrap variant, a
+missing `ifupdown`/`dhcp-client` in the minimal debootstrap path, a
 `vagrant-libvirt` IP-discovery race, and finally a host bridge↔dnsmasq
 DHCP failure with no documented fix. After ~6.5 hours and five genuine
 builder-box fixes, the conclusion was that **Vagrant is the wrong tool

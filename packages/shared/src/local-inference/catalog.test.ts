@@ -122,16 +122,25 @@ describe("Eliza-1 runtime quant metadata", () => {
       expect(entry?.runtime?.optimizations?.requiresKernel).toContain(
         "polarquant",
       );
-      expect(entry?.runtime?.dflash).toBeUndefined();
+      if (ELIZA_1_MTP_TIER_IDS.some((mtpId) => mtpId === id)) {
+        expect(entry?.runtime?.mtp?.specType).toBe("draft-mtp");
+      } else {
+        expect(entry?.runtime?.mtp).toBeUndefined();
+      }
     }
   });
 
-  it("enables native MTP metadata for MTP tiers without companion drafters", () => {
+  it("enables native MTP metadata and bundled drafters for MTP tiers", () => {
     for (const id of ELIZA_1_MTP_TIER_IDS) {
+      const slug = id.slice("eliza-1-".length);
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.runtime?.mtp?.specType).toBe("draft-mtp");
-      expect(entry?.runtime?.dflash).toBeUndefined();
-      expect(entry?.companionModelIds).toBeUndefined();
+      expect(entry?.runtime?.mtp?.drafterFile).toBe(
+        `mtp/eliza-1-${slug}-drafter.gguf`,
+      );
+      expect(entry?.sourceModel?.components.mtp?.file).toBe(
+        `bundles/${slug}/mtp/eliza-1-${slug}-drafter.gguf`,
+      );
     }
   });
 

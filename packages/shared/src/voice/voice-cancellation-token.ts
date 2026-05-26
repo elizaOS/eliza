@@ -3,7 +3,7 @@
  *
  * Wave 3 W3-9 — one token per voice turn, fanned out to every layer that can
  * cancel: VAD start-of-speech (barge-in), turn-detector EOT revocation,
- * planner-loop / message-handler yield points, DflashLlamaServer slot abort,
+ * planner-loop / message-handler yield points, MtpLlamaServer slot abort,
  * TTS playback. Built on top of `AbortController` so any consumer that
  * already understands `AbortSignal` (fetch / FFI / model calls) gets cancel
  * for free.
@@ -48,7 +48,7 @@ export interface VoiceCancellationToken {
   /** Stable per-utterance id. Mirrors the voice state machine's turn id. */
   readonly runId: string;
   /**
-   * The DflashLlamaServer slot the optimistic LM is running on, when known.
+   * The MtpLlamaServer slot the optimistic LM is running on, when known.
    * `abort()` fans this out to the slot-abort path on the inference server.
    */
   readonly slot?: number;

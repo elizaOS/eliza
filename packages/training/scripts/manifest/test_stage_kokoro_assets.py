@@ -24,7 +24,7 @@ def _write_bundle(root: Path) -> Path:
     files = {
         "text/eliza-1-2b-128k.gguf": b"text",
         "tts/omnivoice-base-Q4_K_M.gguf": b"omni",
-        "dflash/drafter-2b.gguf": b"draft",
+        "mtp/drafter-2b.gguf": b"draft",
         "vision/mmproj-2b.gguf": b"vision",
         "cache/voice-preset-default.bin": b"cache",
     }
@@ -68,10 +68,10 @@ def _write_bundle(root: Path) -> Path:
                     "sha256": _sha(files["vision/mmproj-2b.gguf"]),
                 }
             ],
-            "dflash": [
+            "mtp": [
                 {
-                    "path": "dflash/drafter-2b.gguf",
-                    "sha256": _sha(files["dflash/drafter-2b.gguf"]),
+                    "path": "mtp/drafter-2b.gguf",
+                    "sha256": _sha(files["mtp/drafter-2b.gguf"]),
                 }
             ],
             "cache": [
@@ -86,7 +86,7 @@ def _write_bundle(root: Path) -> Path:
                 "turboquant_q4",
                 "qjl",
                 "polarquant",
-                "dflash",
+                "mtp",
                 "turbo3_tcq",
             ],
             "optional": [],

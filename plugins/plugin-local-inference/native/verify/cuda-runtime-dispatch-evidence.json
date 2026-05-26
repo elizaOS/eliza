@@ -7,7 +7,7 @@
   "runtimeReady": true,
   "generatedFrom": "/home/shaw/eliza/eliza/packages/inference/verify/hardware-results/cuda-linux-rtx5080-2026-05-11.json",
   "target": "linux-x64-cuda",
-  "device": "NVIDIA GeForce RTX 5080 Laptop GPU (Blackwell, compute capability 12.0; driver 580.142, CUDA runtime 13.0). Build: nvcc 12.8 V12.8.93 — real native sm_120a SASS (no longer PTX JIT). Install: ~/.eliza/local-inference/bin/dflash/linux-x64-cuda/ (forkCommit a61c93aaa5 = v1.2.0-eliza, builtAt 2026-05-12T17:16:58Z, libggml-cuda.so.0.9.7 = 473 MB).",
+  "device": "NVIDIA GeForce RTX 5080 Laptop GPU (Blackwell, compute capability 12.0; driver 580.142, CUDA runtime 13.0). Build: nvcc 12.8 V12.8.93 — real native sm_120a SASS (no longer PTX JIT). Install: ~/.eliza/local-inference/bin/mtp/linux-x64-cuda/ (forkCommit a61c93aaa5 = v1.2.0-eliza, builtAt 2026-05-12T17:16:58Z, libggml-cuda.so.0.9.7 = 473 MB).",
   "atCommit": "a61c93aaa5899c17bb1bc32b5645ebb4276c2746",
   "smokeTarget": "cuda-verify",
   "smokeCommand": "make -C packages/inference/verify cuda-verify cuda-verify-fused",
@@ -15,7 +15,7 @@
   "fullIntegrationBuild": {
     "status": "verified-here",
     "target": "linux-x64-cuda",
-    "installPath": "/home/shaw/.eliza/local-inference/bin/dflash/linux-x64-cuda",
+    "installPath": "/home/shaw/.eliza/local-inference/bin/mtp/linux-x64-cuda",
     "forkCommit": "a61c93aaa5899c17bb1bc32b5645ebb4276c2746",
     "forkTag": "v1.2.0-eliza",
     "builtAt": "2026-05-12T17:16:58Z",

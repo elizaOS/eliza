@@ -15,7 +15,7 @@ import {
   isRateLimitedError,
 } from "../../api";
 import { useBranding } from "../../config/branding";
-import { isElizaCloudRuntimeLocked } from "../../onboarding/mobile-runtime-mode";
+import { isElizaCloudRuntimeLocked } from "../../first-run/mobile-runtime-mode";
 import { useApp } from "../../state";
 import { openExternalUrl, preOpenWindow } from "../../utils";
 import { StripeEmbeddedCheckout } from "../cloud/StripeEmbeddedCheckout";
@@ -55,6 +55,7 @@ export function CloudDashboard() {
     elizaCloudStatusReason,
     cloudDashboardView,
     elizaCloudLoginBusy,
+    elizaCloudLoginFallbackUrl,
     handleCloudLogin,
     handleCloudDisconnect,
     elizaCloudDisconnecting: cloudDisconnecting,
@@ -595,30 +596,35 @@ export function CloudDashboard() {
 
   if (!elizaCloudConnected) {
     return (
-      <div className="mx-auto flex max-w-sm flex-wrap items-center justify-center gap-2 px-3 py-5 text-center">
-        <Button
-          variant="default"
-          size="sm"
-          className="h-8 rounded-lg px-3 text-xs font-semibold"
-          onClick={() => void handleCloudLogin(preOpenWindow())}
-          disabled={elizaCloudLoginBusy}
-        >
-          {elizaCloudLoginBusy ? (
-            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Zap className="mr-2 h-4 w-4" />
-          )}
-          {elizaCloudLoginBusy
-            ? t("game.connecting")
-            : t("elizaclouddashboard.ConnectElizaCloud")}
-        </Button>
-        <Button
-          variant="link"
-          className="h-8 px-2 text-xs text-muted"
-          onClick={() => void openExternalUrl(ELIZA_CLOUD_WEB_URL)}
-        >
-          {t("elizaclouddashboard.LearnMore")}
-        </Button>
+      <div className="mx-auto flex max-w-sm flex-col items-center justify-center gap-2 px-3 py-5 text-center">
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            className="h-8 rounded-lg px-3 text-xs font-semibold"
+            onClick={() => void handleCloudLogin(preOpenWindow())}
+            disabled={elizaCloudLoginBusy}
+          >
+            {elizaCloudLoginBusy ? (
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Zap className="mr-2 h-4 w-4" />
+            )}
+            {elizaCloudLoginBusy
+              ? t("game.connecting")
+              : t("elizaclouddashboard.ConnectElizaCloud")}
+          </Button>
+          <Button
+            variant="link"
+            className="h-8 px-2 text-xs text-muted"
+            onClick={() => void openExternalUrl(ELIZA_CLOUD_WEB_URL)}
+          >
+            {t("elizaclouddashboard.LearnMore")}
+          </Button>
+        </div>
+        {elizaCloudLoginBusy && elizaCloudLoginFallbackUrl ? (
+          <CloudLoginFallbackLink browserUrl={elizaCloudLoginFallbackUrl} />
+        ) : null}
       </div>
     );
   }
@@ -979,5 +985,22 @@ export function CloudDashboard() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
+  return (
+    <div className="w-full rounded border border-border bg-bg/70 p-2 text-left">
+      <p className="mb-1 text-2xs font-semibold uppercase text-muted">
+        Sign-in window did not open?
+      </p>
+      <button
+        type="button"
+        className="block w-full break-all text-left text-xs text-accent underline-offset-2 hover:underline"
+        onClick={() => void openExternalUrl(browserUrl)}
+      >
+        {browserUrl}
+      </button>
+    </div>
   );
 }

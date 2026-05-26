@@ -30,7 +30,7 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] = [
  *
  * `@elizaos/plugin-local-inference` is intentionally excluded from the
  * default mobile boot list: it pulls in the bun:ffi desktop dylib path plus
- * a sizeable runtime (catalog, dflash subprocess client, voice pipeline)
+ * a sizeable runtime (catalog, mtp subprocess client, voice pipeline)
  * that the Capacitor WebView agent does not need. On mobile, embeddings
  * come either from a cloud provider, the WebView-side llama-cpp-capacitor
  * binding, or the AOSP-only FFI bridge

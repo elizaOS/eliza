@@ -29,14 +29,27 @@ def test_fembot_thinness_frontier_identifies_active_limiters() -> None:
     assert report["summary"]["links"] == 28
     assert report["summary"]["missing_links"] == []
     assert report["summary"]["height_preserved_links"] == 28
+    assert report["summary"]["source_envelope_preserved_links"] == 28
+    assert report["summary"]["source_envelope_tolerance_m"] == 0.005
+    assert report["summary"]["source_envelope_max_abs_delta_m"] < 0.005
     assert report["summary"]["source_to_candidate_xy_reduction_fraction"] > 0.7
     assert (
         report["summary"]["source_to_clearance_adjusted_xy_reduction_fraction"]
         > 0.7
     )
+    assert abs(report["summary"]["source_to_generated_xy_area_delta_fraction"]) < 0.02
     assert report["summary"]["keepout_limited_links"] == 14
     assert report["summary"]["internal_cavity_limited_links"] == 26
-    assert report["summary"]["structural_limited_links"] == 6
+    assert report["summary"]["internal_cavity_violation_component_counts"] == {
+        "collision_keepout": 28,
+        "joint_axis": 21,
+        "motor_actuator": 23,
+        "site": 1,
+    }
+    assert report["summary"]["full_cavity_clearance_candidate_links"] == 26
+    assert report["summary"]["full_cavity_clearance_height_preserved_links"] == 10
+    assert report["summary"]["full_cavity_clearance_z_expansion_links"] == 16
+    assert report["summary"]["structural_limited_links"] == 0
     assert report["summary"]["supplier_vendor_limited_links"] == 8
     assert report["summary"]["supplier_vendor_max_required_extent_growth_m"] == 0.0264997322031618
     assert report["summary"]["supplier_vendor_worst_growth_links"] == [
@@ -56,17 +69,23 @@ def test_fembot_thinness_frontier_identifies_active_limiters() -> None:
     assert report["summary"]["active_limiter_counts"]["z_height_preservation"] == 28
     assert report["summary"]["active_limiter_counts"]["internal_cavity_keepout"] == 26
     assert report["summary"]["active_limiter_counts"]["keepout_clearance"] == 14
-    assert report["summary"]["active_limiter_counts"]["structural_safety_factor"] == 6
     assert report["summary"]["active_limiter_counts"]["supplier_vendor_keepout"] == 8
 
     links = {record["link"]: record for record in report["links"]}
     assert links["IMU_ORIGIN"]["z_height_preserved"] is True
+    assert links["IMU_ORIGIN"]["source_envelope_preserved"] is True
     assert links["IMU_ORIGIN"]["internal_cavity_limited"] is True
     assert "internal_cavity_keepout" in links["IMU_ORIGIN"]["active_limiters"]
-    assert links["LEFT_KNEE"]["structural_limited"] is True
-    assert "structural_safety_factor" in links["LEFT_KNEE"]["active_limiters"]
+    assert links["LEFT_KNEE"]["structural_limited"] is False
     assert links["LEFT_KNEE"]["supplier_vendor_limited"] is True
     assert "supplier_vendor_keepout" in links["LEFT_KNEE"]["active_limiters"]
+    assert links["LEFT_KNEE"]["full_cavity_clearance_candidate"]["required"] is True
+    assert (
+        links["LEFT_KNEE"]["full_cavity_clearance_candidate"][
+            "internal_cavity_cleared"
+        ]
+        is True
+    )
     assert (
         links["LEFT_KNEE"]["supplier_vendor_growth"][
             "max_required_extent_growth_m"
@@ -84,6 +103,7 @@ def test_fembot_inventory_surfaces_thinness_frontier_status() -> None:
     assert report["thinness_frontier"]["accepted"] is False
     assert report["thinness_frontier"]["summary"]["links"] == 28
     assert report["thinness_frontier"]["summary"]["height_preserved_links"] == 28
+    assert report["thinness_frontier"]["summary"]["source_envelope_preserved_links"] == 28
     assert report["thinness_frontier"]["summary"]["supplier_vendor_limited_links"] == 8
     assert (
         report["thinness_frontier"]["summary"][

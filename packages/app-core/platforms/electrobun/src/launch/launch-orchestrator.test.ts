@@ -54,7 +54,7 @@ function createAgent(
 function createOrchestrator(options?: {
   state?: "not_started" | "starting" | "running" | "stopped" | "error";
   authRequired?: boolean;
-  onboardingComplete?: boolean;
+  firstRunComplete?: boolean;
   cloudProvisioned?: boolean;
   withViews?: boolean;
   databaseFailed?: boolean;
@@ -95,8 +95,8 @@ function createOrchestrator(options?: {
       expiresAt: null,
       authenticated: options?.authRequired !== true,
     }),
-    readOnboardingStatus: async () => ({
-      complete: options?.onboardingComplete ?? true,
+    readFirstRunStatus: async () => ({
+      complete: options?.firstRunComplete ?? true,
       cloudProvisioned: options?.cloudProvisioned === true ? true : undefined,
     }),
     readDiagnostics: () => ({
@@ -157,26 +157,26 @@ describe("LaunchOrchestrator", () => {
     });
   });
 
-  it("classifies onboarding and pairing gates", async () => {
+  it("classifies firstRun and pairing gates", async () => {
     const pairing = await createOrchestrator({
       authRequired: true,
     }).orchestrator.getProgress();
-    const onboarding = await createOrchestrator({
-      onboardingComplete: false,
+    const firstRun = await createOrchestrator({
+      firstRunComplete: false,
     }).orchestrator.getProgress();
     const cloud = await createOrchestrator({
-      onboardingComplete: false,
+      firstRunComplete: false,
       cloudProvisioned: true,
     }).orchestrator.getProgress();
 
     expect(pairing.phase).toBe("pairing-required");
-    expect(onboarding.phase).toBe("runtime-gate-required");
+    expect(firstRun.phase).toBe("runtime-gate-required");
     expect(cloud.phase).toBe("cloud-bootstrap-required");
   });
 
-  it("treats database failure as launch failure before onboarding", async () => {
+  it("treats database failure as launch failure before firstRun", async () => {
     const snapshot = await createOrchestrator({
-      onboardingComplete: false,
+      firstRunComplete: false,
       databaseFailed: true,
     }).orchestrator.getProgress();
 

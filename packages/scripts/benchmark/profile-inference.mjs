@@ -2,7 +2,7 @@
 /**
  * profile-inference.mjs — on-device chat agent profiling harness.
  *
- * Walks a (model × kvCacheConfig × dflashConfig × prompt) matrix against a
+ * Walks a (model × kvCacheConfig × mtpConfig × prompt) matrix against a
  * running agent API and writes a structured JSON + Markdown report. Designed
  * to be run against either:
  *   - a host-side dev server (`bun run dev`), or
@@ -42,7 +42,7 @@
  *
  * Per-call cache type / drafter pairing override:
  *   The current /api/local-inference/active endpoint reads cacheTypeK,
- *   cacheTypeV, and the dflash drafter pairing from the catalog entry's
+ *   cacheTypeV, and the mtp drafter pairing from the catalog entry's
  *   `runtime` block (see services/local-inference/active-model.ts
  *   resolveLocalInferenceLoadArgs). It does NOT accept per-load overrides
  *   in the request body. If a kvCacheConfig in the matrix differs from
@@ -155,7 +155,7 @@ function validateConfig(cfg, configPath) {
   const fields = [
     ["models", "array"],
     ["kvCacheConfigs", "array"],
-    ["dflashConfigs", "array"],
+    ["mtpConfigs", "array"],
     ["prompts", "array"],
     ["iterations", "number"],
     ["warmupIterations", "number"],
@@ -190,16 +190,16 @@ function validateConfig(cfg, configPath) {
       throw new Error(`kvCacheConfigs[] entries must have {name, k, v}`);
     }
   }
-  for (const d of cfg.dflashConfigs) {
+  for (const d of cfg.mtpConfigs) {
     if (!d || typeof d.name !== "string") {
-      throw new Error(`dflashConfigs[] entries must have {name, drafter?}`);
+      throw new Error(`mtpConfigs[] entries must have {name, drafter?}`);
     }
     if (
       d.drafter !== null &&
       d.drafter !== undefined &&
       typeof d.drafter !== "string"
     ) {
-      throw new Error(`dflashConfigs[].drafter must be string|null`);
+      throw new Error(`mtpConfigs[].drafter must be string|null`);
     }
   }
   for (const p of cfg.prompts) {
@@ -521,8 +521,8 @@ async function runIteration(client, { conversationId, prompt, streaming }) {
   };
 }
 
-function combinationKey({ model, kvCache, dflash, prompt }) {
-  return `${model}__${kvCache.name}__${dflash.name}__${prompt.id}`;
+function combinationKey({ model, kvCache, mtp, prompt }) {
+  return `${model}__${kvCache.name}__${mtp.name}__${prompt.id}`;
 }
 
 async function runOneCombination({
@@ -533,13 +533,13 @@ async function runOneCombination({
   streaming,
   loadTimeoutMs,
 }) {
-  const { model, kvCache, dflash, prompt } = combination;
+  const { model, kvCache, mtp, prompt } = combination;
   const key = combinationKey(combination);
   const record = {
     key,
     model,
     kvCache,
-    dflash,
+    mtp,
     prompt: { id: prompt.id, maxTokens: prompt.maxTokens },
     startedAt: new Date().toISOString(),
     finishedAt: null,
@@ -563,12 +563,12 @@ async function runOneCombination({
         "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply.",
     });
   }
-  if (dflash.drafter) {
+  if (mtp.drafter) {
     record.configGaps.push({
       kind: "drafter-override-not-supported",
-      requested: { drafter: dflash.drafter },
+      requested: { drafter: mtp.drafter },
       workaround:
-        "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter.",
+        "Drafter pairing is read from the catalog entry's runtime.mtp.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter.",
     });
   }
 
@@ -671,7 +671,7 @@ function buildMarkdownReport({
   );
   lines.push("");
   lines.push(
-    "| Model | KV cache | DFlash | Prompt | Load (ms) | First-token median | Total median | Total p95 | tok/s median | OK / total | Notes |",
+    "| Model | KV cache | MTP | Prompt | Load (ms) | First-token median | Total median | Total p95 | tok/s median | OK / total | Notes |",
   );
   lines.push("|---|---|---|---|---:|---:|---:|---:|---:|---:|---|");
   for (const run of runs) {
@@ -682,7 +682,7 @@ function buildMarkdownReport({
       notes.push(`gaps: ${run.configGaps.map((g) => g.kind).join(", ")}`);
     }
     lines.push(
-      `| ${run.model} | ${run.kvCache.name} | ${run.dflash.name} | ${run.prompt.id} | ${formatNumber(run.loadMs, 0)} | ${
+      `| ${run.model} | ${run.kvCache.name} | ${run.mtp.name} | ${run.prompt.id} | ${formatNumber(run.loadMs, 0)} | ${
         s ? formatNumber(s.firstTokenLatencyMs.median, 0) : "—"
       } | ${s ? formatNumber(s.totalLatencyMs.median, 0) : "—"} | ${
         s ? formatNumber(s.totalLatencyMs.p95, 0) : "—"
@@ -704,7 +704,7 @@ function buildMarkdownReport({
   }
   if (gapKinds.size === 0) {
     lines.push(
-      "None — every kvCache/dflash combination matched the catalog defaults.",
+      "None — every kvCache/mtp combination matched the catalog defaults.",
     );
   } else {
     for (const [kind, keys] of gapKinds) {
@@ -760,9 +760,9 @@ async function main() {
   const combinations = [];
   for (const model of config.models) {
     for (const kvCache of config.kvCacheConfigs) {
-      for (const dflash of config.dflashConfigs) {
+      for (const mtp of config.mtpConfigs) {
         for (const prompt of config.prompts) {
-          combinations.push({ model, kvCache, dflash, prompt });
+          combinations.push({ model, kvCache, mtp, prompt });
         }
       }
     }

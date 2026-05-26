@@ -30,12 +30,15 @@ const INLINE_TEXTAREA_MAX_HEIGHT_PX = 128;
 const INLINE_STACKED_INLINE_PADDING_PX = 12;
 
 const inlineTextareaClass =
-  "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden appearance-none rounded-none border-0 bg-transparent px-2 py-[6px] text-sm leading-5 text-txt shadow-none outline-none ring-0 placeholder:text-muted/60 focus:!border-0 focus:!outline-none focus:!ring-0 focus-visible:!border-0 focus-visible:!outline-none focus-visible:!ring-0 focus-visible:!ring-offset-0 focus-visible:!shadow-none";
+  "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden appearance-none rounded-none border-0 bg-transparent px-2 py-[6px] text-sm leading-5 text-txt shadow-none outline-none ring-0 placeholder:text-muted-strong focus:!border-0 focus:!outline-none focus:!ring-0 focus-visible:!border-0 focus-visible:!outline-none focus-visible:!ring-0 focus-visible:!ring-offset-0 focus-visible:!shadow-none";
 
 const inlineMeasureTextareaClass = `${inlineTextareaClass} pointer-events-none fixed left-0 top-0 z-[-1] opacity-0`;
 
 const chatComposerFocusResetClass =
   "[&_button:focus]:!outline-none [&_button:focus-visible]:!outline-none [&_button:focus-visible]:!ring-0 [&_button:focus-visible]:!ring-offset-0 [&_button:focus-visible]:!shadow-none [&_textarea:focus]:!outline-none [&_textarea:focus-visible]:!outline-none [&_textarea:focus-visible]:!ring-0 [&_textarea:focus-visible]:!ring-offset-0 [&_textarea:focus-visible]:!shadow-none";
+
+const inlineComposerSurfaceClass =
+  "border-[color-mix(in_srgb,var(--border)_62%,var(--txt)_38%)] bg-[color-mix(in_srgb,var(--bg)_78%,var(--txt)_16%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_12px_30px_rgba(0,0,0,0.42)] ring-1 ring-inset ring-white/15 backdrop-blur-sm";
 
 type InlineTextareaMeasurement = {
   scrollHeight: number;
@@ -521,8 +524,8 @@ export function ChatComposer({
         data-inline-layout={isInlineMultiline ? "stacked" : "single-line"}
         className={
           isInlineMultiline
-            ? `flex min-h-[64px] flex-col gap-1 rounded-[22px] border border-border/35 bg-card/45 px-1.5 py-1.5 ${chatComposerFocusResetClass}`
-            : `flex min-h-[40px] items-center gap-1 rounded-sm border border-border/35 bg-card/45 px-1 py-1 ${chatComposerFocusResetClass}`
+            ? `flex min-h-[64px] flex-col gap-1 rounded-[22px] border px-1.5 py-1.5 ${inlineComposerSurfaceClass} ${chatComposerFocusResetClass}`
+            : `flex min-h-[40px] items-center gap-1 rounded-sm border px-1 py-1 ${inlineComposerSurfaceClass} ${chatComposerFocusResetClass}`
         }
       >
         <textarea

@@ -6,7 +6,7 @@ import { createRealTestRuntime } from "../../../app-core/test/helpers/real-runti
 
 export interface TestApiServerOptions {
   port?: number;
-  onboardingComplete?: boolean;
+  firstRunComplete?: boolean;
 }
 
 export interface TestApiServer {
@@ -123,7 +123,7 @@ function scrubResetConfig(
     next.meta && typeof next.meta === "object" && !Array.isArray(next.meta)
       ? { ...(next.meta as Record<string, unknown>) }
       : {};
-  delete meta.onboardingComplete;
+  delete meta.firstRunComplete;
   next.meta = meta;
   delete next.serviceRouting;
   delete next.deployment;
@@ -151,15 +151,15 @@ export async function startLiveApiServer(
     });
     const upstreamBaseUrl = `http://127.0.0.1:${upstream.port}`;
 
-    if (options.onboardingComplete) {
-      const response = await fetch(`${upstreamBaseUrl}/api/onboarding`, {
+    if (options.firstRunComplete) {
+      const response = await fetch(`${upstreamBaseUrl}/api/first-run`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: "Packaged Desktop" }),
       });
       if (!response.ok) {
         throw new Error(
-          `Failed to seed live onboarding state (${response.status}): ${await response.text()}`,
+          `Failed to seed live first-run state (${response.status}): ${await response.text()}`,
         );
       }
     }
@@ -183,7 +183,7 @@ export async function startLiveApiServer(
         if (
           method === "GET" &&
           resetApplied &&
-          targetUrl.pathname === "/api/onboarding/status"
+          targetUrl.pathname === "/api/first-run/status"
         ) {
           sendJson(res, 200, { complete: false, cloudProvisioned: false });
           return;

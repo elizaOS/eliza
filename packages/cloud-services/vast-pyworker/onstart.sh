@@ -9,7 +9,7 @@
 #   - git
 #
 # Default image: `ghcr.io/ggml-org/llama.cpp:server-cuda` for normal GGUF.
-# DFlash / TurboQuant flags require a compatible fork image; set
+# MTP / TurboQuant flags require a compatible fork image; set
 # LLAMA_SERVER_BIN or build an image from spiritbuun/buun-llama-cpp.
 #
 # Required template env vars (set in the Vast template definition):
@@ -29,15 +29,15 @@
 #   LLAMA_SERVER_PORT   — local server port (default: 8080).
 #   MODEL_DIR           — where to cache the GGUF (default: /workspace/models).
 #   LLAMA_SERVER_BIN    — binary to execute (default: llama-server).
-#   DFLASH_DRAFTER_REPO — optional HF repo id for a DFlash drafter GGUF.
-#   DFLASH_DRAFTER_FILE — optional drafter GGUF filename.
-#   DFLASH_SPEC_TYPE    — default: dflash when a drafter is configured.
+#   MTP_DRAFTER_REPO — optional HF repo id for a MTP drafter GGUF.
+#   MTP_DRAFTER_FILE — optional drafter GGUF filename.
+#   MTP_SPEC_TYPE    — default: mtp when a drafter is configured.
 #   LLAMA_DRAFT_NGL     — drafter GPU layers (default: $LLAMA_NGL).
 #   LLAMA_DRAFT_CONTEXT — drafter context size (default: 256).
 #   LLAMA_DRAFT_MIN     — default: 1.
 #   LLAMA_DRAFT_MAX     — default: 16.
-#   DFLASH_REPAIR_DRAFTER — default: 1. Copies tokenizer merges from target
-#                           into DFlash drafters that were published without
+#   MTP_REPAIR_DRAFTER — default: 1. Copies tokenizer merges from target
+#                           into MTP drafters that were published without
 #                           tokenizer.ggml.merges metadata.
 #   GGUF_PYTHONPATH     — optional path to llama.cpp's gguf-py package when
 #                         it is not bundled next to LLAMA_SERVER_BIN.
@@ -47,9 +47,9 @@
 #   LLAMA_REASONING_FORMAT — optional reasoning parser format, e.g. `none`.
 #   LLAMA_DISABLE_THINKING — when truthy, passes enable_thinking=false.
 #   LLAMA_EXTRA_ARGS    — extra args appended verbatim.
-#   LLAMA_CPP_FORK_IMAGE — optional Docker image override for DFlash/TurboQuant.
+#   LLAMA_CPP_FORK_IMAGE — optional Docker image override for MTP/TurboQuant.
 #                         When set, overrides the default upstream llama.cpp image.
-#                         For Eliza-1 workers with DFlash or TurboQuant quantizations,
+#                         For Eliza-1 workers with MTP or TurboQuant quantizations,
 #                         set to the elizaOS fork build, e.g.
 #                         LLAMA_CPP_FORK_IMAGE=ghcr.io/elizaos/llama.cpp:server-cuda
 #
@@ -73,14 +73,14 @@ MODEL_DIR="${MODEL_DIR:-/workspace/models}"
 PYWORKER_DIR="${PYWORKER_DIR:-/workspace/pyworker}"
 LLAMA_LOG="${LLAMA_SERVER_LOG:-/var/log/llama-server.log}"
 LLAMA_SERVER_BIN="${LLAMA_SERVER_BIN:-llama-server}"
-DFLASH_DRAFTER_REPO="${DFLASH_DRAFTER_REPO:-}"
-DFLASH_DRAFTER_FILE="${DFLASH_DRAFTER_FILE:-}"
-DFLASH_SPEC_TYPE="${DFLASH_SPEC_TYPE:-dflash}"
+MTP_DRAFTER_REPO="${MTP_DRAFTER_REPO:-}"
+MTP_DRAFTER_FILE="${MTP_DRAFTER_FILE:-}"
+MTP_SPEC_TYPE="${MTP_SPEC_TYPE:-mtp}"
 LLAMA_DRAFT_NGL="${LLAMA_DRAFT_NGL:-$LLAMA_NGL}"
 LLAMA_DRAFT_CONTEXT="${LLAMA_DRAFT_CONTEXT:-256}"
 LLAMA_DRAFT_MIN="${LLAMA_DRAFT_MIN:-1}"
 LLAMA_DRAFT_MAX="${LLAMA_DRAFT_MAX:-16}"
-DFLASH_REPAIR_DRAFTER="${DFLASH_REPAIR_DRAFTER:-1}"
+MTP_REPAIR_DRAFTER="${MTP_REPAIR_DRAFTER:-1}"
 GGUF_PYTHONPATH="${GGUF_PYTHONPATH:-}"
 LLAMA_CACHE_TYPE_K="${LLAMA_CACHE_TYPE_K:-}"
 LLAMA_CACHE_TYPE_V="${LLAMA_CACHE_TYPE_V:-}"
@@ -132,20 +132,20 @@ EOF
 fi
 
 DRAFTER_PATH=""
-if [ -n "$DFLASH_DRAFTER_REPO" ] || [ -n "$DFLASH_DRAFTER_FILE" ]; then
-  if [ -z "$DFLASH_DRAFTER_REPO" ] || [ -z "$DFLASH_DRAFTER_FILE" ]; then
-    echo "[onstart] DFLASH_DRAFTER_REPO and DFLASH_DRAFTER_FILE must be set together" >&2
+if [ -n "$MTP_DRAFTER_REPO" ] || [ -n "$MTP_DRAFTER_FILE" ]; then
+  if [ -z "$MTP_DRAFTER_REPO" ] || [ -z "$MTP_DRAFTER_FILE" ]; then
+    echo "[onstart] MTP_DRAFTER_REPO and MTP_DRAFTER_FILE must be set together" >&2
     exit 1
   fi
-  DRAFTER_PATH="$MODEL_DIR/${DFLASH_DRAFTER_FILE}"
+  DRAFTER_PATH="$MODEL_DIR/${MTP_DRAFTER_FILE}"
   if [ ! -f "$DRAFTER_PATH" ]; then
-    echo "[onstart] downloading DFlash drafter $DFLASH_DRAFTER_REPO/$DFLASH_DRAFTER_FILE → $DRAFTER_PATH"
+    echo "[onstart] downloading MTP drafter $MTP_DRAFTER_REPO/$MTP_DRAFTER_FILE → $DRAFTER_PATH"
     python3 - <<EOF
 from huggingface_hub import hf_hub_download
 import os
 hf_hub_download(
-    repo_id="${DFLASH_DRAFTER_REPO}",
-    filename="${DFLASH_DRAFTER_FILE}",
+    repo_id="${MTP_DRAFTER_REPO}",
+    filename="${MTP_DRAFTER_FILE}",
     local_dir="${MODEL_DIR}",
     token=os.environ.get("HUGGING_FACE_HUB_TOKEN"),
 )
@@ -165,11 +165,11 @@ resolve_llama_bin_dir() {
   fi
 }
 
-repair_dflash_drafter_if_needed() {
+repair_mtp_drafter_if_needed() {
   local target_path="$1"
   local drafter_path="$2"
 
-  if [ "$DFLASH_REPAIR_DRAFTER" = "0" ] || [ -z "$drafter_path" ]; then
+  if [ "$MTP_REPAIR_DRAFTER" = "0" ] || [ -z "$drafter_path" ]; then
     printf '%s\n' "$drafter_path"
     return
   fi
@@ -194,7 +194,7 @@ repair_dflash_drafter_if_needed() {
     python_path="${python_path:+$python_path:}$PYWORKER_DIR/gguf-py"
   fi
 
-  echo "[onstart] checking DFlash drafter tokenizer metadata" >&2
+  echo "[onstart] checking MTP drafter tokenizer metadata" >&2
   local output_path=""
   if output_path="$(PYTHONPATH="$python_path${PYTHONPATH:+:$PYTHONPATH}" python3 - "$target_path" "$drafter_path" "$repaired_path" <<'PY'
 import sys
@@ -239,13 +239,13 @@ PY
       printf '%s\n' "$drafter_path"
     fi
   else
-    echo "[onstart] warning: could not repair DFlash drafter; continuing with original file. Bundle gguf-py next to llama-server or set GGUF_PYTHONPATH if llama-server fails with missing tokenizer merges." >&2
+    echo "[onstart] warning: could not repair MTP drafter; continuing with original file. Bundle gguf-py next to llama-server or set GGUF_PYTHONPATH if llama-server fails with missing tokenizer merges." >&2
     printf '%s\n' "$drafter_path"
   fi
 }
 
 if [ -n "$DRAFTER_PATH" ]; then
-  DRAFTER_PATH="$(repair_dflash_drafter_if_needed "$MODEL_PATH" "$DRAFTER_PATH")"
+  DRAFTER_PATH="$(repair_mtp_drafter_if_needed "$MODEL_PATH" "$DRAFTER_PATH")"
   LLAMA_JINJA="${LLAMA_JINJA:-1}"
   LLAMA_REASONING_FORMAT="${LLAMA_REASONING_FORMAT:-none}"
   LLAMA_DISABLE_THINKING="${LLAMA_DISABLE_THINKING:-1}"
@@ -279,7 +279,7 @@ fi
 if [ -n "$DRAFTER_PATH" ]; then
   LLAMA_ARGS+=(
     -md "$DRAFTER_PATH"
-    --spec-type "$DFLASH_SPEC_TYPE"
+    --spec-type "$MTP_SPEC_TYPE"
     --n-gpu-layers-draft "$LLAMA_DRAFT_NGL"
     --spec-draft-n-min "$LLAMA_DRAFT_MIN"
     --spec-draft-n-max "$LLAMA_DRAFT_MAX"
@@ -297,7 +297,7 @@ if [ -n "$LLAMA_EXTRA_ARGS" ]; then
 fi
 
 if ! pgrep -f "$LLAMA_SERVER_BIN.*--port $LLAMA_SERVER_PORT" > /dev/null; then
-  echo "[onstart] starting llama-server (bin=$LLAMA_SERVER_BIN, alias=$MODEL_ALIAS, ctx=$LLAMA_CONTEXT, parallel=$LLAMA_PARALLEL, dflash=$([ -n "$DRAFTER_PATH" ] && echo yes || echo no))"
+  echo "[onstart] starting llama-server (bin=$LLAMA_SERVER_BIN, alias=$MODEL_ALIAS, ctx=$LLAMA_CONTEXT, parallel=$LLAMA_PARALLEL, mtp=$([ -n "$DRAFTER_PATH" ] && echo yes || echo no))"
   echo "[onstart] argv: $LLAMA_SERVER_BIN ${LLAMA_ARGS[*]}"
   nohup "$LLAMA_SERVER_BIN" "${LLAMA_ARGS[@]}" \
     > "$LLAMA_LOG" 2>&1 &

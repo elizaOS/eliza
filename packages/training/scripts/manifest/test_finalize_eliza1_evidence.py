@@ -15,7 +15,7 @@ from scripts.manifest import finalize_eliza1_evidence as F  # noqa: E402
 
 def test_upload_evidence_requires_complete_platform_upload_paths() -> None:
     required = F._required_uploaded_paths("2b")
-    incomplete = sorted(required - {"bundles/2b/dflash/drafter-2b.gguf"})
+    incomplete = sorted(required - {"bundles/2b/mtp/drafter-2b.gguf"})
 
     assert not F._has_upload_evidence(
         {

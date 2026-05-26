@@ -96,6 +96,7 @@
         "../../plugins/plugin-contacts/src/index.ts"
       ],
       "@elizaos/agent": ["./src/index.ts"],
+      "@elizaos/agent/*": ["./src/*"],
       "@elizaos/cloud-sdk": ["../cloud-sdk/src/index.ts"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
@@ -121,6 +122,8 @@
         "../shared/src/local-inference/index.ts"
       ],
       "@elizaos/shared/*": ["../shared/src/*"],
+      "@elizaos/security": ["../security/src/index.ts"],
+      "@elizaos/security/*": ["../security/src/*"],
       "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/skills": ["../skills/src/index.ts"],
       "react": ["../app-core/node_modules/@types/react/index.d.ts"],

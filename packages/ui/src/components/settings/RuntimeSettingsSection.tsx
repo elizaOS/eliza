@@ -1,10 +1,5 @@
 /**
  * Runtime Settings Section.
- *
- * The actual storage clear + URL navigation is in
- * `onboarding/reload-into-runtime-picker.ts` — kept as a leaf module so
- * its contract is testable without booting the SettingsView dependency
- * graph.
  */
 
 import { Cloud, Laptop, type LucideIcon, RadioTower } from "lucide-react";
@@ -16,12 +11,12 @@ import {
 } from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { isStoreBuild } from "../../build-variant";
-import { useRuntimeMode } from "../../hooks/useRuntimeMode";
-import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
+import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import {
-  type RuntimePickerTarget,
-  reloadIntoRuntimePicker,
-} from "../../onboarding/reload-into-runtime-picker";
+  type FirstRunReloadTarget,
+  reloadIntoFirstRunRuntime,
+} from "../../first-run/reload-into-first-run-runtime";
+import { useRuntimeMode } from "../../hooks/useRuntimeMode";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { useApp } from "../../state";
 import {
@@ -32,7 +27,7 @@ import { loadPersistedActiveServer } from "../../state/persistence";
 import { Button } from "../ui/button";
 
 type RuntimeAction = {
-  target: RuntimePickerTarget;
+  target: FirstRunReloadTarget;
   label: string;
   description: string;
   icon: LucideIcon;
@@ -76,7 +71,7 @@ export function RuntimeSettingsSection() {
   // without the on-device agent runtime, so the Local option must be
   // hidden — selecting it would point the renderer at a loopback agent
   // that physically isn't there. The default sideload Android build, the
-  // AOSP system build, iOS, and desktop all keep the full picker.
+  // AOSP system build, iOS, and desktop all keep local first-run setup.
   const cloudOnly = isAndroidCloudBuild();
 
   const actions = useMemo<RuntimeAction[]>(() => {
@@ -119,8 +114,8 @@ export function RuntimeSettingsSection() {
     return base;
   }, [t, cloudOnly, storeBuild, localDisabledReason]);
 
-  const handleSwitch = useCallback((target: RuntimePickerTarget) => {
-    reloadIntoRuntimePicker(target);
+  const handleSwitch = useCallback((target: FirstRunReloadTarget) => {
+    reloadIntoFirstRunRuntime(target);
   }, []);
 
   const handleImportDirectState = useCallback(async () => {

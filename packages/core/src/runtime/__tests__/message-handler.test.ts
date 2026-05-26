@@ -69,6 +69,78 @@ describe("v5 message handler routing", () => {
 		}
 	});
 
+	it("plans against 'general' when candidateActions has validated tools, even if Stage 1 also routed simple-path", () => {
+		// Live regression on 2026-05-25 (trajectories tj-c227b5bbff288a and
+		// tj-d5e298b2542aa0). Probes "find files in /etc that contain the word
+		// hostname" and "what files are in /tmp right now" produced the
+		// self-contradictory envelope after validation:
+		//   { contexts:["simple"], requiresTool:true, candidateActions:["BASH"],
+		//     replyText:"On it." }
+		// The model claimed simple-path (so no planner ran) while ALSO naming
+		// a specific exposed tool that could fulfill the request. The user saw
+		// only "On it." and nothing else because no planner iteration ever
+		// executed BASH. Resolve the contradiction in favor of running the
+		// planner — the candidateActions hint is a concrete reference to an
+		// exposed tool and outranks the simple-path flag.
+		const output = {
+			processMessage: "RESPOND" as const,
+			thought: "Tool would help here.",
+			plan: {
+					contexts: ["simple"],
+					requiresTool: true,
+					candidateActions: ["BASH"],
+					reply: "On it.",
+			},
+		};
+
+		const route = routeMessageHandlerOutput(output);
+		expect(route.type).toBe("planning_needed");
+		if (route.type === "planning_needed") {
+			expect(route.contexts).toEqual(["general"]);
+			}
+		});
+
+	it("keeps simple route for explicit non-tool candidate hints", () => {
+		const output = {
+			processMessage: "RESPOND" as const,
+			thought: "No runnable tool.",
+			plan: {
+				contexts: ["simple"],
+				requiresTool: false,
+				candidateActions: ["REFUSE"],
+				reply: "I can't help with that.",
+			},
+		};
+
+		const route = routeMessageHandlerOutput(output);
+		expect(route.type).toBe("final_reply");
+		if (route.type === "final_reply") {
+			expect(route.reply).toBe("I can't help with that.");
+		}
+	});
+
+	it("keeps the simple-path final-reply route when candidateActions is empty and requiresTool is false", () => {
+		// Defensive: the candidateActions-based promotion above must not
+		// accidentally drag legitimate simple-path replies into the planner.
+		// An empty/missing candidateActions field is the common case for
+		// every chat, math, recall, joke, and definition probe.
+		const output = {
+			processMessage: "RESPOND" as const,
+			thought: "Direct chat answer.",
+			plan: {
+				contexts: ["simple"],
+				requiresTool: false,
+				reply: "8 times 9 is 72.",
+			},
+		};
+
+		const route = routeMessageHandlerOutput(output);
+		expect(route.type).toBe("final_reply");
+		if (route.type === "final_reply") {
+			expect(route.reply).toBe("8 times 9 is 72.");
+		}
+	});
+
 	it("does not parse retired requiresTool from the model envelope", () => {
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({

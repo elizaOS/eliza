@@ -25,7 +25,7 @@ plugins/plugin-aosp-local-inference/
     index.ts                              Barrel
     aosp-llama-adapter.ts                 bun:ffi loader registration
     aosp-llama-streaming.ts               Streaming bridge
-    aosp-dflash-adapter.ts                DFlash drafter wiring
+    aosp-mtp-adapter.ts                MTP drafter wiring
     aosp-local-inference-bootstrap.ts     Model-handler registrar incl. Kokoro TTS
   __tests__/                              vitest suites
 ```

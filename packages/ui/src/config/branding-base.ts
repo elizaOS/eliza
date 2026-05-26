@@ -1,7 +1,7 @@
 import type { ThemeDefinition } from "@elizaos/shared";
 
 /**
- * Custom provider that apps can inject into the onboarding flow.
+ * Custom provider that apps can inject into the first-run setup.
  * Uses `string` for id/family so apps aren't restricted to the built-in union.
  */
 export interface CustomProviderOption {
@@ -22,7 +22,7 @@ export interface CustomProviderOption {
   logoLight?: string;
 }
 
-export interface OnboardingThemeConfig {
+export interface FirstRunThemeConfig {
   background?: string;
   foreground?: string;
   mutedForeground?: string;
@@ -55,10 +55,10 @@ export interface BrandingConfig {
   fileExtension: string;
   /** npm package scope ("elizaos" | "elizaos") */
   packageScope: string;
-  /** Custom providers injected by the app into the onboarding flow */
+  /** Custom providers injected by the app into the first-run setup */
   customProviders?: CustomProviderOption[];
-  /** Optional CSS color tokens for branded onboarding screens. */
-  onboardingTheme?: OnboardingThemeConfig;
+  /** Optional CSS color tokens for branded first-run screens. */
+  firstRunTheme?: FirstRunThemeConfig;
   /** Per-app brand theme applied once at boot; not user-pickable. */
   theme?: ThemeDefinition;
   /** When true, the app requires Eliza Cloud — local backend mode is disabled. */

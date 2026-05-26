@@ -3,7 +3,7 @@
 /**
  * Pre-agent / home-screen brand wiring test.
  *
- * Asserts that `App.tsx` wraps the StartupShell (pre-agent gate) in
+ * Asserts that `App.tsx` wraps the StartupScreen (pre-agent gate) in
  * `<CloudVideoBackground>` so the home screen renders over CLOUDS per brand,
  * and that the cloud component itself can produce either the expected `<video>`
  * element with cloud sources or a static poster for startup. Rendering the full <App> would require mocking the
@@ -81,9 +81,25 @@ import { CLOUD_BACKGROUND_ASSETS } from "@elizaos/shared/brand";
 import { CloudVideoBackground } from "./backgrounds/CloudVideoBackground";
 
 const APP_TSX = readFileSync(resolve(__dirname, "./App.tsx"), "utf8");
+const APP_MAIN_TS = readFileSync(
+  resolve(__dirname, "../../app/src/main.tsx"),
+  "utf8",
+);
+const USE_NAVIGATION_STATE_TS = readFileSync(
+  resolve(__dirname, "./state/useNavigationState.ts"),
+  "utf8",
+);
+const USE_STARTUP_COORDINATOR_TS = readFileSync(
+  resolve(__dirname, "./state/useStartupCoordinator.ts"),
+  "utf8",
+);
+const WINDOW_SHELL_TS = readFileSync(
+  resolve(__dirname, "./platform/window-shell.ts"),
+  "utf8",
+);
 
 describe("App pre-agent cloud wiring", () => {
-  it("wraps the pre-agent StartupShell in a full-screen CloudVideoBackground", () => {
+  it("wraps the pre-agent StartupScreen in a full-screen CloudVideoBackground", () => {
     // Pull the contents of the `if (startupCoordinator.phase !== "ready" …)`
     // pre-agent gate and assert clouds are wired there. We grep for the
     // testid we added so the assertion fails loudly if the wrapper is moved.
@@ -92,7 +108,7 @@ describe("App pre-agent cloud wiring", () => {
     );
     expect(APP_TSX).toContain('data-testid="pre-agent-cloud-shell"');
     expect(APP_TSX).toMatch(
-      /<CloudVideoBackground[\s\S]*<StartupShell[\s\S]*<\/CloudVideoBackground>/,
+      /<CloudVideoBackground[\s\S]*<StartupScreen[\s\S]*<\/CloudVideoBackground>/,
     );
     // The clouds are a true full-viewport background (fixed inset:0) with a
     // light scrim and theme-aware black text layered above.
@@ -152,5 +168,56 @@ describe("App pre-agent cloud wiring", () => {
     expect(
       container.querySelector('[data-testid="welcome"]')?.textContent,
     ).toBe("welcome");
+  });
+
+  it("keeps the assistant pill out of the full app shell", () => {
+    expect(APP_TSX).toContain("home: <HomeView />");
+    expect(APP_TSX).toContain('shellMode === "chat-overlay"');
+    expect(APP_TSX).toContain("<ShellFoundationMount />");
+    expect(APP_TSX).toContain("pointer-events-none fixed inset-0");
+    expect(APP_TSX).not.toContain(
+      "{isCoordinatorReady && <ShellFoundationMount />}",
+    );
+    expect(APP_TSX.indexOf('shellMode === "chat-overlay"')).toBeLessThan(
+      APP_TSX.indexOf(
+        'startupCoordinator.phase !== "ready" || !onboardingComplete',
+      ),
+    );
+  });
+
+  it("classifies chat-overlay as a standalone shell, not the main app", () => {
+    expect(WINDOW_SHELL_TS).toContain('shellMode === "chat-overlay"');
+    expect(WINDOW_SHELL_TS).toContain('{ mode: "chat-overlay" }');
+    expect(WINDOW_SHELL_TS).toContain("isChatOverlayWindowShell");
+    expect(WINDOW_SHELL_TS).toContain("isStandaloneWindowShell");
+    expect(WINDOW_SHELL_TS).toContain('route.mode === "chat-overlay"');
+    expect(APP_MAIN_TS).toContain("isStandaloneWindowShell(windowShellRoute)");
+    expect(APP_MAIN_TS).toContain("isChatOverlayWindowShell(windowShellRoute)");
+  });
+
+  it("preserves chat-overlay shell mode during shell-window navigation", () => {
+    expect(USE_NAVIGATION_STATE_TS).toContain("pathWithCurrentShellMode");
+    expect(USE_NAVIGATION_STATE_TS).toContain("isDetachedShell");
+    expect(USE_NAVIGATION_STATE_TS).toContain("eliza-chat-overlay-shell");
+    expect(USE_NAVIGATION_STATE_TS).toContain(
+      "if (!isDetachedShell) return path",
+    );
+    expect(USE_NAVIGATION_STATE_TS).toContain('params.get("shellMode")');
+    expect(USE_NAVIGATION_STATE_TS).toContain('params.get("shell-mode")');
+    expect(USE_NAVIGATION_STATE_TS).toContain(
+      'window.history.pushState(null, "", pathWithCurrentShellMode(path))',
+    );
+  });
+
+  it("lets existing shell windows advance after onboarding finishes elsewhere", () => {
+    expect(USE_STARTUP_COORDINATOR_TS).toContain(
+      "ONBOARDING_COMPLETE_STORAGE_KEY",
+    );
+    expect(USE_STARTUP_COORDINATOR_TS).toContain(
+      'window.addEventListener("storage", onStorage)',
+    );
+    expect(USE_STARTUP_COORDINATOR_TS).toContain(
+      'dispatch({ type: "SPLASH_CONTINUE" })',
+    );
   });
 });

@@ -5,9 +5,9 @@
  *   libllama.<ext>             — shared-lib variant of llama.cpp (NOT static)
  *   libeliza-llama-shim.<ext>  — our pointer-style wrappers, NEEDED-links libllama
  *
- * Output layout (mirrors the existing dflash bin dirs):
+ * Output layout (mirrors the existing mtp bin dirs):
  *
- *   $ELIZA_STATE_DIR/local-inference/bin/dflash/<platform>-<arch>-<backend>/
+ *   $ELIZA_STATE_DIR/local-inference/bin/mtp/<platform>-<arch>-<backend>/
  *     libllama.<ext>
  *     libeliza-llama-shim.<ext>
  *     include/llama.h           (for downstream debug + future header-driven binders)
@@ -58,9 +58,9 @@ const CACHE_DIR = path.join(
 
 /**
  * Per-target build recipe. cmakeFlags are the platform-specific CMake
- * args layered on top of the common base. backend is the dflash-style
+ * args layered on top of the common base. backend is the mtp-style
  * suffix the output dir gets (matches existing `<platform>-<arch>-<backend>`
- * pattern from the dflash builder).
+ * pattern from the mtp builder).
  */
 const TARGETS = {
   "darwin-arm64": {
@@ -131,6 +131,17 @@ const TARGETS = {
         ? ["-DGGML_CUDA=ON"]
         : ["-DGGML_VULKAN=ON"]),
     ],
+    hostNote:
+      "On a Windows host this build requires MSVC's `cl.exe` first on PATH. " +
+      "If `C:\\Strawberry\\c\\bin` (Strawberry Perl) is on PATH ahead of MSVC, " +
+      "CMake auto-detects Strawberry's MinGW `gcc.exe` + `windres.exe` as the " +
+      "host compiler/resource compiler, then `nvcc` (for `ELIZA_DESKTOP_BACKEND=cuda`) " +
+      "rejects the MinGW host with `Detecting CUDA compiler ABI info - failed` / " +
+      "`broken CUDA compiler`. Fix: launch a clean shell, `call vcvars64.bat` " +
+      "first, then append CUDA / node / git / VS-bundled cmake+ninja to PATH — " +
+      "DO NOT prepend Strawberry. CUDA toolkit must be a complete install (v12.4 " +
+      "or newer); empty `v12.6` stubs without `nvcc.exe` break detection too. " +
+      "For Vulkan backend (default), install the Vulkan SDK first.",
     crossNote:
       "Cross-build from darwin host: install `mingw-w64` via brew, then pass " +
       "a toolchain file setting CMAKE_C_COMPILER=x86_64-w64-mingw32-gcc, " +
@@ -153,6 +164,36 @@ function die(msg) {
 function run(cmd, args, cwd) {
   const r = spawnSync(cmd, args, { stdio: "inherit", cwd });
   if (r.status !== 0) die(`${cmd} ${args.join(" ")} → exit ${r.status}`);
+}
+
+function readExportTable(platform, libraryPath) {
+  const commands =
+    platform === "windows"
+      ? [
+          ["dumpbin", ["/exports", libraryPath]],
+          ["llvm-nm", ["-g", libraryPath]],
+          ["nm", ["-g", libraryPath]],
+        ]
+      : platform === "darwin"
+        ? [["nm", ["-gU", libraryPath]]]
+        : [
+            ["nm", ["-D", "-g", libraryPath]],
+            ["llvm-nm", ["-D", "-g", libraryPath]],
+          ];
+
+  const failures = [];
+  for (const [cmd, args] of commands) {
+    const result = spawnSync(cmd, args, { encoding: "utf8" });
+    if (result.status === 0) {
+      return {
+        command: [cmd, ...args].join(" "),
+        output: `${result.stdout ?? ""}\n${result.stderr ?? ""}`,
+      };
+    }
+    failures.push(`${cmd}: ${result.error?.message ?? `exit ${result.status}`}`);
+  }
+
+  die(`unable to inspect shim exports with ${commands.map(([cmd]) => cmd).join(", ")} (${failures.join("; ")})`);
 }
 
 function ensureSourceCheckout(srcDir) {
@@ -179,6 +220,9 @@ function buildTarget(targetKey) {
       `cannot build ${targetKey} on ${process.platform}/${process.arch}: ${note}`,
     );
   }
+  if (t.hostNote) {
+    log(`[${targetKey}] host-build prerequisites:\n  ${t.hostNote}`);
+  }
 
   const [platform, arch] = targetKey.split("-");
   const outDirName = `${platform}-${arch}-${t.backend}-dlopen`;
@@ -186,7 +230,7 @@ function buildTarget(targetKey) {
     STATE_DIR,
     "local-inference",
     "bin",
-    "dflash",
+    "mtp",
     outDirName,
   );
   fs.mkdirSync(outDir, { recursive: true });
@@ -262,32 +306,46 @@ function buildTarget(targetKey) {
   }
 
   // ── Step 2: locate the built libllama.<ext> and stage it ─────────────────
+  // Naming convention: linux/macOS produce `libllama.{so,dylib}` (CMake adds
+  // the `lib` prefix on shared libs). Windows MSVC produces `llama.dll` —
+  // the `lib` prefix is dropped because PE doesn't carry it. The runtime
+  // (`desktop-llama-adapter.ts`) always looks for `libllama.{so,dylib,dll}`,
+  // so on Windows we have to find `llama.dll` from the build tree and
+  // stage it AS `libllama.dll` in the output dir.
   const libllamaName = `libllama.${t.libExt}`;
-  const candidates = [
-    path.join(buildDir, libllamaName),
-    path.join(buildDir, "bin", libllamaName),
-    path.join(buildDir, "src", libllamaName),
-  ];
+  const buildOutputNames =
+    process.platform === "win32"
+      ? [libllamaName, `llama.${t.libExt}`]
+      : [libllamaName];
+  const candidates = [];
+  for (const name of buildOutputNames) {
+    candidates.push(
+      path.join(buildDir, name),
+      path.join(buildDir, "bin", name),
+      path.join(buildDir, "bin", "Release", name),
+      path.join(buildDir, "src", name),
+      path.join(buildDir, "src", "Release", name),
+    );
+  }
   // Also walk shallow: cmake puts the shared lib in different places
-  // depending on generator (Ninja vs Make). Fall through to a find scan.
+  // depending on generator (Ninja vs Make/VS). Fall through to a find scan.
   let libllamaSrcPath = candidates.find((p) => fs.existsSync(p));
   if (!libllamaSrcPath) {
-    const found = spawnSync(
-      "find",
-      [buildDir, "-name", libllamaName, "-print"],
-      {
+    for (const name of buildOutputNames) {
+      const found = spawnSync("find", [buildDir, "-name", name, "-print"], {
         encoding: "utf8",
-      },
-    );
-    libllamaSrcPath = found.stdout.split("\n").find((s) => s.trim());
+      });
+      libllamaSrcPath = found.stdout.split("\n").find((s) => s.trim());
+      if (libllamaSrcPath) break;
+    }
   }
   if (!libllamaSrcPath) {
     die(
-      `could not locate ${libllamaName} after cmake build in ${buildDir}; ` +
-        `check that -DBUILD_SHARED_LIBS=ON took effect`,
+      `could not locate ${buildOutputNames.join(" or ")} after cmake build ` +
+        `in ${buildDir}; check that -DBUILD_SHARED_LIBS=ON took effect`,
     );
   }
-  log(`staging ${libllamaSrcPath} → ${outDir}`);
+  log(`staging ${libllamaSrcPath} → ${outDir}/${libllamaName}`);
   fs.copyFileSync(libllamaSrcPath, path.join(outDir, libllamaName));
 
   // ── Step 2b: stage libmtmd.<ext> when vision is enabled ──────────────────
@@ -390,10 +448,12 @@ function buildTarget(targetKey) {
   run(cc, compilerArgs);
 
   // ── Step 5: smoke-check that exports are present ─────────────────────────
-  const nm = spawnSync("nm", ["-gU", shimOut], { encoding: "utf8" });
-  const exportCount = (nm.stdout.match(/_eliza_llama_/g) ?? []).length;
+  const exportTable = readExportTable(platform, shimOut);
+  const exportCount = (
+    exportTable.output.match(/(?:^|[\s|])_?eliza_llama_[A-Za-z0-9_]+/gm) ?? []
+  ).length;
   log(
-    `exports in libeliza-llama-shim.${t.libExt}: ${exportCount} eliza_llama_* symbols`,
+    `exports in libeliza-llama-shim.${t.libExt}: ${exportCount} eliza_llama_* symbols (${exportTable.command})`,
   );
   if (exportCount === 0) die("shim has no eliza_llama_* exports — link failed");
 

@@ -1,22 +1,22 @@
 /** Provider logo mapping — maps AI provider IDs to their logo image paths. */
 
 export {
-  getDirectAccountProviderForOnboardingProvider,
-  getOnboardingProviderFamily,
-  getOnboardingProviderOption,
-  getStoredOnboardingProviderId,
+  FIRST_RUN_PROVIDER_CATALOG,
+  type FirstRunProviderId,
+  getDirectAccountProviderForFirstRunProvider,
+  getFirstRunProviderFamily,
+  getFirstRunProviderOption,
+  getStoredFirstRunProviderId,
   getStoredSubscriptionProvider,
   getSubscriptionProviderFamily,
   isSubscriptionProviderSelectionId,
-  normalizeOnboardingProviderId,
+  normalizeFirstRunProviderId,
   normalizeSubscriptionProviderSelectionId,
-  ONBOARDING_PROVIDER_CATALOG,
-  type OnboardingProviderId,
-  type ProviderOption as OnboardingProviderOption,
+  type ProviderOption as FirstRunProviderOption,
   requiresAdditionalRuntimeProvider,
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   type SubscriptionProviderSelectionId,
-  sortOnboardingProviders,
+  sortFirstRunProviders,
 } from "@elizaos/shared";
 
 import { resolveAppAssetUrl } from "../utils/asset-url";

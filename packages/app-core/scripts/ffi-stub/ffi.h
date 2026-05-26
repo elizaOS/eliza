@@ -27,7 +27,7 @@
  *     so OmniVoice emits PCM chunks as they decode and the JS scheduler
  *     can phrase-chunk → TTS within one scheduler tick and hard-cancel an
  *     in-flight forward pass on barge-in (AGENTS.md §4);
- *   - the native DFlash verifier callback
+ *   - the native MTP verifier callback
  *     (`eliza_inference_set_verifier_callback`) so the JS scheduler drives
  *     phrase-chunking + rollback off exact native accept/reject events
  *     from the fork's speculative loop, not synthesized SSE deltas.
@@ -141,7 +141,7 @@ void eliza_inference_destroy(EliInferenceContext * ctx);
  *   - "tts"  : OmniVoice weights (mmap of tts/omnivoice-*.gguf)
  *   - "asr"  : ASR weights (mmap of asr/...)
  *   - "text" : text+vision weights (kept hot — always acquired)
- *   - "dflash" : drafter weights (kept hot — always acquired)
+ *   - "mtp" : drafter weights (kept hot — always acquired)
  *   - "vad" : Silero VAD weights / runtime pages
  *   - "wakeword" : openWakeWord combined GGUF (mel filterbank + speech
  *     embedding model + per-phrase head)
@@ -151,7 +151,7 @@ void eliza_inference_destroy(EliInferenceContext * ctx);
  * hint (madvise MADV_DONTNEED / VirtualUnlock) or fully unload the
  * voice-only region to minimize voice-off RSS. Callers must treat an
  * evicted region as unavailable until a later `mmap_acquire(region)`.
- * The "text" and "dflash" regions are allowed to be no-ops because the
+ * The "text" and "mtp" regions are allowed to be no-ops because the
  * text runtime keeps them hot for voice-off text turns. */
 int eliza_inference_mmap_acquire(
     EliInferenceContext * ctx,
@@ -285,9 +285,9 @@ int eliza_inference_encode_reference(
  * `eliza_inference_encode_reference`. Safe on NULL. */
 void eliza_inference_free_tokens(int * tokens);
 
-/* ---- DFlash verifier callback (ABI v2) ---------------------------- *
+/* ---- MTP verifier callback (ABI v2) ---------------------------- *
  *
- * The fused runtime hosts the dflash drafter in-process (`-md <drafter>`)
+ * The fused runtime hosts the mtp drafter in-process (`-md <drafter>`)
  * and runs the fork's speculative accept/reject loop directly. Register
  * a callback here and the runtime fires `ev` for every speculative step:
  *   - `accepted_token_ids` / `n_accepted` — the draft tokens the target

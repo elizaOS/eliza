@@ -202,7 +202,8 @@ const requiredWorkflowSnippets = [
   "ELIZA_TEST_WINDOWS_INSTALL_DIR: $" + "{{ runner.temp }}\\el",
   "name: Run Windows clean installer proof",
   "verify-windows-installer-proof.ps1",
-  "ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR: $" + "{{ runner.temp }}\\el-proof",
+  "ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR: $" +
+    "{{ runner.temp }}\\el-proof",
   "name: Upload Windows installer proof artifact",
   "path: packages/app-core/platforms/electrobun/artifacts/windows-installer-proof/**",
   "if: always() && matrix.platform.os == 'windows'",
@@ -817,7 +818,7 @@ function assertOrchestratorVersionPinned() {
   }
   if (!isExactVersion(version)) {
     console.error(
-      `release-check: @elizaos/plugin-agent-orchestrator must either use workspace:* for the local checkout or be pinned to an exact version, but found "${version}".`,
+      `release-check: @elizaos/plugin-agent-orchestrator must either use workspace:* for the local checkout, use a release dist tag, or be pinned to an exact version, but found "${version}".`,
     );
     process.exit(1);
   }
@@ -886,7 +887,7 @@ function assertReleaseWorkflowHasNotaryWrapper() {
 
   if (missing.length > 0) {
     console.error(
-      "release-check: release workflow is missing notary wrapper wiring:",
+      "release-check: release workflow is missing required release wiring:",
     );
     for (const snippet of missing) {
       console.error(`  - ${snippet}`);
@@ -1377,7 +1378,10 @@ function assertStartApiServerCatchBlockSafety() {
     elizaSource.indexOf("// ── Server-only mode", catchIndex),
   );
   if (
-    !catchBlock.includes("opts?.serverOnly") ||
+    !(
+      catchBlock.includes("opts?.serverOnly") ||
+      catchBlock.includes("options?.serverOnly")
+    ) ||
     !catchBlock.includes("process.exit(1)")
   ) {
     console.error(
@@ -1443,7 +1447,7 @@ function assertHomepageReleaseDataUsesCurrentAssetRoot() {
     !releaseDataSource.includes("/packages/homepage/public/")
   ) {
     console.error(
-      "release-check: generated homepage release data must point homepageAssetBaseUrl at /packages/homepage/public/.",
+      "release-check: generated homepage release data must point homepageAssetBaseUrl at /apps/homepage/public/.",
     );
     process.exit(1);
   }
@@ -1453,7 +1457,7 @@ function assertHomepageReleaseDataUsesCurrentAssetRoot() {
     releaseDataSource.includes("/apps/homepage/public/")
   ) {
     console.error(
-      "release-check: generated homepage release data still points at legacy /apps/*/public/. Regenerate it with node scripts/write-homepage-release-data.mjs.",
+      "release-check: generated homepage release data still points at legacy /apps/web/public/. Regenerate it with node scripts/write-homepage-release-data.mjs.",
     );
     process.exit(1);
   }

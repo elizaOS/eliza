@@ -37,8 +37,8 @@
  */
 
 import { access } from "node:fs/promises";
-import { homedir } from "node:os";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 
 import type {
 	Eliza1EotScoreResult,
@@ -381,8 +381,7 @@ export interface LiveKitTurnDetectorOptions {
 }
 
 export const DEFAULT_LIVEKIT_TURN_DETECTOR_DIR = path.join(
-	homedir(),
-	".eliza",
+	resolveStateDir(),
 	"local-inference",
 	"models",
 	"turn-detector",
@@ -664,8 +663,7 @@ function softmaxProbability(
 export const TURNSENSE_HF_REPO = "latishab/turnsense";
 export const DEFAULT_TURNSENSE_ONNX = "model_quantized.onnx";
 export const DEFAULT_TURNSENSE_DIR = path.join(
-	homedir(),
-	".eliza",
+	resolveStateDir(),
 	"local-inference",
 	"models",
 	"turn-detector",
@@ -941,7 +939,7 @@ export type { Eliza1EotScoreResult, Eliza1EotScorerOptions };
 
 /**
  * Eliza-1 EOT classifier. Reuses the already-loaded text model (typically
- * the eliza-1 drafter — same model DFlash keeps warm for speculative
+ * the eliza-1 drafter — same model MTP keeps warm for speculative
  * decoding) to compute P(`<|im_end|>` | partial transcript). Optionally
  * loads a fine-tuned EOT LoRA adapter on top of the base weights — see
  * `packages/training/scripts/turn_detector/` for the training recipe.

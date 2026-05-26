@@ -188,7 +188,7 @@ export function getStateDir(): string {
 }
 
 /**
- * Ensure `~/.eliza/app-verifications/<runId>/` exists and return the path.
+ * Ensure `<stateDir>/app-verifications/<runId>/` exists and return the path.
  */
 export async function ensureVerificationDir(runId: string): Promise<string> {
 	const dir = path.join(getStateDir(), "app-verifications", runId);

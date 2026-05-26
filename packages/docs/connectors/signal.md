@@ -18,7 +18,7 @@ Connect your agent to Signal for private and group messaging via signal-cli usin
 
 The connector auto-enables when `token`/`botToken`/`apiKey` is set, OR any of `authDir`/`account`/`httpUrl`/`httpHost`/`httpPort`/`cliPath` is set, OR `accounts` contains configured entries.
 
-Configure in `~/.eliza/eliza.json`:
+Configure in `~/.local/state/eliza/eliza.json`:
 
 ```json
 {

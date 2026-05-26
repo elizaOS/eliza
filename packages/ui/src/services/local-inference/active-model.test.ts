@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join as pathJoin } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   isForkOnlyKvCacheType,
@@ -7,16 +10,41 @@ import {
 } from "./active-model";
 import type { InstalledModel } from "./types";
 
-function makeInstalledModel(id: string, filePath: string): InstalledModel {
+function makeInstalledModel(
+  id: string,
+  filePath: string,
+  bundleRoot?: string,
+): InstalledModel {
   return {
     id,
     displayName: id,
     path: filePath,
     sizeBytes: 1024,
+    bundleRoot,
     installedAt: "2026-05-08T00:00:00.000Z",
     lastUsedAt: null,
     source: "eliza-download",
   };
+}
+
+function makeTempElizaBundle(
+  tier: string,
+  options: { hasMtp?: boolean } = {},
+): { bundleRoot: string; textPath: string; drafterPath: string } {
+  const bundleRoot = mkdtempSync(pathJoin(tmpdir(), "eliza-ui-mtp-"));
+  mkdirSync(pathJoin(bundleRoot, "text"), { recursive: true });
+  const textPath = pathJoin(bundleRoot, "text", `eliza-1-${tier}-32k.gguf`);
+  const drafterPath = pathJoin(
+    bundleRoot,
+    "mtp",
+    `eliza-1-${tier}-drafter.gguf`,
+  );
+  writeFileSync(textPath, "fake-text-gguf");
+  if (options.hasMtp !== false) {
+    mkdirSync(pathJoin(bundleRoot, "mtp"), { recursive: true });
+    writeFileSync(drafterPath, "fake-mtp-drafter-gguf");
+  }
+  return { bundleRoot, textPath, drafterPath };
 }
 
 describe("resolveLocalInferenceLoadArgs", () => {
@@ -54,6 +82,40 @@ describe("resolveLocalInferenceLoadArgs", () => {
       kvOffload: { gpuLayers: 10 },
     });
     expect(args.kvOffload).toEqual({ gpuLayers: 10 });
+  });
+
+  it("resolves the bundled MTP drafter path for every autoregressive Eliza-1 tier", async () => {
+    const bundle = makeTempElizaBundle("0_8b");
+    try {
+      const target = makeInstalledModel(
+        "eliza-1-0_8b",
+        bundle.textPath,
+        bundle.bundleRoot,
+      );
+      const args = await resolveLocalInferenceLoadArgs(target);
+      expect(args.draftModelPath).toBe(bundle.drafterPath);
+      expect(args.draftMin).toBeGreaterThan(0);
+      expect(args.draftMax).toBeGreaterThan(0);
+      expect(args.mobileSpeculative).toBe(true);
+    } finally {
+      rmSync(bundle.bundleRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("throws when an MTP-enabled Eliza-1 bundle is missing its drafter", async () => {
+    const bundle = makeTempElizaBundle("0_8b", { hasMtp: false });
+    try {
+      const target = makeInstalledModel(
+        "eliza-1-0_8b",
+        bundle.textPath,
+        bundle.bundleRoot,
+      );
+      await expect(resolveLocalInferenceLoadArgs(target)).rejects.toThrow(
+        /mandatory MTP/,
+      );
+    } finally {
+      rmSync(bundle.bundleRoot, { recursive: true, force: true });
+    }
   });
 });
 

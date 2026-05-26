@@ -84,8 +84,8 @@ export {
 export * from "./api/plugin-runtime-apply.ts";
 export type { PluginParamInfo } from "./api/plugin-validation.ts";
 export {
-  applyCanonicalOnboardingConfig,
-  clearPersistedOnboardingConfig,
+  applyCanonicalFirstRunConfig,
+  clearPersistedFirstRunConfig,
 } from "./api/provider-switch-config.ts";
 export { RegistryService } from "./api/registry-service.ts";
 export {
@@ -198,6 +198,7 @@ export * from "./runtime/agent-event-service.ts";
 export * from "./runtime/core-plugins.ts";
 export * from "./runtime/eliza.ts";
 export * from "./runtime/eliza-plugin.ts";
+export * from "./runtime/first-run-names.ts";
 export {
   isCloudExecutionMode,
   type LocalExecutionMode,
@@ -207,7 +208,6 @@ export {
   resolveRuntimeExecutionMode,
   shouldUseSandboxExecution,
 } from "./runtime/local-execution-mode.ts";
-export * from "./runtime/onboarding-names.ts";
 export * from "./runtime/operations/vault-bridge.ts";
 export * from "./runtime/owner-entity.ts";
 export * from "./runtime/plugin-collector.ts";

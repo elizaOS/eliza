@@ -24,7 +24,7 @@ import {
   scrubCloudSecretsFromEnv,
 } from "../lib/cloud-secrets";
 import {
-  applyCanonicalOnboardingConfig,
+  applyCanonicalSetupConfig,
   type ElizaConfig,
   isTimeoutError,
 } from "../lib/config-like";
@@ -46,7 +46,7 @@ type CreateIntegrationTelemetrySpan = (meta: {
 }) => TelemetrySpan | null | undefined;
 
 export interface CloudRouteServices {
-  applyCanonicalOnboardingConfig: typeof applyCanonicalOnboardingConfig;
+  applyCanonicalSetupConfig: typeof applyCanonicalSetupConfig;
   createIntegrationTelemetrySpan: CreateIntegrationTelemetrySpan;
   handleAutonomousCloudRoute: typeof handleAutonomousCloudRoute;
   normalizeCloudSiteUrl: typeof normalizeCloudSiteUrl;
@@ -75,7 +75,7 @@ type RelayStatusService = {
 
 const CLOUD_LOGIN_POLL_TIMEOUT_MS = 10_000;
 const DEFAULT_CLOUD_ROUTE_SERVICES: CloudRouteServices = {
-  applyCanonicalOnboardingConfig,
+  applyCanonicalSetupConfig,
   createIntegrationTelemetrySpan: () => undefined,
   handleAutonomousCloudRoute,
   normalizeCloudSiteUrl,
@@ -205,7 +205,7 @@ async function persistCloudLoginStatus(args: {
   );
 
   args.state.config.cloud = cloud as ElizaConfig["cloud"];
-  args.services.applyCanonicalOnboardingConfig(args.state.config, {
+  args.services.applyCanonicalSetupConfig(args.state.config, {
     linkedAccounts: {
       elizacloud: {
         status: "linked",

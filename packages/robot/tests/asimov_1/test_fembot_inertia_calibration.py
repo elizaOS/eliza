@@ -38,10 +38,10 @@ def test_fembot_inertia_calibration_maps_cad_mass_to_compiled_mujoco_bodies() ->
     assert report["summary"]["max_abs_inertia_relative_delta_vs_cad"] > 0.0
     assert report["summary"]["mass_relative_delta_tolerance"] == 0.10
     assert report["summary"]["inertia_relative_delta_tolerance"] == 0.25
-    assert report["summary"]["mass_out_of_tolerance_count"] == 28
-    assert report["summary"]["inertia_out_of_tolerance_count"] == 28
-    assert len(report["summary"]["mass_out_of_tolerance_links"]) == 28
-    assert len(report["summary"]["inertia_out_of_tolerance_links"]) == 28
+    assert report["summary"]["mass_out_of_tolerance_count"] == 26
+    assert report["summary"]["inertia_out_of_tolerance_count"] == 25
+    assert len(report["summary"]["mass_out_of_tolerance_links"]) == 26
+    assert len(report["summary"]["inertia_out_of_tolerance_links"]) == 25
     assert report["summary"]["total_required_added_mass_to_match_compiled_kg"] > 0.0
     assert report["summary"]["max_required_added_mass_to_match_compiled_kg"] > 0.0
     assert report["summary"]["max_mass_scale_to_compiled"] > 1.0

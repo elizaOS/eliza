@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   extractSubResources,
   normalizeUrlsInText,
+  redactLoopbackUrls,
   SubAgentRouter,
 } from "../../src/services/sub-agent-router.js";
 import type { SessionInfo } from "../../src/services/types.js";
@@ -529,6 +530,115 @@ describe("SubAgentRouter", () => {
     expect(handleMessage).toHaveBeenCalledTimes(2);
   });
 
+  it("absorbs cross-session task_complete for the same origin message (cascade-retry dedup)", async () => {
+    // Live regression on 2026-05-25 (issue elizaOS/eliza#7967): a single
+    // user prompt ("what is the current stable python version") fanned
+    // out into 5 sub-agent sessions (1 blocked, 1 errored, 3 task_complete)
+    // because the orchestrator auto-respawned on state_lost and verify-
+    // retry. Each task_complete posted a separate Discord message — the
+    // user saw 3 overlapping replies including a junky analytics URL
+    // pulled from python.org's page sub-resources.
+    //
+    // The dedup is keyed on a completion lineage: a second task_complete
+    // from a DIFFERENT session for the SAME parent prompt + task is absorbed
+    // silently. Same-session progressive task_completes are unaffected
+    // (covered by the test above), and distinct parallel tasks from the same
+    // prompt are covered below.
+    const SESSION_ID_2 = "abcdef01-2345-6789-abcd-ef0123456789";
+    const session2 = makeSession({
+      id: SESSION_ID_2,
+      name: "demo-task-retry",
+      metadata: {
+        label: "fix-bug-42-retry",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+      },
+    });
+    const acp2: CapturedHandler = {};
+    const service = {
+      onSessionEvent: vi.fn((handler: typeof acp2.fn) => {
+        acp2.fn = handler;
+        return () => {
+          acp2.fn = undefined;
+        };
+      }),
+      getSession: vi.fn(async (id: string) => {
+        if (id === SESSION_ID) return session;
+        if (id === SESSION_ID_2) return session2;
+        return null;
+      }),
+      listSessions: vi.fn(async () => [session, session2]),
+    };
+    const { runtime, handleMessage } = makeRuntime({ acp: service });
+    await SubAgentRouter.start(runtime);
+
+    acp2.fn?.(SESSION_ID, "task_complete", { response: "first session done" });
+    await new Promise((r) => setImmediate(r));
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+
+    acp2.fn?.(SESSION_ID_2, "task_complete", {
+      response: "retry session also done with different text",
+    });
+    await new Promise((r) => setImmediate(r));
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not absorb distinct parallel task completions for the same origin message", async () => {
+    const SESSION_ID_2 = "abcdef01-2345-6789-abcd-ef0123456789";
+    const first = makeSession({
+      id: SESSION_ID,
+      metadata: {
+        label: "frontend",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+        initialTask: "Review frontend changes",
+      },
+    });
+    const second = makeSession({
+      id: SESSION_ID_2,
+      name: "backend-task",
+      metadata: {
+        label: "backend",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+        initialTask: "Review backend changes",
+      },
+    });
+    const acp2: CapturedHandler = {};
+    const service = {
+      onSessionEvent: vi.fn((handler: typeof acp2.fn) => {
+        acp2.fn = handler;
+        return () => {
+          acp2.fn = undefined;
+        };
+      }),
+      getSession: vi.fn(async (id: string) => {
+        if (id === SESSION_ID) return first;
+        if (id === SESSION_ID_2) return second;
+        return null;
+      }),
+      listSessions: vi.fn(async () => [first, second]),
+    };
+    const { runtime, handleMessage } = makeRuntime({ acp: service });
+    await SubAgentRouter.start(runtime);
+
+    acp2.fn?.(SESSION_ID, "task_complete", { response: "frontend done" });
+    await new Promise((r) => setImmediate(r));
+    acp2.fn?.(SESSION_ID_2, "task_complete", { response: "backend done" });
+    await new Promise((r) => setImmediate(r));
+
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+  });
+
   it("skips sessions without origin metadata (no roomId)", async () => {
     session = makeSession({ metadata: { label: "no-origin" } });
     acp = makeAcpService(session);
@@ -727,10 +837,32 @@ describe("SubAgentRouter", () => {
       expect(arg?.metadata?.keepAliveAfterComplete).toBe(false);
       // A retry was spawned → the failure is NOT posted to the parent yet;
       // the retry's own task_complete will report the outcome.
-      expect(handleMessage).not.toHaveBeenCalled();
-    });
+	    expect(handleMessage).not.toHaveBeenCalled();
+	  });
 
-    it("suppresses later original-session errors after handing off to a verification retry", async () => {
+	  it("redacts loopback URLs from posted verification failures", async () => {
+	    process.env.ELIZA_BUILD_VERIFY_MAX_RETRIES = "0";
+	    session = sessionWithTask(`build a calculator at ${DEAD_URL}`);
+	    acp = makeAcpService(session);
+	    const { runtime, handleMessage, spawnSession } = makeRuntime({
+	      acp: acp.service,
+	    });
+	    await SubAgentRouter.start(runtime);
+
+	    acp.emit(SESSION_ID, "task_complete", {
+	      response: `Done — local check failed at ${DEAD_URL}`,
+	    });
+	    await new Promise((r) => setTimeout(r, 200));
+
+	    expect(spawnSession).not.toHaveBeenCalled();
+	    expect(handleMessage).toHaveBeenCalledTimes(1);
+	    const posted = handleMessage.mock.calls[0]?.[1];
+	    expect(posted?.content?.text).not.toContain("127.0.0.1");
+	    expect(posted?.content?.text).not.toContain("localhost");
+	    expect(posted?.content?.text).not.toContain("::1");
+	  });
+
+	  it("suppresses later original-session errors after handing off to a verification retry", async () => {
       session = sessionWithTask(`build a calculator at ${DEAD_URL}`);
       acp = makeAcpService(session);
       const { runtime, handleMessage, spawnSession } = makeRuntime({
@@ -1652,6 +1784,88 @@ describe("normalizeUrlsInText", () => {
   it("returns text unchanged when it contains no URLs", () => {
     expect(normalizeUrlsInText("just some prose — no links")).toBe(
       "just some prose — no links",
+    );
+  });
+});
+
+describe("redactLoopbackUrls", () => {
+  // Live regression: on 2026-05-25 a "make me a 1-page PDF" sub-agent
+  // task ran successfully but the sub-agent's task report mentioned
+  // `http://127.0.0.1:6900/apps/` (it had curl-probed a local dev URL
+  // while diagnosing whether a build was deployed). That internal URL
+  // leaked into Discord across THREE separate task_complete events:
+  //   "Both URLs returned HTTP 404 Not Found, so they aren't reachable..."
+  //   "http://127.0.0.1:6900/apps/ → HTTP 404 Not Found..."
+  //   "Confirmed the HTTP checks: http://127.0.0.1:6900/apps/ ..."
+  // The user-facing reply must never contain loopback URLs — they are
+  // unreachable from the user's machine, leak internal addresses, and
+  // make the bot look broken. The URL verification pipeline (which can
+  // legitimately probe loopback in dev-app scenarios) is unaffected;
+  // this function only scrubs the OUTGOING text right before posting.
+  it("strips http://127.0.0.1 URLs and keeps the surrounding sentence readable", () => {
+    expect(
+      redactLoopbackUrls(
+        "The checks show http://127.0.0.1:6900/apps/ returned 404.",
+      ),
+    ).toBe("The checks show  returned 404.");
+  });
+
+  it("strips http://localhost URLs across all ports", () => {
+    expect(
+      redactLoopbackUrls("Local at http://localhost:3000/dashboard works."),
+    ).toBe("Local at  works.");
+  });
+
+  it("redacts repeated calls even after a prior global-regex match", () => {
+    expect(redactLoopbackUrls("first http://127.0.0.1:3000/a")).toBe("first");
+    expect(redactLoopbackUrls("http://127.0.0.1:3000/b second")).toBe(
+      "second",
+    );
+  });
+
+  it("strips 127.x.x.x address space (not just 127.0.0.1)", () => {
+    expect(redactLoopbackUrls("see http://127.5.4.3:8080/")).toBe("see");
+  });
+
+  it("strips https:// loopback URLs as well as http://", () => {
+    // Leading whitespace at start of trimmed output collapses; both
+    // shapes are acceptable as long as the URL itself is gone and the
+    // word "failed" remains intact.
+    const out = redactLoopbackUrls(
+      "https://localhost:8443/api/health failed",
+    );
+    expect(out).not.toContain("localhost");
+    expect(out).toContain("failed");
+  });
+
+  it("keeps public URLs that share the same path as the loopback URL", () => {
+    // Verification design: even when a loopback alias is detected for
+    // a public route, the PUBLIC URL is what the user can see — it must
+    // survive the redaction.
+    const text =
+      "Local: http://127.0.0.1:6900/apps/x/ — Public: https://nubilio.org/apps/x/";
+    expect(redactLoopbackUrls(text)).toContain("https://nubilio.org/apps/x/");
+    expect(redactLoopbackUrls(text)).not.toContain("127.0.0.1");
+  });
+
+  it("removes orphan bullet lines that become only punctuation after URL strip", () => {
+    const text =
+      "Build complete!\n- http://127.0.0.1:6900/apps/main/\n- https://example.test/\nDone.";
+    const out = redactLoopbackUrls(text);
+    expect(out).not.toContain("127.0.0.1");
+    expect(out).toContain("https://example.test/");
+    expect(out).toContain("Build complete!");
+    expect(out).toContain("Done.");
+  });
+
+  it("returns text unchanged when no loopback URLs are present", () => {
+    const text = "Public URL: https://nubilio.org/apps/x/ is reachable.";
+    expect(redactLoopbackUrls(text)).toBe(text);
+  });
+
+  it("handles ::1 IPv6 loopback host (bracketed and unbracketed)", () => {
+    expect(redactLoopbackUrls("dev at http://[::1]:3000/health is up")).toBe(
+      "dev at  is up",
     );
   });
 });

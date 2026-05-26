@@ -12,7 +12,7 @@ import {
 } from "../../../../packages/app-core/test/helpers/live-provider.ts";
 import type { RealTestRuntimeResult } from "../../../../packages/app-core/test/helpers/real-runtime.ts";
 import {
-  probeDflashFork,
+  probeMtpFork,
   resolveLocalBaseUrl,
 } from "../../../../packages/benchmarks/lib/src/local-llama-cpp.ts";
 import {
@@ -747,18 +747,18 @@ export async function createLifeOpsPromptBenchmarkRuntime(args?: {
   else if (tier.provider === "local-llama-cpp" || tier.provider === "ollama") {
     tierProviderPreference = "local-llama-cpp";
     // Configure the OpenAI plugin to point at the local server. Prefer the
-    // dflash fork (when built); otherwise fall back to Ollama via
+    // mtp fork (when built); otherwise fall back to Ollama via
     // ELIZA_OPENCODE_BASE_URL.
-    const dflashBinary = probeDflashFork();
-    if (!dflashBinary) {
+    const mtpBinary = probeMtpFork();
+    if (!mtpBinary) {
       const fallback = resolveLocalBaseUrl();
       if (
         fallback.source === "ollama-default" &&
         !process.env.ELIZA_OPENCODE_BASE_URL
       ) {
         throw new Error(
-          "MODEL_TIER=small|mid requires the dflash llama-cpp fork at " +
-            "~/.cache/eliza-dflash/eliza-llama-cpp or ELIZA_OPENCODE_BASE_URL " +
+          "MODEL_TIER=small|mid requires the mtp llama-cpp fork at " +
+            "~/.cache/eliza-mtp/eliza-llama-cpp or ELIZA_OPENCODE_BASE_URL " +
             "pointing at a local OpenAI-compatible endpoint. Neither was found.",
         );
       }

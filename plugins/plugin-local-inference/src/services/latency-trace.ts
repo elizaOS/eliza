@@ -696,14 +696,14 @@ export function buildVoiceLatencyDevPayload(
  *  optional — a turn that couldn't measure a quantity records it as missing,
  *  never as a fabricated zero (AGENTS.md §3 / §7). */
 export interface VoiceTurnMetrics {
-	/** DFlash drafter token-acceptance rate (n_drafted_accepted / n_drafted)
+	/** MTP drafter token-acceptance rate (n_drafted_accepted / n_drafted)
 	 *  for this turn's generation, from the llama-server `/metrics` deltas. */
-	dflashAcceptRate?: number | null;
+	mtpAcceptRate?: number | null;
 	/** Tokens accepted from the drafter this turn (for an aggregate accept-rate
 	 *  that weights by token count, not turn count). */
-	dflashAccepted?: number | null;
+	mtpAccepted?: number | null;
 	/** Tokens drafted this turn. */
-	dflashDrafted?: number | null;
+	mtpDrafted?: number | null;
 	/** Structured-decode token-savings % for this turn — tokens the grammar
 	 *  force-filled ÷ tokens that would otherwise have been generated, ×100
 	 *  (WS-4's `guided_decode_token_bench.mjs` counter; ≈28% aggregate forced
@@ -718,13 +718,13 @@ export interface VoiceTurnMetrics {
 
 export interface VoiceRunMetricsSummary {
 	turns: number;
-	/** DFlash accept-rate, token-weighted across the run (Σaccepted / Σdrafted);
+	/** MTP accept-rate, token-weighted across the run (Σaccepted / Σdrafted);
 	 *  `null` when nothing was drafted / no drafter present. */
-	dflashAcceptRate: number | null;
-	dflashAccepted: number;
-	dflashDrafted: number;
+	mtpAcceptRate: number | null;
+	mtpAccepted: number;
+	mtpDrafted: number;
 	/** Per-turn accept-rate histogram (p50/p90/p99 etc. — bounded sample). */
-	dflashAcceptRateHistogram: HistogramSummary;
+	mtpAcceptRateHistogram: HistogramSummary;
 	/** Mean / histogram of the structured-decode token-savings %. */
 	structuredDecodeTokenSavingsPct: HistogramSummary;
 	/** Mean / histogram of decode tok/s. */
@@ -753,8 +753,8 @@ const VOICE_RUN_HISTOGRAM_CAPACITY = 512;
  */
 export class VoiceRunMetrics {
 	private turns = 0;
-	private dflashAccepted = 0;
-	private dflashDrafted = 0;
+	private mtpAccepted = 0;
+	private mtpDrafted = 0;
 	private readonly acceptRateHist = new BoundedHistogram(
 		VOICE_RUN_HISTOGRAM_CAPACITY,
 	);
@@ -770,18 +770,12 @@ export class VoiceRunMetrics {
 
 	recordTurn(m: VoiceTurnMetrics): void {
 		this.turns += 1;
-		if (
-			typeof m.dflashAccepted === "number" &&
-			Number.isFinite(m.dflashAccepted)
-		)
-			this.dflashAccepted += m.dflashAccepted;
-		if (typeof m.dflashDrafted === "number" && Number.isFinite(m.dflashDrafted))
-			this.dflashDrafted += m.dflashDrafted;
-		if (
-			typeof m.dflashAcceptRate === "number" &&
-			Number.isFinite(m.dflashAcceptRate)
-		)
-			this.acceptRateHist.add(m.dflashAcceptRate);
+		if (typeof m.mtpAccepted === "number" && Number.isFinite(m.mtpAccepted))
+			this.mtpAccepted += m.mtpAccepted;
+		if (typeof m.mtpDrafted === "number" && Number.isFinite(m.mtpDrafted))
+			this.mtpDrafted += m.mtpDrafted;
+		if (typeof m.mtpAcceptRate === "number" && Number.isFinite(m.mtpAcceptRate))
+			this.acceptRateHist.add(m.mtpAcceptRate);
 		if (
 			typeof m.structuredDecodeTokenSavingsPct === "number" &&
 			Number.isFinite(m.structuredDecodeTokenSavingsPct)
@@ -816,13 +810,11 @@ export class VoiceRunMetrics {
 		const leakSuspected = monotone && growthMb !== null && growthMb > threshold;
 		return {
 			turns: this.turns,
-			dflashAcceptRate:
-				this.dflashDrafted > 0
-					? this.dflashAccepted / this.dflashDrafted
-					: null,
-			dflashAccepted: this.dflashAccepted,
-			dflashDrafted: this.dflashDrafted,
-			dflashAcceptRateHistogram: this.acceptRateHist.summary(),
+			mtpAcceptRate:
+				this.mtpDrafted > 0 ? this.mtpAccepted / this.mtpDrafted : null,
+			mtpAccepted: this.mtpAccepted,
+			mtpDrafted: this.mtpDrafted,
+			mtpAcceptRateHistogram: this.acceptRateHist.summary(),
 			structuredDecodeTokenSavingsPct: this.savingsHist.summary(),
 			tokensPerSecond: this.tokSecHist.summary(),
 			rss: {
@@ -838,8 +830,8 @@ export class VoiceRunMetrics {
 
 	reset(): void {
 		this.turns = 0;
-		this.dflashAccepted = 0;
-		this.dflashDrafted = 0;
+		this.mtpAccepted = 0;
+		this.mtpDrafted = 0;
 		this.rssSamples.length = 0;
 		// Histograms are not reset-able in place; the caller creates a fresh
 		// VoiceRunMetrics for a new run. (Kept simple — a long run lives one

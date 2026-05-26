@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Smoke probe for the buun-llama-cpp fork binaries installed under
- * `$ELIZA_STATE_DIR/local-inference/bin/dflash/<platform>-<arch>-<backend>/`.
+ * `$ELIZA_STATE_DIR/local-inference/bin/mtp/<platform>-<arch>-<backend>/`.
  *
  * For each per-target directory found, runs `<binary> --version`, parses the
  * version line, and prints a single status row. Used by CI immediately after
@@ -30,8 +30,8 @@ function stateDir() {
   );
 }
 
-function dflashRoot() {
-  return path.join(stateDir(), "local-inference", "bin", "dflash");
+function mtpRoot() {
+  return path.join(stateDir(), "local-inference", "bin", "mtp");
 }
 
 function listTargets(root) {
@@ -131,7 +131,7 @@ function probeTarget(targetDir, target) {
 }
 
 function main() {
-  const root = dflashRoot();
+  const root = mtpRoot();
   const targets = listTargets(root);
   if (targets.length === 0) {
     console.log(`no targets found under ${root}, skipping`);

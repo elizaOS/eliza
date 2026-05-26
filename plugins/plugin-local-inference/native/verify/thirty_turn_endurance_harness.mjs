@@ -5,7 +5,7 @@
  * Runs (or ingests) `e2e_loop_bench.mjs --turns 30` and records the
  * `thirtyTurnOk` evidence only when the assembled local voice path completed
  * 30 turns with the native requirements active. Missing bundles, missing
- * fused builds, missing streaming TTS, or missing DFlash are hard failures
+ * fused builds, missing streaming TTS, or missing MTP are hard failures
  * with a report; they are not treated as a skipped pass.
  */
 
@@ -328,14 +328,14 @@ function selectE2eRun(report, tier) {
   );
 }
 
-function dflashRequiredForRun(run, fallbackTier = null) {
+function mtpRequiredForRun(run, fallbackTier = null) {
   const tier = run?.request?.tier ?? run?.bundle?.tier ?? fallbackTier;
   const required =
     run?.summary?.requiredOptimizations ?? run?.requiredOptimizations ?? {};
   if (
-    required.dflashRequired === false ||
-    run?.summary?.dflashPolicy?.requiresDrafter === false ||
-    run?.dflashPolicy?.requiresDrafter === false ||
+    required.mtpRequired === false ||
+    run?.summary?.mtpPolicy?.requiresDrafter === false ||
+    run?.mtpPolicy?.requiresDrafter === false ||
     NO_DRAFTER_TIERS.has(tier)
   ) {
     return false;
@@ -386,12 +386,12 @@ function buildBlockedReport(args, block, bundle = null) {
 function requiredOptimizationsOk(run) {
   const required =
     run?.summary?.requiredOptimizations ?? run?.requiredOptimizations ?? {};
-  const dflashRequired = dflashRequiredForRun(run);
-  const dflashOk = dflashRequired
-    ? required.dflashDraftingActive === true
-    : required.dflashDraftingActive !== false;
+  const mtpRequired = mtpRequiredForRun(run);
+  const mtpOk = mtpRequired
+    ? required.mtpDraftingActive === true
+    : required.mtpDraftingActive !== false;
   return (
-    dflashOk &&
+    mtpOk &&
     required.streamingTtsActive === true
   );
 }
@@ -423,7 +423,7 @@ function buildThirtyTurnReportFromE2e({
   const leakSuspected = run.summary?.leakSuspected === true;
   const optimizationsOk =
     requiredOptimizationsOk(run) ||
-    (dflashRequiredForRun(run, bundle?.tier ?? args.tier) === false &&
+    (mtpRequiredForRun(run, bundle?.tier ?? args.tier) === false &&
       (run.summary?.requiredOptimizations ?? run.requiredOptimizations ?? {})
         .streamingTtsActive === true);
   const rawThirtyTurnOk =
@@ -466,10 +466,10 @@ function buildThirtyTurnReportFromE2e({
   if (!optimizationsOk) {
     const required =
       run.summary?.requiredOptimizations ?? run.requiredOptimizations ?? {};
-    const dflashRequired = dflashRequiredForRun(run, bundle?.tier ?? args.tier);
+    const mtpRequired = mtpRequiredForRun(run, bundle?.tier ?? args.tier);
     const missing = [
       required.streamingTtsActive === true ? null : "streaming TTS",
-      dflashRequired && required.dflashDraftingActive !== true ? "DFlash drafting" : null,
+      mtpRequired && required.mtpDraftingActive !== true ? "MTP drafting" : null,
     ].filter(Boolean);
     blockers.push({
       key: "missing-native-optimization",

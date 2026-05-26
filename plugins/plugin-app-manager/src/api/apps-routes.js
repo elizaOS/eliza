@@ -738,7 +738,7 @@ export async function handleAppsRoutes(ctx) {
             if (!result.success &&
                 result.error?.includes("requires a running agent runtime")) {
                 // Fall back to the direct installer which writes directly to
-                // ~/.eliza/plugins/installed without depending on a plugin-manager
+                // <stateDir>/plugins/installed without depending on a plugin-manager
                 // service. The runtime plugin resolver already searches that dir.
                 const { installPlugin: installPluginDirect } = await import("@elizaos/plugin-registry");
                 result = await installPluginDirect(name, recordProgress, version);

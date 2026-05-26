@@ -1,8 +1,8 @@
 {
   "generatedAt": "2026-05-20T17:19:56.801Z",
-  "verifier": "plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs",
+  "verifier": "plugins/plugin-local-inference/native/verify/mtp_drafter_runtime_smoke.mjs",
   "targetModel": "--drafter-model",
-  "drafterModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/dflash/drafter-0_8b.gguf",
+  "drafterModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/mtp/drafter-0_8b.gguf",
   "cliFeatures": {
     "installed": {
       "available": true,
@@ -27,11 +27,11 @@
     "reference": null
   },
   "checks": {
-    "tierShipsDflash": false,
+    "tierShipsMtp": false,
     "drafterRequired": false
   },
   "metadata": null,
   "runtime": [],
   "status": "not-applicable",
-  "reason": "tier 4b evidence/speculative/dflash-local/drafter-4b.full-tokenizer-repaired.gguf ~/.eliza/local-inference/models/eliza-1-4b.bundle/text/eliza-1-4b-64k.gguf bench-4b-dflash-metal-128 does not ship a DFlash drafter"
+  "reason": "tier 4b evidence/speculative/mtp-local/drafter-4b.full-tokenizer-repaired.gguf ~/.eliza/local-inference/models/eliza-1-4b.bundle/text/eliza-1-4b-64k.gguf bench-4b-mtp-metal-128 does not ship a MTP drafter"
 }

@@ -26,7 +26,6 @@ export type {
 
 import type {
   DeploymentTargetConfig,
-  DeploymentTargetRuntime,
   LinkedAccountAccountSource,
   LinkedAccountConfig,
   LinkedAccountFlagConfig,

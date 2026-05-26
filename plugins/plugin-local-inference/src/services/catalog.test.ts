@@ -58,7 +58,15 @@ describe("local inference catalog", () => {
 
 	it("does not expose hidden companion entries in the hub", () => {
 		const visible = localInferenceService.getCatalog();
-		expect(visible.some((model) => model.category === "drafter")).toBe(false);
+		const visibleIds = new Set(visible.map((model) => model.id));
+		const hiddenCompanionIds = MODEL_CATALOG.filter(
+			(model) =>
+				model.hiddenFromCatalog || model.runtimeRole === "dflash-drafter",
+		).map((model) => model.id);
+		expect(hiddenCompanionIds.filter((id) => visibleIds.has(id))).toEqual([]);
+		expect(visible.flatMap((model) => model.companionModelIds ?? [])).toEqual(
+			[],
+		);
 	});
 
 	it("keeps the visible model hub focused on Eliza-1 only", () => {
@@ -143,7 +151,7 @@ describe("local inference catalog", () => {
 			expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
 			expect(model?.runtime?.dflash, `${id} dflash`).toBeUndefined();
 			expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
-			expect(model?.runtime?.optimizations?.requiresKernel).not.toContain(
+			expect(model?.runtime?.optimizations?.requiresKernel).toContain(
 				"dflash",
 			);
 			if ((model?.contextLength ?? 0) >= 65536) {

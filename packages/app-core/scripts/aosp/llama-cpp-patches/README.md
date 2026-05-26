@@ -26,9 +26,9 @@ patches were lifted directly into the fork tree). The fork path:
   it's resolved on every cherry-pick from a moving base).
 - **Adds** the Metal kernel sources alongside the C/NEON sources, so a
   future `bun run build:metal` doesn't need to apply runtime patches.
-- **Standardizes** on a single `LLAMA_CPP_TAG` across the host (DFlash)
+- **Standardizes** on a single `LLAMA_CPP_TAG` across the host (MTP)
   and AOSP build paths (next agent: align
-  `build-llama-cpp-dflash.mjs` once DFlash is ported into the fork).
+  `build-llama-cpp-mtp.mjs` once MTP is ported into the fork).
 
 Once a follow-up release verifies no consumer pins the patches
 directly, this directory can be deleted.

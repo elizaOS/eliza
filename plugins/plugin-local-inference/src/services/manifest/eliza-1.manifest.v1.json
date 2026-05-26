@@ -81,7 +81,7 @@
 		"files": {
 			"type": "object",
 			"additionalProperties": false,
-			"required": ["text", "voice", "asr", "vision", "dflash", "cache"],
+			"required": ["text", "voice", "asr", "vision", "mtp", "cache"],
 			"properties": {
 				"text": {
 					"type": "array",
@@ -109,7 +109,7 @@
 						"$ref": "#/$defs/fileEntry"
 					}
 				},
-				"dflash": {
+				"mtp": {
 					"type": "array",
 					"items": {
 						"$ref": "#/$defs/fileEntry"
@@ -383,7 +383,7 @@
 						}
 					}
 				},
-				"dflash": {
+				"mtp": {
 					"type": "object",
 					"additionalProperties": false,
 					"required": ["acceptanceRate", "speedup", "passed"],
@@ -674,7 +674,6 @@
 				"turboquant_q4",
 				"qjl",
 				"polarquant",
-				"dflash",
 				"turbo3_tcq"
 			]
 		},

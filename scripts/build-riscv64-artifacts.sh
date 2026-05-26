@@ -186,9 +186,9 @@ build_native_plugin yolo-cpp             ""
 build_native_plugin face-cpp             ""
 build_native_plugin doctr-cpp            ""
 
-# ── libllama family (DFlash) ─────────────────────────────────────────
+# ── libllama family (MTP) ─────────────────────────────────────────
 echo
-echo "── Phase 2: libllama / libggml family (DFlash) ──"
+echo "── Phase 2: libllama / libggml family (MTP) ──"
 COMPILE_LIBLLAMA="$repo_root/packages/app-core/scripts/aosp/compile-libllama.mjs"
 if [ ! -f "$COMPILE_LIBLLAMA" ]; then
     echo "  ✗ compile-libllama.mjs missing at $COMPILE_LIBLLAMA"

@@ -4,12 +4,12 @@
  * `packages/training/benchmarks/eliza1_gates.yaml`, and emit:
  *   - an aggregate report under `packages/inference/reports/gates/`,
  *   - a manifest `evals`-block fragment (the subset W11 owns:
- *     `voiceRtf`/`asrWer` + `dflash` + `thirtyTurnOk`/`e2eLoopOk` +
+ *     `voiceRtf`/`asrWer` + `mtp` + `thirtyTurnOk`/`e2eLoopOk` +
  *     `vadLatencyMs`-shaped entries) the publish orchestrator / manifest
  *     writer can merge.
  *
  * Sources scanned (newest file wins, by mtime):
- *   - dflash bench           — packages/inference/reports/dflash-bench/dflash-bench-*.json
+ *   - mtp bench           — packages/inference/reports/mtp-bench/mtp-bench-*.json
  *   - VAD quality            — packages/inference/reports/vad/vad-quality-*.json
  *   - barge-in latency       — packages/inference/reports/bargein/bargein-latency-*.json
  *   - 30-turn endurance      — packages/inference/reports/endurance/thirty-turn-endurance-*.json
@@ -79,7 +79,7 @@ const ACTIVE_VISION_TIERS = new Set([
   "27b",
   "27b-256k",
 ]);
-const ACTIVE_DFLASH_TIERS = new Set([
+const ACTIVE_MTP_TIERS = new Set([
   "2b",
   "4b",
   "9b",
@@ -338,7 +338,7 @@ function isBlockingGateResult(result) {
 function syncBundleManifestEvals(
   bundleDir,
   manifestEvalsFragment,
-  { generatedAt, measured, requiresDflash, results },
+  { generatedAt, measured, requiresMtp, results },
 ) {
   const manifestPath = path.join(bundleDir, "eliza-1.manifest.json");
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
@@ -423,21 +423,21 @@ function syncBundleManifestEvals(
     delete evals.expressive;
     removed.push("expressive");
   }
-  if (requiresDflash && Object.prototype.hasOwnProperty.call(manifestEvalsFragment, "dflash")) {
-    evals.dflash = manifestEvalsFragment.dflash;
-    updated.push("dflash");
-  } else if (requiresDflash) {
-    evals.dflash = {
+  if (requiresMtp && Object.prototype.hasOwnProperty.call(manifestEvalsFragment, "mtp")) {
+    evals.mtp = manifestEvalsFragment.mtp;
+    updated.push("mtp");
+  } else if (requiresMtp) {
+    evals.mtp = {
       acceptanceRate: null,
       speedup: null,
       passed: false,
       status: "not-run",
-      reason: "DFlash benchmark was not measured for this bundle",
+      reason: "MTP benchmark was not measured for this bundle",
     };
-    updated.push("dflash");
-  } else if (Object.prototype.hasOwnProperty.call(evals, "dflash")) {
-    delete evals.dflash;
-    removed.push("dflash");
+    updated.push("mtp");
+  } else if (Object.prototype.hasOwnProperty.call(evals, "mtp")) {
+    delete evals.mtp;
+    removed.push("mtp");
   }
 
   manifest.evals = evals;
@@ -487,9 +487,9 @@ function syncBundleManifestEvals(
   };
 }
 
-function extractDflashAcceptance(data) {
+function extractMtpAcceptance(data) {
   const summaryRate = firstFinite(
-    data?.summary?.dflashAcceptanceRate,
+    data?.summary?.mtpAcceptanceRate,
     data?.summary?.acceptanceRate,
     data?.acceptanceRate,
   );
@@ -499,15 +499,15 @@ function extractDflashAcceptance(data) {
 
   const drafted = firstFinite(
     data?.withDrafter?.drafted,
-    data?.summary?.dflashDraftedTotal,
-    data?.summary?.dflashDraftedTokens,
+    data?.summary?.mtpDraftedTotal,
+    data?.summary?.mtpDraftedTokens,
     data?.summary?.drafted,
     data?.drafted,
   );
   const accepted = firstFinite(
     data?.withDrafter?.accepted,
-    data?.summary?.dflashAcceptedTotal,
-    data?.summary?.dflashAcceptedTokens,
+    data?.summary?.mtpAcceptedTotal,
+    data?.summary?.mtpAcceptedTokens,
     data?.summary?.accepted,
     data?.accepted,
   );
@@ -517,23 +517,23 @@ function extractDflashAcceptance(data) {
   return null;
 }
 
-function extractDflashSpeedup(data) {
+function extractMtpSpeedup(data) {
   const drafted = firstFinite(
     data?.withDrafter?.drafted,
-    data?.summary?.dflashDraftedTotal,
-    data?.summary?.dflashDraftedTokens,
+    data?.summary?.mtpDraftedTotal,
+    data?.summary?.mtpDraftedTokens,
     data?.summary?.drafted,
     data?.drafted,
   );
   const accepted = firstFinite(
     data?.withDrafter?.accepted,
-    data?.summary?.dflashAcceptedTotal,
-    data?.summary?.dflashAcceptedTokens,
+    data?.summary?.mtpAcceptedTotal,
+    data?.summary?.mtpAcceptedTokens,
     data?.summary?.accepted,
     data?.accepted,
   );
   const summarySpeedup = firstFinite(
-    data?.summary?.dflashSpeedup,
+    data?.summary?.mtpSpeedup,
     data?.summary?.speedup,
     data?.speedup,
   );
@@ -545,7 +545,7 @@ function extractDflashSpeedup(data) {
   }
   const draftingActive =
     data?.draftingActive ??
-    data?.summary?.dflashDraftingActive ??
+    data?.summary?.mtpDraftingActive ??
     data?.summary?.draftingActive ??
     data?.withDrafter?.draftingActive ??
     (drafted !== null && drafted > 0 && accepted !== null);
@@ -701,16 +701,16 @@ async function main() {
       (name === "expressive.json" || name.startsWith(`${args.tier}-expressive`)) &&
       data?.metric === "expressive",
   );
-  const dflashBench = newestJsonReportWhere(
+  const mtpBench = newestJsonReportWhere(
     [
-      path.join(REPORTS_ROOT, "dflash-bench"),
+      path.join(REPORTS_ROOT, "mtp-bench"),
       path.join(REPORTS_ROOT, "porting"),
       BENCH_RESULTS_ROOT,
       HARDWARE_RESULTS_ROOT,
     ],
     ({ name, data }) =>
-      (name.toLowerCase().includes("dflash") ||
-        data?.speculator === "dflash") &&
+      (name.toLowerCase().includes("mtp") ||
+        data?.speculator === "mtp") &&
       (Boolean(data?.withDrafter) ||
         data?.reportSchema === "eliza.speculative-benchmark.v1") &&
       matchesTier(data, args.tier),
@@ -866,21 +866,21 @@ async function main() {
     ({ name }) => name.toLowerCase().includes("ios") && name.toLowerCase().includes("smoke"),
   );
 
-  const e2eDflashDrafted = e2eLoop?.data?.summary?.dflashDraftedTotal;
-  const e2eDflashAccepted = e2eLoop?.data?.summary?.dflashAcceptedTotal;
-  const e2eDflashAcceptance =
-    Number.isFinite(e2eDflashDrafted) && Number.isFinite(e2eDflashAccepted)
-      ? e2eDflashDrafted > 0
-        ? e2eDflashAccepted / e2eDflashDrafted
+  const e2eMtpDrafted = e2eLoop?.data?.summary?.mtpDraftedTotal;
+  const e2eMtpAccepted = e2eLoop?.data?.summary?.mtpAcceptedTotal;
+  const e2eMtpAcceptance =
+    Number.isFinite(e2eMtpDrafted) && Number.isFinite(e2eMtpAccepted)
+      ? e2eMtpDrafted > 0
+        ? e2eMtpAccepted / e2eMtpDrafted
         : 0
       : null;
-  const dflashAcceptance =
-    (dflashBench ? extractDflashAcceptance(dflashBench.data) : null) ??
-    e2eLoop?.data?.summary?.dflashAcceptanceRateOverall ??
-    e2eLoop?.data?.summary?.dflashAcceptanceRateMean ??
-    e2eDflashAcceptance ??
+  const mtpAcceptance =
+    (mtpBench ? extractMtpAcceptance(mtpBench.data) : null) ??
+    e2eLoop?.data?.summary?.mtpAcceptanceRateOverall ??
+    e2eLoop?.data?.summary?.mtpAcceptanceRateMean ??
+    e2eMtpAcceptance ??
     null;
-  const dflashSpeedup = dflashBench ? extractDflashSpeedup(dflashBench.data) : null;
+  const mtpSpeedup = mtpBench ? extractMtpSpeedup(mtpBench.data) : null;
   const vadLatencyMs = vadQuality?.data?.summary?.vadLatencyMs ?? null;
   const vadBoundaryMaeMs = vadQuality?.data?.summary?.vadBoundaryMaeMs ?? null;
   const vadEndpointP95Ms = vadQuality?.data?.summary?.vadEndpointP95Ms ?? null;
@@ -951,8 +951,8 @@ async function main() {
     barge_in_cancel_ms: bargeInCancelMs,
     thirty_turn_ok: thirtyTurnOk,
     e2e_loop_ok: e2eLoopOk,
-    dflash_acceptance: dflashAcceptance,
-    dflash_speedup: dflashSpeedup,
+    mtp_acceptance: mtpAcceptance,
+    mtp_speedup: mtpSpeedup,
     expressive_tag_faithfulness: expressiveTagFaithfulness,
     expressive_mos: expressiveMos,
     expressive_tag_leakage: expressiveTagLeakage,
@@ -980,16 +980,16 @@ async function main() {
   const needsData = results.filter((r) => r.status === "needs-data");
 
   // ── Manifest evals fragment (the subset W11 owns) ────────────────────
-  const dflashEval = {
-    acceptanceRate: dflashAcceptance,
-    speedup: dflashSpeedup,
-    // Passed only when both numbers exist AND clear the dflash: section's
+  const mtpEval = {
+    acceptanceRate: mtpAcceptance,
+    speedup: mtpSpeedup,
+    // Passed only when both numbers exist AND clear the mtp: section's
     // thresholds (which are provisional, so this never blocks defaultEligible).
     passed:
-      dflashAcceptance !== null &&
-      dflashSpeedup !== null &&
-      dflashAcceptance >= (gatesDoc?.dflash?.minAcceptanceRate ?? 0.65) &&
-      dflashSpeedup >= (gatesDoc?.dflash?.minSpeedup ?? 1.5),
+      mtpAcceptance !== null &&
+      mtpSpeedup !== null &&
+      mtpAcceptance >= (gatesDoc?.mtp?.minAcceptanceRate ?? 0.65) &&
+      mtpSpeedup >= (gatesDoc?.mtp?.minSpeedup ?? 1.5),
   };
   const vadGateNames = [
     "vad_latency_ms",
@@ -1042,7 +1042,7 @@ async function main() {
       gateByName.get("expressive_mos")?.status === "pass" &&
       gateByName.get("expressive_tag_leakage")?.status === "pass",
   };
-  const requiresDflash = ACTIVE_DFLASH_TIERS.has(args.tier);
+  const requiresMtp = ACTIVE_MTP_TIERS.has(args.tier);
   const manifestEvalsFragment = {
     // Only emit `thirtyTurnOk`/`e2eLoopOk` when actually measured (true or
     // false from a real run). `null` means "not measured" — the publish
@@ -1054,7 +1054,7 @@ async function main() {
     ...(e2eLoopOk !== null ? { e2eLoopOk } : {}),
     ...(vadLatencyEval ? { vadLatencyMs: vadLatencyEval } : {}),
     ...(expressiveManifest ? { expressive: expressiveManifest } : {}),
-    ...(requiresDflash ? { dflash: dflashEval } : {}),
+    ...(requiresMtp ? { mtp: mtpEval } : {}),
   };
 
   function gateRow(name, area, source, reasonOverride = null, blockingOverride = null) {
@@ -1104,19 +1104,19 @@ async function main() {
   );
   const cpuSimdEvidence = cpuSimd ? extractCpuSimd(cpuSimd.data) : null;
   const cpuKernelReady = Boolean(cpuSimdEvidence?.qjlReady && cpuSimdEvidence?.polarReady);
-  const dflashDrafted = firstFinite(
-    dflashBench?.data?.withDrafter?.drafted,
-    dflashBench?.data?.summary?.dflashDraftedTokens,
-    dflashBench?.data?.summary?.drafted,
-    dflashBench?.data?.drafted,
-    e2eLoop?.data?.summary?.dflashDraftedTotal,
+  const mtpDrafted = firstFinite(
+    mtpBench?.data?.withDrafter?.drafted,
+    mtpBench?.data?.summary?.mtpDraftedTokens,
+    mtpBench?.data?.summary?.drafted,
+    mtpBench?.data?.drafted,
+    e2eLoop?.data?.summary?.mtpDraftedTotal,
   );
-  const dflashAccepted = firstFinite(
-    dflashBench?.data?.withDrafter?.accepted,
-    dflashBench?.data?.summary?.dflashAcceptedTokens,
-    dflashBench?.data?.summary?.accepted,
-    dflashBench?.data?.accepted,
-    e2eLoop?.data?.summary?.dflashAcceptedTotal,
+  const mtpAccepted = firstFinite(
+    mtpBench?.data?.withDrafter?.accepted,
+    mtpBench?.data?.summary?.mtpAcceptedTokens,
+    mtpBench?.data?.summary?.accepted,
+    mtpBench?.data?.accepted,
+    e2eLoop?.data?.summary?.mtpAcceptedTotal,
   );
   const e2eOptimizations = e2eLoop?.data?.summary?.requiredOptimizations ?? e2eLoop?.data?.requiredOptimizations;
   const e2eStreamingTtsActive = boolOrNull(e2eOptimizations?.streamingTtsActive);
@@ -1127,7 +1127,7 @@ async function main() {
   const streamingTtsActive =
     e2eStreamingTtsActive ?? ttsStreamSmokeActive;
   const streamingTtsSource = e2eStreamingTtsActive !== null ? e2eLoop : ttsStreamSmoke;
-  const dflashDraftingActive = boolOrNull(e2eOptimizations?.dflashDraftingActive);
+  const mtpDraftingActive = boolOrNull(e2eOptimizations?.mtpDraftingActive);
   const requiresVision = ACTIVE_VISION_TIERS.has(args.tier);
   const visionStatus = requiresVision
     ? visionSmoke?.data?.passed === true
@@ -1292,42 +1292,42 @@ async function main() {
       measured: thirtyTurnMeasured,
     },
     gateRow("e2e_loop_ok", "e2e", sourcePath(e2eLoop), e2eLoopReason),
-    requiresDflash
+    requiresMtp
       ? gateRow(
-          "dflash_acceptance",
-          "dflash",
-          sourcePath(dflashBench ?? e2eLoop),
-          dflashDrafted === 0 && dflashAccepted === 0
-            ? "DFlash generated zero drafted and accepted tokens; acceptance is an honest 0"
+          "mtp_acceptance",
+          "mtp",
+          sourcePath(mtpBench ?? e2eLoop),
+          mtpDrafted === 0 && mtpAccepted === 0
+            ? "MTP generated zero drafted and accepted tokens; acceptance is an honest 0"
             : null,
         )
       : {
-          area: "dflash",
-          gate: "dflash_acceptance",
+          area: "mtp",
+          gate: "mtp_acceptance",
           status: "not-applicable",
           blocking: false,
           measured: null,
-          threshold: "tier ships DFlash",
-          reason: `tier ${args.tier} does not ship a DFlash drafter`,
+          threshold: "tier ships MTP",
+          reason: `tier ${args.tier} does not ship a MTP drafter`,
           source: null,
         },
-    requiresDflash
+    requiresMtp
       ? gateRow(
-          "dflash_speedup",
-          "dflash",
-          sourcePath(dflashBench),
-          dflashSpeedup !== null
-            ? `DFlash speedup ${dflashSpeedup.toFixed(3)}x is below target`
+          "mtp_speedup",
+          "mtp",
+          sourcePath(mtpBench),
+          mtpSpeedup !== null
+            ? `MTP speedup ${mtpSpeedup.toFixed(3)}x is below target`
             : null,
         )
       : {
-          area: "dflash",
-          gate: "dflash_speedup",
+          area: "mtp",
+          gate: "mtp_speedup",
           status: "not-applicable",
           blocking: false,
           measured: null,
-          threshold: "tier ships DFlash",
-          reason: `tier ${args.tier} does not ship a DFlash drafter`,
+          threshold: "tier ships MTP",
+          reason: `tier ${args.tier} does not ship a MTP drafter`,
           source: null,
         },
     gateRow(
@@ -1395,22 +1395,22 @@ async function main() {
     },
     {
       area: "worker-output",
-      gate: "dflash_drafting_active",
-      status: requiresDflash
-        ? dflashDraftingActive === true
+      gate: "mtp_drafting_active",
+      status: requiresMtp
+        ? mtpDraftingActive === true
           ? "pass"
-          : dflashDraftingActive === false
+          : mtpDraftingActive === false
             ? "fail"
             : "needs-data"
         : "not-applicable",
-      blocking: requiresDflash && dflashDraftingActive !== true,
-      measured: dflashDraftingActive,
+      blocking: requiresMtp && mtpDraftingActive !== true,
+      measured: mtpDraftingActive,
       threshold: "true",
       reason:
-        !requiresDflash
-          ? `tier ${args.tier} does not ship a DFlash drafter`
-          : dflashDraftingActive === true
-          ? "e2e loop observed DFlash drafting"
+        !requiresMtp
+          ? `tier ${args.tier} does not ship a MTP drafter`
+          : mtpDraftingActive === true
+          ? "e2e loop observed MTP drafting"
           : "required optimization is inactive in the selected e2e loop",
       source: sourcePath(e2eLoop),
     },
@@ -1475,7 +1475,7 @@ async function main() {
     bundleManifestEvalSync = syncBundleManifestEvals(
       path.resolve(args.bundle),
       manifestEvalsFragment,
-      { generatedAt, measured, requiresDflash, results },
+      { generatedAt, measured, requiresMtp, results },
     );
   }
 
@@ -1490,7 +1490,7 @@ async function main() {
       evalAggregate: sourcePath(evalAggregate),
       textEval: sourcePath(textEval),
       expressive: sourcePath(expressive),
-      dflashBench: sourcePath(dflashBench),
+      mtpBench: sourcePath(mtpBench),
       asrExternal: sourcePath(asrExternal),
       asrBench: sourcePath(asrBench),
       asrTtsLoopbackSmoke: sourcePath(asrTtsLoopbackSmoke),

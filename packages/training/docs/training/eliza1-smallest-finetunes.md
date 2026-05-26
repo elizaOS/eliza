@@ -10,7 +10,7 @@ passes base-vs-finetuned evals and bundle gates.
 | family | fine-tune target | base artifact | publish target |
 | --- | --- | --- | --- |
 | text | `eliza-1-0_8b` | `Qwen/Qwen3.5-0.8B-Base` | `bundles/0_8b/text/` |
-| drafter | `drafter-0_8b` | 0.8B text target features | `bundles/0_8b/dflash/` |
+| drafter | `drafter-0_8b` | 0.8B text target features | `bundles/0_8b/mtp/` |
 | ASR | `eliza-1-asr` | `ggml-org/Qwen3-ASR-0.6B-GGUF` | `bundles/0_8b/asr/` |
 | TTS voice | default Kokoro/voice adapter | `hexgrad/Kokoro-82M` / default voice corpus | `bundles/0_8b/tts/` |
 | turn detector | smallest turn detector head | active turn detector base config | `bundles/0_8b/turn/` |
@@ -56,20 +56,20 @@ Required evidence:
 Do not reuse the legacy `0_6b` SFT artifact or comparison reports for the
 active release gate; the live audit rejects legacy-only evidence.
 
-## DFlash Drafter
+## MTP Drafter
 
 Distill the smallest drafter only after the 0.8B target model is fixed:
 
 ```bash
-bash scripts/dflash/jobs/distill_dflash_0_8b.sh
-python scripts/dflash/validate_drafter.py \
+bash scripts/mtp/jobs/distill_mtp_0_8b.sh
+python scripts/mtp/validate_drafter.py \
   --tier 0_8b \
   --target-gguf bundles/0_8b/text/eliza-1-0_8b-256k.gguf \
-  --drafter-gguf bundles/0_8b/dflash/drafter-0_8b.gguf \
-  --report-out bundles/0_8b/dflash/validation-real.json
+  --drafter-gguf bundles/0_8b/mtp/drafter-0_8b.gguf \
+  --report-out bundles/0_8b/mtp/validation-real.json
 ```
 
-Publish only if the DFlash acceptance gate improves or preserves latency
+Publish only if the MTP acceptance gate improves or preserves latency
 without regressing correctness.
 The half-context 128k text GGUF remains a runtime variant, but drafter
 validation targets the native 256k text artifact.

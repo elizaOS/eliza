@@ -19,13 +19,13 @@
 #   - Emits JSON evidence to evidence/gpu/<gpu>/<timestamp>.json.
 #
 # **DOES NOT LOAD ANY MODEL > 1.7B by default**. The bench step requires
-# an explicit opt-in (`ELIZA_GPU_BENCH=1`) plus an `ELIZA_DFLASH_SMOKE_MODEL`
+# an explicit opt-in (`ELIZA_GPU_BENCH=1`) plus an `ELIZA_MTP_SMOKE_MODEL`
 # path. The script aborts early when neither is set in `--bench` mode.
 #
 # Usage:
 #   ./verify_4090.sh --help
 #   ./verify_4090.sh --dry-run                # validates env, no work
-#   ELIZA_GPU_BENCH=1 ELIZA_DFLASH_SMOKE_MODEL=/path/to/9b.gguf \
+#   ELIZA_GPU_BENCH=1 ELIZA_MTP_SMOKE_MODEL=/path/to/9b.gguf \
 #       ./verify_4090.sh
 
 set -euo pipefail
@@ -48,11 +48,11 @@ Reads per-bundle deployment recommendations from:
 
 Environment:
   ELIZA_GPU_BENCH=1                 enable the llama-bench TPS smoke
-                                    (requires ELIZA_DFLASH_SMOKE_MODEL)
-  ELIZA_DFLASH_SMOKE_MODEL=<path>   GGUF to bench (must be the smoke_bundle
+                                    (requires ELIZA_MTP_SMOKE_MODEL)
+  ELIZA_MTP_SMOKE_MODEL=<path>   GGUF to bench (must be the smoke_bundle
                                     declared in the YAML, or a smaller tier)
-  ELIZA_DFLASH_LLAMA_DIR=<path>     llama.cpp build root
-                                    (default: ~/.cache/eliza-dflash/eliza-llama-cpp)
+  ELIZA_MTP_LLAMA_DIR=<path>     llama.cpp build root
+                                    (default: ~/.cache/eliza-mtp/eliza-llama-cpp)
   ELIZA_GPU_REPORT_DIR=<path>       evidence output dir
                                     (default: evidence/gpu/${PROFILE_ID})
 
@@ -154,11 +154,11 @@ BENCH_STATUS="skipped"
 BENCH_DECODE_TPS=""
 BENCH_PREFILL_TPS=""
 if [[ "${ELIZA_GPU_BENCH:-0}" == "1" ]]; then
-    SMOKE_MODEL="${ELIZA_DFLASH_SMOKE_MODEL:-}"
-    [[ -n "$SMOKE_MODEL" && -f "$SMOKE_MODEL" ]] || abort 5 "ELIZA_GPU_BENCH=1 set but ELIZA_DFLASH_SMOKE_MODEL is missing/not a file"
-    LLAMA_DIR="${ELIZA_DFLASH_LLAMA_DIR:-$HOME/.cache/eliza-dflash/eliza-llama-cpp}"
+    SMOKE_MODEL="${ELIZA_MTP_SMOKE_MODEL:-}"
+    [[ -n "$SMOKE_MODEL" && -f "$SMOKE_MODEL" ]] || abort 5 "ELIZA_GPU_BENCH=1 set but ELIZA_MTP_SMOKE_MODEL is missing/not a file"
+    LLAMA_DIR="${ELIZA_MTP_LLAMA_DIR:-$HOME/.cache/eliza-mtp/eliza-llama-cpp}"
     LLAMA_BENCH="$LLAMA_DIR/build-cuda/bin/llama-bench"
-    [[ -x "$LLAMA_BENCH" ]] || abort 5 "llama-bench missing at $LLAMA_BENCH (build with: bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda)"
+    [[ -x "$LLAMA_BENCH" ]] || abort 5 "llama-bench missing at $LLAMA_BENCH (build with: bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cuda)"
     echo "[verify-${PROFILE_ID}] llama-bench: $SMOKE_MODEL"
     BENCH_OUT="$("$LLAMA_BENCH" -m "$SMOKE_MODEL" -ngl 999 -fa 1 -p 512 -n 128 2>&1 || true)"
     echo "$BENCH_OUT"
@@ -171,7 +171,7 @@ if [[ "${ELIZA_GPU_BENCH:-0}" == "1" ]]; then
         BENCH_STATUS="parse-failed"
     fi
 else
-    echo "[verify-${PROFILE_ID}] bench skipped (set ELIZA_GPU_BENCH=1 + ELIZA_DFLASH_SMOKE_MODEL to run)"
+    echo "[verify-${PROFILE_ID}] bench skipped (set ELIZA_GPU_BENCH=1 + ELIZA_MTP_SMOKE_MODEL to run)"
 fi
 
 # ---- evidence JSON ------------------------------------------------------

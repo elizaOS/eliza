@@ -21,18 +21,18 @@
       "args": ["--cache-type-k", "qjl1_256", "--cache-type-v", "tbq3_0"]
     },
     {
-      "name": "dflash_only",
-      "label": "DFlash, f16 KV",
+      "name": "mtp_only",
+      "label": "MTP, f16 KV",
       "needsDrafter": true,
-      "args": ["--spec-type", "dflash"]
+      "args": ["--spec-type", "mtp"]
     },
     {
-      "name": "dflash_turbo4_polar",
-      "label": "DFlash + Turbo/Polar KV turbo4",
+      "name": "mtp_turbo4_polar",
+      "label": "MTP + Turbo/Polar KV turbo4",
       "needsDrafter": true,
       "args": [
         "--spec-type",
-        "dflash",
+        "mtp",
         "--cache-type-k",
         "tbq4_0",
         "--cache-type-v",
@@ -44,12 +44,12 @@
       ]
     },
     {
-      "name": "all_dflash_qjl_tcq",
-      "label": "DFlash + QJL K + TBQ3 V",
+      "name": "all_mtp_qjl_tcq",
+      "label": "MTP + QJL K + TBQ3 V",
       "needsDrafter": true,
       "args": [
         "--spec-type",
-        "dflash",
+        "mtp",
         "--cache-type-k",
         "qjl1_256",
         "--cache-type-v",

@@ -2,7 +2,7 @@
  * Steward credential persistence for non-sidecar (web/dev) mode.
  *
  * On first setup, saves steward credentials to `<state-dir>/steward-credentials.json`.
- * State dir honors ELIZA_STATE_DIR > ~/.eliza.
+ * State dir honors ELIZA_STATE_DIR > XDG state home.
  * Environment variables always override file values.
  */
 
@@ -13,13 +13,18 @@ import path from "node:path";
 // Inlined to avoid pulling the @elizaos/core source barrel into consumers
 // that only need state-dir resolution (e.g. the Electrobun bun bundle, which
 // would otherwise transitively bundle plugin-sql, transformers, and onnxruntime).
-// Mirrors the canonical implementation in @elizaos/core's
-// src/utils/state-dir.ts: ELIZA_STATE_DIR > ~/.${ELIZA_NAMESPACE ?? "eliza"}.
+// Mirrors the canonical implementation in @elizaos/core's state-dir helper.
 function resolveStateDir(): string {
   const explicit = process.env.ELIZA_STATE_DIR?.trim();
   if (explicit) return explicit;
   const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
-  return path.join(homedir(), `.${namespace}`);
+  const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
+  const stateHome = xdgStateHome
+    ? path.isAbsolute(xdgStateHome)
+      ? xdgStateHome
+      : path.join(homedir(), xdgStateHome)
+    : path.join(homedir(), ".local", "state");
+  return path.join(stateHome, namespace);
 }
 
 export interface PersistedStewardCredentials {

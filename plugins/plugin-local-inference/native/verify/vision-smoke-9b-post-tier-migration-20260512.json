@@ -46,10 +46,10 @@
     "lineageVisionPresent": true
   },
   "mtmdCli": {
-    "selected": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+    "selected": "/Users/shawwalters/.eliza/local-inference/bin/mtp/darwin-arm64-metal-fused/llama-mtmd-cli",
     "candidates": [
       {
-        "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+        "path": "/Users/shawwalters/.eliza/local-inference/bin/mtp/darwin-arm64-metal-fused/llama-mtmd-cli",
         "exists": true,
         "executable": true,
         "helpExitCode": 0,
@@ -60,7 +60,7 @@
           "mtmd": true,
           "metal": true
         },
-        "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
+        "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/.eliza/local-inference/bin/mtp/darwin-arm64-metal-fused/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
       },
       {
         "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/llama-mtmd-cli",
@@ -106,7 +106,7 @@
     "spawnArg": "--mmproj",
     "envOverride": "ELIZA_LOCAL_MMPROJ",
     "optimizationField": "runtime.optimizations.mmproj",
-    "note": "packages/app-core/src/services/local-inference/dflash-server.ts only enables image inputs when a tier-compatible mmproj path is provided."
+    "note": "packages/app-core/src/services/local-inference/ffi-streaming-backend.ts only enables image inputs when a tier-compatible mmproj path is provided."
   },
   "memoryImplications": {
     "largestTextBytes": 5680522464,
@@ -121,7 +121,7 @@
     "status": "pass",
     "startedAt": "2026-05-12T14:12:59.101Z",
     "command": [
-      "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+      "/Users/shawwalters/.eliza/local-inference/bin/mtp/darwin-arm64-metal-fused/llama-mtmd-cli",
       "-m",
       "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle/text/eliza-1-9b-128k.gguf",
       "--mmproj",
@@ -141,10 +141,10 @@
     "exitCode": 0,
     "signal": null,
     "detection": {
-      "selected": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+      "selected": "/Users/shawwalters/.eliza/local-inference/bin/mtp/darwin-arm64-metal-fused/llama-mtmd-cli",
       "candidates": [
         {
-          "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+          "path": "/Users/shawwalters/.eliza/local-inference/bin/mtp/darwin-arm64-metal-fused/llama-mtmd-cli",
           "exists": true,
           "executable": true,
           "helpExitCode": 0,
@@ -155,7 +155,7 @@
             "mtmd": true,
             "metal": true
           },
-          "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
+          "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/.eliza/local-inference/bin/mtp/darwin-arm64-metal-fused/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
         },
         {
           "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/llama-mtmd-cli",

@@ -40,7 +40,7 @@ const platformRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const remotePluginsRoot = path.join(platformRoot, "remotes");
+const defaultRemotePluginsRoot = path.join(platformRoot, "remotes");
 const stateFileName = "first-party-remotes.json";
 const skippedHashEntries = new Set([
   ".DS_Store",
@@ -49,57 +49,79 @@ const skippedHashEntries = new Set([
   "node_modules",
 ]);
 
-export const FIRST_PARTY_REMOTE_PLUGINS: FirstPartyRemotePluginDefinition[] = [
+const FIRST_PARTY_REMOTE_PLUGIN_SPECS: Array<
+  Omit<FirstPartyRemotePluginDefinition, "sourceDir"> & {
+    directoryName: string;
+  }
+> = [
   {
     id: "eliza.runtime",
     displayName: "Eliza Runtime RemotePlugin",
-    sourceDir: path.join(remotePluginsRoot, "runtime"),
+    directoryName: "runtime",
     kind: "required",
     autoStart: true,
   },
   {
     id: "eliza.fs",
     displayName: "Eliza File RemotePlugin",
-    sourceDir: path.join(remotePluginsRoot, "fs"),
+    directoryName: "fs",
     kind: "recommended",
     autoStart: true,
   },
   {
     id: "eliza.local-model",
     displayName: "Eliza Model RemotePlugin",
-    sourceDir: path.join(remotePluginsRoot, "local-model"),
+    directoryName: "local-model",
     kind: "recommended",
     autoStart: true,
   },
   {
     id: "eliza.pty",
     displayName: "Eliza Terminal RemotePlugin",
-    sourceDir: path.join(remotePluginsRoot, "pty"),
+    directoryName: "pty",
     kind: "recommended",
     autoStart: false,
   },
   {
     id: "eliza.git",
     displayName: "Eliza Git RemotePlugin",
-    sourceDir: path.join(remotePluginsRoot, "git"),
+    directoryName: "git",
     kind: "recommended",
     autoStart: false,
   },
   {
     id: "eliza.surface",
     displayName: "Eliza Surface RemotePlugin",
-    sourceDir: path.join(remotePluginsRoot, "surface"),
+    directoryName: "surface",
     kind: "dev",
     autoStart: false,
   },
 ];
 
+function firstPartyRemotePluginDefinitionsFromRoot(
+  root: string,
+): FirstPartyRemotePluginDefinition[] {
+  return FIRST_PARTY_REMOTE_PLUGIN_SPECS.map((spec) => ({
+    id: spec.id,
+    displayName: spec.displayName,
+    sourceDir: path.join(root, spec.directoryName),
+    kind: spec.kind,
+    autoStart: spec.autoStart,
+  }));
+}
+
+export const FIRST_PARTY_REMOTE_PLUGINS: FirstPartyRemotePluginDefinition[] =
+  firstPartyRemotePluginDefinitionsFromRoot(defaultRemotePluginsRoot);
+
 export function getFirstPartyRemotePluginDefinitions(options?: {
   includeDev?: boolean;
+  rootDir?: string;
 }): FirstPartyRemotePluginDefinition[] {
+  const root = options?.rootDir ?? defaultRemotePluginsRoot;
+  if (!fs.existsSync(root)) return [];
   const includeDev =
     options?.includeDev ?? process.env.ELIZA_ENABLE_DEV_REMOTE_PLUGINS === "1";
-  return FIRST_PARTY_REMOTE_PLUGINS.filter(
+  return firstPartyRemotePluginDefinitionsFromRoot(root).filter(
     (definition) => includeDev || definition.kind !== "dev",
   );
 }
@@ -128,6 +150,7 @@ export function isFirstPartyRemotePluginDisabled(
 export function seedFirstPartyRemotePlugins(options?: {
   manager?: RemotePluginHost;
   includeDev?: boolean;
+  rootDir?: string;
   startAutoStart?: boolean;
 }): FirstPartyRemotePluginSeedResult[] {
   const manager = options?.manager ?? getRemotePluginHost();
@@ -136,6 +159,7 @@ export function seedFirstPartyRemotePlugins(options?: {
 
   for (const definition of getFirstPartyRemotePluginDefinitions({
     includeDev: options?.includeDev,
+    rootDir: options?.rootDir,
   })) {
     const manifest = assertRemotePluginPayload(definition.sourceDir);
     if (manifest.id !== definition.id) {

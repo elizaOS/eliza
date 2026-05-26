@@ -88,6 +88,11 @@ export interface FfiBackendSession {
 		gpuLayers: number | "auto";
 	} | null;
 	/**
+	 * Absolute MTP drafter GGUF path resolved during load. `null` disables
+	 * speculative decoding even when the catalog has an MTP policy.
+	 */
+	readonly draftModelPath: string | null;
+	/**
 	 * Multimodal projector (mmproj) GGUF path for vision describe. Resolved
 	 * from `plan.overrides.mmprojPath` at acquire time. `null` disables
 	 * vision — `describeImage` then throws an actionable error.
@@ -146,7 +151,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 					"the FFI session has not been acquired.",
 			);
 		}
-		const { runner, tokenize, mtp } = this.session;
+		const { runner, tokenize, mtp, draftModelPath } = this.session;
 		const result = await runner.generateWithUsage({
 			promptTokens: tokenize(args.prompt),
 			slotId: args.slotId ?? -1,
@@ -158,7 +163,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			repeatPenalty: 1.1,
 			draftMin: mtp?.draftMin ?? 0,
 			draftMax: mtp?.draftMax ?? 0,
-			draftModelPath: null,
+			draftModelPath,
 			signal: args.signal,
 			onTextChunk: args.onTextChunk,
 			onVerifierEvent: args.onVerifierEvent,
@@ -185,7 +190,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 	 * Persist the active session's KV state to a per-conversation file.
 	 * v1 uses `llama_state_seq_save_file` against seq_id=0 — see
 	 * `desktop-llama-adapter.ts`'s `saveSlot`. The on-disk file path
-	 * mirrors `mtp-server.ts`'s conversation-keyed slot layout
+	 * mirrors `ffi-streaming-backend.ts`'s conversation-keyed slot layout
 	 * (`<cacheDir>/<conversationId>/<slotId>.kv`) so a switch between
 	 * FFI and subprocess can resume each other's slots — once both
 	 * paths agree on the file format.
@@ -229,7 +234,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		opts: { slotId: number; cacheKey: string },
 	): Promise<boolean> {
 		if (!this.session || promptPrefix.length === 0) return false;
-		const { runner, tokenize, mtp } = this.session;
+		const { runner, tokenize, mtp, draftModelPath } = this.session;
 		await runner.generateWithUsage({
 			promptTokens: tokenize(promptPrefix),
 			slotId: opts.slotId,
@@ -241,14 +246,14 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			repeatPenalty: 1,
 			draftMin: mtp?.draftMin ?? 0,
 			draftMax: mtp?.draftMax ?? 0,
-			draftModelPath: null,
+			draftModelPath,
 		});
 		return true;
 	}
 
 	/** True when Eliza-1 native MTP is active for the loaded target model. */
 	mtpEnabled(): boolean {
-		return this.session?.mtp !== null && this.session?.mtp !== undefined;
+		return Boolean(this.session?.mtp && this.session.draftModelPath);
 	}
 
 	/**

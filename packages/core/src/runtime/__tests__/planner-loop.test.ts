@@ -210,6 +210,40 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
+	it("forbids phantom in-flight investigative claims in messageToUser/REPLY (planner side)", () => {
+		// Live regression on 2026-05-26 in the milady deployment: user asked
+		// "look it up bitch" after the bot honestly declined a current-news
+		// question. Stage 1 routed simple=false + requiresTool=true with
+		// candidateActions=[WEB_SEARCH, SHELL]. The planner ran 4 SHELL curl
+		// iterations against duckduckgo/google-news/etc — all blocked by
+		// anti-scraping. Iter 5 REPLY then emitted:
+		//   "I'm fetching the latest info on 'big Yahu'. Please hold..."
+		// — a phantom present-continuous claim. iters=5 tools=4 but no
+		// further fetch was queued. The planner does not run in the
+		// background after returning; the user was promised data that
+		// would never arrive.
+		//
+		// The phantom-action-claim ban already lives in
+		// messageHandlerTemplate (Stage 1). This regression covers the
+		// SAME ban in plannerTemplate — the planner's messageToUser /
+		// REPLY text path that runs after every tool iteration.
+		expect(plannerTemplate).toContain(
+			"messageToUser and REPLY text must NEVER claim or imply an investigative action is happening",
+		);
+		expect(plannerTemplate).toContain(
+			'"I\'m fetching X, please hold"',
+		);
+		expect(plannerTemplate).toContain(
+			"The planner does not run in the background after returning",
+		);
+		expect(plannerTemplate).toContain(
+			"set messageToUser saying so plainly",
+		);
+		expect(plannerTemplate).toContain(
+			'"please hold" / "give me a sec" / "be right back" style stalling phrases',
+		);
+	});
+
 	it("appends mandatory chat-recall fallback policy to optimized planner prompts", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => ({ text: "No chat search is available." })),
@@ -244,10 +278,16 @@ describe("v5 planner loop skeleton", () => {
 		expect(systemContent).toContain(
 			"candidateActions naming a tool that is not in this turn's exposed tools list is a dead hint",
 		);
-		expect(systemContent).toContain(
-			"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
-		);
-	});
+			expect(systemContent).toContain(
+				"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
+			);
+			expect(systemContent).toContain(
+				"messageToUser and REPLY text must NEVER claim or imply an investigative action is happening",
+			);
+			expect(systemContent).toContain(
+				'"please hold" / "give me a sec" / "be right back" style stalling phrases',
+			);
+		});
 
 	it("calls ACTION_PLANNER, executes the first queued tool, then evaluates", async () => {
 		const runtime = {
@@ -345,6 +385,8 @@ describe("v5 planner loop skeleton", () => {
 			reserveTokens: 10_000,
 			shouldCompact: false,
 		});
+		expect(plannerParams.maxTokens).toBe(1024);
+		expect(plannerParams.providerOptions.eliza.thinking).toBe("off");
 		expect(executeToolCall).toHaveBeenCalledWith(
 			{ id: "call-1", name: "LOOKUP", params: { query: "status" } },
 			expect.objectContaining({ iteration: 1 }),
@@ -499,6 +541,173 @@ describe("v5 planner loop skeleton", () => {
 			expect.objectContaining({ iteration: 2 }),
 		);
 		expect(result.finalMessage).toBe("Checked.");
+	});
+
+	it("surfaces captured REPLY refusal text when required-tool cap is hit, instead of throwing", async () => {
+		// Live regression: trajectory tj-3bb6dc66be0c16.json on 2026-05-25
+		// showed that when Stage 1 set requiresTool=true but no exposed tool
+		// could fulfill the task (chat-history search with no SEARCH_MESSAGES
+		// action), the planner emitted REPLY with valid honest refusals each
+		// iteration. The loop discarded every REPLY, hit maxRequiredToolMisses,
+		// threw TrajectoryLimitExceeded, and the caller emitted a generic
+		// apology ("Sorry, something went wrong—please try again"). The fix
+		// captures the most recent terminal-only refusal across iterations and
+		// returns it as the final user-facing message when the cap is reached.
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply-1",
+							name: "REPLY",
+							arguments: {
+								text: "I'm not able to search the chat history directly from here.",
+							},
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply-2",
+							name: "REPLY",
+							arguments: {
+								text: "I don't have a way to search the Discord message history.",
+							},
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply-3",
+							name: "REPLY",
+							arguments: {
+								text: "I still can't search the Discord message history from here.",
+							},
+						},
+					],
+				}),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [
+				{
+					name: "LOOKUP",
+					description: "Lookup current status.",
+				},
+			],
+			requireNonTerminalToolCall: true,
+			config: { maxRequiredToolMisses: 2 },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(
+			"I still can't search the Discord message history from here.",
+		);
+		// maxRequiredToolMisses=2 allows two misses; the third exhausts the cap
+		// and returns the most recent captured refusal.
+		expect(runtime.useModel).toHaveBeenCalledTimes(3);
+	});
+
+	it("does not surface a captured refusal before the required-tool retry budget is exhausted", async () => {
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply-1",
+							name: "REPLY",
+							arguments: {
+								text: "I can't answer without checking first.",
+							},
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "lookup-1",
+							name: "LOOKUP",
+							arguments: { query: "status" },
+						},
+					],
+				}),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "status ok",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "Done.",
+			messageToUser: "Status is ok.",
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [
+				{
+					name: "LOOKUP",
+					description: "Lookup current status.",
+				},
+			],
+			requireNonTerminalToolCall: true,
+			config: { maxRequiredToolMisses: 1 },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.finalMessage).toBe("Status is ok.");
+		expect(executeToolCall).toHaveBeenCalledWith(
+			{ id: "lookup-1", name: "LOOKUP", params: { query: "status" } },
+			expect.objectContaining({ iteration: 2 }),
+		);
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not capture native text fallback as a required-tool refusal", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "I should answer after thinking through the tool choice.",
+				toolCalls: [],
+			})),
+		};
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				tools: [
+					{
+						name: "LOOKUP",
+						description: "Lookup current status.",
+					},
+				],
+				requireNonTerminalToolCall: true,
+				config: { maxRequiredToolMisses: 1 },
+				executeToolCall: vi.fn(),
+				evaluate: vi.fn(),
+			}),
+		).rejects.toMatchObject({
+			name: "TrajectoryLimitExceeded",
+			kind: "required_tool_misses",
+		});
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 	});
 
 	it("retries planner calls to tools that are not exposed this turn", async () => {

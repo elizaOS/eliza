@@ -29,7 +29,7 @@ if str(_TRAINING_ROOT) not in sys.path:
 try:
     from .eliza1_manifest import (
         ELIZA_1_BACKENDS,
-        ELIZA_1_DFLASH_TIERS,
+        ELIZA_1_MTP_TIERS,
         ELIZA_1_HF_REPO,
         ELIZA_1_VISION_TIERS,
         ELIZA_1_VOICE_MANIFEST_VERSION,
@@ -48,7 +48,7 @@ try:
 except ImportError:  # pragma: no cover - direct script execution path
     from eliza1_manifest import (
         ELIZA_1_BACKENDS,
-        ELIZA_1_DFLASH_TIERS,
+        ELIZA_1_MTP_TIERS,
         ELIZA_1_HF_REPO,
         ELIZA_1_VISION_TIERS,
         ELIZA_1_VOICE_MANIFEST_VERSION,
@@ -73,21 +73,21 @@ LOCAL_MODEL_ROOT: Final[Path] = (
 )
 DEFAULT_BUNDLE_DIR: Final[Path] = LOCAL_MODEL_ROOT / "eliza-1-2b.bundle"
 DEFAULT_TEXT_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
-    LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash" / "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
-    LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash.gguf",
+    LOCAL_MODEL_ROOT / "qwen3.5-4b-mtp" / "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
+    LOCAL_MODEL_ROOT / "qwen3.5-4b-mtp.gguf",
 )
 DEFAULT_DRAFTER_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
     LOCAL_MODEL_ROOT
-    / "qwen3.5-4b-dflash-drafter-q4"
-    / "Qwen3.5-4B-DFlash-Q4_K_M.repaired.gguf",
+    / "qwen3.5-4b-mtp-drafter-q4"
+    / "Qwen3.5-4B-MTP-Q4_K_M.repaired.gguf",
     LOCAL_MODEL_ROOT
-    / "qwen3.5-4b-dflash-drafter-q4"
-    / "Qwen3.5-4B-DFlash-Q4_K_M.gguf",
-    LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.repaired.gguf",
-    LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.gguf",
+    / "qwen3.5-4b-mtp-drafter-q4"
+    / "Qwen3.5-4B-MTP-Q4_K_M.gguf",
+    LOCAL_MODEL_ROOT / "qwen3.5-4b-mtp-drafter-q4.repaired.gguf",
+    LOCAL_MODEL_ROOT / "qwen3.5-4b-mtp-drafter-q4.gguf",
 )
 VISION_TIERS: Final[set[str]] = set(ELIZA_1_VISION_TIERS)
-DFLASH_TIERS: Final[set[str]] = set(ELIZA_1_DFLASH_TIERS)
+MTP_TIERS: Final[set[str]] = set(ELIZA_1_MTP_TIERS)
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
     "0_8b": (2500, 3700),
@@ -106,7 +106,7 @@ CHECKSUM_PATH: Final[Path] = Path("checksums/SHA256SUMS")
 LOCAL_EVIDENCE_NAME: Final[str] = "local-bundle-completion.json"
 REQUIRED_RELEASE_DIRS: Final[tuple[str, ...]] = (
     "text",
-    "dflash",
+    "mtp",
     "vision",
     "tts",
     "asr",
@@ -296,18 +296,18 @@ def _publish_blocking_reasons(
         f"text artifact is a local stand-in, not final Eliza-1 {tier} text weights",
         *(
             (
-                f"DFlash drafter is a local stand-in, not a drafter trained and verified against final Eliza-1 {tier} text weights",
+                f"MTP drafter is a local stand-in, not a drafter trained and verified against final Eliza-1 {tier} text weights",
             )
-            if tier in DFLASH_TIERS
+            if tier in MTP_TIERS
             else ()
         ),
         (
             "required text quality, ASR WER, VAD latency, expressive voice, "
-            + ("DFlash acceptance, " if tier in DFLASH_TIERS else "")
+            + ("MTP acceptance, " if tier in MTP_TIERS else "")
             + "first-token, first-audio, barge-in, 30-turn, mobile RSS, and thermal evals are missing or failed"
         ),
         "required Metal, Vulkan, and CPU backend verification is not pass for the staged bytes",
-        "text and DFlash license blobs are local provenance notes, not release-reviewed license attestations",
+        "text and MTP license blobs are local provenance notes, not release-reviewed license attestations",
         "release evidence is local-standin and cannot be uploaded by the publish orchestrator",
     ]
     asr = smoke.get("asr") if isinstance(smoke, dict) else None
@@ -328,14 +328,14 @@ def _write_licenses(bundle_dir: Path, *, tier: str, force: bool) -> list[str]:
             f"testing. It is not a final Eliza-1 {tier} text checkpoint and "
             "is not release-reviewed for publishing.\n"
         ),
-        "LICENSE.dflash": (
-            "Eliza-1 local DFlash stand-in provenance note.\n\n"
+        "LICENSE.mtp": (
+            "Eliza-1 local MTP stand-in provenance note.\n\n"
             + (
                 "This bundle uses a local stand-in drafter GGUF for runtime "
                 "layout testing. It is not trained or verified against final "
                 f"Eliza-1 {tier} text weights and is not publishable.\n"
-                if tier in DFLASH_TIERS
-                else f"Eliza-1 {tier} has DFlash disabled; the bundle carries "
+                if tier in MTP_TIERS
+                else f"Eliza-1 {tier} has MTP disabled; the bundle carries "
                 "release-policy metadata instead of a drafter GGUF.\n"
             )
         ),
@@ -365,13 +365,13 @@ def _write_licenses(bundle_dir: Path, *, tier: str, force: bool) -> list[str]:
 
 
 _GGUF_DRAFTER_TARGET_CHECKPOINT_KEY: Final[str] = (
-    "dflash-draft.target_checkpoint_sha256"
+    "mtp-draft.target_checkpoint_sha256"
 )
 
 
 def _read_drafter_target_checkpoint_sha256(drafter_path: Path) -> str | None:
     """Read the target text-checkpoint sha256 the drafter was distilled
-    against, recorded as a GGUF metadata string by ``distill_dflash_drafter.py``.
+    against, recorded as a GGUF metadata string by ``distill_mtp_drafter.py``.
 
     Returns ``None`` for local stand-in drafters (source-converted GGUFs
     have no such key). The publish path treats a missing key as a hard
@@ -414,32 +414,32 @@ def _write_target_meta(
         text_files[-1],
     )
     required_kernels = list(REQUIRED_KERNELS_BY_TIER.get(tier, ()))
-    if tier not in DFLASH_TIERS:
-        policy_rel = f"dflash/dflash-disabled-{tier}.release-policy.json"
+    if tier not in MTP_TIERS:
+        policy_rel = f"mtp/mtp-disabled-{tier}.release-policy.json"
         policy_path = bundle_dir / policy_rel
         _json_write(
             policy_path,
             {
                 "schemaVersion": 1,
-                "kind": "dflash-release-policy",
+                "kind": "mtp-release-policy",
                 "tier": tier,
                 "status": "disabled",
-                "dflashEnabled": False,
+                "mtpEnabled": False,
                 "requiresDrafter": False,
                 "releaseEligibleWithoutDrafter": True,
-                "reason": f"DFlash is disabled for Eliza-1 {tier}; no drafter GGUF ships.",
+                "reason": f"MTP is disabled for Eliza-1 {tier}; no drafter GGUF ships.",
                 "publishBlockingReasons": list(reasons),
             },
         )
         _json_write(
-            bundle_dir / "dflash" / "target-meta.json",
+            bundle_dir / "mtp" / "target-meta.json",
             {
                 "schemaVersion": 2,
                 "tier": tier,
                 "status": "disabled",
-                "dflashEnabled": False,
+                "mtpEnabled": False,
                 "publishEligible": False,
-                "reason": f"DFlash is disabled for Eliza-1 {tier}.",
+                "reason": f"MTP is disabled for Eliza-1 {tier}.",
                 "targetText": {
                     "path": str(
                         Path(primary_text.destination).relative_to(bundle_dir)
@@ -473,7 +473,7 @@ def _write_target_meta(
         )
         return
     if drafter_file is None:
-        raise ValueError(f"_write_target_meta requires a drafter for DFlash tier {tier}")
+        raise ValueError(f"_write_target_meta requires a drafter for MTP tier {tier}")
     drafter_target_sha = _read_drafter_target_checkpoint_sha256(
         Path(drafter_file.destination)
     )
@@ -486,12 +486,12 @@ def _write_target_meta(
         and drafter_target_sha == primary_text.sha256
     )
     _json_write(
-        bundle_dir / "dflash" / "target-meta.json",
+        bundle_dir / "mtp" / "target-meta.json",
         {
             "schemaVersion": 2,
             "tier": tier,
             "status": "local-standin",
-            "dflashEnabled": True,
+            "mtpEnabled": True,
             "publishEligible": False,
             "targetText": {
                 "path": str(
@@ -519,12 +519,12 @@ def _write_target_meta(
                 "finalElizaWeights": False,
                 "architecture": None,
                 "architectureSource": (
-                    "not validated; run scripts/dflash/validate_drafter.py "
+                    "not validated; run scripts/mtp/validate_drafter.py "
                     "against the final target and drafter GGUFs before publish"
                 ),
                 # sha256 of the text checkpoint this drafter was distilled
                 # against, copied from the drafter GGUF's
-                # `dflash-draft.target_checkpoint_sha256` metadata key.
+                # `mtp-draft.target_checkpoint_sha256` metadata key.
                 "targetCheckpointSha256": drafter_target_sha,
                 "matchesTargetCheckpoint": drafter_matches_target,
             },
@@ -535,7 +535,7 @@ def _write_target_meta(
                         "key": "tokenizer.ggml.*",
                         "blockingReason": (
                             "target/drafter tokenizer metadata has not been "
-                            "validated by scripts/dflash/validate_drafter.py"
+                            "validated by scripts/mtp/validate_drafter.py"
                         ),
                     }
                 ],
@@ -548,8 +548,8 @@ def _write_target_meta(
             "acceptanceWindow": None,
             "acceptanceRate": None,
             # Kernel capabilities the runtime must satisfy to load this
-            # bundle's DFlash path. Mirrors `eliza-1.manifest.json`
-            # `kernels.required` so the dflash binary's CAPABILITIES.json
+            # bundle's MTP path. Mirrors `eliza-1.manifest.json`
+            # `kernels.required` so the mtp binary's CAPABILITIES.json
             # can be checked against the bundle without re-reading the
             # full manifest.
             "kernelCaps": {
@@ -584,7 +584,7 @@ def _write_eval_files(
         "barge_in_cancel_ms": None,
         "thirty_turn_ok": False,
         "e2e_loop_ok": False,
-        "dflash_acceptance": None,
+        "mtp_acceptance": None,
         "expressive_tag_faithfulness": None,
         "expressive_mos": None,
         "expressive_tag_leakage": None,
@@ -818,7 +818,7 @@ def _collect_files(bundle_dir: Path, *, tier: str) -> dict[str, list[FileEntry]]
         "voice": entries("tts"),
         "asr": entries("asr"),
         "vision": entries("vision"),
-        "dflash": entries("dflash", gguf_only=True) if tier in DFLASH_TIERS else [],
+        "mtp": entries("mtp", gguf_only=True) if tier in MTP_TIERS else [],
         "cache": entries("cache"),
         "vad": entries("vad"),
     }
@@ -1064,7 +1064,7 @@ def _write_release_evidence(
     license_files = [
         "licenses/LICENSE.text",
         "licenses/LICENSE.voice",
-        "licenses/LICENSE.dflash",
+        "licenses/LICENSE.mtp",
         "licenses/LICENSE.eliza-1",
         "licenses/LICENSE.asr",
         "licenses/LICENSE.vad",
@@ -1115,7 +1115,7 @@ def _write_release_evidence(
             *rels("asr"),
             *rels("vad"),
             *rels("vision"),
-            *(rels("dflash") if tier in DFLASH_TIERS else []),
+            *(rels("mtp") if tier in MTP_TIERS else []),
         ],
         "standIns": [asdict(item) for item in staged],
         "checksumManifest": str(CHECKSUM_PATH),
@@ -1137,13 +1137,13 @@ def _write_release_evidence(
                 "handle-response-tool-call",
                 "closed-action-enum",
                 "eliza-schema-guided-decode",
-                "dflash-prefill",
+                "mtp-prefill",
                 "deterministic-repair",
             ],
             "testReports": {
                 "plannerGrammar": "plugins/plugin-local-inference/src/services/__tests__/planner-grammar.test.ts",
                 "structuredOutput": "plugins/plugin-local-inference/src/services/structured-output.test.ts",
-                "dflashStructured": "plugins/plugin-local-inference/src/services/dflash-structured.test.ts",
+                "mtpStructured": "plugins/plugin-local-inference/src/services/mtp-structured.test.ts",
                 "deterministicRepair": "plugins/plugin-local-inference/src/services/structured-output/deterministic-repair.test.ts",
             },
         },
@@ -1295,11 +1295,11 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
         _choose_source(
             explicit=args.drafter_source,
             bundle_dir=bundle_dir,
-            source_subdir="dflash",
+            source_subdir="mtp",
             fallback_candidates=DEFAULT_DRAFTER_STANDIN_CANDIDATES,
-            label="DFlash drafter",
+            label="MTP drafter",
         )
-        if tier in DFLASH_TIERS
+        if tier in MTP_TIERS
         else None
     )
     vision_source = (
@@ -1346,9 +1346,9 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
     staged = [*text_staged]
     drafter_staged: StagedFile | None = None
     if drafter_source is not None:
-        drafter_dest = bundle_dir / "dflash" / f"drafter-{tier}.gguf"
+        drafter_dest = bundle_dir / "mtp" / f"drafter-{tier}.gguf"
         drafter_staged = _stage_file(
-            role="dflash",
+            role="mtp",
             source=drafter_source,
             destination=drafter_dest,
             provenance=(

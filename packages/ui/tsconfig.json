@@ -100,6 +100,13 @@
         "../../plugins/plugin-wallet-ui/src/index.ts"
       ],
       "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
+      "@elizaos/agent/*": ["../agent/src/*"],
+      "@elizaos/vault": ["../../packages/vault/src/index.ts"],
+      "@elizaos/vault/*": ["../../packages/vault/src/*"],
+      "@elizaos/security": ["../security/src/index.ts"],
+      "@elizaos/security/*": ["../security/src/*"],
+      "@elizaos/cloud-sdk": ["../cloud-sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["../cloud-sdk/src/*"],
       "@elizaos/cloud-sdk/cloud-setup-session": [
         "../cloud-sdk/src/cloud-setup-session/index.ts"
       ],

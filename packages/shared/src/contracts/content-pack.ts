@@ -3,7 +3,7 @@
  *
  * A content pack bundles visual assets (VRM, background, color scheme),
  * personality data, and optional stream overlay into a single installable unit.
- * Packs are loaded from the splash page before onboarding begins.
+ * Packs are loaded from the splash page before first-run setup begins.
  */
 
 import type { ThemeDefinition } from "./theme.js";
@@ -87,7 +87,7 @@ export interface ContentPackPersonality {
    * as other prompt sources (character editor, config file).
    */
   system?: string;
-  /** Catchphrase shown during onboarding */
+  /** Catchphrase shown during first-run setup */
   catchphrase?: string;
   /** Adjectives describing the character */
   adjectives?: string[];

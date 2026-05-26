@@ -13,7 +13,7 @@ import {
 } from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApp } from "../../state";
-import { preOpenWindow } from "../../utils";
+import { openExternalUrl, preOpenWindow } from "../../utils";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import {
@@ -69,6 +69,23 @@ function resolveCustomRpcSelections(
   };
 }
 
+function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
+  return (
+    <div className="w-full max-w-sm rounded border border-border bg-bg/70 p-2 text-left">
+      <p className="mb-1 text-2xs font-semibold uppercase text-muted">
+        Sign-in window did not open?
+      </p>
+      <button
+        type="button"
+        className="block w-full break-all text-left text-xs text-accent underline-offset-2 hover:underline"
+        onClick={() => void openExternalUrl(browserUrl)}
+      >
+        {browserUrl}
+      </button>
+    </div>
+  );
+}
+
 export function ConfigPageView({
   embedded = false,
   onWalletSaveSuccess,
@@ -80,6 +97,7 @@ export function ConfigPageView({
     t,
     elizaCloudConnected,
     elizaCloudLoginBusy,
+    elizaCloudLoginFallbackUrl,
     walletConfig,
     walletApiKeySaving,
     handleWalletApiKeySave,
@@ -195,7 +213,7 @@ export function ConfigPageView({
     alchemy: [
       {
         configKey: "ALCHEMY_API_KEY",
-        label: t("onboarding.rpcAlchemyKey", {
+        label: t("settings.rpcAlchemyKey", {
           defaultValue: "Alchemy API Key",
         }),
         isSet: walletConfig?.alchemyKeySet ?? false,
@@ -225,7 +243,7 @@ export function ConfigPageView({
     alchemy: [
       {
         configKey: "ALCHEMY_API_KEY",
-        label: t("onboarding.rpcAlchemyKey", {
+        label: t("settings.rpcAlchemyKey", {
           defaultValue: "Alchemy API Key",
         }),
         isSet: walletConfig?.alchemyKeySet ?? false,
@@ -501,6 +519,9 @@ export function ConfigPageView({
                       defaultValue: "Connect to Eliza Cloud",
                     })}
               </Button>
+              {elizaCloudLoginBusy && elizaCloudLoginFallbackUrl ? (
+                <CloudLoginFallbackLink browserUrl={elizaCloudLoginFallbackUrl} />
+              ) : null}
             </div>
           )}
 

@@ -32,6 +32,7 @@ const tmpRoots: string[] = [];
 
 function makeTempBundle(args: {
 	hasMmproj: boolean;
+	hasMtp?: boolean;
 	tier: string; // e.g. "2b"
 }): { bundleRoot: string; textPath: string } {
 	const root = mkdtempSync(pathJoin(tmpdir(), "eliza-ws2-mmproj-"));
@@ -44,6 +45,13 @@ function makeTempBundle(args: {
 		writeFileSync(
 			pathJoin(root, "vision", `mmproj-${args.tier}.gguf`),
 			"fake-mmproj-gguf",
+		);
+	}
+	if (args.hasMtp !== false) {
+		mkdirSync(pathJoin(root, "mtp"), { recursive: true });
+		writeFileSync(
+			pathJoin(root, "mtp", `eliza-1-${args.tier}-drafter.gguf`),
+			"fake-mtp-drafter-gguf",
 		);
 	}
 	return { bundleRoot: root, textPath };
@@ -130,6 +138,19 @@ describe("WS2 mmproj routing", () => {
 		expect(resolved.mmprojPath).toBeUndefined();
 		// Text load is NOT gated on mmproj — modelPath still resolves.
 		expect(resolved.modelPath).toBe(bundle.textPath);
+	});
+
+	it("throws when an MTP-enabled tier is missing its bundled drafter", async () => {
+		const tier = "2b";
+		const bundle = makeTempBundle({ hasMmproj: true, hasMtp: false, tier });
+		const installed = installedModel({
+			id: `eliza-1-${tier}`,
+			bundleRoot: bundle.bundleRoot,
+			path: bundle.textPath,
+		});
+		await expect(resolveLocalInferenceLoadArgs(installed)).rejects.toThrow(
+			/mandatory MTP/,
+		);
 	});
 
 	it("leaves mmprojPath undefined when bundleRoot is absent", async () => {

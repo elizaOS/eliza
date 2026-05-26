@@ -47,8 +47,8 @@ export interface WorldSettings {
 }
 
 /**
- * Onboarding configuration with setting definitions.
+ * Setup configuration with setting definitions.
  */
-export interface OnboardingConfig {
+export interface SetupConfig {
 	settings: Record<string, SettingDefinition>;
 }

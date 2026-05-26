@@ -14,7 +14,7 @@ import {
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
 import { useCallback, useMemo, useState } from "react";
-import { client, type OnboardingOptions } from "../../api";
+import { client, type FirstRunOptions } from "../../api";
 import { useTimeout } from "../../hooks/useTimeout";
 import {
   buildCloudModelSchema,
@@ -24,8 +24,8 @@ import {
 } from "./cloud-model-schema";
 
 export interface CloudModelConfig {
-  modelOptions: OnboardingOptions["models"] | null;
-  setModelOptions: (options: OnboardingOptions["models"]) => void;
+  modelOptions: FirstRunOptions["models"] | null;
+  setModelOptions: (options: FirstRunOptions["models"]) => void;
   initializeFromConfig: (
     cfg: Record<string, unknown>,
     elizaCloudEnabledCfg: boolean,
@@ -58,7 +58,7 @@ export function useCloudModelConfig(
 ): CloudModelConfig {
   const { setTimeout } = useTimeout();
   const [modelOptions, setModelOptionsState] = useState<
-    OnboardingOptions["models"] | null
+    FirstRunOptions["models"] | null
   >(null);
   const [currentNanoModel, setCurrentNanoModel] = useState("");
   const [currentSmallModel, setCurrentSmallModel] = useState("");
@@ -73,12 +73,9 @@ export function useCloudModelConfig(
   const [modelSaving, setModelSaving] = useState(false);
   const [modelSaveSuccess, setModelSaveSuccess] = useState(false);
 
-  const setModelOptions = useCallback(
-    (options: OnboardingOptions["models"]) => {
-      setModelOptionsState(options);
-    },
-    [],
-  );
+  const setModelOptions = useCallback((options: FirstRunOptions["models"]) => {
+    setModelOptionsState(options);
+  }, []);
 
   const initializeFromConfig = useCallback(
     (cfg: Record<string, unknown>, elizaCloudEnabledCfg: boolean) => {

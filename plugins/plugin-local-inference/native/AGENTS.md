@@ -3,8 +3,8 @@
 This file is the canonical contract for any agent working on the Eliza-1
 on-device inference stack. It applies to everything under
 `packages/inference/`, the runtime under
-`packages/app-core/src/services/local-inference/`, the dflash build hook
-at `packages/app-core/scripts/build-llama-cpp-dflash.mjs`, and any
+`packages/app-core/src/services/local-inference/`, the mtp build hook
+at `packages/app-core/scripts/build-llama-cpp-mtp.mjs`, and any
 mobile/desktop bridges that consume the same artifacts.
 
 The training-side companion is at [`packages/training/AGENTS.md`](../training/AGENTS.md).
@@ -14,7 +14,7 @@ manifest, kernel ABI, GGML pin).
 **Fork source.** The patched llama.cpp ships in-tree as a git submodule at
 [`plugins/plugin-local-inference/native/llama.cpp`](llama.cpp) — `elizaOS/llama.cpp`
 tracking the `v1.2.0-eliza` line (gitlink currently `33c888a7b`, with
-`ce85787c` as the validated DFlash/SWA build base; resolve via
+`ce85787c` as the validated MTP/SWA build base; resolve via
 `git -C plugins/plugin-local-inference/native/llama.cpp describe --always`; the
 `v1.0.0-eliza` / `08032d57` pin documented previously is **stale** — do not copy
 that pin into new tooling or scripts). `git submodule update --init --recursive`
@@ -22,12 +22,12 @@ that pin into new tooling or scripts). `git submodule update --init --recursive`
 TurboQuant (turbo3/turbo4/turbo3_tcq) + QJL
 (`block_qjl1_256`, `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_FUSED_ATTN_QJL_TBQ`) +
 PolarQuant (`block_q4_polar`, `Q4_POLAR=47`) + the eliza Metal/Vulkan/CUDA
-kernels + DFlash spec-decode (`--spec-type dflash`, the `dflash-draft` GGUF arch)
+kernels + MTP spec-decode (`--spec-type mtp`, the `mtp-draft` GGUF arch)
 + the post-refactor `llama-server` (`server-task.cpp` / `server-common.cpp` with
 `grammar_lazy` / `json_schema` / `response_format` / `prefill_assistant`), on
-upstream b9213. Both build paths consume it: `build-llama-cpp-dflash.mjs`
+upstream b9213. Both build paths consume it: `build-llama-cpp-mtp.mjs`
 (desktop/server/Windows/iOS) and `aosp/compile-libllama.mjs` (Android) default to
-the submodule checkout. `ELIZA_DFLASH_LLAMA_CPP_REMOTE` / `_REF` (or `--cache-dir`
+the submodule checkout. `ELIZA_MTP_LLAMA_CPP_REMOTE` / `_REF` (or `--cache-dir`
 / `--src-dir`) still force a standalone clone for fork bisects. (The `v1.2.0-eliza`
 line tracks the prior `v1.0.0-eliza` tree forward, re-tagged on the elizaOS rename
 chain. A full rebase onto a recent upstream llama.cpp remains a **deferred**
@@ -153,9 +153,9 @@ Backbones (do not change without explicit human approval):
   evidence. Do not fabricate embedding source repos, and do not silently
   fall back on larger tiers when the manifest says a dedicated region is
   required.
-- **Drafter:** DFlash ships on 2B and larger tiers. The 0.8B tier is the
-  low-memory non-DFlash path until a real drafter companion and evidence exist.
-  Where DFlash is present, speculative decoding is mandatory, not optional
+- **Drafter:** MTP ships on 2B and larger tiers. The 0.8B tier is the
+  low-memory non-MTP path until a real drafter companion and evidence exist.
+  Where MTP is present, speculative decoding is mandatory, not optional
   (see §3).
 
 Three runtime modes — every code path must work in all three:
@@ -193,7 +193,7 @@ hosted under the `elizalabs` HuggingFace org under `eliza-1`.
 
 ### Tier matrix (binding)
 
-| Tier            | Tagline                       | Text  | Voice           | Vision | Context  | DFlash | Quant default                   |
+| Tier            | Tagline                       | Text  | Voice           | Vision | Context  | MTP | Quant default                   |
 | --------------- | ----------------------------- | ----- | --------------- | ------ | -------- | ------ | ------------------------------- |
 | `0_8b`       | low-RAM phones, CPU fallback   | 0.8B  | OmniVoice + Kokoro | mmproj | 128k  | no     | TurboQuant Q4 + QJL + Polar     |
 | `2b`         | modern phones                  | 2B    | OmniVoice + Kokoro | mmproj | 128k  | yes    | TurboQuant Q4 + QJL + Polar     |
@@ -240,7 +240,7 @@ elizaos/eliza-1/
       silero-vad-v5.gguf           # native silero-vad-cpp, every tier
     vision/
       mmproj-<tier>.gguf           # 0_8b/2b/4b/9b/27b/27b-256k
-    dflash/
+    mtp/
       drafter-<tier>.gguf
       target-meta.json             # acceptance windows, kernel caps
     cache/
@@ -255,7 +255,7 @@ elizaos/eliza-1/
       LICENSE.voice
       LICENSE.asr
       LICENSE.vad
-      LICENSE.dflash
+      LICENSE.mtp
       LICENSE.vision
       LICENSE.eliza-1
     checksums/SHA256SUMS
@@ -340,14 +340,14 @@ the recommended-models endpoint.
 3. **PolarQuant** on the V-cache when context > 8k. See `vulkan/polar*.comp`
    and `metal/polar.metal`. The reference is
    `packages/native/plugins/polarquant-cpu`.
-4. **DFlash speculative decoding** with the bundle's drafter. Always wired,
-   always running in voice mode. The DFlash drafter participates in voice
+4. **MTP speculative decoding** with the bundle's drafter. Always wired,
+   always running in voice mode. The MTP drafter participates in voice
    generation — proposed text tokens that survive verification are
    immediately handed to the TTS pipeline; rejected tokens roll back the
    TTS chunker (see §4 for the streaming contract).
 5. **Fused kernels.** TurboQuant + QJL + Polar must compile into the same
    shipped llama.cpp build via the patch hooks in
-   `packages/app-core/scripts/build-llama-cpp-dflash.mjs`. The runtime
+   `packages/app-core/scripts/build-llama-cpp-mtp.mjs`. The runtime
    MUST log the kernel set on startup; missing kernels = startup error.
 
 ### Required for `desktop`/`pro`/`server` tiers
@@ -363,7 +363,7 @@ the recommended-models endpoint.
 If a required kernel fails to load, fails verification, or is missing
 from the build:
 
-- **Build time:** `build-llama-cpp-dflash.mjs` MUST exit non-zero, and
+- **Build time:** `build-llama-cpp-mtp.mjs` MUST exit non-zero, and
   the published artifact MUST NOT include a "kernels-missing" fallback
   build. There is no fallback build.
 - **Runtime:** the engine MUST refuse to activate the bundle and surface
@@ -388,7 +388,7 @@ parallel codepath.
 ```
 mic / file → ASR → text tokens
                     ↓
-                  scheduler ──→ DFlash drafter (proposes N tokens)
+                  scheduler ──→ MTP drafter (proposes N tokens)
                                        ↓
                                   target verifier (text model)
                                        ↓
@@ -413,7 +413,7 @@ mic / file → ASR → text tokens
   configs, different quantizations). What they share is the scheduler,
   the mmap region for weights, the kernel set, and the memory-budget
   policy.
-- **Streaming handoff.** When DFlash + target produce an accepted
+- **Streaming handoff.** When MTP + target produce an accepted
   text token, the phrase chunker MUST hand the chunk to TTS within the
   same scheduler tick — no buffering past phrase boundaries. Phrase
   boundaries are punctuation + a max-N-token cap (configurable per
@@ -451,7 +451,7 @@ mic / file → ASR → text tokens
   startup. A precomputed phrase cache for common assistant utterances
   ("Sure.", "One moment.", "I can't help with that.") MUST be used as
   a first-byte-latency win.
-- **DFlash↔TTS coupling.** When DFlash proposes text tokens that are
+- **MTP↔TTS coupling.** When MTP proposes text tokens that are
   later rejected by the target, the TTS chunker's rollback queue MUST
   drop the corresponding (not-yet-spoken) audio chunks. Audio that has
   already left the ring buffer is gone — design the chunker so this is
@@ -461,9 +461,9 @@ mic / file → ASR → text tokens
 
 - We do not run text and voice in two processes communicating over IPC.
   That regresses memory and adds a 1–10ms scheduling tax per turn.
-- We do not run a "TTS-only mode" that skips DFlash. DFlash is always
+- We do not run a "TTS-only mode" that skips MTP. MTP is always
   on. If the user disables speculative decoding for debugging, that is
-  a developer-only flag (`ELIZA_DFLASH_DISABLE=1`), it is not a user
+  a developer-only flag (`ELIZA_MTP_DISABLE=1`), it is not a user
   setting, and it MUST log a loud warning every turn.
 - We do not split voice into "fast TTS" and "high-quality TTS" tiers.
   One voice model per tier, fused, optimized.
@@ -510,18 +510,18 @@ catalogs drift from it — generate them.
   "lineage": {
     "text": { "base": "qwen3.5-4b", "license": "..." },
     "voice": { "base": "omnivoice-base-Q4_K_M", "license": "..." },
-    "drafter": { "base": "dflash-4b-drafter", "license": "..." }
+    "drafter": { "base": "mtp-4b-drafter", "license": "..." }
   },
   "files": {
     "text":    [{ "path": "text/eliza-1-4b-128k.gguf", "ctx": 131072, "sha256": "..." }],
     "voice":   [{ "path": "tts/omnivoice-base-Q4_K_M.gguf",   "sha256": "..." }],
     "asr":     [{ "path": "asr/...",                          "sha256": "..." }],
     "vision":  [{ "path": "vision/mmproj-4b.gguf",    "sha256": "..." }],
-    "dflash":  [{ "path": "dflash/drafter-4b.gguf",   "sha256": "..." }],
+    "mtp":  [{ "path": "mtp/drafter-4b.gguf",   "sha256": "..." }],
     "cache":   [{ "path": "cache/voice-preset-default.bin",   "sha256": "..." }]
   },
   "kernels": {
-    "required": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+    "required": ["turboquant_q4", "qjl", "polarquant", "mtp", "turbo3_tcq"],
     "optional": [],
     "verifiedBackends": {
       "metal":  { "status": "pass", "atCommit": "...", "report": "..." },
@@ -605,10 +605,10 @@ A bundle is shippable when, on each supported backend:
 - A 30-turn end-to-end voice loop runs without crash, without leak,
   without exceeding `manifest.ramBudgetMb.recommended`.
 - First-token latency, first-audio latency, RTF, ASR WER, peak RSS,
-  thermal/battery (mobile), and DFlash acceptance rate are recorded
+  thermal/battery (mobile), and MTP acceptance rate are recorded
   in the manifest's `evals` block and meet tier-specific gates.
 
-A code change that touches kernels, the build script, the dflash
+A code change that touches kernels, the build script, the mtp
 server, or the bundled-models catalog MUST run the relevant subset of
 these gates locally before merge. CI runs the full set per supported
 backend nightly.
@@ -643,7 +643,7 @@ backend nightly.
   and inference. Read [`packages/training/AGENTS.md`](../training/AGENTS.md)
   before changing the manifest schema or any quantization op.
 - **Branding.** User-facing strings and logs say `Eliza-1`. They do
-  not say `Qwen`, `Llama`, `OmniVoice`, `DFlash`, or `TurboQuant`.
+  not say `Qwen`, `Llama`, `OmniVoice`, `MTP`, or `TurboQuant`.
   Internal logs, stack traces, and developer-mode UI surfaces may
   reference upstream names — anywhere a user can see, the name is
   Eliza-1.
@@ -657,7 +657,7 @@ backend nightly.
   hardware-verified vs. compile-only.
 - `packages/app-core/src/services/local-inference/README.md` — runtime
   contract for the engine, downloader, recommendation, and routing.
-- `packages/app-core/scripts/build-llama-cpp-dflash.mjs` — the build
+- `packages/app-core/scripts/build-llama-cpp-mtp.mjs` — the build
   hook. Every kernel patch lives here. It (and the AOSP cross-compile at
   `packages/app-core/scripts/aosp/compile-libllama.mjs`) default to building
   from the in-repo `plugins/plugin-local-inference/native/llama.cpp` submodule.
@@ -690,7 +690,7 @@ deprecated and will be removed from the runtime path once all native ports land.
 | Silero VAD | standalone `silero-vad-cpp` FFI `libsilero_vad` + `vad/silero-vad-v5.gguf` | DONE (I1/K7 verified) — vad.ts imports zero onnxruntime-node |
 | hey-eliza wakeword | fork FFI `eliza_inference_wakeword_*` | DONE (I1/K7 verified) — wake-word.ts imports zero onnxruntime-node |
 | ASR (Qwen3-ASR) | fork FFI `eliza_pick_asr_files()` | DONE (T-asr) |
-| DFlash speculative decoding | fork `llama-server` `--spec-type dflash` | DONE |
+| MTP speculative decoding | fork `llama-server` `--spec-type mtp` | DONE |
 | Text EOT (Eliza1EotClassifier) | fork `node-llama-cpp` P(`<|im_end|>`) | DONE (preferred path when text model loaded) |
 | LiveKit EOT (GGUF) | `eot-classifier-ggml.ts::LiveKitGgmlTurnDetector` | DONE (J1.d) — preferred over ONNX when GGUF on disk |
 | Kokoro TTS | `pick-runtime.ts` defaults to `KOKORO_BACKEND=fork` → llama-server `/v1/audio/speech` | DONE (J2/K4 default) — ONNX reachable only via env override |

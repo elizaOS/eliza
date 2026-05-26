@@ -12,11 +12,7 @@ export function isDefaultLocalModelFamily(model: CatalogModel): boolean {
 }
 
 export function isSettingsDefaultLocalModel(model: CatalogModel): boolean {
-  return (
-    !model.hiddenFromCatalog &&
-    model.runtimeRole !== "dflash-drafter" &&
-    isDefaultLocalModelFamily(model)
-  );
+  return !model.hiddenFromCatalog && isDefaultLocalModelFamily(model);
 }
 
 export function filterSettingsDefaultLocalModels(

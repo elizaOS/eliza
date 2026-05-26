@@ -74,7 +74,7 @@
     "vocabSize": 248320
   },
   "generatedAt": "2026-05-20T17:12:10.514784+00:00",
-  "kind": "dflash-drafter-validation",
+  "kind": "mtp-drafter-validation",
   "metadataOnly": false,
   "pass": true,
   "schemaVersion": 1,

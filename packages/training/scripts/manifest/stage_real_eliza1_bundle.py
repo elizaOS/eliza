@@ -3,7 +3,7 @@
 
 This is one step further along than ``stage_local_eliza1_bundle.py``: it
 takes *real* upstream-derived GGUF text weights (already quantized to the
-tier's release quant), real DFlash drafter weights stamped against the
+tier's release quant), real MTP drafter weights stamped against the
 text checkpoint, real quantization-recipe sidecars produced by the
 ``scripts/quantization/*_apply.py`` recipes, and real voice/ASR/VAD
 assets staged from Hugging Face, and produces a bundle directory with the
@@ -13,7 +13,7 @@ What it does NOT do — and what keeps the bundle ``publishEligible:false``
 until E5's eval harness and the per-backend kernel verification pass:
 
 - It does not run the held-out quantized text eval, voice RTF, ASR WER,
-  expressive voice, DFlash acceptance, e2e loop, 30-turn, or mobile RSS
+  expressive voice, MTP acceptance, e2e loop, 30-turn, or mobile RSS
   /thermal evals. Those land in ``evals/`` as ``not-run`` / ``fail``.
 - It does not run ``metal_verify`` / ``vulkan_verify`` / the CPU
   reference harness against the staged bytes. Backend reports are
@@ -48,7 +48,7 @@ if str(_TRAINING_ROOT) not in sys.path:
 try:
     from .eliza1_manifest import (
         ELIZA_1_BACKENDS,
-        ELIZA_1_DFLASH_TIERS,
+        ELIZA_1_MTP_TIERS,
         ELIZA_1_HF_REPO,
         ELIZA_1_VISION_TIERS,
         ELIZA_1_VOICE_MANIFEST_VERSION,
@@ -72,7 +72,7 @@ try:
 except ImportError:  # pragma: no cover - direct script execution path
     from eliza1_manifest import (
         ELIZA_1_BACKENDS,
-        ELIZA_1_DFLASH_TIERS,
+        ELIZA_1_MTP_TIERS,
         ELIZA_1_HF_REPO,
         ELIZA_1_VISION_TIERS,
         ELIZA_1_VOICE_MANIFEST_VERSION,
@@ -97,7 +97,7 @@ except ImportError:  # pragma: no cover - direct script execution path
 from benchmarks.eliza1_gates import apply_gates  # noqa: E402
 
 VISION_TIERS: Final[set[str]] = set(ELIZA_1_VISION_TIERS)
-DFLASH_TIERS: Final[set[str]] = set(ELIZA_1_DFLASH_TIERS)
+MTP_TIERS: Final[set[str]] = set(ELIZA_1_MTP_TIERS)
 EMBEDDING_TIERS: Final[set[str]] = {"4b"}
 EMBEDDING_REPO: Final[str] = "Qwen/Qwen3-Embedding-0.6B-GGUF"
 EMBEDDING_FILE: Final[str] = "Qwen3-Embedding-0.6B-Q8_0.gguf"
@@ -114,7 +114,7 @@ DEFAULT_VOICE_CAPABILITIES: Final[tuple[str, ...]] = ("tts", "emotion-tags", "si
 CHECKSUM_PATH: Final[Path] = Path("checksums/SHA256SUMS")
 REQUIRED_RELEASE_DIRS: Final[tuple[str, ...]] = (
     "text",
-    "dflash",
+    "mtp",
     "vision",
     "tts",
     "asr",
@@ -138,7 +138,7 @@ RECIPE_SIDECARS: Final[tuple[tuple[str, str, str], ...]] = (
 POLAR_ARTIFACTS_NAME: Final[str] = "polarquant_artifacts.safetensors"
 
 _GGUF_DRAFTER_TARGET_CHECKPOINT_KEY: Final[str] = (
-    "dflash-draft.target_checkpoint_sha256"
+    "mtp-draft.target_checkpoint_sha256"
 )
 
 
@@ -298,14 +298,14 @@ def _publish_blocking_reasons(
             f"text backbone for {tier} is a substituted upstream GGUF artifact; "
             "the exact source repository, file, and revision are recorded in the manifest lineage block"
         )
-    if tier in DFLASH_TIERS and drafter_stamp_only:
+    if tier in MTP_TIERS and drafter_stamp_only:
         reasons.append(
-            f"DFlash drafter for {tier} is stamped against the text-checkpoint sha256 but not yet "
+            f"MTP drafter for {tier} is stamped against the text-checkpoint sha256 but not yet "
             "re-distilled to the rebranded text weights; acceptance-rate eval is pending"
         )
     evals_pending = (
         "required text quality, ASR WER, VAD latency, expressive voice, "
-        + ("DFlash acceptance, " if tier in DFLASH_TIERS else "")
+        + ("MTP acceptance, " if tier in MTP_TIERS else "")
         + "first-token, first-audio, barge-in, 30-turn, mobile RSS, and thermal evals "
         "are not yet run for these bytes"
     )
@@ -330,11 +330,11 @@ def _write_licenses(
             "lineage and Apache-2.0 license terms are recorded in eliza-1.manifest.json's lineage.text block.\n\n"
             "Apache License 2.0 — https://www.apache.org/licenses/LICENSE-2.0\n"
         ),
-        "LICENSE.dflash": (
-            "Eliza-1 DFlash drafter license notice.\n\n"
-            "The DFlash speculative-decoding drafter is a small student model aligned to the Eliza-1 text "
-            "checkpoint (sha256 recorded in dflash/target-meta.json). It inherits the text backbone's "
-            "Apache-2.0 lineage. The DFlash method itself is open research (see packages/inference/AGENTS.md §3).\n\n"
+        "LICENSE.mtp": (
+            "Eliza-1 MTP drafter license notice.\n\n"
+            "The MTP speculative-decoding drafter is a small student model aligned to the Eliza-1 text "
+            "checkpoint (sha256 recorded in mtp/target-meta.json). It inherits the text backbone's "
+            "Apache-2.0 lineage. The MTP method itself is open research (see packages/inference/AGENTS.md §3).\n\n"
             "Apache License 2.0 — https://www.apache.org/licenses/LICENSE-2.0\n"
         ),
         "LICENSE.eliza-1": (
@@ -444,32 +444,32 @@ def _write_target_meta(
         text_files[-1],
     )
     required_kernels = list(REQUIRED_KERNELS_BY_TIER.get(tier, ()))
-    if tier not in DFLASH_TIERS:
-        policy_rel = f"dflash/dflash-disabled-{tier}.release-policy.json"
+    if tier not in MTP_TIERS:
+        policy_rel = f"mtp/mtp-disabled-{tier}.release-policy.json"
         policy_path = bundle_dir / policy_rel
         _json_write(
             policy_path,
             {
                 "schemaVersion": 1,
-                "kind": "dflash-release-policy",
+                "kind": "mtp-release-policy",
                 "tier": tier,
                 "status": "disabled",
-                "dflashEnabled": False,
+                "mtpEnabled": False,
                 "requiresDrafter": False,
                 "releaseEligibleWithoutDrafter": True,
-                "reason": f"DFlash is disabled for Eliza-1 {tier}; no drafter GGUF ships.",
+                "reason": f"MTP is disabled for Eliza-1 {tier}; no drafter GGUF ships.",
                 "publishBlockingReasons": list(reasons),
             },
         )
         _json_write(
-            bundle_dir / "dflash" / "target-meta.json",
+            bundle_dir / "mtp" / "target-meta.json",
             {
                 "schemaVersion": 2,
                 "tier": tier,
                 "status": "disabled",
-                "dflashEnabled": False,
+                "mtpEnabled": False,
                 "publishEligible": False,
-                "reason": f"DFlash is disabled for Eliza-1 {tier}.",
+                "reason": f"MTP is disabled for Eliza-1 {tier}.",
                 "targetText": {
                     "path": str(Path(primary_text.destination).relative_to(bundle_dir)),
                     "sha256": primary_text.sha256,
@@ -502,7 +502,7 @@ def _write_target_meta(
         return
     if drafter_file is None:
         raise ValueError(
-            f"_write_target_meta requires a drafter for DFlash tier {tier}"
+            f"_write_target_meta requires a drafter for MTP tier {tier}"
         )
     drafter_target_sha = _read_drafter_target_checkpoint_sha256(
         Path(drafter_file.destination)
@@ -511,12 +511,12 @@ def _write_target_meta(
         drafter_target_sha is not None and drafter_target_sha == primary_text.sha256
     )
     _json_write(
-        bundle_dir / "dflash" / "target-meta.json",
+        bundle_dir / "mtp" / "target-meta.json",
         {
             "schemaVersion": 2,
             "tier": tier,
             "status": "weights-staged",
-            "dflashEnabled": True,
+            "mtpEnabled": True,
             "publishEligible": False,
             "targetText": {
                 "path": str(Path(primary_text.destination).relative_to(bundle_dir)),
@@ -540,7 +540,7 @@ def _write_target_meta(
                 "finalElizaWeights": True,
                 "architecture": None,
                 "architectureSource": (
-                    "not validated; run scripts/dflash/validate_drafter.py "
+                    "not validated; run scripts/mtp/validate_drafter.py "
                     "against the final target and drafter GGUFs before publish"
                 ),
                 "targetCheckpointSha256": drafter_target_sha,
@@ -553,7 +553,7 @@ def _write_target_meta(
                         "key": "tokenizer.ggml.*",
                         "blockingReason": (
                             "target/drafter tokenizer metadata has not been "
-                            "validated by scripts/dflash/validate_drafter.py"
+                            "validated by scripts/mtp/validate_drafter.py"
                         ),
                     }
                 ],
@@ -590,7 +590,7 @@ def _write_eval_files(
         "barge_in_cancel_ms": None,
         "thirty_turn_ok": False,
         "e2e_loop_ok": False,
-        "dflash_acceptance": None,
+        "mtp_acceptance": None,
         "expressive_tag_faithfulness": None,
         "expressive_mos": None,
         "expressive_tag_leakage": None,
@@ -763,7 +763,7 @@ def _collect_files(bundle_dir: Path, *, tier: str) -> dict[str, list[FileEntry]]
         "voice": entries("tts", recursive=True),
         "asr": entries("asr"),
         "vision": entries("vision"),
-        "dflash": entries("dflash", gguf_only=True) if tier in DFLASH_TIERS else [],
+        "mtp": entries("mtp", gguf_only=True) if tier in MTP_TIERS else [],
         "cache": entries("cache"),
         "vad": entries("vad"),
     }
@@ -822,9 +822,9 @@ def _write_lineage(
     if has_drafter:
         data["drafter"] = {
             "base": (
-                f"dflash-{tier}-drafter (stamped against text checkpoint sha256={drafter_target_sha})"
+                f"mtp-{tier}-drafter (stamped against text checkpoint sha256={drafter_target_sha})"
                 if drafter_stamp_only
-                else f"dflash-{tier}-drafter (distilled against {text_base})"
+                else f"mtp-{tier}-drafter (distilled against {text_base})"
             ),
             "license": "apache-2.0",
         }
@@ -916,7 +916,7 @@ def _write_release_evidence(
     license_files = [
         "licenses/LICENSE.text",
         "licenses/LICENSE.voice",
-        "licenses/LICENSE.dflash",
+        "licenses/LICENSE.mtp",
         "licenses/LICENSE.eliza-1",
         "licenses/LICENSE.asr",
         "licenses/LICENSE.vad",
@@ -952,7 +952,7 @@ def _write_release_evidence(
                 *rels("vad"),
                 *rels("vision"),
                 *rels("embedding"),
-                *rels("dflash"),
+                *rels("mtp"),
             ],
             "stagedFiles": [asdict(it) for it in staged],
             "checksumManifest": str(CHECKSUM_PATH),
@@ -1089,21 +1089,21 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
         expected=[Path(it.destination) for it in text_staged],
         force=args.force,
     )
-    # 4. Drafter GGUF for tiers that ship DFlash.
+    # 4. Drafter GGUF for tiers that ship MTP.
     drafter_staged: StagedFile | None = None
-    if tier in DFLASH_TIERS:
+    if tier in MTP_TIERS:
         if drafter_gguf is None:
             raise SystemExit(
-                f"--drafter-gguf is required for DFlash-enabled tier {tier}"
+                f"--drafter-gguf is required for MTP-enabled tier {tier}"
             )
         drafter_staged = _stage_file(
-            role="dflash",
+            role="mtp",
             source=drafter_gguf,
-            destination=bundle_dir / "dflash" / f"drafter-{tier}.gguf",
+            destination=bundle_dir / "mtp" / f"drafter-{tier}.gguf",
             provenance=(
-                "dflash-drafter:stamp-only"
+                "mtp-drafter:stamp-only"
                 if drafter_stamp_only
-                else "dflash-drafter:distilled"
+                else "mtp-drafter:distilled"
             ),
             force=args.force,
         )
@@ -1288,7 +1288,7 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
                 else {
                     "status": "disabled",
                     "requiresDrafter": False,
-                    "targetMeta": "dflash/target-meta.json",
+                    "targetMeta": "mtp/target-meta.json",
                 }
             ),
             "staged": [asdict(it) for it in staged],
@@ -1354,7 +1354,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument(
         "--drafter-gguf",
         type=Path,
-        help="DFlash drafter GGUF (required for every DFlash-enabled tier).",
+        help="MTP drafter GGUF (required for every MTP-enabled tier).",
     )
     ap.add_argument(
         "--recipes-dir",

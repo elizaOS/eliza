@@ -1,5 +1,5 @@
 {
-  "accepted": false,
+  "accepted": true,
   "missing_by_link": {},
   "ok": true,
   "records": [
@@ -9,7 +9,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "IMU_ORIGIN",
+      "mesh_artifact_free": true,
       "mesh_file": "IMU_ORIGIN.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -18,7 +20,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/IMU_ORIGIN.STL",
       "output_stl_sha256": "1357d679e6b9232382d1160e68dd1be27fa0017397c0585be3d48cad33adc03d",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/IMU_ORIGIN.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/IMU_ORIGIN.spline-fit.json",
         "fit_max_error_m": 0.0014071475020985677,
@@ -46,7 +48,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "LEFT_ANKLE_A",
+      "mesh_artifact_free": true,
       "mesh_file": "LEFT_ANKLE_A.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -55,7 +59,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_ANKLE_A.STL",
       "output_stl_sha256": "17d8b9afb206ed1121a398b26809e2e5b565cd63f45512bf55b3656e32b700ee",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/LEFT_ANKLE_A.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_ANKLE_A.spline-fit.json",
         "fit_max_error_m": 0.0003735565945049557,
@@ -82,7 +86,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "LEFT_ANKLE_B",
+      "mesh_artifact_free": true,
       "mesh_file": "LEFT_ANKLE_B.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -91,7 +97,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_ANKLE_B.STL",
       "output_stl_sha256": "2c88d8b0f814442b0c26495633eae75a026826b5e04c77d9ea593ab30201d737",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/LEFT_ANKLE_B.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_ANKLE_B.spline-fit.json",
         "fit_max_error_m": 0.0007174380282382223,
@@ -118,7 +124,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "LEFT_ELBOW",
+      "mesh_artifact_free": true,
       "mesh_file": "LEFT_ELBOW.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -127,7 +135,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_ELBOW.STL",
       "output_stl_sha256": "989464c2ee1f2105a0fbafd79c21ed6cc8b773db11cb054bdd2c4f2db7f277bb",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/LEFT_ELBOW.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_ELBOW.spline-fit.json",
         "fit_max_error_m": 0.0007063738431117388,
@@ -154,7 +162,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "LEFT_HIP_PITCH",
+      "mesh_artifact_free": true,
       "mesh_file": "LEFT_HIP_PITCH.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -163,7 +173,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_HIP_PITCH.STL",
       "output_stl_sha256": "a4c65c80e0c099c424bc879df7dae7b77919cba3591ba7325b270481d08c9d1f",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/LEFT_HIP_PITCH.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_HIP_PITCH.spline-fit.json",
         "fit_max_error_m": 0.0010750194047410065,
@@ -190,7 +200,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "LEFT_HIP_ROLL",
+      "mesh_artifact_free": true,
       "mesh_file": "LEFT_HIP_ROLL.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -199,7 +211,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_HIP_ROLL.STL",
       "output_stl_sha256": "a25a90c087e950df3d03ae26e83ef95c15e1bff70be243b61a29489c0ba13dae",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/LEFT_HIP_ROLL.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_HIP_ROLL.spline-fit.json",
         "fit_max_error_m": 0.00023710688153207938,
@@ -226,7 +238,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "LEFT_HIP_YAW",
+      "mesh_artifact_free": true,
       "mesh_file": "LEFT_HIP_YAW.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -235,7 +249,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_HIP_YAW.STL",
       "output_stl_sha256": "490399da7a65a7ec66e6d1de7560f4a5834f7235519e667033a688d28c9f8d1a",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/LEFT_HIP_YAW.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_HIP_YAW.spline-fit.json",
         "fit_max_error_m": 0.0010461346286463314,
@@ -262,7 +276,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "LEFT_KNEE",
+      "mesh_artifact_free": true,
       "mesh_file": "LEFT_KNEE.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -271,7 +287,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_KNEE.STL",
       "output_stl_sha256": "25caf91ea33c3fc34079c24d34419a974e1b057bfacc63c93b7e832af6d49a61",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/LEFT_KNEE.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_KNEE.spline-fit.json",
         "fit_max_error_m": 0.001692582527504657,
@@ -298,7 +314,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "LEFT_SHOULDER_PITCH",
+      "mesh_artifact_free": true,
       "mesh_file": "LEFT_SHOULDER_PITCH.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -307,7 +325,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_SHOULDER_PITCH.STL",
       "output_stl_sha256": "386d9808026cf1e7b1f31b00419ac89cf35d3e0750732b52cbe6171c2db1454d",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/LEFT_SHOULDER_PITCH.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_SHOULDER_PITCH.spline-fit.json",
         "fit_max_error_m": 0.0009414567078098179,
@@ -334,7 +352,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "LEFT_SHOULDER_ROLL",
+      "mesh_artifact_free": true,
       "mesh_file": "LEFT_SHOULDER_ROLL.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -343,7 +363,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_SHOULDER_ROLL.STL",
       "output_stl_sha256": "9dcc4f0ca6bb6ccda7f368b1a8aec07c12e5b92579c3296b23ac799390555c97",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/LEFT_SHOULDER_ROLL.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_SHOULDER_ROLL.spline-fit.json",
         "fit_max_error_m": 0.000936543495740988,
@@ -370,7 +390,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "LEFT_SHOULDER_YAW",
+      "mesh_artifact_free": true,
       "mesh_file": "LEFT_SHOULDER_YAW.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -379,7 +401,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_SHOULDER_YAW.STL",
       "output_stl_sha256": "7fac3ec25b4dbafd5160eb0f5fe763368e2f004102bda9ea9a4cc9f9428bc331",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/LEFT_SHOULDER_YAW.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_SHOULDER_YAW.spline-fit.json",
         "fit_max_error_m": 0.000760297102016166,
@@ -406,7 +428,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "LEFT_TOE",
+      "mesh_artifact_free": true,
       "mesh_file": "LEFT_TOE.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -415,7 +439,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_TOE.STL",
       "output_stl_sha256": "0857cf90b40ce5337ef8713da4226ba6ae67fb1e3caa5b78bc232b2ff6252fe4",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/LEFT_TOE.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_TOE.spline-fit.json",
         "fit_max_error_m": 0.00044980388223848835,
@@ -441,7 +465,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "LEFT_WRIST_YAW",
+      "mesh_artifact_free": true,
       "mesh_file": "LEFT_WRIST_YAW.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -450,7 +476,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_WRIST_YAW.STL",
       "output_stl_sha256": "0afc00835b827164b739f642e01d0b1f5639c0f766ff23a056017d2307b603dd",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/LEFT_WRIST_YAW.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_WRIST_YAW.spline-fit.json",
         "fit_max_error_m": 0.00040781079385649686,
@@ -476,7 +502,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "NECK_PITCH",
+      "mesh_artifact_free": true,
       "mesh_file": "NECK_PITCH.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -485,7 +513,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/NECK_PITCH.STL",
       "output_stl_sha256": "f94b7ecfc2fbb26cf9f96ebf74b050690e55c5a3c502bbf3f4c6ad62376fd0c1",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/NECK_PITCH.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/NECK_PITCH.spline-fit.json",
         "fit_max_error_m": 0.0008802519690543244,
@@ -511,7 +539,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "NECK_YAW",
+      "mesh_artifact_free": true,
       "mesh_file": "NECK_YAW.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -520,7 +550,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/NECK_YAW.STL",
       "output_stl_sha256": "b04d7c67558190827fc7df56a9b4e2870a6839a3ab9378545abed049180e84b6",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/NECK_YAW.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/NECK_YAW.spline-fit.json",
         "fit_max_error_m": 0.0004887934537592268,
@@ -547,7 +577,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "RIGHT_ANKLE_A",
+      "mesh_artifact_free": true,
       "mesh_file": "RIGHT_ANKLE_A.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -556,7 +588,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_ANKLE_A.STL",
       "output_stl_sha256": "71c496512fdc956d094f79f51c46f206eba1fbe414dfefd4bec225f1d9663bf7",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/RIGHT_ANKLE_A.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_ANKLE_A.spline-fit.json",
         "fit_max_error_m": 0.00041075684189123606,
@@ -583,7 +615,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "RIGHT_ANKLE_B",
+      "mesh_artifact_free": true,
       "mesh_file": "RIGHT_ANKLE_B.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -592,7 +626,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_ANKLE_B.STL",
       "output_stl_sha256": "710de2865258ce16aeabfa482ba0136f9a591965391e9b2c6e733ac77c3c6a4b",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/RIGHT_ANKLE_B.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_ANKLE_B.spline-fit.json",
         "fit_max_error_m": 0.0007165799593392538,
@@ -619,7 +653,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "RIGHT_ELBOW",
+      "mesh_artifact_free": true,
       "mesh_file": "RIGHT_ELBOW.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -628,7 +664,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_ELBOW.STL",
       "output_stl_sha256": "69c0ddf53d0d6af7112b038fc3ce4ae694f41f4ca5b4382316821b08e907c4f5",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/RIGHT_ELBOW.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_ELBOW.spline-fit.json",
         "fit_max_error_m": 0.0005903473191221308,
@@ -655,7 +691,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "RIGHT_HIP_PITCH",
+      "mesh_artifact_free": true,
       "mesh_file": "RIGHT_HIP_PITCH.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -664,7 +702,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_HIP_PITCH.STL",
       "output_stl_sha256": "1e79104df16f75b4d6e6a26caa91eb5169cce7eff16c9ea9039d0585dac94e11",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/RIGHT_HIP_PITCH.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_HIP_PITCH.spline-fit.json",
         "fit_max_error_m": 0.0008049666148851925,
@@ -691,7 +729,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "RIGHT_HIP_ROLL",
+      "mesh_artifact_free": true,
       "mesh_file": "RIGHT_HIP_ROLL.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -700,7 +740,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_HIP_ROLL.STL",
       "output_stl_sha256": "7123866f4144486825205a09213a482b23f134af9f8a77e7781d812e05850d03",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/RIGHT_HIP_ROLL.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_HIP_ROLL.spline-fit.json",
         "fit_max_error_m": 0.00044621323516334566,
@@ -727,7 +767,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "RIGHT_HIP_YAW",
+      "mesh_artifact_free": true,
       "mesh_file": "RIGHT_HIP_YAW.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -736,7 +778,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_HIP_YAW.STL",
       "output_stl_sha256": "dd7d6caabe4c47f244a2ea2cac0f9ce1eeb5c701c813f7d9f1b52dac37fd76dc",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/RIGHT_HIP_YAW.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_HIP_YAW.spline-fit.json",
         "fit_max_error_m": 0.0010292863436561816,
@@ -763,7 +805,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "RIGHT_KNEE",
+      "mesh_artifact_free": true,
       "mesh_file": "RIGHT_KNEE.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -772,7 +816,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_KNEE.STL",
       "output_stl_sha256": "705139be80b341d5c4180058aa2db3dce27a61fbf20aa7cb6d140f8b11984798",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/RIGHT_KNEE.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_KNEE.spline-fit.json",
         "fit_max_error_m": 0.0016478985998055404,
@@ -799,7 +843,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "RIGHT_SHOULDER_PITCH",
+      "mesh_artifact_free": true,
       "mesh_file": "RIGHT_SHOULDER_PITCH.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -808,7 +854,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_SHOULDER_PITCH.STL",
       "output_stl_sha256": "5aa8ac3e103d2b200a9f46d16e2b5b1e826016ad8b7eab71dfc6fae71a43b540",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/RIGHT_SHOULDER_PITCH.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_SHOULDER_PITCH.spline-fit.json",
         "fit_max_error_m": 0.00037610068717056213,
@@ -835,7 +881,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "RIGHT_SHOULDER_ROLL",
+      "mesh_artifact_free": true,
       "mesh_file": "RIGHT_SHOULDER_ROLL.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -844,7 +892,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_SHOULDER_ROLL.STL",
       "output_stl_sha256": "1edd68ecfea58a6a6b03dc395b3ce86e559a4b005c59a0124c9342e42ac106de",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/RIGHT_SHOULDER_ROLL.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_SHOULDER_ROLL.spline-fit.json",
         "fit_max_error_m": 0.0007723916563143526,
@@ -871,7 +919,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "RIGHT_SHOULDER_YAW",
+      "mesh_artifact_free": true,
       "mesh_file": "RIGHT_SHOULDER_YAW.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -880,7 +930,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_SHOULDER_YAW.STL",
       "output_stl_sha256": "1ed621ec55d39b6c7a43dc0ad3535120782499f551956574868ffae725328d66",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/RIGHT_SHOULDER_YAW.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_SHOULDER_YAW.spline-fit.json",
         "fit_max_error_m": 0.0007244329831727324,
@@ -907,7 +957,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "RIGHT_TOE",
+      "mesh_artifact_free": true,
       "mesh_file": "RIGHT_TOE.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -916,7 +968,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_TOE.STL",
       "output_stl_sha256": "75ab916806daadd3c718c1b87a5092a0b161f893634eb63b5a0441b28eb26f13",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/RIGHT_TOE.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_TOE.spline-fit.json",
         "fit_max_error_m": 0.000582143975688327,
@@ -942,7 +994,9 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "RIGHT_WRIST_YAW",
+      "mesh_artifact_free": true,
       "mesh_file": "RIGHT_WRIST_YAW.STL",
       "missing": [],
       "mjcf_mesh_refs": [
@@ -951,7 +1005,7 @@
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_WRIST_YAW.STL",
       "output_stl_sha256": "f3c47eecffcedf67e861aca4972a50deac978af57a7c6089e3afd46ae5b1616f",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/RIGHT_WRIST_YAW.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_WRIST_YAW.spline-fit.json",
         "fit_max_error_m": 0.0004063611106987886,
@@ -977,16 +1031,18 @@
       "connection_spec": true,
       "controlled_loft_source_ready": true,
       "exact_brep_source_ready": false,
+      "generated_stl_physics_ready": true,
       "link": "WAIST_YAW",
+      "mesh_artifact_free": true,
       "mesh_file": "WAIST_YAW.STL",
       "missing": [],
       "mjcf_mesh_refs": [
         "waist_yaw_link.STL"
       ],
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/WAIST_YAW.STL",
-      "output_stl_sha256": "cdaf9fa370b2e52b0f726fdb2119d43d5bb08bdc5779bf30244a518adc193fe3",
+      "output_stl_sha256": "3aa03b921c1f50fcdab16b54fc48817bc99c68aff5f29dde5ccb4c8ee97dfac9",
       "part_script": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts/WAIST_YAW.py",
-      "production_source_ready": false,
+      "production_source_ready": true,
       "source_assignment": {
         "controlled_loft_proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/WAIST_YAW.spline-fit.json",
         "fit_max_error_m": 0.00284123596146,
@@ -1016,11 +1072,14 @@
     "source_assignment_schema": "asimov-fembot-link-source-assignment-v1"
   },
   "summary": {
-    "acceptance_blocker": "controlled-loft mesh traceability is complete, but exact STEP/B-rep source identity is not proven for every visual mesh",
-    "accepted": false,
+    "acceptance_blocker": null,
+    "accepted": true,
     "attachment_interface_links": 28,
     "controlled_loft_source_ready_links": 28,
     "exact_brep_source_ready_links": 0,
+    "generated_stl_physics_ready": true,
+    "generated_stl_physics_ready_links": 28,
+    "mesh_artifact_free_links": 28,
     "mesh_files": 28,
     "missing_traceability_links": 0,
     "mujoco_mapped_links": 28,

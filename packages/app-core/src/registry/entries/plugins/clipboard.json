@@ -12,7 +12,7 @@
       "required": false,
       "sensitive": false,
       "label": "Base Path",
-      "help": "Base directory for clipboard files (default: ~/.eliza/clipboard)",
+      "help": "Base directory for clipboard files (default: <stateDir>/clipboard)",
       "advanced": false
     },
     "CLIPBOARD_MAX_FILE_SIZE": {

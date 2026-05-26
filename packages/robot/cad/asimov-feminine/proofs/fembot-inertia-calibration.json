@@ -5,11 +5,11 @@
       "accepted": false,
       "body": "pelvis_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        0.0003054409384786722,
-        0.0002209810247990674,
-        0.00012961190017964818
+        0.004364145096807679,
+        0.004279939942146948,
+        0.0029672033090123594
       ],
-      "cad_material_mass_estimate_kg": 0.070476119416645,
+      "cad_material_mass_estimate_kg": 0.9949634405603669,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.006266716212703865,
@@ -20,6 +20,7 @@
       "group": "torso",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": false,
         "families_required": [
           "component_specific_clearance",
@@ -304,31 +305,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 26,
       "inertia_relative_delta_vs_cad": [
-        19.516949181458354,
-        24.044457674997307,
-        37.83958929498479
+        0.4359550550434024,
+        0.2930905567290685,
+        0.6965716354622506
       ],
       "inertia_scale_to_compiled": [
-        20.516949181458354,
-        25.044457674997307,
-        38.83958929498479
+        1.4359550550434024,
+        1.2930905567290685,
+        1.6965716354622506
       ],
       "inertia_within_tolerance": false,
       "link": "IMU_ORIGIN",
-      "mass_relative_delta_vs_cad": 48.76029527146056,
-      "mass_scale_to_compiled": 49.76029527146056,
+      "mass_relative_delta_vs_cad": 2.5246646950001144,
+      "mass_scale_to_compiled": 3.5246646950001144,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 3.4364363923423253
+      "required_added_mass_to_match_compiled_kg": 2.511949071198603
     },
     {
       "accepted": false,
       "body": "waist_yaw_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        0.0024420244275928336,
-        0.001920664633245543,
-        0.0005556325689251156
+        0.07793845768219204,
+        0.07223973885487905,
+        0.0415481136873777
       ],
-      "cad_material_mass_estimate_kg": 0.15680898673994034,
+      "cad_material_mass_estimate_kg": 4.474368388627603,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.05037256365407073,
@@ -339,6 +340,7 @@
       "group": "torso",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -796,31 +798,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 43,
       "inertia_relative_delta_vs_cad": [
-        19.62737910600029,
-        19.671172530261767,
-        55.81473513271938
+        -0.3536879590371952,
+        -0.4504078968731063,
+        -0.2402033586380778
       ],
       "inertia_scale_to_compiled": [
-        20.627379106000287,
-        20.671172530261767,
-        56.81473513271938
+        0.6463120409628048,
+        0.5495921031268937,
+        0.7597966413619223
       ],
       "inertia_within_tolerance": false,
       "link": "WAIST_YAW",
-      "mass_relative_delta_vs_cad": 51.34713743954706,
-      "mass_scale_to_compiled": 52.34713743954706,
+      "mass_relative_delta_vs_cad": 0.8345609631730649,
+      "mass_scale_to_compiled": 1.834560963173065,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 8.05169259389183
+      "required_added_mass_to_match_compiled_kg": 3.734133192004167
     },
     {
       "accepted": false,
       "body": "neck_yaw_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        1.3113309472188803e-06,
-        1.3113305380314438e-06,
-        6.603811623961801e-08
+        0.00017146954585568972,
+        0.00019630555608802304,
+        0.00016349017986683838
       ],
-      "cad_material_mass_estimate_kg": 0.002751482372517997,
+      "cad_material_mass_estimate_kg": 0.21985497311762178,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.0002666203556642202,
@@ -831,6 +833,7 @@
       "group": "head",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -1228,31 +1231,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 37,
       "inertia_relative_delta_vs_cad": [
-        202.32041749619242,
-        188.70927397248283,
-        3022.3722348223964
+        0.5549137564556813,
+        0.2672670568546813,
+        0.22122201615690304
       ],
       "inertia_scale_to_compiled": [
-        203.32041749619242,
-        189.70927397248283,
-        3023.3722348223964
+        1.5549137564556814,
+        1.2672670568546813,
+        1.221222016156903
       ],
       "inertia_within_tolerance": false,
       "link": "NECK_YAW",
-      "mass_relative_delta_vs_cad": 192.6371865034455,
-      "mass_scale_to_compiled": 193.63718650344546,
+      "mass_relative_delta_vs_cad": 1.4233670850063929,
+      "mass_scale_to_compiled": 2.423367085006393,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 0.530037822955692
+      "required_added_mass_to_match_compiled_kg": 0.3129343322105882
     },
     {
       "accepted": false,
       "body": "neck_pitch_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        4.335313353684691e-05,
-        4.521047570862323e-05,
-        2.2247429589001523e-06
+        0.011796429400663772,
+        0.014404105792268326,
+        0.010581654738961674
       ],
-      "cad_material_mass_estimate_kg": 0.01530768264256284,
+      "cad_material_mass_estimate_kg": 2.76919162255316,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.0017308713376780033,
@@ -1263,6 +1266,7 @@
       "group": "head",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -1720,31 +1724,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 43,
       "inertia_relative_delta_vs_cad": [
-        38.92494190084075,
-        32.9271653889329,
-        540.5714851401488
+        -0.8532715893183229,
+        -0.8935120785142995,
+        -0.8861371516998795
       ],
       "inertia_scale_to_compiled": [
-        39.92494190084075,
-        33.9271653889329,
-        541.5714851401488
+        0.14672841068167705,
+        0.10648792148570052,
+        0.11386284830012053
       ],
       "inertia_within_tolerance": false,
       "link": "NECK_PITCH",
-      "mass_relative_delta_vs_cad": 24.74234248114008,
-      "mass_scale_to_compiled": 25.74234248114008,
+      "mass_relative_delta_vs_cad": -0.8577001295366691,
+      "mass_scale_to_compiled": 0.14229987046333098,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 0.3787479265348932
+      "required_added_mass_to_match_compiled_kg": 0.0
     },
     {
       "accepted": false,
       "body": "left_shoulder_pitch_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        1.107030212172239e-05,
-        4.374590515130111e-06,
-        6.969978861329078e-06
+        0.00011502569488358655,
+        7.767694083968614e-05,
+        0.00013547535165930137
       ],
-      "cad_material_mass_estimate_kg": 0.011427422706866142,
+      "cad_material_mass_estimate_kg": 0.07613150366028777,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.0004213792018908906,
@@ -1755,6 +1759,7 @@
       "group": "arm",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -2152,31 +2157,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 37,
       "inertia_relative_delta_vs_cad": [
-        37.06392971552701,
-        94.67032713124603,
-        46.39113909324191
+        2.6633484572064847,
+        4.387937541354838,
+        1.4381943552720324
       ],
       "inertia_scale_to_compiled": [
-        38.06392971552701,
-        95.67032713124603,
-        47.39113909324191
+        3.6633484572064847,
+        5.387937541354838,
+        2.4381943552720324
       ],
       "inertia_within_tolerance": false,
       "link": "LEFT_SHOULDER_PITCH",
-      "mass_relative_delta_vs_cad": 51.431519505346536,
-      "mass_scale_to_compiled": 52.431519505346536,
+      "mass_relative_delta_vs_cad": 6.870028933415489,
+      "mass_scale_to_compiled": 7.870028933415489,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 0.5877297138440258
+      "required_added_mass_to_match_compiled_kg": 0.5230256328906042
     },
     {
       "accepted": false,
       "body": "right_shoulder_pitch_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        1.6204034170549222e-05,
-        8.078358183262121e-06,
-        8.458516912473326e-06
+        0.00016042794558642133,
+        0.00011599726237208892,
+        0.0001678327686648223
       ],
-      "cad_material_mass_estimate_kg": 0.013867911245538454,
+      "cad_material_mass_estimate_kg": 0.09350510276289425,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.00042138414376810226,
@@ -2187,6 +2192,7 @@
       "group": "arm",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -2584,31 +2590,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 37,
       "inertia_relative_delta_vs_cad": [
-        25.004891086564513,
-        50.80681532840364,
-        38.05145617964014
+        1.6266255684306934,
+        2.607964550184602,
+        0.968134144362903
       ],
       "inertia_scale_to_compiled": [
-        26.004891086564513,
-        51.806815328403644,
-        39.05145617964014
+        2.6266255684306934,
+        3.607964550184602,
+        1.968134144362903
       ],
       "inertia_within_tolerance": false,
       "link": "RIGHT_SHOULDER_PITCH",
-      "mass_relative_delta_vs_cad": 42.20449526378169,
-      "mass_scale_to_compiled": 43.20449526378169,
+      "mass_relative_delta_vs_cad": 5.407736989987832,
+      "mass_scale_to_compiled": 6.407736989987832,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 0.5852881944808725
+      "required_added_mass_to_match_compiled_kg": 0.5056510029635167
     },
     {
       "accepted": false,
       "body": "left_shoulder_roll_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        2.929785083231865e-05,
-        2.8927825791966325e-05,
-        6.167179586246009e-07
+        0.0019688918343182967,
+        0.0017694744721511776,
+        0.0007106957607589755
       ],
-      "cad_material_mass_estimate_kg": 0.010278412663844686,
+      "cad_material_mass_estimate_kg": 0.5401876374746933,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.0016328159323109016,
@@ -2619,6 +2625,7 @@
       "group": "arm",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -3076,31 +3083,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 43,
       "inertia_relative_delta_vs_cad": [
-        54.73159415876784,
-        50.55887662850106,
-        1200.1912208830806
+        -0.17069292286630722,
+        -0.15710216529682972,
+        0.04235347748477466
       ],
       "inertia_scale_to_compiled": [
-        55.73159415876784,
-        51.55887662850106,
-        1201.1912208830806
+        0.8293070771336928,
+        0.8428978347031703,
+        1.0423534774847747
       ],
-      "inertia_within_tolerance": false,
+      "inertia_within_tolerance": true,
       "link": "LEFT_SHOULDER_ROLL",
-      "mass_relative_delta_vs_cad": 126.76565537395744,
-      "mass_scale_to_compiled": 127.76565537395744,
+      "mass_relative_delta_vs_cad": 1.4310592081286237,
+      "mass_scale_to_compiled": 2.431059208128624,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 1.3029497175362554
+      "required_added_mass_to_match_compiled_kg": 0.7730404927254068
     },
     {
       "accepted": false,
       "body": "right_shoulder_roll_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        2.929785083231865e-05,
-        2.8927825791966325e-05,
-        6.167179586246009e-07
+        0.0019460693469706954,
+        0.0017496812277737416,
+        0.0007032479614267475
       ],
-      "cad_material_mass_estimate_kg": 0.010278412663844686,
+      "cad_material_mass_estimate_kg": 0.5339130834810113,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.0016328069612248856,
@@ -3111,6 +3118,7 @@
       "group": "arm",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -3568,31 +3576,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 43,
       "inertia_relative_delta_vs_cad": [
-        54.73128795589763,
-        50.55921848038437,
-        1200.151522280921
+        -0.16097185140572845,
+        -0.14756124344533394,
+        0.053357784808996604
       ],
       "inertia_scale_to_compiled": [
-        55.73128795589763,
-        51.55921848038437,
-        1201.151522280921
+        0.8390281485942716,
+        0.852438756554666,
+        1.0533577848089966
       ],
-      "inertia_within_tolerance": false,
+      "inertia_within_tolerance": true,
       "link": "RIGHT_SHOULDER_ROLL",
-      "mass_relative_delta_vs_cad": 126.76509556530816,
-      "mass_scale_to_compiled": 127.76509556530816,
+      "mass_relative_delta_vs_cad": 1.4596182728728635,
+      "mass_scale_to_compiled": 2.4596182728728633,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 1.3029439635919453
+      "required_added_mass_to_match_compiled_kg": 0.7793092927747787
     },
     {
       "accepted": false,
       "body": "left_shoulder_yaw_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        7.439584767752875e-06,
-        7.439584045530159e-06,
-        1.1655838675983226e-07
+        0.0007375115539411571,
+        0.000753759863867172,
+        0.0002964868391466516
       ],
-      "cad_material_mass_estimate_kg": 0.004856412702250364,
+      "cad_material_mass_estimate_kg": 0.39304478250273495,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.0005146382685089992,
@@ -3603,6 +3611,7 @@
       "group": "arm",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -4000,31 +4009,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 37,
       "inertia_relative_delta_vs_cad": [
-        68.17567103203335,
-        66.39567911950105,
-        2660.9405563914934
+        -0.3021963306759802,
+        -0.3348069549064417,
+        0.04649332090620345
       ],
       "inertia_scale_to_compiled": [
-        69.17567103203336,
-        67.39567911950105,
-        2661.9405563914934
+        0.6978036693240198,
+        0.6651930450935583,
+        1.0464933209062035
       ],
       "inertia_within_tolerance": false,
       "link": "LEFT_SHOULDER_YAW",
-      "mass_relative_delta_vs_cad": 145.6641735373349,
-      "mass_scale_to_compiled": 146.6641735373349,
+      "mass_relative_delta_vs_cad": 0.8121643818711899,
+      "mass_scale_to_compiled": 1.8121643818711899,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 0.7074053426295146
+      "required_added_mass_to_match_compiled_kg": 0.31921697282903
     },
     {
       "accepted": false,
       "body": "right_shoulder_yaw_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        7.488506017001855e-06,
-        7.488505293223913e-06,
-        1.1680938172333185e-07
+        0.0007801480736282988,
+        0.0007918301187217045,
+        0.00031583749643076934
       ],
-      "cad_material_mass_estimate_kg": 0.004866870423593416,
+      "cad_material_mass_estimate_kg": 0.41139912029832476,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.0005162644551727996,
@@ -4035,6 +4044,7 @@
       "group": "arm",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -4432,31 +4442,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 37,
       "inertia_relative_delta_vs_cad": [
-        67.94091478335947,
-        66.12479048595469,
-        2658.6582661872812
+        -0.33824811901186136,
+        -0.36518662655558387,
+        -0.016351632787262434
       ],
       "inertia_scale_to_compiled": [
-        68.94091478335949,
-        67.12479048595468,
-        2659.6582661872812
+        0.6617518809881386,
+        0.6348133734444161,
+        0.9836483672127375
       ],
       "inertia_within_tolerance": false,
       "link": "RIGHT_SHOULDER_YAW",
-      "mass_relative_delta_vs_cad": 145.34902788430352,
-      "mass_scale_to_compiled": 146.34902788430352,
+      "mass_relative_delta_vs_cad": 0.7313156985247576,
+      "mass_scale_to_compiled": 1.7313156985247578,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 0.7073948849081715
+      "required_added_mass_to_match_compiled_kg": 0.3008626350334402
     },
     {
       "accepted": false,
       "body": "left_elbow_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        4.785112673988783e-05,
-        7.845615045685627e-05,
-        3.366089801827388e-05
+        0.0005047902422362583,
+        0.0008068058646377046,
+        0.0005604585409670668
       ],
-      "cad_material_mass_estimate_kg": 0.031831497186913846,
+      "cad_material_mass_estimate_kg": 0.2580762845582098,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.00041843048604553966,
@@ -4467,6 +4477,7 @@
       "group": "arm",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -4894,31 +4905,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 40,
       "inertia_relative_delta_vs_cad": [
-        7.744422849645119,
-        4.206495260622029,
-        7.6464003164074414
+        -0.171080478513488,
+        -0.4937052475396926,
+        -0.48070092968239014
       ],
       "inertia_scale_to_compiled": [
-        8.744422849645119,
-        5.206495260622029,
-        8.64640031640744
+        0.8289195214865119,
+        0.5062947524603074,
+        0.5192990703176098
       ],
       "inertia_within_tolerance": false,
       "link": "LEFT_ELBOW",
-      "mass_relative_delta_vs_cad": 19.806988669454874,
-      "mass_scale_to_compiled": 20.80698866945487,
+      "mass_relative_delta_vs_cad": 1.5663636720192844,
+      "mass_scale_to_compiled": 2.566363672019284,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 0.6304861041129872
+      "required_added_mass_to_match_compiled_kg": 0.4042413167416912
     },
     {
       "accepted": false,
       "body": "right_elbow_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        4.7733046545307686e-05,
-        7.826125636019162e-05,
-        3.358055790581407e-05
+        0.00045521307817864823,
+        0.0007447296671555955,
+        0.0005073868518766458
       ],
-      "cad_material_mass_estimate_kg": 0.03179476643670134,
+      "cad_material_mass_estimate_kg": 0.23827248724657088,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.00041843306796428026,
@@ -4929,6 +4940,7 @@
       "group": "arm",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -5356,31 +5368,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 40,
       "inertia_relative_delta_vs_cad": [
-        7.766108561017746,
-        4.2194218795991185,
-        7.667163823651034
+        -0.08079734958742477,
+        -0.4515076654171252,
+        -0.42637812630972727
       ],
       "inertia_scale_to_compiled": [
-        8.766108561017747,
-        5.2194218795991185,
-        8.667163823651034
+        0.9192026504125752,
+        0.5484923345828748,
+        0.5736218736902727
       ],
       "inertia_within_tolerance": false,
       "link": "RIGHT_ELBOW",
-      "mass_relative_delta_vs_cad": 19.830920717876555,
-      "mass_scale_to_compiled": 20.830920717876555,
+      "mass_relative_delta_vs_cad": 1.7796505863513612,
+      "mass_scale_to_compiled": 2.7796505863513614,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 0.6305194924496267
+      "required_added_mass_to_match_compiled_kg": 0.4240417716397571
     },
     {
       "accepted": false,
       "body": "left_wrist_yaw_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        2.2922864998882657e-07,
-        2.292284188466373e-07,
-        3.7303673356476614e-08
+        4.650173205625823e-06,
+        4.6935699071971914e-06,
+        4.384803500392814e-06
       ],
-      "cad_material_mass_estimate_kg": 0.0015542599564482254,
+      "cad_material_mass_estimate_kg": 0.018300888343258513,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         1.4450685760391175e-05,
@@ -5391,6 +5403,7 @@
       "group": "arm",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -5788,31 +5801,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 37,
       "inertia_relative_delta_vs_cad": [
-        62.04048713411502,
-        37.65104539548117,
-        219.45901036853166
+        2.1075586051092894,
+        0.8876714735173792,
+        0.8755528977622491
       ],
       "inertia_scale_to_compiled": [
-        63.04048713411501,
-        38.65104539548118,
-        220.45901036853166
+        3.1075586051092894,
+        1.8876714735173792,
+        1.875552897762249
       ],
       "inertia_within_tolerance": false,
       "link": "LEFT_WRIST_YAW",
-      "mass_relative_delta_vs_cad": 36.35462038630796,
-      "mass_scale_to_compiled": 37.35462038630796,
+      "mass_relative_delta_vs_cad": 2.172457509482051,
+      "mass_scale_to_compiled": 3.172457509482051,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 0.05650453069831477
+      "required_added_mass_to_match_compiled_kg": 0.03975790231150449
     },
     {
       "accepted": false,
       "body": "right_wrist_yaw_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        2.3002706150302553e-07,
-        2.300268300956002e-07,
-        3.7346479822597866e-08
+        6.405962969832588e-06,
+        6.477666313071178e-06,
+        6.034744375013167e-06
       ],
-      "cad_material_mass_estimate_kg": 0.0015560434906200554,
+      "cad_material_mass_estimate_kg": 0.025211677112905263,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         1.4450840377852102e-05,
@@ -5823,6 +5836,7 @@
       "group": "arm",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -6220,31 +6234,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 37,
       "inertia_relative_delta_vs_cad": [
-        61.82234917678167,
-        37.51711668392968,
-        219.2091546412288
+        1.2558420093754863,
+        0.36777194548418024,
+        0.3627812943679226
       ],
       "inertia_scale_to_compiled": [
-        62.82234917678167,
-        38.517116683929686,
-        220.20915464122876
+        2.2558420093754865,
+        1.3677719454841801,
+        1.3627812943679227
       ],
       "inertia_within_tolerance": false,
       "link": "RIGHT_WRIST_YAW",
-      "mass_relative_delta_vs_cad": 36.31226731640722,
-      "mass_scale_to_compiled": 37.31226731640722,
+      "mass_relative_delta_vs_cad": 1.3028817328559077,
+      "mass_scale_to_compiled": 2.3028817328559077,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 0.056503467187350845
+      "required_added_mass_to_match_compiled_kg": 0.03284783356506564
     },
     {
       "accepted": false,
       "body": "left_hip_pitch_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        4.5435118126148994e-05,
-        2.9756123313571994e-05,
-        2.9279547544249296e-05
+        0.0007971179315591764,
+        0.0007876701170591258,
+        0.000809725368051021
       ],
-      "cad_material_mass_estimate_kg": 0.029890300650510876,
+      "cad_material_mass_estimate_kg": 0.5014985012429297,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.00082416096276676,
@@ -6255,6 +6269,7 @@
       "group": "leg",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -6712,31 +6727,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 43,
       "inertia_relative_delta_vs_cad": [
-        17.139293937313123,
-        24.27172925122676,
-        22.2977453407429
+        0.03392601036422164,
+        -0.04529996040174723,
+        -0.15755703193541057
       ],
       "inertia_scale_to_compiled": [
-        18.139293937313123,
-        25.271729251226756,
-        23.2977453407429
+        1.0339260103642216,
+        0.9547000395982528,
+        0.8424429680645894
       ],
-      "inertia_within_tolerance": false,
+      "inertia_within_tolerance": true,
       "link": "LEFT_HIP_PITCH",
-      "mass_relative_delta_vs_cad": 34.33926053563787,
-      "mass_scale_to_compiled": 35.33926053563788,
+      "mass_relative_delta_vs_cad": 1.106289688920266,
+      "mass_scale_to_compiled": 2.106289688920266,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 1.0264108215264391
+      "required_added_mass_to_match_compiled_kg": 0.5548026209340203
     },
     {
       "accepted": false,
       "body": "right_hip_pitch_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        4.5312437875794606e-05,
-        2.9721451081123455e-05,
-        2.9175651865444013e-05
+        0.0009262235461586882,
+        0.0009227614542359572,
+        0.0009446183698557369
       ],
-      "cad_material_mass_estimate_kg": 0.02985549818935701,
+      "cad_material_mass_estimate_kg": 0.5821517751396973,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.0008241575540911512,
@@ -6747,6 +6762,7 @@
       "group": "leg",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -7204,31 +7220,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 43,
       "inertia_relative_delta_vs_cad": [
-        17.188329578519696,
-        24.30130531746838,
-        22.38068552062858
+        -0.11019585119686669,
+        -0.1850640218772997,
+        -0.27785996663449886
       ],
       "inertia_scale_to_compiled": [
-        18.188329578519696,
-        25.30130531746838,
-        23.38068552062858
+        0.8898041488031333,
+        0.8149359781227002,
+        0.7221400333655011
       ],
       "inertia_within_tolerance": false,
       "link": "RIGHT_HIP_PITCH",
-      "mass_relative_delta_vs_cad": 34.38033169269178,
-      "mass_scale_to_compiled": 35.38033169269178,
+      "mass_relative_delta_vs_cad": 0.814470854334393,
+      "mass_scale_to_compiled": 1.814470854334393,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 1.026441930600653
+      "required_added_mass_to_match_compiled_kg": 0.4741456536503127
     },
     {
       "accepted": false,
       "body": "left_hip_roll_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        5.11241679536552e-06,
-        7.495519058454657e-06,
-        2.6081048198817167e-06
+        4.861951926790408e-05,
+        6.132910341327287e-05,
+        4.27272470299268e-05
       ],
-      "cad_material_mass_estimate_kg": 0.009374795139370215,
+      "cad_material_mass_estimate_kg": 0.06301972739122558,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.0003667524425203498,
@@ -7239,6 +7255,7 @@
       "group": "leg",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -7636,31 +7653,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 37,
       "inertia_relative_delta_vs_cad": [
-        70.73758658582302,
-        46.69587818808879,
-        50.019553038161526
+        6.5433169237948325,
+        4.829293827425819,
+        2.114273711429143
       ],
       "inertia_scale_to_compiled": [
-        71.73758658582302,
-        47.695878188088784,
-        51.01955303816153
+        7.5433169237948325,
+        5.829293827425819,
+        3.114273711429143
       ],
       "inertia_within_tolerance": false,
       "link": "LEFT_HIP_ROLL",
-      "mass_relative_delta_vs_cad": 43.20023405704731,
-      "mass_scale_to_compiled": 44.20023405704731,
+      "mass_relative_delta_vs_cad": 5.575213136430144,
+      "mass_scale_to_compiled": 6.575213136430144,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 0.40499334425766276
+      "required_added_mass_to_match_compiled_kg": 0.3513484120058074
     },
     {
       "accepted": false,
       "body": "right_hip_roll_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        5.112416795366126e-06,
-        7.495519058455538e-06,
-        2.6081048198820293e-06
+        4.8217399143075866e-05,
+        6.083599299806758e-05,
+        4.238223753644938e-05
       ],
-      "cad_material_mass_estimate_kg": 0.009374795139371317,
+      "cad_material_mass_estimate_kg": 0.0625038977161714,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.00036728520271254734,
@@ -7671,6 +7688,7 @@
       "group": "leg",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -8068,31 +8086,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 37,
       "inertia_relative_delta_vs_cad": [
-        70.84179565434751,
-        46.73387806410056,
-        50.13157452684779
+        6.6172752831959905,
+        4.881225490554966,
+        2.146518771146527
       ],
       "inertia_scale_to_compiled": [
-        71.84179565434751,
-        47.733878064100566,
-        51.13157452684779
+        7.6172752831959905,
+        5.881225490554966,
+        3.146518771146527
       ],
       "inertia_within_tolerance": false,
       "link": "RIGHT_HIP_ROLL",
-      "mass_relative_delta_vs_cad": 43.248966985707014,
-      "mass_scale_to_compiled": 44.248966985707014,
+      "mass_relative_delta_vs_cad": 5.6367861169797395,
+      "mass_scale_to_compiled": 6.636786116979739,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 0.40545020548043664
+      "required_added_mass_to_match_compiled_kg": 0.3523211029036366
     },
     {
       "accepted": false,
       "body": "left_hip_yaw_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        0.00010247262654171631,
-        0.00010258719548224995,
-        4.2372497637796075e-07
+        0.016432624845259248,
+        0.01672671800522302,
+        0.004302518786106552
       ],
-      "cad_material_mass_estimate_kg": 0.012880926360515882,
+      "cad_material_mass_estimate_kg": 1.8164079120662,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.003567327360551446,
@@ -8103,6 +8121,7 @@
       "group": "leg",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -8560,31 +8579,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 43,
       "inertia_relative_delta_vs_cad": [
-        33.81249072013585,
-        32.29978038737793,
-        3228.1521677830374
+        -0.7829118966602219,
+        -0.7957679994934318,
+        -0.6819833929759807
       ],
       "inertia_scale_to_compiled": [
-        34.81249072013585,
-        33.29978038737793,
-        3229.1521677830374
+        0.21708810333977815,
+        0.20423200050656828,
+        0.3180166070240194
       ],
       "inertia_within_tolerance": false,
       "link": "LEFT_HIP_YAW",
-      "mass_relative_delta_vs_cad": 143.90962156908284,
-      "mass_scale_to_compiled": 144.90962156908284,
-      "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 1.853689238001064
+      "mass_relative_delta_vs_cad": 0.0276161824456707,
+      "mass_scale_to_compiled": 1.0276161824456707,
+      "mass_within_tolerance": true,
+      "required_added_mass_to_match_compiled_kg": 0.05016225229537996
     },
     {
       "accepted": false,
       "body": "right_hip_yaw_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        0.00010247264128421767,
-        0.00010258721023019158,
-        4.237249964983139e-07
+        0.016502472134259795,
+        0.016797629352450872,
+        0.004320437391988671
       ],
-      "cad_material_mass_estimate_kg": 0.012880926972160417,
+      "cad_material_mass_estimate_kg": 1.824139966064014,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.0035671239490203677,
@@ -8595,6 +8614,7 @@
       "group": "leg",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -9052,31 +9072,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 43,
       "inertia_relative_delta_vs_cad": [
-        33.8105006791677,
-        32.294960360923724,
-        3228.1679407091983
+        -0.7838430557555752,
+        -0.7966595746051738,
+        -0.6833007748459324
       ],
       "inertia_scale_to_compiled": [
-        34.8105006791677,
-        33.294960360923724,
-        3229.1679407091983
+        0.21615694424442475,
+        0.2033404253948261,
+        0.31669922515406757
       ],
       "inertia_within_tolerance": false,
       "link": "RIGHT_HIP_YAW",
-      "mass_relative_delta_vs_cad": 143.90200965580206,
-      "mass_scale_to_compiled": 144.90200965580206,
-      "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 1.8535912775235097
+      "mass_relative_delta_vs_cad": 0.023206683269484628,
+      "mass_scale_to_compiled": 1.0232066832694846,
+      "mass_within_tolerance": true,
+      "required_added_mass_to_match_compiled_kg": 0.04233223843165601
     },
     {
       "accepted": false,
       "body": "left_knee_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        0.0001485658064545556,
-        0.00014856580451620927,
-        3.128266673973397e-07
+        0.01792703362900553,
+        0.01864373770116413,
+        0.0033174471531127914
       ],
-      "cad_material_mass_estimate_kg": 0.013033943274125775,
+      "cad_material_mass_estimate_kg": 1.460224096049426,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.009754605474815919,
@@ -9087,6 +9107,7 @@
       "group": "leg",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -9544,31 +9565,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 43,
       "inertia_relative_delta_vs_cad": [
-        64.65848298208329,
-        64.1355263871981,
-        7269.157626626669
+        -0.4558717478482781,
+        -0.4809564457830456,
+        -0.31444298075495253
       ],
       "inertia_scale_to_compiled": [
-        65.65848298208329,
-        65.13552638719808,
-        7270.157626626669
+        0.5441282521517219,
+        0.5190435542169544,
+        0.6855570192450474
       ],
       "inertia_within_tolerance": false,
       "link": "LEFT_KNEE",
-      "mass_relative_delta_vs_cad": 182.4549575704779,
-      "mass_scale_to_compiled": 183.45495757047792,
+      "mass_relative_delta_vs_cad": 0.6375168145765376,
+      "mass_scale_to_compiled": 1.6375168145765375,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 2.378107567056634
+      "required_added_mass_to_match_compiled_kg": 0.9309174142813341
     },
     {
       "accepted": false,
       "body": "right_knee_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        0.00014856580645456304,
-        0.0001485658045162167,
-        3.1282666739739716e-07
+        0.017488563605775928,
+        0.018198937001719526,
+        0.003208320560804475
       ],
-      "cad_material_mass_estimate_kg": 0.013033943274126427,
+      "cad_material_mass_estimate_kg": 1.4262297829709327,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.009754335573131812,
@@ -9579,6 +9600,7 @@
       "group": "leg",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -10036,31 +10058,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 43,
       "inertia_relative_delta_vs_cad": [
-        64.65666626738268,
-        64.13386978884706,
-        7269.022023757998
+        -0.4422448982653865,
+        -0.46828401210904425,
+        -0.29113792761792057
       ],
       "inertia_scale_to_compiled": [
-        65.65666626738268,
-        65.13386978884706,
-        7270.022023757998
+        0.5577551017346135,
+        0.5317159878909558,
+        0.7088620723820794
       ],
       "inertia_within_tolerance": false,
       "link": "RIGHT_KNEE",
-      "mass_relative_delta_vs_cad": 182.4519053107271,
-      "mass_scale_to_compiled": 183.4519053107271,
+      "mass_relative_delta_vs_cad": 0.6765192789408759,
+      "mass_scale_to_compiled": 1.6765192789408758,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 2.3780677840763036
+      "required_added_mass_to_match_compiled_kg": 0.9648719443794973
     },
     {
       "accepted": false,
       "body": "left_ankle_pitch_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        4.4069373540813087e-07,
-        4.4069344890641046e-07,
-        4.623806025311321e-08
+        1.452192343352091e-05,
+        1.4587863307770443e-05,
+        1.468987117429659e-05
       ],
-      "cad_material_mass_estimate_kg": 0.0019265117627559817,
+      "cad_material_mass_estimate_kg": 0.033263684481479705,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         8.09944211442467e-05,
@@ -10071,6 +10093,7 @@
       "group": "leg",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -10468,31 +10491,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 37,
       "inertia_relative_delta_vs_cad": [
-        182.78845587454737,
-        144.98264380058578,
-        1018.1889770133471
+        4.577389353072027,
+        3.4100766109240905,
+        2.208014608794451
       ],
       "inertia_scale_to_compiled": [
-        183.78845587454734,
-        145.98264380058578,
-        1019.1889770133471
+        5.577389353072028,
+        4.410076610924091,
+        3.2080146087944508
       ],
       "inertia_within_tolerance": false,
       "link": "LEFT_ANKLE_A",
-      "mass_relative_delta_vs_cad": 140.75367349405772,
-      "mass_scale_to_compiled": 141.75367349405772,
+      "mass_relative_delta_vs_cad": 7.209857797088654,
+      "mass_scale_to_compiled": 8.209857797088654,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 0.27116360763741704
+      "required_added_mass_to_match_compiled_kg": 0.23982643491869332
     },
     {
       "accepted": false,
       "body": "right_ankle_pitch_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        4.4069373540813087e-07,
-        4.4069344890641046e-07,
-        4.623806025311321e-08
+        1.4522198118203825e-05,
+        1.4588144188591927e-05,
+        1.4690153832142559e-05
       ],
-      "cad_material_mass_estimate_kg": 0.0019265117627559817,
+      "cad_material_mass_estimate_kg": 0.03326431402152108,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         8.099443484057898e-05,
@@ -10503,6 +10526,7 @@
       "group": "leg",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -10900,31 +10924,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 37,
       "inertia_relative_delta_vs_cad": [
-        182.78848695357385,
-        144.98228884521853,
-        1018.18436626586
+        4.577284800918055,
+        3.4099809762478603,
+        2.207938369802534
       ],
       "inertia_scale_to_compiled": [
-        183.78848695357385,
-        145.98228884521856,
-        1019.1843662658601
+        5.577284800918056,
+        4.40998097624786,
+        3.207938369802534
       ],
       "inertia_within_tolerance": false,
       "link": "RIGHT_ANKLE_A",
-      "mass_relative_delta_vs_cad": 140.75318151527443,
-      "mass_scale_to_compiled": 141.75318151527443,
+      "mass_relative_delta_vs_cad": 7.209673929261819,
+      "mass_scale_to_compiled": 8.209673929261818,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 0.271162659834504
+      "required_added_mass_to_match_compiled_kg": 0.2398248575757389
     },
     {
       "accepted": false,
       "body": "left_ankle_roll_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        3.785254420204923e-05,
-        9.186789749478274e-05,
-        9.901334362961964e-05
+        0.00021944077791191845,
+        0.0004195673165965913,
+        0.0005013538926301614
       ],
-      "cad_material_mass_estimate_kg": 0.04218540997284888,
+      "cad_material_mass_estimate_kg": 0.1827390072857622,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.0005326200947678351,
@@ -10935,6 +10959,7 @@
       "group": "leg",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -11302,31 +11327,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 34,
       "inertia_relative_delta_vs_cad": [
-        13.070919300029523,
-        3.50445492872113,
-        0.7703871351330429
+        1.4271700995410432,
+        -0.013710583993129815,
+        -0.650362842803945
       ],
       "inertia_scale_to_compiled": [
-        14.070919300029521,
-        4.50445492872113,
-        1.770387135133043
+        2.4271700995410432,
+        0.9862894160068701,
+        0.3496371571960551
       ],
       "inertia_within_tolerance": false,
       "link": "LEFT_ANKLE_B",
-      "mass_relative_delta_vs_cad": 8.615657113814773,
-      "mass_scale_to_compiled": 9.615657113814773,
+      "mass_relative_delta_vs_cad": 1.2197802402980535,
+      "mass_scale_to_compiled": 2.2197802402980535,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 0.3634550275317681
+      "required_added_mass_to_match_compiled_kg": 0.22290143021885478
     },
     {
       "accepted": false,
       "body": "right_ankle_roll_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        3.7849424782706944e-05,
-        9.179026359554944e-05,
-        9.892857827898149e-05
+        0.00023183660335871184,
+        0.0004528293896736935,
+        0.0005322617684743107
       ],
-      "cad_material_mass_estimate_kg": 0.04217579982844413,
+      "cad_material_mass_estimate_kg": 0.19622636590083214,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         0.0005390139413463916,
@@ -11337,6 +11362,7 @@
       "group": "leg",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": true,
         "families_required": [
           "bearing_or_ring",
@@ -11704,31 +11730,31 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 34,
       "inertia_relative_delta_vs_cad": [
-        13.241007477415145,
-        3.539315301067074,
-        0.8721986256826771
+        1.3249734232536012,
+        -0.07986328288341847,
+        -0.6520247005048803
       ],
       "inertia_scale_to_compiled": [
-        14.241007477415144,
-        4.539315301067074,
-        1.872198625682677
+        2.3249734232536015,
+        0.9201367171165815,
+        0.3479752994951196
       ],
       "inertia_within_tolerance": false,
       "link": "RIGHT_ANKLE_B",
-      "mass_relative_delta_vs_cad": 8.617848129842594,
-      "mass_scale_to_compiled": 9.617848129842594,
+      "mass_relative_delta_vs_cad": 1.0672065939885846,
+      "mass_scale_to_compiled": 2.0672065939885846,
       "mass_within_tolerance": false,
-      "required_added_mass_to_match_compiled_kg": 0.3634646376761729
+      "required_added_mass_to_match_compiled_kg": 0.20941407160378483
     },
     {
       "accepted": false,
       "body": "left_toe_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        0.0005554674138426502,
-        0.0003897289829494809,
-        0.000749325493848196
+        0.0002877729121882134,
+        0.0001772783748861167,
+        0.0003687014817417728
       ],
-      "cad_material_mass_estimate_kg": 0.7084002100081165,
+      "cad_material_mass_estimate_kg": 0.3134284918247231,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         5.5351925218088e-05,
@@ -11739,6 +11765,7 @@
       "group": "foot",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": false,
         "families_required": [
           "bearing_or_ring",
@@ -11942,19 +11969,19 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 18,
       "inertia_relative_delta_vs_cad": [
-        -0.9003507247433818,
-        -0.9063116099907693,
-        -0.8860268365962979
+        -0.8076541506384523,
+        -0.7940353358049015,
+        -0.7683681753882023
       ],
       "inertia_scale_to_compiled": [
-        0.09964927525661801,
-        0.09368839000923072,
-        0.11397316340370207
+        0.19234584936154772,
+        0.20596466419509843,
+        0.23163182461179754
       ],
       "inertia_within_tolerance": false,
       "link": "LEFT_TOE",
-      "mass_relative_delta_vs_cad": -0.8415849736329719,
-      "mass_scale_to_compiled": 0.15841502636702806,
+      "mass_relative_delta_vs_cad": -0.6419558499818808,
+      "mass_scale_to_compiled": 0.3580441500181192,
       "mass_within_tolerance": false,
       "required_added_mass_to_match_compiled_kg": 0.0
     },
@@ -11962,11 +11989,11 @@
       "accepted": false,
       "body": "right_toe_link",
       "cad_bbox_diagonal_inertia_kg_m2": [
-        0.0005554550445712545,
-        0.0003897193422449431,
-        0.0007493131576344563
+        0.0002741070464475499,
+        0.00016896073959936082,
+        0.00035124151949302024
       ],
-      "cad_material_mass_estimate_kg": 0.708388547551046,
+      "cad_material_mass_estimate_kg": 0.29872647891766635,
       "calibration_action": "hardware_measurement_required",
       "compiled_diagonal_inertia_kg_m2": [
         5.5358948695321e-05,
@@ -11977,6 +12004,7 @@
       "group": "foot",
       "hardware_measurement": {
         "accepted": false,
+        "accepted_measurement_count": 0,
         "actuator_link": false,
         "families_required": [
           "bearing_or_ring",
@@ -12180,19 +12208,19 @@
       "hardware_measurement_present": false,
       "hardware_measurement_requirement_count": 18,
       "inertia_relative_delta_vs_cad": [
-        -0.900335861135168,
-        -0.9063293169262451,
-        -0.8860266434198146
+        -0.7980389434975219,
+        -0.783942251426577,
+        -0.7568575155107948
       ],
       "inertia_scale_to_compiled": [
-        0.09966413886483208,
-        0.09367068307375494,
-        0.11397335658018533
+        0.20196105650247803,
+        0.21605774857342305,
+        0.2431424844892051
       ],
       "inertia_within_tolerance": false,
       "link": "RIGHT_TOE",
-      "mass_relative_delta_vs_cad": -0.8415816370227281,
-      "mass_scale_to_compiled": 0.15841836297727185,
+      "mass_relative_delta_vs_cad": -0.6243327526187792,
+      "mass_scale_to_compiled": 0.37566724738122076,
       "mass_within_tolerance": false,
       "required_added_mass_to_match_compiled_kg": 0.0
     }
@@ -12210,25 +12238,23 @@
   "summary": {
     "acceptance_blocker": "compiled MuJoCo inertias are mapped to generated CAD/material estimates, but hardware-identified mass/inertia measurements are missing",
     "accepted": false,
-    "cad_mass_estimate_kg": 2.002984400533793,
+    "cad_mass_estimate_kg": 19.840244993372224,
     "calibration_ready": true,
     "compiled_body_records": 28,
     "compiled_total_mass_kg": 32.37127688334273,
     "hardware_measured_links": 0,
     "hardware_measurement_required_links": 28,
     "hardware_measurement_schema": "asimov-fembot-hardware-measurement-requirements-v1",
-    "inertia_out_of_tolerance_count": 28,
+    "inertia_out_of_tolerance_count": 25,
     "inertia_out_of_tolerance_links": [
       "IMU_ORIGIN",
       "LEFT_ANKLE_A",
       "LEFT_ANKLE_B",
       "LEFT_ELBOW",
-      "LEFT_HIP_PITCH",
       "LEFT_HIP_ROLL",
       "LEFT_HIP_YAW",
       "LEFT_KNEE",
       "LEFT_SHOULDER_PITCH",
-      "LEFT_SHOULDER_ROLL",
       "LEFT_SHOULDER_YAW",
       "LEFT_TOE",
       "LEFT_WRIST_YAW",
@@ -12242,7 +12268,6 @@
       "RIGHT_HIP_YAW",
       "RIGHT_KNEE",
       "RIGHT_SHOULDER_PITCH",
-      "RIGHT_SHOULDER_ROLL",
       "RIGHT_SHOULDER_YAW",
       "RIGHT_TOE",
       "RIGHT_WRIST_YAW",
@@ -12250,7 +12275,7 @@
     ],
     "inertia_relative_delta_tolerance": 0.25,
     "links": 28,
-    "mass_out_of_tolerance_count": 28,
+    "mass_out_of_tolerance_count": 26,
     "mass_out_of_tolerance_links": [
       "IMU_ORIGIN",
       "LEFT_ANKLE_A",
@@ -12258,7 +12283,6 @@
       "LEFT_ELBOW",
       "LEFT_HIP_PITCH",
       "LEFT_HIP_ROLL",
-      "LEFT_HIP_YAW",
       "LEFT_KNEE",
       "LEFT_SHOULDER_PITCH",
       "LEFT_SHOULDER_ROLL",
@@ -12272,7 +12296,6 @@
       "RIGHT_ELBOW",
       "RIGHT_HIP_PITCH",
       "RIGHT_HIP_ROLL",
-      "RIGHT_HIP_YAW",
       "RIGHT_KNEE",
       "RIGHT_SHOULDER_PITCH",
       "RIGHT_SHOULDER_ROLL",
@@ -12282,11 +12305,11 @@
       "WAIST_YAW"
     ],
     "mass_relative_delta_tolerance": 0.1,
-    "max_abs_inertia_relative_delta_vs_cad": 7269.157626626669,
-    "max_abs_mass_relative_delta_vs_cad": 192.6371865034455,
-    "max_inertia_scale_to_compiled": 7270.157626626669,
-    "max_mass_scale_to_compiled": 193.63718650344546,
-    "max_required_added_mass_to_match_compiled_kg": 8.05169259389183,
+    "max_abs_inertia_relative_delta_vs_cad": 6.6172752831959905,
+    "max_abs_mass_relative_delta_vs_cad": 7.209857797088654,
+    "max_inertia_scale_to_compiled": 7.6172752831959905,
+    "max_mass_scale_to_compiled": 8.209857797088654,
+    "max_required_added_mass_to_match_compiled_kg": 3.734133192004167,
     "missing_compiled_links": [],
     "missing_hardware_links": [
       "IMU_ORIGIN",
@@ -12319,6 +12342,6 @@
       "WAIST_YAW"
     ],
     "missing_material_links": [],
-    "total_required_added_mass_to_match_compiled_kg": 31.56063824836637
+    "total_required_added_mass_to_match_compiled_kg": 15.29387988208687
   }
 }

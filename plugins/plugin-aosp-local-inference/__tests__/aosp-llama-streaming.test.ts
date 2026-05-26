@@ -115,7 +115,7 @@ const DEFAULT_CONFIG: AospLlmStreamConfig = {
   promptCacheKey: null,
   draftMin: 0,
   draftMax: 0,
-  dflashDrafterPath: null,
+  mtpDrafterPath: null,
   disableThinking: false,
 };
 
@@ -280,13 +280,13 @@ describe("probeAospCapabilities", () => {
     const caps = probeAospCapabilities(null, "android", false);
     expect(caps).toEqual({
       streamingLlm: false,
-      dflashSupported: false,
+      mtpSupported: false,
       omnivoiceStreaming: false,
       mmprojSupported: false,
     });
   });
 
-  it("never reports dflashSupported on android even when streaming is supported", () => {
+  it("never reports mtpSupported on android even when streaming is supported", () => {
     const caps = probeAospCapabilities(
       { llmStreamSupported: () => true },
       "android",
@@ -294,27 +294,27 @@ describe("probeAospCapabilities", () => {
     );
     expect(caps.streamingLlm).toBe(true);
     expect(caps.omnivoiceStreaming).toBe(true);
-    expect(caps.dflashSupported).toBe(false);
+    expect(caps.mtpSupported).toBe(false);
     expect(caps.mmprojSupported).toBe(false);
   });
 
-  it("never reports dflashSupported on ios even when streaming is supported", () => {
+  it("never reports mtpSupported on ios even when streaming is supported", () => {
     const caps = probeAospCapabilities(
       { llmStreamSupported: () => true },
       "ios",
       false,
     );
-    expect(caps.dflashSupported).toBe(false);
+    expect(caps.mtpSupported).toBe(false);
     expect(caps.mmprojSupported).toBe(false);
   });
 
-  it("enables dflashSupported on desktop when streaming is supported", () => {
+  it("enables mtpSupported on desktop when streaming is supported", () => {
     const caps = probeAospCapabilities(
       { llmStreamSupported: () => true },
       "other",
       true,
     );
-    expect(caps.dflashSupported).toBe(true);
+    expect(caps.mtpSupported).toBe(true);
     expect(caps.mmprojSupported).toBe(true);
   });
 
@@ -322,7 +322,7 @@ describe("probeAospCapabilities", () => {
     expect(() =>
       logCapabilities({
         streamingLlm: true,
-        dflashSupported: false,
+        mtpSupported: false,
         omnivoiceStreaming: true,
         mmprojSupported: false,
       }),

@@ -18,7 +18,7 @@ Connect your agent to Google Chat for DMs and space conversations using the `@el
 
 The connector auto-enables when `botToken`, `token`, or `apiKey` is truthy in the connector config. The `serviceAccountFile`/`audience` fields alone do not trigger auto-enable -- you must include one of the trigger fields or add the plugin to `plugins.allow`.
 
-Configure in `~/.eliza/eliza.json`:
+Configure in `~/.local/state/eliza/eliza.json`:
 
 Google Chat authenticates via a service account JSON file, not an API key. The `apiKey` field below is only used to trigger auto-enable — it has no functional role in authentication.
 

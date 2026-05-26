@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import https from "node:https";
-import os from "node:os";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 import { formatByteSize, getLogPrefix } from "@elizaos/shared";
 import { EMBEDDING_PRESETS } from "./embedding-presets.js";
 
@@ -38,7 +38,7 @@ export interface EmbeddingManagerConfig {
 	contextSize?: number;
 	/** Idle timeout in ms before unloading model (default: 1800000 = 30 min, 0 = never unload) */
 	idleTimeoutMs?: number;
-	/** Models directory (default: ~/.eliza/models) */
+	/** Models directory (default: <stateDir>/models) */
 	modelsDir?: string;
 	/** Optional callback for reporting initialization progress phases. */
 	onProgress?: EmbeddingProgressCallback;
@@ -53,11 +53,10 @@ export interface EmbeddingManagerStats {
 }
 
 export const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-export const DEFAULT_MODELS_DIR = path.join(os.homedir(), ".eliza", "models");
+export const DEFAULT_MODELS_DIR = path.join(resolveStateDir(), "models");
 
 const EMBEDDING_META_DIR =
-	process.env.ELIZA_EMBEDDING_META_DIR ??
-	path.join(os.homedir(), ".eliza", "state");
+	process.env.ELIZA_EMBEDDING_META_DIR ?? path.join(resolveStateDir(), "state");
 export const EMBEDDING_META_PATH =
 	process.env.ELIZA_EMBEDDING_META_PATH ??
 	path.join(EMBEDDING_META_DIR, "embedding-meta.json");

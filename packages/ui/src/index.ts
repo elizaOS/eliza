@@ -385,9 +385,9 @@ export {
   dispatchWindowEvent,
   ELIZA_CLOUD_STATUS_UPDATED_EVENT,
   EMOTE_PICKER_EVENT,
+  FIRST_RUN_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   NETWORK_STATUS_CHANGE_EVENT,
-  ONBOARDING_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT,
   SELF_STATUS_SYNC_EVENT,
   SHARE_TARGET_EVENT,
   STOP_EMOTE_EVENT,
@@ -395,6 +395,13 @@ export {
   VOICE_CONFIG_UPDATED_EVENT,
   VRM_TELEPORT_COMPLETE_EVENT,
 } from "./events/index";
+export {
+  installFirstRunDeepLinkListener,
+  routeFirstRunDeepLink,
+} from "./first-run/deep-link-handler";
+export * from "./first-run/first-run-config";
+export * from "./first-run/mobile-runtime-mode";
+export * from "./first-run/pre-seed-local-runtime";
 export * from "./genui/index";
 export * from "./hooks/index";
 export type { ActivityEvent } from "./hooks/useActivityEvents";
@@ -413,13 +420,6 @@ export * from "./lib/utils";
 export { cn } from "./lib/utils";
 export type { Tab } from "./navigation/index";
 export * from "./navigation/index";
-export {
-  installOnboardingDeepLinkListener,
-  routeOnboardingDeepLink,
-} from "./onboarding/deep-link-handler";
-export * from "./onboarding/mobile-runtime-mode";
-export * from "./onboarding/onboarding-config";
-export * from "./onboarding/pre-seed-local-runtime";
 export * from "./platform/index";
 export * from "./providers/index";
 export * from "./shell-params";

@@ -17,6 +17,9 @@ from eliza_robot.asimov_1.fembot_slimming_envelope import build_fembot_slimming_
 from eliza_robot.asimov_1.fembot_surface_quality import build_fembot_surface_quality_proof
 from eliza_robot.asimov_1.fembot_thinness_frontier import build_fembot_thinness_frontier_proof
 from eliza_robot.asimov_1.fembot_topology import build_fembot_topology_proof
+from eliza_robot.asimov_1.fembot_topology_promotion import (
+    build_fembot_topology_promotion_proof,
+)
 from eliza_robot.asimov_1.parametric_inventory import ASIMOV_PARAM_PROOFS
 
 FEMBOT_PARAMETRIC_CONSTRAINTS_SCHEMA = "asimov-fembot-parametric-constraints-v1"
@@ -110,6 +113,7 @@ def _link_record(
     material: dict[str, Any] | None,
     surface: dict[str, Any] | None,
     topology: dict[str, Any] | None,
+    promoted_topology: dict[str, Any] | None,
     mold: dict[str, Any] | None,
     frontier: dict[str, Any] | None,
 ) -> dict[str, Any]:
@@ -122,6 +126,10 @@ def _link_record(
         generated.get("wall_thickness_m")
         if generated.get("wall_thickness_m") is not None
         else generated.get("minimum_plate_thickness_m")
+    )
+    topology_accepted = bool(topology and topology.get("accepted"))
+    promoted_topology_accepted = bool(
+        promoted_topology and promoted_topology.get("accepted")
     )
     constraints = [
         _constraint_record(
@@ -176,11 +184,22 @@ def _link_record(
         _constraint_record(
             name="topology_or_repair_preview",
             kind="topology",
-            value=(topology or {}).get("accepted"),
-            verified=bool(topology and topology.get("accepted")),
-            proofs=["asimov-fembot-topology-proof-v1"],
+            value={
+                "raw_generated_topology_accepted": (topology or {}).get("accepted"),
+                "promoted_step_topology_accepted": (
+                    promoted_topology or {}
+                ).get("accepted"),
+                "promoted_step_path": (promoted_topology or {}).get(
+                    "promoted_step_path"
+                ),
+            },
+            verified=topology_accepted or promoted_topology_accepted,
+            proofs=[
+                "asimov-fembot-topology-proof-v1",
+                "asimov-fembot-topology-promotion-v1",
+            ],
             production_blocker=None
-            if topology and topology.get("accepted")
+            if topology_accepted or promoted_topology_accepted
             else "generated mesh topology needs repair preview promotion",
         ),
         _constraint_record(
@@ -252,6 +271,56 @@ def _link_record(
                 ),
             )
         )
+    full_cavity_candidate = generated.get("full_cavity_clearance_candidate") or {}
+    if full_cavity_candidate.get("required"):
+        constraints.append(
+            _constraint_record(
+                name="full_cavity_clearance_candidate",
+                kind="internal_keepout",
+                value={
+                    "step_path": full_cavity_candidate.get("step_path"),
+                    "step_sha256": full_cavity_candidate.get("step_sha256"),
+                    "internal_cavity_cleared": full_cavity_candidate.get(
+                        "internal_cavity_cleared"
+                    ),
+                    "height_preserved": full_cavity_candidate.get("height_preserved"),
+                    "z_expansion_m": full_cavity_candidate.get("z_expansion_m"),
+                    "strict_extent_max_abs_error_m": full_cavity_candidate.get(
+                        "strict_extent_max_abs_error_m"
+                    ),
+                    "full_cavity_clearance_extent_tolerance_m": (
+                        full_cavity_candidate.get(
+                            "full_cavity_clearance_extent_tolerance_m"
+                        )
+                    ),
+                    "full_cavity_clearance_extent_within_tolerance": (
+                        full_cavity_candidate.get(
+                            "full_cavity_clearance_extent_within_tolerance"
+                        )
+                    ),
+                    "xy_area_increase_fraction": full_cavity_candidate.get(
+                        "xy_area_increase_fraction"
+                    ),
+                    "volume_increase_fraction": full_cavity_candidate.get(
+                        "volume_increase_fraction"
+                    ),
+                },
+                limit=0.0,
+                verified=bool(
+                    full_cavity_candidate.get("reload_ok")
+                    and full_cavity_candidate.get(
+                        "full_cavity_clearance_extent_within_tolerance",
+                        full_cavity_candidate.get("extent_within_tolerance"),
+                    )
+                    and full_cavity_candidate.get("internal_cavity_cleared")
+                ),
+                proofs=["asimov-fembot-generated-cad-parametric-v1"],
+                production_blocker=(
+                    "full-cavity clearance is parameterized, but production still "
+                    "needs mate-preserving local pockets or exact component envelopes"
+                ),
+            )
+        )
     if mold is not None:
         constraints.append(
             _constraint_record(
@@ -303,6 +372,7 @@ def build_fembot_parametric_constraints_proof(
     material_report: dict[str, Any] | None = None,
     surface_report: dict[str, Any] | None = None,
     topology_report: dict[str, Any] | None = None,
+    topology_promotion_report: dict[str, Any] | None = None,
     assembly_report: dict[str, Any] | None = None,
     mold_dfm_report: dict[str, Any] | None = None,
     thinness_frontier_report: dict[str, Any] | None = None,
@@ -322,6 +392,10 @@ def build_fembot_parametric_constraints_proof(
         generated_cad_report=generated,
     )
     topology = topology_report or build_fembot_topology_proof(generated_cad_report=generated)
+    topology_promotion = topology_promotion_report or build_fembot_topology_promotion_proof(
+        generated_cad_report=generated,
+        topology_report=topology,
+    )
     mold = mold_dfm_report or build_fembot_mold_dfm_proof(
         body_groups,
         generated_cad_report=generated,
@@ -346,6 +420,7 @@ def build_fembot_parametric_constraints_proof(
     material_links = _material_by_link(material)
     surface_links = _surface_by_link(surface)
     topology_links = _by_link(topology.get("link_topology", []))
+    promoted_topology_links = _by_link(topology_promotion.get("validation", []))
     mold_links = _mold_by_link(mold)
     frontier_links = _by_link(frontier.get("links", []))
     requested_links = [
@@ -369,6 +444,7 @@ def build_fembot_parametric_constraints_proof(
                     material=material_links.get(link),
                     surface=surface_links.get(link),
                     topology=topology_links.get(link),
+                    promoted_topology=promoted_topology_links.get(link),
                     mold=mold_links.get(link),
                     frontier=frontier_links.get(link),
                 )
@@ -397,6 +473,7 @@ def build_fembot_parametric_constraints_proof(
             "material_schema": material.get("schema"),
             "surface_schema": surface.get("schema"),
             "topology_schema": topology.get("schema"),
+            "topology_promotion_schema": topology_promotion.get("schema"),
             "assembly_schema": assembly.get("schema"),
             "mold_dfm_schema": mold.get("schema"),
             "thinness_frontier_schema": frontier.get("schema"),
@@ -435,6 +512,19 @@ def build_fembot_parametric_constraints_proof(
                     for constraint in record["constraints"]
                 )
             ),
+            "links_with_promoted_topology_accepted": sum(
+                1
+                for record in records
+                if any(
+                    constraint["name"] == "topology_or_repair_preview"
+                    and bool(
+                        (constraint.get("value") or {}).get(
+                            "promoted_step_topology_accepted"
+                        )
+                    )
+                    for constraint in record["constraints"]
+                )
+            ),
             "links_with_supplier_vendor_keepout_growth": sum(
                 1
                 for record in records
@@ -460,6 +550,23 @@ def build_fembot_parametric_constraints_proof(
                 for record in records
                 for constraint in record["constraints"]
                 if constraint["name"] == "supplier_vendor_keepout_growth"
+            ),
+            "links_with_full_cavity_clearance_candidate": sum(
+                1
+                for record in records
+                if any(
+                    constraint["name"] == "full_cavity_clearance_candidate"
+                    for constraint in record["constraints"]
+                )
+            ),
+            "links_with_full_cavity_clearance_verified": sum(
+                1
+                for record in records
+                if any(
+                    constraint["name"] == "full_cavity_clearance_candidate"
+                    and constraint["verified"]
+                    for constraint in record["constraints"]
+                )
             ),
             "supplier_vendor_adjusted_max_residual_extent_growth_m": max(
                 (

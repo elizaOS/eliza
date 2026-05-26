@@ -421,7 +421,7 @@ export interface MessageConnector {
 	postToThreadHandler?: (
 		runtime: IAgentRuntime,
 		params: MessageConnectorPostToThreadParams,
-	) => Promise<Memory | void>;
+	) => Promise<Memory | undefined>;
 	contentShaping?: ConnectorContentShaping;
 }
 
@@ -1083,7 +1083,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		target: TargetInfo,
 		messageId: string,
 		content: Content,
-	): Promise<Memory | void>;
+	): Promise<Memory | undefined>;
 	sendTypingOnTarget(target: TargetInfo): Promise<void>;
 	stopTypingOnTarget(target: TargetInfo): Promise<void>;
 	createThreadOnTarget(
@@ -1095,7 +1095,7 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		thread: ThreadHandle,
 		content: Content,
 		identity?: ConnectorPostIdentity,
-	): Promise<Memory | void>;
+	): Promise<Memory | undefined>;
 	addReactionOnTarget(
 		target: TargetInfo,
 		messageId: string,

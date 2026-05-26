@@ -1,6 +1,6 @@
 {
   "generatedAt": "2026-05-20T17:00:05.326Z",
-  "verifier": "plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs",
+  "verifier": "plugins/plugin-local-inference/native/verify/mtp_drafter_runtime_smoke.mjs",
   "targetModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
   "drafterModel": "evidence/speculative/nebius-drafters/drafter-0_8b-bf16.gguf",
   "cliFeatures": {
@@ -28,7 +28,7 @@
   },
   "checks": {
     "drafterShape": "plain-ar",
-    "upstreamDflashShapeOk": false,
+    "upstreamMtpShapeOk": false,
     "plainArShapeOk": true,
     "drafterSmallerThanTarget": true,
     "hasTargetCheckpointSha256": true,
@@ -63,10 +63,10 @@
       "blockingReason": null,
       "reason": "target checkpoint sha256 ok (9d8472987aed5b36a0d167543a695bcbf349939445ca5382a4245219829f4581)"
     },
-    "dflash": {},
+    "mtp": {},
     "upstreamRequiredTensors": {
-      "dflash_fc.weight": false,
-      "dflash_hidden_norm.weight": false,
+      "mtp_fc.weight": false,
+      "mtp_hidden_norm.weight": false,
       "output_norm.weight": true
     },
     "plainArMarkers": {
@@ -188,14 +188,14 @@
       }
     },
     "targetMeta": {
-      "file": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/dflash/target-meta.json",
+      "file": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/mtp/target-meta.json",
       "status": "loaded",
       "data": {
         "acceptanceRate": null,
         "acceptanceWindow": null,
-        "dflashEnabled": false,
+        "mtpEnabled": false,
         "disabledPolicy": {
-          "path": "dflash/dflash-disabled-0_8b.release-policy.json",
+          "path": "mtp/mtp-disabled-0_8b.release-policy.json",
           "releaseEligibleWithoutDrafter": true,
           "releaseMode": "fail-open-no-drafter",
           "requiresDrafter": false,
@@ -217,7 +217,7 @@
           "release evidence is weights-staged, not an upload candidate; the publish orchestrator will not upload"
         ],
         "publishEligible": false,
-        "reason": "DFlash is disabled for Eliza-1 0_8b.",
+        "reason": "MTP is disabled for Eliza-1 0_8b.",
         "schemaVersion": 2,
         "status": "disabled",
         "targetText": {
@@ -264,7 +264,7 @@
         "--spec-draft-p-min",
         "0.1",
         "--spec-type",
-        "dflash"
+        "mtp"
       ],
       "skippedCliFlags": [
         {
@@ -282,7 +282,7 @@
       "status": null,
       "signal": "SIGPIPE",
       "classification": "runtime_failed_unclassified",
-      "dflash": {
+      "mtp": {
         "drafted": null,
         "accepted": null,
         "acceptanceRate": null,
@@ -303,23 +303,23 @@
         "tokenizerCompatible": true,
         "draftingActive": false
       },
-      "dflashFailure": null,
+      "mtpFailure": null,
       "outputTail": "\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n>"
     }
   ],
   "runtimePolicy": {
-    "requiresTrueDflashDrafting": true,
+    "requiresTrueMtpDrafting": true,
     "reason": "plain autoregressive drafter smoke"
   },
   "metadataStatus": "metadata_invalid",
   "metadataFailures": [
-    "dflash/target-meta.json does not prove drafter.matchesTargetCheckpoint=true"
+    "mtp/target-meta.json does not prove drafter.matchesTargetCheckpoint=true"
   ],
   "bench": {
     "reportSchema": "eliza.speculative-benchmark.v1",
     "generatedAt": "2026-05-20T17:00:16.301Z",
-    "verifier": "plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs",
-    "speculator": "dflash",
+    "verifier": "plugins/plugin-local-inference/native/verify/mtp_drafter_runtime_smoke.mjs",
+    "speculator": "mtp",
     "tier": "0_8b",
     "targetModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
     "drafterModel": "evidence/speculative/nebius-drafters/drafter-0_8b-bf16.gguf",
@@ -368,7 +368,7 @@
         "--spec-draft-p-min",
         "0.1",
         "--spec-type",
-        "dflash"
+        "mtp"
       ],
       "skippedCliFlags": [
         {
@@ -408,7 +408,7 @@
       },
       "vocabIncompatibleWarning": false,
       "draftingActive": true,
-      "dflashFailure": null,
+      "mtpFailure": null,
       "tokenizerCompatible": true,
       "outputTail": "Loading model... \n\n\n▄▄ ▄▄\n██ ██\n██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄\n██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : eliza-1-0_8b-128k.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative decoding.\n    *   Format: Short paragraph.\n    *   Goal: Explain or describe this concept concisely.\n\n2.  **Define \"Speculative Decoding\":**\n    *  \n\n[ Prompt: 555.3 t/s | Generation: 41.0 t/s ]\n[ Draft: 31 accepted / 62 generated | Acceptance: 0.5000 ]\n\nExiting..."
     },
@@ -442,7 +442,7 @@
         "--spec-draft-p-min",
         "1",
         "--spec-type",
-        "dflash"
+        "mtp"
       ],
       "skippedCliFlags": [
         {
@@ -482,7 +482,7 @@
       },
       "vocabIncompatibleWarning": false,
       "draftingActive": false,
-      "dflashFailure": null,
+      "mtpFailure": null,
       "tokenizerCompatible": true,
       "outputTail": "Loading model... \n\n\n▄▄ ▄▄\n██ ██\n██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄\n██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : eliza-1-0_8b-128k.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative decoding.\n    *   Length: Short paragraph.\n    *   Tone: Informative or speculative.\n    *   Goal: Explain or describe the concept of speculative decoding.\n\n2.  **Define\n\n[ Prompt: 556.5 t/s | Generation: 59.0 t/s ]\n\nExiting..."
     },
@@ -493,14 +493,14 @@
       "generationTokensPerSecondBaseline": null,
       "targetEvalTokensPerSecondWithDrafter": null,
       "draftEvalTokensPerSecondWithDrafter": null,
-      "dflashDraftedTokens": 62,
-      "dflashAcceptedTokens": 31,
-      "dflashAcceptanceRate": 0.5,
-      "dflashSpeedup": 0.6949152542372882,
-      "dflashDraftingActive": true,
-      "dflashFailure": null,
+      "mtpDraftedTokens": 62,
+      "mtpAcceptedTokens": 31,
+      "mtpAcceptanceRate": 0.5,
+      "mtpSpeedup": 0.6949152542372882,
+      "mtpDraftingActive": true,
+      "mtpFailure": null,
       "tokenizerCompatible": true,
-      "speculator": "dflash",
+      "speculator": "mtp",
       "tier": "0_8b",
       "backend": "unknown",
       "binarySha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9",
@@ -512,6 +512,6 @@
       "failure": null
     },
     "draftingActive": true,
-    "dflashFailure": null
+    "mtpFailure": null
   }
 }

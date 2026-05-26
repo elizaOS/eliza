@@ -49,19 +49,19 @@ def test_rocm_desktop_platform_evidence_and_dispatch_are_required() -> None:
     )
 
 
-def test_dflash_required_files_match_bundle_layout() -> None:
+def test_mtp_required_files_match_bundle_layout() -> None:
     tier_plan = build_plan()["4b"]
-    assert "dflash/drafter-4b.gguf" in tier_plan.required_files
-    assert "dflash/target-meta.json" in tier_plan.required_files
-    assert "dflash/validation-real.json" in tier_plan.required_files
-    assert "dflash/runtime-smoke-native.json" in tier_plan.required_files
-    assert "dflash/eliza-1-drafter-4b.gguf" not in tier_plan.required_files
+    assert "mtp/drafter-4b.gguf" in tier_plan.required_files
+    assert "mtp/target-meta.json" in tier_plan.required_files
+    assert "mtp/validation-real.json" in tier_plan.required_files
+    assert "mtp/runtime-smoke-native.json" in tier_plan.required_files
+    assert "mtp/eliza-1-drafter-4b.gguf" not in tier_plan.required_files
     small_plan = build_plan()["0_8b"]
-    assert "dflash/drafter-0_8b.gguf" in small_plan.required_files
-    assert "dflash/target-meta.json" in small_plan.required_files
-    assert "dflash/validation-real.json" in small_plan.required_files
-    assert "dflash/runtime-smoke-native.json" in small_plan.required_files
-    assert "licenses/LICENSE.dflash" in small_plan.required_files
+    assert "mtp/drafter-0_8b.gguf" in small_plan.required_files
+    assert "mtp/target-meta.json" in small_plan.required_files
+    assert "mtp/validation-real.json" in small_plan.required_files
+    assert "mtp/runtime-smoke-native.json" in small_plan.required_files
+    assert "licenses/LICENSE.mtp" in small_plan.required_files
 
 
 def test_text_contexts_ship_half_and_native_contexts() -> None:
@@ -192,7 +192,7 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
         rel
         for rel in plan["2b"].required_files
         if rel.split("/", 1)[0]
-        in {"text", "tts", "asr", "vad", "imagegen", "vision", "dflash"}
+        in {"text", "tts", "asr", "vad", "imagegen", "vision", "mtp"}
     )
     required_uploaded_paths = sorted(
         {
@@ -214,7 +214,7 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                     "embedding": {"repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"},
                     "drafter": {
                         "repo": ELIZA_1_HF_REPO,
-                        "file": "bundles/2b/dflash/drafter-2b.gguf",
+                        "file": "bundles/2b/mtp/drafter-2b.gguf",
                     },
                 },
                 "final": {
@@ -260,7 +260,7 @@ def test_release_status_blockers_rejects_incomplete_uploaded_paths(
         rel
         for rel in plan["2b"].required_files
         if rel.split("/", 1)[0]
-        in {"text", "tts", "asr", "vad", "imagegen", "vision", "dflash"}
+        in {"text", "tts", "asr", "vad", "imagegen", "vision", "mtp"}
     )
     (bundle / "evidence" / "release.json").write_text(
         json.dumps(
@@ -276,7 +276,7 @@ def test_release_status_blockers_rejects_incomplete_uploaded_paths(
                     "embedding": {"repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"},
                     "drafter": {
                         "repo": ELIZA_1_HF_REPO,
-                        "file": "bundles/2b/dflash/drafter-2b.gguf",
+                        "file": "bundles/2b/mtp/drafter-2b.gguf",
                     },
                 },
                 "final": {
@@ -315,7 +315,7 @@ def test_release_status_blockers_rejects_incomplete_uploaded_paths(
     assert any(
         "hf.uploadEvidence.uploadedPaths missing required path" in item
         and "bundles/2b/evidence/release.json" in item
-        and "bundles/2b/dflash/drafter-2b.gguf" in item
+        and "bundles/2b/mtp/drafter-2b.gguf" in item
         for item in blockers["2b"]
     )
 
@@ -330,7 +330,7 @@ def test_release_status_blockers_base_v1_blocks_pending_upload(
         rel
         for rel in plan["2b"].required_files
         if rel.split("/", 1)[0]
-        in {"text", "tts", "asr", "vad", "imagegen", "vision", "dflash"}
+        in {"text", "tts", "asr", "vad", "imagegen", "vision", "mtp"}
     )
     (bundle / "evidence" / "release.json").write_text(
         json.dumps(

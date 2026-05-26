@@ -1,29 +1,21 @@
 /**
  * Local-inference backend interface and dispatcher.
  *
- * Two real implementations live behind this interface:
+ * One shipping implementation lives behind this interface:
  *
- *   - `capacitor-llama`  → in-process via the capacitor-llama binding. Stock
- *     GGUFs, no drafter, no MoE expert offload, no `--lookahead`. Fastest
- *     to start, lowest IPC overhead, narrowest feature surface.
  *   - `llama-cpp`       → the optimized in-process FFI llama.cpp path.
  *     MTP, n-gram drafter, lookahead, `-ot` MoE offload, TurboQuant KV
  *     cache, mlock/no-mmap/mmproj, etc. all live here.
  *
  * The dispatcher decides which one to use per-load based on:
  *
- *   1. `ELIZA_LOCAL_BACKEND=node-llama-cpp|llama-cpp|auto` — operator
- *      override. `auto` (the default) hands the decision to the catalog.
- *   2. Catalog `runtime.optimizations.requiresKernel` — if any specialised
+ *   1. Catalog `runtime.optimizations.requiresKernel` — if any specialised
  *      llama.cpp kernel is required (e.g. `turbo3`), the
- *      dispatcher MUST pick `llama-cpp`. The legacy node binding cannot
+ *      dispatcher MUST pick `llama-cpp`. Legacy bindings cannot
  *      provide these kernels at all.
- *   3. Catalog `runtime.preferredBackend` — soft preference. We pick
- *      `llama-cpp` when this is set AND the runtime is available;
- *      otherwise we fall back to `capacitor-llama`.
- *   4. Default: optimized llama.cpp when the managed runtime is available;
- *      `capacitor-llama` is only a last-resort compatibility path for hosts
- *      without the custom llama.cpp runtime.
+ *   2. Catalog `runtime.preferredBackend` — retained for metadata
+ *      compatibility, but generation still routes through `llama-cpp`.
+ *   3. Default: optimized llama.cpp FFI.
  *
  * The dispatcher does NOT own backend internals. It owns selection only,
  * plus a small load-state
@@ -55,6 +47,8 @@ export interface BackendLoadOverrides {
 	useGpu?: boolean;
 	/** Absolute path to a multimodal projector GGUF passed to the FFI runtime. */
 	mmprojPath?: string;
+	/** Absolute path to the MTP drafter GGUF passed to the FFI runtime. */
+	draftModelPath?: string;
 	/** Eliza-1 bundle root for direct bundle loads not present in the registry. */
 	bundleRoot?: string;
 	/** Manifest path for direct bundle loads not present in the registry. */
@@ -279,13 +273,11 @@ export interface LocalInferenceBackend {
 	currentRuntimeLoadConfig?(): LocalRuntimeLoadConfig | null;
 }
 
-export type BackendOverride = "auto" | "capacitor-llama" | "llama-cpp";
+export type BackendOverride = "auto" | "llama-cpp";
 
 export function readBackendOverride(): BackendOverride {
-	const raw = process.env.ELIZA_LOCAL_BACKEND?.trim().toLowerCase();
-	if (raw === "capacitor-llama" || raw === "auto") {
-		return raw;
-	}
+	const raw = process.env.ELIZA_INFERENCE_BACKEND?.trim().toLowerCase();
+	if (raw === "auto") return "auto";
 	if (raw === "llama-cpp") {
 		return "llama-cpp";
 	}
@@ -330,8 +322,8 @@ export function warnReducedOptimizationLocalMode(detail: string): void {
 			`  ELIZA_LOCAL_ALLOW_STOCK_KV=1 is set, so the model is loading with stock\n` +
 			`  f16 KV cache instead of the Eliza-1 TurboQuant/QJL/PolarQuant KV kernels.\n` +
 			`  The voice pipeline will run, but slower and using more memory than a build\n` +
-				`  with the kernels dispatched (Metal: all 5; CUDA: ships them; Vulkan: source-\n` +
-				`  patched; CPU: SIMD TUs). Rebuild the bundled llama.cpp FFI runtime\n` +
+			`  with the kernels dispatched (Metal: all 5; CUDA: ships them; Vulkan: source-\n` +
+			`  patched; CPU: SIMD TUs). Rebuild the bundled llama.cpp FFI runtime\n` +
 			`  to get the optimized path. This mode is NOT publishable and NOT a default.\n`,
 	);
 }
@@ -342,7 +334,7 @@ export function __resetReducedModeWarnedForTests(): void {
 }
 
 export interface BackendDecision {
-	backend: "capacitor-llama" | "llama-cpp";
+	backend: "llama-cpp";
 	/** Why this backend was chosen — for diagnostics and warnings. */
 	reason: "env-override" | "kernel-required" | "preferred-backend" | "default";
 	/** Required kernels declared by the catalog, when any. */
@@ -377,38 +369,16 @@ export function decideBackend(input: {
 	llamaCppAvailable: boolean;
 	binaryKernels?: Partial<Record<LocalRuntimeKernel | string, boolean>> | null;
 }): BackendDecision {
-	const { override, catalog, llamaCppAvailable } = input;
+	const { override, catalog } = input;
 	const optimizations = catalog?.runtime?.optimizations;
 	const hasOptimizedRuntimeConfig =
-		catalog?.runtime?.mtp !== undefined ||
-		optimizations !== undefined;
+		catalog?.runtime?.mtp !== undefined || optimizations !== undefined;
 	const kernels = optimizations?.requiresKernel ?? [];
-	const preferredBackend = catalog?.runtime?.preferredBackend;
 	const unsatisfiedKernels = computeUnsatisfiedKernels(
 		kernels,
 		input.binaryKernels ?? null,
 	);
 
-	if (override === "capacitor-llama") {
-		if (kernels.length > 0 || catalog?.runtime?.mtp !== undefined) {
-			// The override conflicts with a hard requirement. Prefer the kernel
-			// requirement — silently honoring the override would silently break
-			// the model. Surface as a llama.cpp pick; the load itself will
-			// fail clearly if the runtime really is missing.
-			return {
-				backend: "llama-cpp",
-				reason: "kernel-required",
-				kernels,
-				unsatisfiedKernels,
-			};
-		}
-		return {
-			backend: "capacitor-llama",
-			reason: "env-override",
-			kernels,
-			unsatisfiedKernels,
-		};
-	}
 	if (override === "llama-cpp") {
 		return {
 			backend: "llama-cpp",
@@ -426,32 +396,8 @@ export function decideBackend(input: {
 			unsatisfiedKernels,
 		};
 	}
-	if (preferredBackend === "llama-cpp" && llamaCppAvailable) {
-		return {
-			backend: "llama-cpp",
-			reason: "preferred-backend",
-			kernels,
-			unsatisfiedKernels,
-		};
-	}
-	if (preferredBackend === "capacitor-llama") {
-		return {
-			backend: "capacitor-llama",
-			reason: "preferred-backend",
-			kernels,
-			unsatisfiedKernels,
-		};
-	}
-	if (llamaCppAvailable && hasOptimizedRuntimeConfig) {
-		return {
-			backend: "llama-cpp",
-			reason: "default",
-			kernels,
-			unsatisfiedKernels,
-		};
-	}
 	return {
-		backend: "capacitor-llama",
+		backend: "llama-cpp",
 		reason: "default",
 		kernels,
 		unsatisfiedKernels,
@@ -550,11 +496,11 @@ export class BackendDispatcher implements LocalInferenceBackend {
 			if (localAllowStockKv()) {
 				// Reduced-optimization local mode: the build hasn't dispatched these
 				// kernels on this backend yet, but the user opted into running with
-					// stock f16 KV instead of hard-refusing. Strip any custom cache-type
-					// override from the plan so the FFI runtime uses f16, and warn
+				// stock f16 KV instead of hard-refusing. Strip any custom cache-type
+				// override from the plan so the FFI runtime uses f16, and warn
 				// loudly exactly once.
 				warnReducedOptimizationLocalMode(
-						`catalog model requires kernel(s) {${missing}}, not advertised by the installed llama.cpp FFI runtime`,
+					`catalog model requires kernel(s) {${missing}}, not advertised by the installed llama.cpp FFI runtime`,
 				);
 				if (
 					plan.overrides &&

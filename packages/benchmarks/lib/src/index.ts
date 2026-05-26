@@ -2,7 +2,7 @@
  * Public entry for `@elizaos-benchmarks/lib`.
  *
  * Re-exports the canonical metrics schema plus the MODEL_TIER registry and
- * dflash local-llama-cpp adapter. Future shared helpers (delta
+ * mtp local-llama-cpp adapter. Future shared helpers (delta
  * computation, aggregator utilities, etc.) land here in later waves.
  */
 

@@ -10,7 +10,7 @@ export const ELIZA_AGENT_VAULT_SERVICE = "ai.elizaos.agent.vault";
 
 /**
  * Canonical state directory for this process. Mirrors the canonical
- * `ELIZA_STATE_DIR` > `~/.${namespace}` precedence
+ * `ELIZA_STATE_DIR`/`MILADY_STATE_DIR` > XDG state home precedence
  * and uses `realpathSync` when the path exists so symlinks normalize
  * consistently.
  */

@@ -7,15 +7,15 @@
  *   - the bundle's embedding GGUF path is declared on tiers that have a
  *     dedicated 1024-dim Matryoshka region (2b/4b/9b/27b/27b-256k),
  *   - the bundle's drafter GGUF path is declared only on tiers with a
- *     distilled DFlash companion,
+ *     distilled MTP companion,
  *   - the HuggingFace resolve URL for the text and embedding components
  *     resolves to `elizaos/eliza-1` and includes the expected
  *     per-tier prefix.
  *
  * Why this matters: the publish pipeline stages a bundle per tier; if a
- * tier loses its embedding region (or a DFlash tier's drafter is renamed), the
+ * tier loses its embedding region (or a MTP tier's drafter is renamed), the
  * runtime's `useModel(TEXT_EMBEDDING, ...)` falls through to a non-local
- * provider on the desktop path and silently regresses to no DFlash on
+ * provider on the desktop path and silently regresses to no MTP on
  * every backend. This test pins the per-tier components catalogue as a
  * single source of truth.
  *
@@ -28,7 +28,7 @@ import { describe, expect, it } from "vitest";
 import {
 	buildHuggingFaceResolveUrlForPath,
 	ELIZA_1_HF_REPO,
-	ELIZA_1_DFLASH_TIER_IDS,
+	ELIZA_1_MTP_TIER_IDS,
 	ELIZA_1_TIER_IDS,
 	findCatalogModel,
 } from "../src/services/catalog.ts";
@@ -47,7 +47,7 @@ const TIERS_WITHOUT_DEDICATED_EMBEDDING: ReadonlySet<string> = new Set([
 	"eliza-1-0_8b",
 	"eliza-1-2b",
 ]);
-const DFLASH_TIERS: ReadonlySet<string> = new Set(ELIZA_1_DFLASH_TIER_IDS);
+const MTP_TIERS: ReadonlySet<string> = new Set(ELIZA_1_MTP_TIER_IDS);
 
 describe("per-tier text + embedding bundle resolution", () => {
 	for (const tierId of ELIZA_1_TIER_IDS) {
@@ -69,19 +69,19 @@ describe("per-tier text + embedding bundle resolution", () => {
 				);
 			});
 
-			it("declares a drafter GGUF component only for tiers with a DFlash companion", () => {
-				if (!DFLASH_TIERS.has(tierId)) {
-					expect(model?.sourceModel?.components.drafter).toBeUndefined();
-					expect(model?.runtime?.dflash).toBeUndefined();
-					expect(model?.companionModelIds).toBeUndefined();
+			it("declares a drafter GGUF component only for tiers with a MTP companion", () => {
+				if (!MTP_TIERS.has(tierId)) {
+					expect(model?.sourceModel?.components.mtp).toBeUndefined();
+					expect(model?.runtime?.mtp).toBeUndefined();
 					return;
 				}
-				expect(model?.sourceModel?.components.drafter).toBeTruthy();
-				expect(model?.sourceModel?.components.drafter?.file).toMatch(
-					/^bundles\/.+\/dflash\/drafter-.+\.gguf$/,
+				const slug = tierId.slice("eliza-1-".length);
+				expect(model?.sourceModel?.components.mtp).toBeTruthy();
+				expect(model?.sourceModel?.components.mtp?.file).toBe(
+					`bundles/${slug}/mtp/eliza-1-${slug}-drafter.gguf`,
 				);
-				expect(model?.runtime?.dflash?.drafterModelId).toBe(
-					`${tierId}-drafter`,
+				expect(model?.runtime?.mtp?.drafterFile).toBe(
+					`mtp/eliza-1-${slug}-drafter.gguf`,
 				);
 			});
 
@@ -122,29 +122,13 @@ describe("per-tier text + embedding bundle resolution", () => {
 			});
 
 			it("resolves the drafter component to a HuggingFace URL on the same repo when present", () => {
-				if (!DFLASH_TIERS.has(tierId)) return;
-				const file = model?.sourceModel?.components.drafter?.file;
+				if (!MTP_TIERS.has(tierId)) return;
+				const file = model?.sourceModel?.components.mtp?.file;
 				expect(file).toBeTruthy();
 				if (!model || !file) return;
 				const url = buildHuggingFaceResolveUrlForPath(model, file);
 				expect(url).toContain(`/${ELIZA_1_HF_REPO}/resolve/main/`);
-				expect(url).toContain(`dflash/drafter-`);
-			});
-
-			it("sets `preferredBackend = llama-server` (DFlash + KV-cache kernels live in the fork)", () => {
-				expect(model?.runtime?.preferredBackend).toBe("llama-server");
-			});
-
-			it("includes the dflash kernel only on tiers with a DFlash companion", () => {
-				if (!DFLASH_TIERS.has(tierId)) {
-					expect(
-						model?.runtime?.optimizations?.requiresKernel,
-					).not.toContain("dflash");
-					return;
-				}
-				expect(
-					model?.runtime?.optimizations?.requiresKernel,
-				).toContain("dflash");
+				expect(url).toContain(`mtp/eliza-1-`);
 			});
 
 			it("declares a kvCache profile (TurboQuant / QJL / PolarQuant types) — these are wired into llama-server args at boot", () => {

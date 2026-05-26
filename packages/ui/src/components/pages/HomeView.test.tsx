@@ -83,7 +83,18 @@ describe("HomeView", () => {
   it("starts voice input from the home surface", () => {
     render(<HomeView />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Start voice input" }));
+    const input = screen.getByTestId("home-chat-input");
+    const voiceToggle = screen.getByRole("button", {
+      name: "Start voice input",
+    });
+    expect(voiceToggle.textContent).toBe("Not listening");
+    expect(voiceToggle.querySelector("svg")).toBeNull();
+    expect(
+      voiceToggle.compareDocumentPosition(input) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    fireEvent.click(voiceToggle);
 
     expect(controllerMock.value.toggleRecording).toHaveBeenCalledTimes(1);
   });

@@ -33,7 +33,7 @@ Per-test the harness:
 
 | File                          | Covers                                                                        |
 | ----------------------------- | ----------------------------------------------------------------------------- |
-| `tests/onboarding.spec.ts`    | seeded user reaches dashboard with test-auth session, localStorage writable   |
+| `tests/dashboard.spec.ts`     | seeded user reaches dashboard with test-auth session, localStorage writable   |
 | `tests/provision.spec.ts`     | create agent → cron tick → sandbox `running`, control-plane sees the sandbox  |
 | `tests/deprovision.spec.ts`   | DELETE agent → async `agent_delete` job → polls to `deleted` / 404            |
 | `tests/stuck-cleanup.spec.ts` | aged `provisioning` row with no job → cleanup cron → sandbox `error`          |

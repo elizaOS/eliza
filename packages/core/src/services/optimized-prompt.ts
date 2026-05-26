@@ -3,13 +3,13 @@
  *
  * Native MIPRO/GEPA/bootstrap-fewshot optimizers (under
  * `plugins/plugin-training/src/optimizers/`) write a JSON artifact per task into
- * `~/.eliza/optimized-prompts/<task>/`. The runtime consults this service
+ * `<stateDir>/optimized-prompts/<task>/`. The runtime consults this service
  * before constructing the system prompt for one of the core decision
  * tasks and substitutes the optimized prompt (plus any few-shot
  * demonstrations) when an artifact is available.
  *
  * On-disk layout (per task):
- *   ~/.eliza/optimized-prompts/<task>/
+ *   <stateDir>/optimized-prompts/<task>/
  *     v1.json, v2.json, ..., vN.json   — concrete artifact files (last 5 retained)
  *     current   -> vN.json              — symlink; the live prompt
  *     previous  -> vN-1.json            — symlink; the immediate predecessor
@@ -166,7 +166,7 @@ const OPTIMIZED_PROMPT_HMAC_DEFAULT_KEY_TAG =
 
 function resolveHmacKey(): Buffer {
 	const fromEnv = process.env.ELIZA_OPTIMIZED_PROMPT_HMAC_KEY;
-	if (fromEnv && fromEnv.trim()) {
+	if (fromEnv?.trim()) {
 		// Accept hex (64 chars) or base64; fall back to raw utf-8 bytes.
 		const trimmed = fromEnv.trim();
 		if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {

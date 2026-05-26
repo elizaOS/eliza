@@ -30,7 +30,26 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TAILS_SRC="${TAILS_SRC:-${HERE}/tails}"
 OUT="${HERE}/out"
-IMAGE="elizaos-builder"
+# Target architecture for the ISO. Default amd64 keeps every existing
+# call site working unchanged. arm64 + riscv64 add the per-arch bootloader
+# packages in the Dockerfile (grub-efi-arm64-bin / grub-efi-riscv64-bin
+# instead of grub-pc-bin + syslinux + isolinux, which are x86-only) and
+# switch live-build's --architecture and --linux-flavours. Both inputs
+# are tightly coupled — drive them from one source so a mismatch can't
+# silently produce an amd64 chroot inside an arm64 image.
+ARCH="${ELIZAOS_ARCH:-amd64}"
+case "${ARCH}" in
+    amd64|arm64|riscv64) ;;
+    *)
+        echo "ERROR: ELIZAOS_ARCH=${ARCH} is not supported." >&2
+        echo "       Supported values: amd64 (default), arm64, riscv64." >&2
+        exit 1
+        ;;
+esac
+# One builder image per arch — mixing them would race for the same image
+# tag. Per-arch tags also let CI keep an amd64 + arm64 builder warm in
+# the same registry.
+IMAGE="elizaos-builder-${ARCH}"
 # Persistent apt-cacher-ng cache. A Docker named volume (not a host
 # bind-mount) so it is owned correctly inside the container regardless
 # of host uid, and it survives `docker run --rm`. This is what makes
@@ -76,11 +95,15 @@ else
     git -C "${HERE}/tails-live-build" fetch --depth 1 origin "${LIVE_BUILD_REF}"
     git -C "${HERE}/tails-live-build" checkout -q FETCH_HEAD
 fi
-# Force x86_64 so the Tails-required x86-only packages (grub-pc-bin,
-# grub-efi-amd64-bin, syslinux, isolinux) resolve correctly. Without this,
-# Apple Silicon hosts pull the arm64 debian image and apt-get install
-# exits 100 with "Unable to locate package grub-pc-bin".
-docker build --platform linux/amd64 -t "${IMAGE}" "${HERE}"
+# Pin the build platform so the Dockerfile pulls the matching debian
+# base image and resolves arch-specific apt packages. For amd64 this
+# also prevents Apple Silicon hosts (default arm64) from pulling the
+# arm64 debian image when the user asked for an amd64 ISO. For
+# non-amd64 archs the host must have qemu-user-static + binfmt_misc
+# registered (Docker Desktop ships this; on bare Linux,
+# `apt-get install qemu-user-static binfmt-support` then `docker run
+# --rm --privileged tonistiigi/binfmt --install all`).
+docker build --platform "linux/${ARCH}" --build-arg "TARGETARCH=${ARCH}" -t "${IMAGE}" "${HERE}"
 rm -rf "${HERE}/tails-live-build"
 
 # Create the apt-cacher-ng cache volume on first run.
@@ -95,7 +118,12 @@ mkdir -p "${OUT}"
 docker_run_args=(
     --rm
     --privileged
-    --platform linux/amd64
+    --platform "linux/${ARCH}"
+    # Pass the target arch into the container so tails/auto/config can
+    # drive --architecture / --linux-flavours / arch-specific bootloader
+    # options off it. Defaulted to amd64 inside the script too, so a
+    # bare run still works.
+    -e "ELIZAOS_ARCH=${ARCH}"
     -e "MT_STAGE=${STAGE}"
     -e "MT_FAST=${MT_FAST:-}"
     -e "ELIZAOS_SKIP_WEBSITE=${ELIZAOS_SKIP_WEBSITE:-}"

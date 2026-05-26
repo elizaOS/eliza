@@ -75,7 +75,7 @@ slot the runtime validator enforces.
 ## Eliza-1 drafter target (alternative — runs *on* the live drafter)
 
 `configs/turn_detector_eliza1_drafter.yaml` trains a LoRA adapter on top
-of the eliza-1 drafter (the small model DFlash already keeps warm for
+of the eliza-1 drafter (the small model MTP already keeps warm for
 speculative decoding) instead of a standalone ONNX. The runtime layers
 the adapter onto a dedicated EOT context at voice-session start and
 reads P(`<|im_end|>`) directly off the live model — see

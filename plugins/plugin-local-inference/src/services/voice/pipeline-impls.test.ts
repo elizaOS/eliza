@@ -15,10 +15,10 @@ import { describe, expect, it } from "vitest";
 import { VoiceStartupError } from "./errors";
 import { splitTranscriptToTokens, VoicePipeline } from "./pipeline";
 import {
-	type MtpTextRunner,
+	MissingAsrTranscriber,
 	MtpDraftProposer,
 	MtpTargetVerifier,
-	MissingAsrTranscriber,
+	type MtpTextRunner,
 } from "./pipeline-impls";
 import { InMemoryAudioSink } from "./ring-buffer";
 import { VoiceScheduler } from "./scheduler";

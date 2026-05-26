@@ -115,7 +115,7 @@ export class ExecApprovalService extends Service {
       logger.error(
         { src: "service:exec_approval", error, agentId: runtime.agentId },
         "Failed to load approval config during startup - using in-memory defaults. " +
-          "Approvals may not persist. Check file permissions for ~/.eliza/exec-approvals.json"
+          "Approvals may not persist. Check state-dir file permissions."
       );
       // Use a minimal in-memory config so the service can still function
       service.approvalConfig = {

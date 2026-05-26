@@ -4,7 +4,7 @@
 // `packages/app-core/scripts/omnivoice-fuse/cmake-graft.mjs` filed against
 // us ("the route-mount is owned by the runtime team"). It makes the fused
 // `llama-server` — the same process that already serves `/completion`,
-// `/v1/chat/completions`, and the DFlash speculative loop — additionally
+// `/v1/chat/completions`, and the MTP speculative loop — additionally
 // serve `POST /v1/audio/speech` (the OpenAI-compatible TTS endpoint) by
 // calling into `omnivoice-core` (`ov_init` / `ov_synthesize`) in-process.
 //
@@ -23,7 +23,7 @@
 //
 // Idempotent via the `// ELIZA-OMNIVOICE-AUDIO-SPEECH-ROUTE-V1` sentinel.
 // If the server.cpp layout drifts so an anchor is missing, this throws and
-// `build-llama-cpp-dflash.mjs` exits non-zero — no silent fallback.
+// `build-llama-cpp-mtp.mjs` exits non-zero — no silent fallback.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -46,7 +46,7 @@ function findServerSource(cacheDir) {
  * Defines a tiny `eliza_omnivoice` namespace with a lazily-initialised
  * OmniVoice context (model + codec GGUF paths come from `--omnivoice-model`
  * / `--omnivoice-codec`, or the `ELIZA_OMNIVOICE_MODEL` /
- * `ELIZA_OMNIVOICE_CODEC` env vars the dflash-server spawn layer sets when
+ * `ELIZA_OMNIVOICE_CODEC` env vars the FFI runtime spawn layer sets when
  * launching the fused binary against an Eliza-1 bundle) and a `handler_t`
  * for `POST /v1/audio/speech`.
  *
@@ -598,7 +598,7 @@ static std::string resolved_codec_path() {
   const includeIdx = source.indexOf(includeAnchor);
   if (includeIdx === -1) {
     throw new Error(
-      `[dflash-build] server-omnivoice-route: '${includeAnchor}' not found in ` +
+      `[mtp-build] server-omnivoice-route: '${includeAnchor}' not found in ` +
         `${serverPath} — server.cpp layout changed; cannot anchor the audio/speech mount.`,
     );
   }
@@ -616,14 +616,14 @@ static std::string resolved_codec_path() {
   const routeIdx = patched.indexOf(routeAnchor);
   if (routeIdx === -1) {
     throw new Error(
-      `[dflash-build] server-omnivoice-route: route anchor not found in ` +
+      `[mtp-build] server-omnivoice-route: route anchor not found in ` +
         `${serverPath} — cannot register /v1/audio/speech.`,
     );
   }
   const routeLineEnd = patched.indexOf("\n", routeIdx) + 1;
   const routeInsert =
     `#ifdef ELIZA_FUSE_OMNIVOICE\n` +
-    `    // Fused omnivoice TTS — same process as the text/DFlash routes above.\n` +
+    `    // Fused omnivoice TTS — same process as the text/MTP routes above.\n` +
     `    ctx_http.post("/v1/audio/speech",     ex_wrapper(eliza_omnivoice::audio_speech_handler()));\n` +
     `    ctx_http.post("/audio/speech",        ex_wrapper(eliza_omnivoice::audio_speech_handler()));\n` +
     `#endif\n`;
@@ -637,7 +637,7 @@ static std::string resolved_codec_path() {
   const paramsIdx = patched.indexOf(paramsAnchor);
   if (paramsIdx === -1) {
     throw new Error(
-      `[dflash-build] server-omnivoice-route: '${paramsAnchor}' not found in ` +
+      `[mtp-build] server-omnivoice-route: '${paramsAnchor}' not found in ` +
         `${serverPath} — cannot wire the omnivoice CLI args.`,
     );
   }
@@ -678,7 +678,7 @@ export function patchServerOmnivoiceRoute(cacheDir, { dryRun = false } = {}) {
   const serverPath = findServerSource(cacheDir);
   if (!serverPath) {
     throw new Error(
-      `[dflash-build] server-omnivoice-route: no server.cpp under ${cacheDir} ` +
+      `[mtp-build] server-omnivoice-route: no server.cpp under ${cacheDir} ` +
         `(looked at tools/server/ and examples/server/).`,
     );
   }
@@ -688,14 +688,14 @@ export function patchServerOmnivoiceRoute(cacheDir, { dryRun = false } = {}) {
     if (patched !== original) {
       if (!dryRun) fs.writeFileSync(serverPath, patched, "utf8");
       console.log(
-        `[dflash-build] ${dryRun ? "(dry-run) would refresh" : "refreshed"} ` +
+        `[mtp-build] ${dryRun ? "(dry-run) would refresh" : "refreshed"} ` +
           `${path.relative(cacheDir, serverPath)} ` +
           `omnivoice /v1/audio/speech route (sentinel present)`,
       );
       return;
     }
     console.log(
-      `[dflash-build] ${path.relative(cacheDir, serverPath)} already carries the ` +
+      `[mtp-build] ${path.relative(cacheDir, serverPath)} already carries the ` +
         `omnivoice /v1/audio/speech route (sentinel present)`,
     );
     return;
@@ -703,14 +703,14 @@ export function patchServerOmnivoiceRoute(cacheDir, { dryRun = false } = {}) {
   const patched = patchServerSource(original, serverPath);
   if (dryRun) {
     console.log(
-      `[dflash-build] (dry-run) would mount /v1/audio/speech onto ` +
+      `[mtp-build] (dry-run) would mount /v1/audio/speech onto ` +
         `${path.relative(cacheDir, serverPath)} for ELIZA_FUSE_OMNIVOICE builds`,
     );
     return;
   }
   fs.writeFileSync(serverPath, patched, "utf8");
   console.log(
-    `[dflash-build] mounted /v1/audio/speech onto ${path.relative(cacheDir, serverPath)} ` +
+    `[mtp-build] mounted /v1/audio/speech onto ${path.relative(cacheDir, serverPath)} ` +
       `(active only when built with -DELIZA_FUSE_OMNIVOICE=ON)`,
   );
 }

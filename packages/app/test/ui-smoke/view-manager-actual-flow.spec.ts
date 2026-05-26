@@ -185,18 +185,21 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     });
   });
 
-  await page.route("**/dynamic-views/actual-remote-ledger.js", async (route) => {
-    remoteBundleRequests += 1;
-    await route.fulfill({
-      status: 200,
-      contentType: "application/javascript",
-      body: [
-        "export default function ActualRemoteLedgerView() {",
-        "  return 'Actual remote ledger module loaded';",
-        "}",
-      ].join("\n"),
-    });
-  });
+  await page.route(
+    "**/dynamic-views/actual-remote-ledger.js",
+    async (route) => {
+      remoteBundleRequests += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/javascript",
+        body: [
+          "export default function ActualRemoteLedgerView() {",
+          "  return 'Actual remote ledger module loaded';",
+          "}",
+        ].join("\n"),
+      });
+    },
+  );
 
   await openAppPath(page, "/views");
   await expect(
@@ -302,7 +305,9 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     .getByRole("button", { name: /^Actual Remote Ledger Actual/ })
     .click();
   await expect(page).toHaveURL(/\/apps\/actual-remote-ledger$/);
-  await expect(page.getByText("Actual remote ledger module loaded")).toBeVisible();
+  await expect(
+    page.getByText("Actual remote ledger module loaded"),
+  ).toBeVisible();
   expect(remoteBundleRequests).toBeGreaterThan(0);
   await screenshot(page, "04-remote-module-loaded");
 
@@ -337,8 +342,12 @@ test("actual app view manager creates, updates, switches, opens, and deletes loc
     .first()
     .click();
   await expect(page).toHaveURL(/\/apps\/actual-remote-ledger$/);
-  await expect(page.getByText("Actual remote ledger module loaded")).toBeVisible();
-  expect(remoteBundleRequests).toBeGreaterThanOrEqual(remoteRequestsAfterFirstOpen);
+  await expect(
+    page.getByText("Actual remote ledger module loaded"),
+  ).toBeVisible();
+  expect(remoteBundleRequests).toBeGreaterThanOrEqual(
+    remoteRequestsAfterFirstOpen,
+  );
   await screenshot(page, "05-remote-updated-reopened");
 
   await openAppPath(page, "/views");

@@ -87,7 +87,7 @@ STRUCTURED_RESPONSE_REQUIRED_RULES = frozenset(
         "handle-response-tool-call",
         "closed-action-enum",
         "eliza-schema-guided-decode",
-        "dflash-prefill",
+        "mtp-prefill",
         "deterministic-repair",
     }
 )
@@ -111,7 +111,7 @@ WEIGHT_PAYLOAD_DIRS = frozenset(
         "vad",
         "imagegen",
         "vision",
-        "dflash",
+        "mtp",
         "embedding",
         "wakeword",
     }
@@ -129,7 +129,7 @@ MODEL_CARD_REQUIRED_FRAGMENTS = (
     "image generation",
     "structured response",
     "MTP",
-    "DFlash",
+    "MTP",
     "llama.cpp",
     "omnivoice.cpp",
     "stable-diffusion.cpp",
@@ -590,8 +590,8 @@ def _manifest_required_file_blockers(
         for entry in entries:
             if isinstance(entry, Mapping) and isinstance(entry.get("path"), str):
                 manifest_paths.add(entry["path"])
-    runtime_roots = {"text", "tts", "asr", "vad", "imagegen", "vision", "dflash", "cache"}
-    runtime_eval_files = {"evals/dflash-tuning-report.json"}
+    runtime_roots = {"text", "tts", "asr", "vad", "imagegen", "vision", "mtp", "cache"}
+    runtime_eval_files = {"evals/mtp-tuning-report.json"}
     return sorted(
         rel for rel in required_files
         if (
@@ -615,7 +615,7 @@ def _manifest_runtime_lineage_blockers(manifest: Mapping[str, Any]) -> list[str]
         "vad": "vad",
         "imagegen": "imagegen",
         "vision": "vision",
-        "dflash": "drafter",
+        "mtp": "drafter",
     }
     for file_slot, lineage_slot in lineage_slot_by_file_slot.items():
         entries = files.get(file_slot)
@@ -656,7 +656,7 @@ def _release_structured_response_blockers(evidence: Mapping[str, Any]) -> list[s
         for key in (
             "plannerGrammar",
             "structuredOutput",
-            "dflashStructured",
+            "mtpStructured",
             "deterministicRepair",
         ):
             value = reports.get(key)
@@ -753,7 +753,7 @@ def _release_evidence_publishable_blockers(
     return blockers
 
 
-def _dflash_target_meta_blockers(
+def _mtp_target_meta_blockers(
     meta: Mapping[str, Any],
     *,
     tier: str,
@@ -779,7 +779,7 @@ def _dflash_target_meta_blockers(
             blockers.append(f"targetText.finalElizaWeights: {target.get('finalElizaWeights')!r}")
 
     drafter = meta.get("drafter")
-    expected_drafter_path = f"dflash/drafter-{tier}.gguf"
+    expected_drafter_path = f"mtp/drafter-{tier}.gguf"
     if not isinstance(drafter, Mapping):
         blockers.append("drafter: missing")
     else:
@@ -835,10 +835,10 @@ def _dflash_target_meta_blockers(
         if not isinstance(accepted, int) or accepted <= 0:
             blockers.append(f"acceptanceWindow.acceptedTokens: {accepted!r}")
     if validation_report is None:
-        blockers.append("dflash/validation-real.json: missing")
+        blockers.append("mtp/validation-real.json: missing")
     else:
         if validation_report.get("pass") is not True:
-            blockers.append(f"dflash/validation-real.json.pass: {validation_report.get('pass')!r}")
+            blockers.append(f"mtp/validation-real.json.pass: {validation_report.get('pass')!r}")
         validation_checks = validation_report.get("checks")
         rollout_check = (
             validation_checks.get("acceptanceRollout")
@@ -846,120 +846,120 @@ def _dflash_target_meta_blockers(
             else None
         )
         if not isinstance(rollout_check, Mapping):
-            blockers.append("dflash/validation-real.json.checks.acceptanceRollout: missing")
+            blockers.append("mtp/validation-real.json.checks.acceptanceRollout: missing")
         else:
             if rollout_check.get("pass") is not True:
                 blockers.append(
-                    "dflash/validation-real.json.checks.acceptanceRollout.pass: "
+                    "mtp/validation-real.json.checks.acceptanceRollout.pass: "
                     f"{rollout_check.get('pass')!r}"
                 )
             report_rate = rollout_check.get("acceptanceRate")
             if isinstance(gate, (int, float)) and isinstance(report_rate, (int, float)) and report_rate < gate:
                 blockers.append(
-                    f"dflash/validation-real.json.acceptanceRate: {report_rate} < gate {gate}"
+                    f"mtp/validation-real.json.acceptanceRate: {report_rate} < gate {gate}"
                 )
     if runtime_report is None:
-        blockers.append("dflash/runtime-smoke-native.json: missing")
+        blockers.append("mtp/runtime-smoke-native.json: missing")
     else:
         metadata_status = runtime_report.get("metadataStatus")
         if metadata_status != "metadata_loadable":
-            blockers.append(f"dflash/runtime-smoke-native.json.metadataStatus: {metadata_status!r}")
+            blockers.append(f"mtp/runtime-smoke-native.json.metadataStatus: {metadata_status!r}")
         metadata_failures = runtime_report.get("metadataFailures")
         if metadata_failures not in (None, []):
             blockers.append(
-                f"dflash/runtime-smoke-native.json.metadataFailures: {metadata_failures!r}"
+                f"mtp/runtime-smoke-native.json.metadataFailures: {metadata_failures!r}"
             )
         runtime_runs = runtime_report.get("runtime")
         if not isinstance(runtime_runs, list) or not runtime_runs:
-            blockers.append("dflash/runtime-smoke-native.json.runtime: missing")
+            blockers.append("mtp/runtime-smoke-native.json.runtime: missing")
         else:
             accepted_run = False
             for run in runtime_runs:
                 if not isinstance(run, Mapping) or run.get("status") != 0:
                     continue
-                dflash = run.get("dflash")
-                if not isinstance(dflash, Mapping):
+                mtp = run.get("mtp")
+                if not isinstance(mtp, Mapping):
                     continue
                 accepted_run = (
-                    dflash.get("requiresTrueDrafting") is True
-                    and dflash.get("draftingActive") is True
-                    and isinstance(dflash.get("drafted"), int)
-                    and dflash.get("drafted") > 0
-                    and isinstance(dflash.get("accepted"), int)
-                    and dflash.get("accepted") > 0
-                    and not dflash.get("dflashFailure")
+                    mtp.get("requiresTrueDrafting") is True
+                    and mtp.get("draftingActive") is True
+                    and isinstance(mtp.get("drafted"), int)
+                    and mtp.get("drafted") > 0
+                    and isinstance(mtp.get("accepted"), int)
+                    and mtp.get("accepted") > 0
+                    and not mtp.get("mtpFailure")
                 )
                 if accepted_run:
                     break
             if not accepted_run:
-                blockers.append("dflash/runtime-smoke-native.json.runtime.dflash: no accepted native draft")
+                blockers.append("mtp/runtime-smoke-native.json.runtime.mtp: no accepted native draft")
         bench = runtime_report.get("bench")
         if not isinstance(bench, Mapping):
-            blockers.append("dflash/runtime-smoke-native.json.bench: missing")
+            blockers.append("mtp/runtime-smoke-native.json.bench: missing")
         else:
             bench_rate = bench.get("acceptanceRate")
             if bench.get("available") is not True:
-                blockers.append(f"dflash/runtime-smoke-native.json.bench.available: {bench.get('available')!r}")
+                blockers.append(f"mtp/runtime-smoke-native.json.bench.available: {bench.get('available')!r}")
             if bench.get("status") != "pass":
-                blockers.append(f"dflash/runtime-smoke-native.json.bench.status: {bench.get('status')!r}")
+                blockers.append(f"mtp/runtime-smoke-native.json.bench.status: {bench.get('status')!r}")
             if not isinstance(bench.get("drafted"), int) or bench.get("drafted") <= 0:
-                blockers.append(f"dflash/runtime-smoke-native.json.bench.drafted: {bench.get('drafted')!r}")
+                blockers.append(f"mtp/runtime-smoke-native.json.bench.drafted: {bench.get('drafted')!r}")
             if not isinstance(bench.get("accepted"), int) or bench.get("accepted") <= 0:
-                blockers.append(f"dflash/runtime-smoke-native.json.bench.accepted: {bench.get('accepted')!r}")
+                blockers.append(f"mtp/runtime-smoke-native.json.bench.accepted: {bench.get('accepted')!r}")
             if isinstance(gate, (int, float)) and isinstance(bench_rate, (int, float)) and bench_rate < gate:
                 blockers.append(
-                    f"dflash/runtime-smoke-native.json.bench.acceptanceRate: {bench_rate} < gate {gate}"
+                    f"mtp/runtime-smoke-native.json.bench.acceptanceRate: {bench_rate} < gate {gate}"
                 )
             speedup = bench.get("speedup")
             if not isinstance(speedup, (int, float)) or speedup <= 1.0:
-                blockers.append(f"dflash/runtime-smoke-native.json.bench.speedup: {speedup!r}")
+                blockers.append(f"mtp/runtime-smoke-native.json.bench.speedup: {speedup!r}")
             summary = bench.get("summary")
             if isinstance(summary, Mapping):
                 if summary.get("status") != "pass":
                     blockers.append(
-                        f"dflash/runtime-smoke-native.json.bench.summary.status: {summary.get('status')!r}"
+                        f"mtp/runtime-smoke-native.json.bench.summary.status: {summary.get('status')!r}"
                     )
-                if summary.get("dflashDraftingActive") is not True:
+                if summary.get("mtpDraftingActive") is not True:
                     blockers.append(
-                        "dflash/runtime-smoke-native.json.bench.summary.dflashDraftingActive: "
-                        f"{summary.get('dflashDraftingActive')!r}"
+                        "mtp/runtime-smoke-native.json.bench.summary.mtpDraftingActive: "
+                        f"{summary.get('mtpDraftingActive')!r}"
                     )
     if tuning_report is None:
-        blockers.append("evals/dflash-tuning-report.json: missing")
+        blockers.append("evals/mtp-tuning-report.json: missing")
     else:
         if tuning_report.get("status") != "publishable":
             blockers.append(
-                f"evals/dflash-tuning-report.json.status: {tuning_report.get('status')!r}"
+                f"evals/mtp-tuning-report.json.status: {tuning_report.get('status')!r}"
             )
         if tuning_report.get("publishEligible") is not True:
             blockers.append(
-                "evals/dflash-tuning-report.json.publishEligible: "
+                "evals/mtp-tuning-report.json.publishEligible: "
                 f"{tuning_report.get('publishEligible')!r}"
             )
         tuning_blockers = tuning_report.get("blockers")
         if tuning_blockers not in (None, []):
             blockers.append(
-                f"evals/dflash-tuning-report.json.blockers: {tuning_blockers!r}"
+                f"evals/mtp-tuning-report.json.blockers: {tuning_blockers!r}"
             )
         release_bench = tuning_report.get("releaseBench")
         if not isinstance(release_bench, Mapping):
-            blockers.append("evals/dflash-tuning-report.json.releaseBench: missing")
+            blockers.append("evals/mtp-tuning-report.json.releaseBench: missing")
         else:
             bench_rate = release_bench.get("acceptanceRate")
             if release_bench.get("status") != "pass":
                 blockers.append(
-                    "evals/dflash-tuning-report.json.releaseBench.status: "
+                    "evals/mtp-tuning-report.json.releaseBench.status: "
                     f"{release_bench.get('status')!r}"
                 )
             if isinstance(gate, (int, float)) and isinstance(bench_rate, (int, float)) and bench_rate < gate:
                 blockers.append(
-                    "evals/dflash-tuning-report.json.releaseBench.acceptanceRate: "
+                    "evals/mtp-tuning-report.json.releaseBench.acceptanceRate: "
                     f"{bench_rate} < gate {gate}"
                 )
             speedup = release_bench.get("speedup")
             if not isinstance(speedup, (int, float)) or speedup <= 1.0:
                 blockers.append(
-                    f"evals/dflash-tuning-report.json.releaseBench.speedup: {speedup!r}"
+                    f"evals/mtp-tuning-report.json.releaseBench.speedup: {speedup!r}"
                 )
     return blockers
 
@@ -1559,13 +1559,13 @@ def audit_hf_release(
         report.check(f"{tier} manifest JSON content available", True, f"{prefix}eliza-1.manifest.json")
 
         try:
-            dflash_meta_text = fetch_text(_raw_model_url(model_repo, f"{prefix}dflash/target-meta.json"))
-            dflash_meta = json.loads(dflash_meta_text)
+            mtp_meta_text = fetch_text(_raw_model_url(model_repo, f"{prefix}mtp/target-meta.json"))
+            mtp_meta = json.loads(mtp_meta_text)
         except (RuntimeError, json.JSONDecodeError) as exc:
             report.check(f"{tier} MTP drafter release evidence passed", False, str(exc))
         else:
             acceptance_report = None
-            rollout = dflash_meta.get("acceptanceRollout")
+            rollout = mtp_meta.get("acceptanceRollout")
             if isinstance(rollout, Mapping) and isinstance(rollout.get("report"), str):
                 try:
                     acceptance_report_text = fetch_text(
@@ -1577,7 +1577,7 @@ def audit_hf_release(
             validation_report = None
             try:
                 validation_report_text = fetch_text(
-                    _raw_model_url(model_repo, f"{prefix}dflash/validation-real.json")
+                    _raw_model_url(model_repo, f"{prefix}mtp/validation-real.json")
                 )
                 validation_report = json.loads(validation_report_text)
             except (RuntimeError, json.JSONDecodeError):
@@ -1585,7 +1585,7 @@ def audit_hf_release(
             runtime_report = None
             try:
                 runtime_report_text = fetch_text(
-                    _raw_model_url(model_repo, f"{prefix}dflash/runtime-smoke-native.json")
+                    _raw_model_url(model_repo, f"{prefix}mtp/runtime-smoke-native.json")
                 )
                 runtime_report = json.loads(runtime_report_text)
             except (RuntimeError, json.JSONDecodeError):
@@ -1593,13 +1593,13 @@ def audit_hf_release(
             tuning_report = None
             try:
                 tuning_report_text = fetch_text(
-                    _raw_model_url(model_repo, f"{prefix}evals/dflash-tuning-report.json")
+                    _raw_model_url(model_repo, f"{prefix}evals/mtp-tuning-report.json")
                 )
                 tuning_report = json.loads(tuning_report_text)
             except (RuntimeError, json.JSONDecodeError):
                 tuning_report = None
-            dflash_meta_blockers = _dflash_target_meta_blockers(
-                dflash_meta,
+            mtp_meta_blockers = _mtp_target_meta_blockers(
+                mtp_meta,
                 tier=tier,
                 acceptance_report=acceptance_report,
                 validation_report=validation_report,
@@ -1608,9 +1608,9 @@ def audit_hf_release(
             )
             report.check(
                 f"{tier} MTP drafter release evidence passed",
-                not dflash_meta_blockers,
-                ", ".join(dflash_meta_blockers[:8])
-                + (f" (+{len(dflash_meta_blockers) - 8} more)" if len(dflash_meta_blockers) > 8 else ""),
+                not mtp_meta_blockers,
+                ", ".join(mtp_meta_blockers[:8])
+                + (f" (+{len(mtp_meta_blockers) - 8} more)" if len(mtp_meta_blockers) > 8 else ""),
             )
 
         try:

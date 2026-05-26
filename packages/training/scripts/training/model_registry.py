@@ -7,8 +7,8 @@ The eliza-1 line trains against Qwen3.5 for 0.8B/2B/4B/9B and Qwen3.6 for
 the active 27B-class releases.
 The legacy Qwen3 base models (``Qwen/Qwen3-0.6B`` / ``Qwen/Qwen3-1.7B`` /
 ``Qwen/Qwen3-4B``) were dropped on 2026-05-12 per operator directive — the
-Qwen3 dense bases do not work with the eliza-1 dflash spec-decode path
-(the dflash kernels are validated against the Qwen3.5 architecture +
+Qwen3 dense bases do not work with the eliza-1 mtp spec-decode path
+(the mtp kernels are validated against the Qwen3.5 architecture +
 248320 tokenizer; a Qwen3 base has the wrong vocab and the wrong attention
 shape for the fused QJL/Polar paths). Historical per-tier repos remain public
 for existing downloads, but their model cards are marked DEPRECATED and no new
@@ -26,11 +26,11 @@ by the runtime model catalog (``packages/shared/src/local-inference/catalog.ts``
   - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2)
 
 All active bases are published on the Hub. The 9b/27b tiers need workstation /
-cloud-class GPUs (or FSDP). Every Qwen3.5/Qwen3.6 target's DFlash
+cloud-class GPUs (or FSDP). Every Qwen3.5/Qwen3.6 target's MTP
 speculative-decode drafter uses the Qwen3.5 tokenizer (vocab 248320). The
 small 0_8b/2b drafters are compact 0.1B/0.3B configs distilled from their
 targets; larger tiers use ``Qwen/Qwen3.5-0.8B-Base``. See
-``DFLASH_DRAFTER_BASE`` below and ``scripts/distill_dflash_drafter.py``.
+``MTP_DRAFTER_BASE`` below and ``scripts/distill_mtp_drafter.py``.
 
 The numbers below are observed-or-projected memory budgets for full-parameter
 SFT with APOLLO at the listed sequence length. They are *budgets* — the
@@ -240,15 +240,15 @@ def _entry(**kw) -> ModelEntry:
 #   24 (6 full)    8         2         256        248320   Qwen/Qwen3.5-0.8B → eliza-1-0_8b   (qwen3_5, hidden 1024, max_pos 262144)
 #   24 (6 full)    8         2         256        248320   Qwen/Qwen3.5-2B   → eliza-1-2b     (qwen3_5, hidden 2048, max_pos 262144)
 #
-# DFlash speculative-decode drafter base, per eliza tier id. The drafter
+# MTP speculative-decode drafter base, per eliza tier id. The drafter
 # must share the target's tokenizer/vocab: every active Qwen3.5/Qwen3.6 target
 # drafts from the Qwen3.5 tokenizer family. The 0_8b and 2b targets now use
 # compact 0.1B / 0.3B Qwen3.5-arch student configs distilled directly from
 # their target checkpoints; larger tiers keep the 0.8B pretrain base. All
-# active tiers ship a DFlash companion so the app can exercise the same
+# active tiers ship a MTP companion so the app can exercise the same
 # optimized runtime path end to end. Mirrors `DEFAULT_STUDENT_BASE` in
-# `scripts/distill_dflash_drafter.py` — keep the two in sync.
-DFLASH_DRAFTER_BASE: dict[str, str] = {
+# `scripts/distill_mtp_drafter.py` — keep the two in sync.
+MTP_DRAFTER_BASE: dict[str, str] = {
     # Qwen3.5 targets — small-tier drafters use compact configs; larger
     # tiers keep Qwen3.5-0.8B-Base as their distillation base.
     "eliza-1-0_8b": "Qwen/Qwen3.5-0.8B-Base",
@@ -276,14 +276,14 @@ REGISTRY: dict[str, ModelEntry] = {
     #
     # The legacy Qwen3 bases (Qwen/Qwen3-0.6B / Qwen/Qwen3-1.7B /
     # Qwen/Qwen3-4B) were dropped on 2026-05-12 — those models do not work
-    # with the eliza-1 dflash spec-decode path (the dflash kernels are
+    # with the eliza-1 mtp spec-decode path (the mtp kernels are
     # validated against the Qwen3.5 architecture). The HuggingFace tier
     # per-tier repos remain public for existing downloads; the cards are marked
     # DEPRECATED and are not current release targets.
     #
     # New "smallest" tier on the Qwen3.5 backbone. Shares the 248k Qwen3.5
     # tokenizer with the 2b/4b/9b/27b targets — which is also why it is the
-    # DFlash drafter base for those tiers (see DFLASH_DRAFTER_BASE above).
+    # MTP drafter base for those tiers (see MTP_DRAFTER_BASE above).
     # Hybrid linear-attn VLM (`qwen3_5`, `full_attention_interval=4` → 6 of
     # 24 layers are full-attention / KV-bearing). Geometry from
     # Qwen/Qwen3.5-0.8B `config.json`. SFT trains from the *Base* pretrain
@@ -325,7 +325,7 @@ REGISTRY: dict[str, ModelEntry] = {
         "whole train→quant→bench stack end-to-end in well under an "
         "hour. Runtime catalog id: eliza-1-0_8b (128k release floor). Shares "
         "the 248k Qwen3.5 tokenizer with the 2b/9b/27b targets — also "
-        "the DFlash tokenizer with the compact 0.1B drafter config.",
+        "the MTP tokenizer with the compact 0.1B drafter config.",
     ),
     # ──────────────────── LARGER-TIER BASE CHECKPOINTS ────────────────────
     # The eliza-1 line's mid/workstation/cloud tiers train against the
@@ -399,7 +399,7 @@ REGISTRY: dict[str, ModelEntry] = {
         notes="Local/workstation tier (eliza-1-4b) on the Qwen3.5-4B-Base "
         "backbone. Full-param APOLLO SFT fits a single H200 easily. "
         "Replaces the legacy qwen3-4b for the Qwen3.5 fused-model line "
-        "(shares the 248k tokenizer + dflash drafter base).",
+        "(shares the 248k tokenizer + mtp drafter base).",
     ),
     "qwen3.5-9b": _entry(
         hf_id="Qwen/Qwen3.5-9B",

@@ -43,6 +43,6 @@ bun run --cwd apps/app build
 - Published package mode is the default and uses the `beta` npm dist-tag unless `ELIZAOS_VERSION` or `ELIZAOS_DIST_TAG` is set. `bun run eliza:eject` clones or reuses `./eliza`, installs it, and records local source mode in `.elizaos/source-mode`. `bun run eliza:packages` switches back to published packages.
 - Published package mode uses the registry packages and skips the current beta local-embedding/native `node-llama-cpp` and Baileys QR-auth paths so first install and startup do not depend on optional native or GitHub packages. Eject to local source mode to work on local inference or WhatsApp QR internals.
 - `./eliza` is ignored by git and is not a submodule. Use `ELIZA_GIT_URL` and `ELIZA_BRANCH` to choose a different checkout before running `bun run setup:upstreams`.
-- The default brand kit is intentionally minimal. The source-of-truth files are `apps/app/public/favicon.svg` and `apps/app/public/splash-bg.svg`.
-- `bun run --cwd apps/app brand:assets` regenerates the derived desktop assets: `public/splash-bg.jpg`, `electrobun/assets/appIcon.png`, `electrobun/assets/appIcon.ico`, and `electrobun/assets/appIcon.iconset/`.
-- `apps/app/public/logos/*` is still required because `@elizaos/app-core` maps provider IDs to those fixed asset paths during onboarding and settings flows.
+- The default brand kit is intentionally minimal. The source-of-truth icon is `apps/app/public/favicon.svg`.
+- `bun run --cwd apps/app brand:assets` regenerates the derived desktop assets: `electrobun/assets/appIcon.png`, `electrobun/assets/appIcon.ico`, and `electrobun/assets/appIcon.iconset/`.
+- `apps/app/public/logos/*` is still required because `@elizaos/app-core` maps provider IDs to those fixed asset paths during first-run and settings flows.

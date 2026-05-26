@@ -155,19 +155,12 @@ describe("docs gate", () => {
       recursive: true,
     });
     await fs.writeFile(
-      path.join(
-        repoRoot,
-        "packages",
-        "docs",
-        "docs",
-        "guides",
-        "onboarding.md",
-      ),
-      "# Onboarding\n",
+      path.join(repoRoot, "packages", "docs", "docs", "guides", "first-run.md"),
+      "# First Run\n",
     );
     await fs.writeFile(
       path.join(repoRoot, "packages", "demo", "README.md"),
-      "# Demo\n\nSee [onboarding](../../docs/guides/onboarding.md).\n",
+      "# Demo\n\nSee [first run](../../docs/guides/first-run.md).\n",
     );
 
     const result = checkDocs({ repoRoot });

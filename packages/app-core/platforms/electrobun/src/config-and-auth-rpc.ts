@@ -1,7 +1,7 @@
 /**
  * Pure composition layer for `getConfig`, `getAuthStatus`, `getAuthMe`.
  *
- * Same shape as boot-progress.ts and onboarding-rpc.ts — the body of
+ * Same shape as boot-progress.ts and first-run-rpc.ts — the body of
  * the HTTP readers is the transitional carrier; the typed contract on
  * the renderer side is the load-bearing surface and stays stable when
  * the agent runtime merges into this Bun process.

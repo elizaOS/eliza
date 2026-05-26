@@ -76,7 +76,7 @@ def _write_bundle(
         for root in (
             "text",
             "voice",
-            "dflash",
+            "mtp",
             "cache",
             "tts",
             "asr",
@@ -153,22 +153,22 @@ def test_plan_bundle_uses_single_repo_bundle_prefix(tmp_path: Path):
 
 def test_plan_bundle_reports_missing_manifest_file(tmp_path: Path):
     bundle = _write_bundle(tmp_path, "2b")
-    (bundle / "dflash" / "drafter-2b.gguf").unlink()
+    (bundle / "mtp" / "drafter-2b.gguf").unlink()
 
     plan = P.plan_bundle(tmp_path, "2b")
 
     assert plan.uploadable is False
-    assert any("dflash/drafter-2b.gguf" in e for e in plan.errors)
+    assert any("mtp/drafter-2b.gguf" in e for e in plan.errors)
 
 
 def test_plan_bundle_reports_manifest_sha_mismatch(tmp_path: Path):
     bundle = _write_bundle(tmp_path, "2b")
-    (bundle / "dflash" / "drafter-2b.gguf").write_bytes(b"changed")
+    (bundle / "mtp" / "drafter-2b.gguf").write_bytes(b"changed")
 
     plan = P.plan_bundle(tmp_path, "2b")
 
     assert plan.uploadable is False
-    assert any("sha256 mismatch for dflash/drafter-2b.gguf" in e for e in plan.errors)
+    assert any("sha256 mismatch for mtp/drafter-2b.gguf" in e for e in plan.errors)
 
 
 def test_publishable_bundle_files_exclude_source_artifacts(tmp_path: Path):
@@ -285,7 +285,7 @@ def test_plan_bundle_blocks_uploaded_status_with_incomplete_uploaded_paths(
 
     assert plan.uploadable is False
     assert any("bundles/2b/evidence/release.json" in e for e in plan.errors)
-    assert any("bundles/2b/dflash/drafter-2b.gguf" in e for e in plan.errors)
+    assert any("bundles/2b/mtp/drafter-2b.gguf" in e for e in plan.errors)
 
 
 def test_plan_bundle_accepts_uploaded_status_with_complete_uploaded_paths(
@@ -370,13 +370,13 @@ def test_plan_bundle_blocks_harness_eval_missing_from_evidence_and_checksums(
     )
 
 
-def test_plan_bundle_accepts_0_8b_dflash_weight_claim(tmp_path: Path):
+def test_plan_bundle_accepts_0_8b_mtp_weight_claim(tmp_path: Path):
     bundle = _write_bundle(tmp_path, "0_8b")
 
     plan = P.plan_bundle(tmp_path, "0_8b")
 
     assert plan.uploadable is True
-    assert not any("weights lists DFlash path" in e for e in plan.errors)
+    assert not any("weights lists MTP path" in e for e in plan.errors)
 
 
 def test_dry_run_allows_missing_with_report(tmp_path: Path, capsys):

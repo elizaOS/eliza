@@ -92,7 +92,7 @@ bundle_recommendations:
     estimated_prefill_tps: 3000
     notes: "Best-fit long-context 27B tier for 32 GiB Blackwell."
 
-dflash:
+mtp:
   enabled: true
   draft_min: 4
   draft_max: 24
@@ -112,7 +112,7 @@ verify_recipe:
     - turbo3_tcq
     - qjl_full
     - polarquant
-    - dflash
+    - mtp
   unavailable_kernels: []
   # Blackwell-specific: the verify script must probe `CAPABILITIES.json`
   # because some FP4 / FP8 fast paths may not be ported yet. The script

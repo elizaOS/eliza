@@ -61,8 +61,8 @@ unit; see the agent handoff.
    older nvcc on Ubuntu 24.04 — install the official 12.8+ toolkit from
    https://developer.nvidia.com/cuda-downloads for `sm_120` device code
    (older toolkits still work via `compute_90` PTX JIT).
-3. The fork checkout under `~/.cache/eliza-dflash/eliza-llama-cpp/` is needed
-   only for the model-backed graph smoke step (`build:llama-dflash --target
+3. The fork checkout under `~/.cache/eliza-mtp/eliza-llama-cpp/` is needed
+   only for the model-backed graph smoke step (`build:llama-mtp --target
    linux-x64-cuda`), not for `make cuda-verify`.
 
 ## End-to-end invocation
@@ -89,8 +89,8 @@ Each fixture prints:
 cd packages/inference/verify
 # pin Blackwell+Hopper SASS for the fork build if the platform-targets agent
 # has not landed the CMAKE_CUDA_ARCHITECTURES pin yet:
-ELIZA_DFLASH_CMAKE_FLAGS='-DCMAKE_CUDA_ARCHITECTURES=120;90;89;86;80' \
-ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf \
+ELIZA_MTP_CMAKE_FLAGS='-DCMAKE_CUDA_ARCHITECTURES=120;90;89;86;80' \
+ELIZA_MTP_SMOKE_MODEL=/models/eliza-1-smoke.gguf \
   ./cuda_runner.sh --report hardware-results/cuda-linux-thismachine-$(date +%Y-%m-%d).json
 ```
 
@@ -98,7 +98,7 @@ ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf \
 1. Fails unless host is Linux, `nvcc` is present, and `nvidia-smi -L` reports a GPU.
 2. Builds `linux-x64-cuda` (or `linux-aarch64-cuda`) unless `CUDA_BUILD_FORK=0`.
 3. Runs `make cuda-verify` (all six fixtures including `polar_qjl.json`).
-4. Requires `ELIZA_DFLASH_SMOKE_MODEL` and runs `runtime_graph_smoke.sh`,
+4. Requires `ELIZA_MTP_SMOKE_MODEL` and runs `runtime_graph_smoke.sh`,
    which drives `llama-cli --cache-type-k` for Turbo3, Turbo4, Turbo3-TCQ,
    QJL, and Polar aliases; the logs must contain CUDA/NVIDIA backend evidence.
 5. With `--report <path>` writes JSON evidence (`status`, `passRecordable`,
@@ -113,7 +113,7 @@ cannot be mistaken for a hardware pass.
 
 ```bash
 CUDA_REMOTE=user@cuda-host CUDA_REMOTE_DIR=~/code/eliza \
-ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf \
+ELIZA_MTP_SMOKE_MODEL=/models/eliza-1-smoke.gguf \
 ./cuda_runner.sh --report hardware-results/cuda-remote-evidence.json
 ```
 

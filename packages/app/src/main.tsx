@@ -72,18 +72,18 @@ import {
   SHARE_TARGET_EVENT,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui/events";
-import {
-  getWindowNavigationPath,
-  isAppWindowRoute,
-} from "@elizaos/ui/navigation/index";
-import { routeOnboardingDeepLink } from "@elizaos/ui/onboarding/deep-link-handler";
+import { routeFirstRunDeepLink } from "@elizaos/ui/first-run/deep-link-handler";
 import {
   IOS_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_API_BASE,
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
   normalizeMobileRuntimeMode,
-} from "@elizaos/ui/onboarding/mobile-runtime-mode";
-import { preSeedAndroidLocalRuntimeIfFresh } from "@elizaos/ui/onboarding/pre-seed-local-runtime";
+} from "@elizaos/ui/first-run/mobile-runtime-mode";
+import { preSeedAndroidLocalRuntimeIfFresh } from "@elizaos/ui/first-run/pre-seed-local-runtime";
+import {
+  getWindowNavigationPath,
+  isAppWindowRoute,
+} from "@elizaos/ui/navigation/index";
 import type { ShareTargetPayload } from "@elizaos/ui/platform";
 import {
   applyLaunchConnection,
@@ -91,15 +91,17 @@ import {
 } from "@elizaos/ui/platform/browser-launch";
 import { installLocalProviderCloudPreferencePatch } from "@elizaos/ui/platform/cloud-preference-patch";
 import { installDesktopPermissionsClientPatch } from "@elizaos/ui/platform/desktop-permissions-client";
+import {
+  applyForceFreshFirstRunReset,
+  installForceFreshFirstRunClientPatch,
+} from "@elizaos/ui/platform/first-run-reset";
 import { isElizaOS } from "@elizaos/ui/platform/init";
 import {
-  applyForceFreshOnboardingReset,
-  installForceFreshOnboardingClientPatch,
-} from "@elizaos/ui/platform/onboarding-reset";
-import {
+  isChatOverlayWindowShell,
   isDetachedWindowShell,
+  isStandaloneWindowShell,
   resolveWindowShellRoute,
-  shouldInstallMainWindowOnboardingPatches,
+  shouldInstallMainWindowFirstRunPatches,
   syncDetachedShellLocation,
 } from "@elizaos/ui/platform/window-shell";
 import { AppProvider } from "@elizaos/ui/state";
@@ -108,7 +110,7 @@ import { ELIZA_DEFAULT_THEME } from "@elizaos/ui/themes";
 // biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
 import * as React from "react";
 import { type ComponentType, lazy, StrictMode, Suspense } from "react";
-import { createRoot } from "react-dom/client";
+import ReactDomClient from "react-dom/client";
 import {
   APP_BRANDING_BASE,
   APP_CONFIG,
@@ -142,6 +144,7 @@ declare global {
 }
 
 const appModuleCache = new Map<string, Promise<unknown>>();
+const { createRoot } = ReactDomClient;
 
 function cachedDynamicImport<T>(
   key: string,
@@ -325,7 +328,7 @@ const APP_BRANDING: Partial<BrandingConfig> = {
   theme: ELIZA_DEFAULT_THEME,
   // The hosted web bundle stays cloud-only in production. Desktop shells and
   // other hosts inject an explicit API base before React boots, and that host
-  // backend should control onboarding capabilities instead.
+  // backend should control first-run capabilities instead.
   cloudOnly: shouldUseCloudOnlyBranding({
     isDev: import.meta.env.DEV ?? false,
     injectedApiBase:
@@ -368,10 +371,11 @@ function isDesktopPlatform(): boolean {
 
 const windowShellRoute = resolveWindowShellRoute();
 
-function hasRuntimePickerOverride(): boolean {
+function hasFirstRunRuntimeOverride(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    return getWindowUrlSearchParams().get("runtime") === "picker";
+    const runtime = getWindowUrlSearchParams().get("runtime");
+    return runtime === "first-run";
   } catch {
     return false;
   }
@@ -390,7 +394,7 @@ function getWindowUrlSearchParams(): URLSearchParams {
  */
 function shouldEnableElectrobunMacWindowDrag(): boolean {
   if (!isElectrobunRuntime() || typeof document === "undefined") return false;
-  if (isDetachedWindowShell(windowShellRoute)) return false;
+  if (isStandaloneWindowShell(windowShellRoute)) return false;
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent;
   return /Mac/i.test(ua) && !/(iPhone|iPad|iPod)/i.test(ua);
@@ -403,16 +407,16 @@ if (shouldEnableElectrobunMacWindowDrag()) {
   );
 }
 
-// Dev escape hatch: ?reset forces a truly fresh onboarding session by clearing
+// Dev escape hatch: ?reset forces a truly fresh first-run session by clearing
 // persisted state and temporarily suppressing stale backend resume config.
-if (shouldInstallMainWindowOnboardingPatches(windowShellRoute)) {
-  applyForceFreshOnboardingReset();
-  installForceFreshOnboardingClientPatch(client);
+if (shouldInstallMainWindowFirstRunPatches(windowShellRoute)) {
+  applyForceFreshFirstRunReset();
+  installForceFreshFirstRunClientPatch(client);
 }
 installLocalProviderCloudPreferencePatch(client);
 installDesktopPermissionsClientPatch(client);
 
-if (isElizaOS() && !hasRuntimePickerOverride()) {
+if (isElizaOS() && !hasFirstRunRuntimeOverride()) {
   preSeedAndroidLocalRuntimeIfFresh();
 }
 
@@ -454,7 +458,7 @@ function buildAppBootConfig({
       undefined,
     cloudApiBase: IOS_RUNTIME_ENV_CONFIG.cloudApiBase,
     vrmAssets: APP_VRM_ASSETS,
-    onboardingStyles: APP_STYLE_PRESETS,
+    firstRunStyles: APP_STYLE_PRESETS,
     characterEditor: CharacterEditor,
     companionShell: CompanionShell,
     resolveCompanionInferenceNotice,
@@ -477,8 +481,8 @@ function buildAppBootConfig({
     appBlockerSettingsCard: AppBlockerSettingsCard,
     websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
     clientMiddleware: {
-      forceFreshOnboarding:
-        shouldInstallMainWindowOnboardingPatches(windowShellRoute),
+      forceFreshFirstRun:
+        shouldInstallMainWindowFirstRunPatches(windowShellRoute),
       preferLocalProvider: true,
       desktopPermissions: isDesktopPlatform(),
     },
@@ -1361,7 +1365,7 @@ async function initializeNetworkListener(): Promise<void> {
 }
 
 function handleDeepLink(url: string): void {
-  if (routeOnboardingDeepLink(url, APP_URL_SCHEME)) {
+  if (routeFirstRunDeepLink(url, APP_URL_SCHEME)) {
     return;
   }
 
@@ -1564,6 +1568,10 @@ function setupPlatformStyles(): void {
   if (isNative) {
     document.body.classList.add("native");
   }
+
+  const chatOverlayShell = isChatOverlayWindowShell(windowShellRoute);
+  root.classList.toggle("eliza-chat-overlay-shell", chatOverlayShell);
+  document.body.classList.toggle("eliza-chat-overlay-shell", chatOverlayShell);
 
   root.style.setProperty("--safe-area-top", "env(safe-area-inset-top, 0px)");
   root.style.setProperty(
@@ -2176,10 +2184,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (isDetachedWindowShell(windowShellRoute)) {
+  if (isStandaloneWindowShell(windowShellRoute)) {
     injectDetachedShellApiBase();
     applyStoredDetachedShellTheme();
-    syncDetachedShellLocation(windowShellRoute);
+    if (isDetachedWindowShell(windowShellRoute)) {
+      syncDetachedShellLocation(windowShellRoute);
+    }
     await initializeStorageBridge();
     initializeCapacitorBridge();
     mountReactApp();

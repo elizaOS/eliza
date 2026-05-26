@@ -99,21 +99,21 @@ function attemptFix(result: CheckResult): boolean {
 
 export function registerDoctorCommand(program: Command) {
   program
-    .command("doctor:dflash")
-    .description("Check DFlash llama-server acceleration readiness")
+    .command("doctor:mtp")
+    .description("Check MTP llama-server acceleration readiness")
     .option("--json", "Output results as JSON")
     .action(async (opts: { json: boolean }) => {
       await runCommandWithRuntime(defaultRuntime, async () => {
-        const { runDflashDoctor } = await import(
+        const { runMtpDoctor } = await import(
           "@elizaos/plugin-local-inference/services"
         );
-        const report = await runDflashDoctor();
+        const report = await runMtpDoctor();
         if (opts.json) {
           process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
           if (!report.ok) process.exit(1);
           return;
         }
-        console.log(`\n${theme.heading("DFlash Health Check")}\n`);
+        console.log(`\n${theme.heading("MTP Health Check")}\n`);
         for (const check of report.checks) {
           const icon =
             check.status === "pass"

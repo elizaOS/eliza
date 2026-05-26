@@ -11,7 +11,7 @@ import {
 } from "./speculative_benchmark_report.mjs";
 
 test("builds the shared speculative report shape for each speculator", () => {
-  for (const speculator of ["dflash", "eagle3", "mtp"]) {
+  for (const speculator of ["mtp", "eagle3", "mtp"]) {
     const report = buildSpeculativeBenchmarkReport({
       speculator,
       verifier: "unit",

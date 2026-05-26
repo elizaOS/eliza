@@ -1,4 +1,5 @@
 import * as React from "react";
+import { X } from "lucide-react";
 
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import type { ShellPhase } from "./shell-state";
@@ -119,6 +120,7 @@ export function AssistantOverlay({
       // arbitrary z-index values. See packages/ui/src/lib/floating-layers.ts.
       style={{ zIndex: Z_SHELL_OVERLAY + 1 }}
       className={[
+        "shell-assistant-overlay-panel pointer-events-auto",
         // Position: bottom sheet on mobile, centered drawer on >= sm
         "fixed inset-x-0 bottom-0",
         "sm:left-1/2 sm:right-auto sm:top-1/2 sm:bottom-auto",
@@ -138,6 +140,14 @@ export function AssistantOverlay({
         "motion-safe:animate-[shell-overlay-in_220ms_ease-out]",
       ].join(" ")}
     >
+      <button
+        type="button"
+        aria-label="Close assistant"
+        onClick={onClose}
+        className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-card/60 text-muted transition-colors hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+      >
+        <X aria-hidden="true" className="h-4 w-4" />
+      </button>
       {children}
     </div>
   );

@@ -5,9 +5,12 @@
  * Shared implementation ported forward to Electrobun; no runtime-specific APIs required.
  */
 
-import { ALL_PROBERS } from "@elizaos/agent/services/permissions/probers/index";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { getMacPermissionDeepLink } from "@elizaos/shared";
 import type { SendToWebview } from "../types.js";
+import { resolveRuntimeDistPath } from "./agent";
 import type {
   AllPermissionsState,
   PermissionState,
@@ -20,7 +23,97 @@ import {
 
 const platform = process.platform as "darwin" | "win32" | "linux";
 const DEFAULT_CACHE_TIMEOUT_MS = 30000;
-const PROBERS_BY_ID = new Map(ALL_PROBERS.map((p) => [p.id, p]));
+
+interface DesktopPermissionProber {
+  id: SystemPermissionId;
+  check(): Promise<PermissionState>;
+  request(options: { reason: string }): Promise<PermissionState>;
+}
+
+type PermissionProbersModule = {
+  ALL_PROBERS: readonly DesktopPermissionProber[];
+};
+
+let probersByIdPromise:
+  | Promise<Map<SystemPermissionId, DesktopPermissionProber>>
+  | null = null;
+
+function isKnownPermissionId(value: unknown): value is SystemPermissionId {
+  return (
+    typeof value === "string" &&
+    SYSTEM_PERMISSIONS.some((permission) => permission.id === value)
+  );
+}
+
+function isPermissionProber(value: unknown): value is DesktopPermissionProber {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    isKnownPermissionId(record.id) &&
+    typeof record.check === "function" &&
+    typeof record.request === "function"
+  );
+}
+
+function parsePermissionProbersModule(value: unknown): PermissionProbersModule {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("Permission probers module did not export an object.");
+  }
+  const record = value as Record<string, unknown>;
+  if (!Array.isArray(record.ALL_PROBERS)) {
+    throw new Error("Permission probers module did not export ALL_PROBERS.");
+  }
+  for (const prober of record.ALL_PROBERS) {
+    if (!isPermissionProber(prober)) {
+      throw new Error("Permission probers module exported an invalid prober.");
+    }
+  }
+  return { ALL_PROBERS: record.ALL_PROBERS };
+}
+
+async function importPermissionProbersModule(): Promise<PermissionProbersModule> {
+  const runtimeDistPath = resolveRuntimeDistPath();
+  const bundledProbersPath = path.join(
+    runtimeDistPath,
+    "node_modules",
+    "@elizaos",
+    "agent",
+    "dist",
+    "services",
+    "permissions",
+    "probers",
+    "index.js",
+  );
+  if (existsSync(bundledProbersPath)) {
+    return parsePermissionProbersModule(
+      await import(pathToFileURL(bundledProbersPath).href),
+    );
+  }
+
+  try {
+    return parsePermissionProbersModule(
+      await import("@elizaos/agent/services/permissions/probers/index"),
+    );
+  } catch (packageImportError) {
+    const cause =
+      packageImportError instanceof Error
+        ? packageImportError.message
+        : String(packageImportError);
+    throw new Error(
+      `Permission probers are unavailable at ${bundledProbersPath}; package import failed: ${cause}`,
+    );
+  }
+}
+
+async function getProbersById(): Promise<
+  Map<SystemPermissionId, DesktopPermissionProber>
+> {
+  probersByIdPromise ??= importPermissionProbersModule().then(
+    ({ ALL_PROBERS }) =>
+      new Map(ALL_PROBERS.map((prober) => [prober.id, prober])),
+  );
+  return probersByIdPromise;
+}
 
 function buildPermissionState(
   id: SystemPermissionId,
@@ -144,7 +237,7 @@ export class PermissionManager {
       if (cached) return cached;
     }
 
-    const prober = PROBERS_BY_ID.get(id);
+    const prober = (await getProbersById()).get(id);
     const state =
       prober !== undefined
         ? await prober.check()
@@ -190,7 +283,7 @@ export class PermissionManager {
       return state;
     }
 
-    const prober = PROBERS_BY_ID.get(id);
+    const prober = (await getProbersById()).get(id);
     const state =
       prober !== undefined
         ? await prober.request({ reason: "Requested from desktop settings." })

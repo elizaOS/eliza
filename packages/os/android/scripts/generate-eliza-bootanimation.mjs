@@ -6,8 +6,8 @@
 // Frames land under vendor/eliza/bootanimation/{part0,part1}/ and are packed
 // into bootanimation.zip by build-eliza-bootanimation.mjs (`make bootanimation`).
 // The rendered frames + zip are gitignored — this regenerates them from the
-// canonical brand SVG on demand, the same way packages/os/linux/elizaos
-// renders its branding.
+// canonical brand SVG on demand, the same way packages/os/linux renders
+// its branding.
 //
 // Uses sharp (the repo's image toolchain) to rasterize + composite the SVG;
 // no external ImageMagick dependency.

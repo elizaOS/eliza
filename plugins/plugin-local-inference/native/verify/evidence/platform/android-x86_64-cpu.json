@@ -28,11 +28,11 @@
   "requirements": {
     "ndk": "android-ndk r29.0.13113456 (linux-x86_64 host)",
     "compiler": "Android Clang 20.0.0 (b718bcaf8c198c82f3021447d943401e3ab5bd54), target x86_64-unknown-linux-android24",
-    "buildScript": "packages/app-core/scripts/build-llama-cpp-dflash.mjs --target android-x86_64-cpu (NDK + cmake; -DANDROID_ABI=x86_64; AVX/AVX2/FMA/F16C forced)",
+    "buildScript": "packages/app-core/scripts/build-llama-cpp-mtp.mjs --target android-x86_64-cpu (NDK + cmake; -DANDROID_ABI=x86_64; AVX/AVX2/FMA/F16C forced)",
     "verifyHarness": "packages/inference/verify/gen_fixture.c + verify/qjl_polar_ref.c + reference/turbo_kernels.c cross-compiled with the NDK clang as a static x86_64-linux-android24 ELF; pushed to /data/local/tmp/eliza-x86_64-verify and run via adb shell"
   },
   "target_artifact": {
-    "installDir": "~/.eliza/local-inference/bin/dflash/android-x86_64-cpu/",
+    "installDir": "~/.eliza/local-inference/bin/mtp/android-x86_64-cpu/",
     "files": [
       { "path": "llama-server", "size": 89675920, "sha256": "e0bb4b2859b6f7c0ef2d7f289cc4be5e3aa59d4781ea14c5971e7d7267994843" },
       { "path": "llama-bench", "size": 5698600, "sha256": "3eb718c8433abff6c05c9b625dc863caf86f5e6cd20989a8ee118b6be448766c" },
@@ -126,11 +126,11 @@
       "graphOp": "GGML_OP_FUSED_ATTN_QJL_TBQ — fused-attn + tbq V-cache parity OK (gen_fixture --self-test final assertion)",
       "evidenceDate": "2026-05-12"
     },
-    "dflash": {
-      "runtimeCapabilityKey": "dflash",
+    "mtp": {
+      "runtimeCapabilityKey": "mtp",
       "status": "needs-runtime-smoke",
       "runtimeReady": false,
-      "note": "DFlash speculative decode is a server-side execution mode (not a kernel correctness check). The fork llama-server + llama-speculative-simple cross-binaries are present on the cvd ELF; a runtime smoke against a staged Eliza-1 GGUF (in-app or pushed via adb) is the unblocking step. Not part of the kernel-contract C reference."
+      "note": "MTP speculative decode is a server-side execution mode (not a kernel correctness check). The fork llama-server + llama-speculative-simple cross-binaries are present on the cvd ELF; a runtime smoke against a staged Eliza-1 GGUF (in-app or pushed via adb) is the unblocking step. Not part of the kernel-contract C reference."
     }
   },
   "graphRoutes": [
@@ -144,7 +144,7 @@
   ],
   "caveats": [
     "Real, finite, deterministic CPU reference scores — bit-identical to the host build — proven on a Cuttlefish (cvd) virtual device running an x86_64 Android image under KVM. cvd CPU is host CPU passthrough (Intel Core Ultra 9 275HX with AVX2 + AVX-VNNI), so this is the right ABI and the right SIMD baseline for ChromeOS x86_64 + Android-emulator + Cuttlefish CI use-cases.",
-    "This evidence covers C reference parity (kernel-contract.json kernels.*.runtimeStatus.cpu for turbo3/turbo4/turbo3_tcq/qjl/polar) on the Android x86_64 ABI; it does NOT cover a full DFlash spec-decode end-to-end smoke against a staged Eliza-1 GGUF. The next gate (chat-completion against a staged model in the privileged APK) is documented in PLATFORM_MATRIX.md and remains 'needs-hardware' until aosp/build-aosp.mjs --launch stages a model.",
+    "This evidence covers C reference parity (kernel-contract.json kernels.*.runtimeStatus.cpu for turbo3/turbo4/turbo3_tcq/qjl/polar) on the Android x86_64 ABI; it does NOT cover a full MTP spec-decode end-to-end smoke against a staged Eliza-1 GGUF. The next gate (chat-completion against a staged model in the privileged APK) is documented in PLATFORM_MATRIX.md and remains 'needs-hardware' until aosp/build-aosp.mjs --launch stages a model.",
     "android-x86_64-vulkan on cvd is SwiftShader (LLVM 16.0.0; vendor 0x1ae0 = Google software rasterizer). All 8 vulkan_verify cases (turbo3, turbo4, turbo3_tcq, qjl, polar x2, polar_preht x2) PASS on the cvd SwiftShader path with max diff < 1e-5 — recorded as DIAGNOSTIC-ONLY, NOT runtime-ready, per the kernel-contract fail-closed software-ICD rule. Real Android x86_64 Vulkan graph dispatch needs a ChromeOS x86_64 GPU silicon (Adreno/Mali under ARCVM) or a passed-through host GPU via crosvm gfxstream — not exercised here."
   ]
 }

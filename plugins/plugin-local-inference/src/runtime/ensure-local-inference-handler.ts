@@ -62,6 +62,11 @@ import {
 } from "../services/structured-output";
 import type { AgentModelSlot } from "../services/types";
 import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
+import { VoiceStartupError } from "../services/voice/errors";
+import {
+	AsrUnavailableError,
+	createStreamingTranscriber,
+} from "../services/voice/transcriber";
 import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
 
 type GenerateTextHandler = (
@@ -484,12 +489,12 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 				u.cache_hit_rate !== undefined
 					? `${Math.round(u.cache_hit_rate * 100)}%`
 					: "n/a";
-			const dflashRate =
-				typeof u.dflash_acceptance_rate === "number"
-					? ` dflash=${Math.round(u.dflash_acceptance_rate * 100)}%`
+			const mtpRate =
+				typeof u.mtp_acceptance_rate === "number"
+					? ` mtp=${Math.round(u.mtp_acceptance_rate * 100)}%`
 					: "";
 			logger.info(
-				`[local-inference] usage conv=${conversationId} slot=${result.slotId} in=${u.input_tokens} out=${u.output_tokens} cache_read=${u.cache_read_input_tokens} cache_create=${u.cache_creation_input_tokens} hit=${hitRate}${dflashRate}`,
+				`[local-inference] usage conv=${conversationId} slot=${result.slotId} in=${u.input_tokens} out=${u.output_tokens} cache_read=${u.cache_read_input_tokens} cache_create=${u.cache_creation_input_tokens} hit=${hitRate}${mtpRate}`,
 			);
 			// Auto-tune signal — emits a one-line warn if the high-water mark
 			// outgrew the configured slot count this turn. Cheap to call,
@@ -670,16 +675,54 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
 		: new DOMException("Aborted", "AbortError");
 }
 
+async function transcribeWithStandaloneAsr(
+	audio: TranscriptionAudio,
+	signal: AbortSignal | undefined,
+): Promise<string> {
+	const transcriber = createStreamingTranscriber({
+		prefer: "whisper-cpp",
+		allowWhisperCpp: true,
+	});
+	try {
+		throwIfAborted(signal);
+		transcriber.feed({
+			pcm: audio.pcm,
+			sampleRate: audio.sampleRate,
+			timestampMs: Date.now(),
+		});
+		throwIfAborted(signal);
+		const update = await transcriber.flush();
+		throwIfAborted(signal);
+		return update.partial.trim();
+	} finally {
+		transcriber.dispose();
+	}
+}
+
+function shouldRetryWithStandaloneAsr(error: unknown): boolean {
+	return (
+		error instanceof VoiceStartupError || error instanceof AsrUnavailableError
+	);
+}
+
 function makeTranscriptionHandler(): TranscriptionHandler {
 	return async (_runtime, params) => {
 		const signal = extractTranscriptionSignal(params);
 		throwIfAborted(signal);
 		const audio = extractTranscriptionAudio(params);
-		await localInferenceEngine.ensureActiveBundleVoiceReady();
-		throwIfAborted(signal);
-		const transcript = await localInferenceEngine.transcribePcm(audio, signal);
-		throwIfAborted(signal);
-		return transcript;
+		try {
+			await localInferenceEngine.ensureActiveBundleVoiceReady();
+			throwIfAborted(signal);
+			const transcript = await localInferenceEngine.transcribePcm(
+				audio,
+				signal,
+			);
+			throwIfAborted(signal);
+			return transcript;
+		} catch (error) {
+			if (!shouldRetryWithStandaloneAsr(error)) throw error;
+			return transcribeWithStandaloneAsr(audio, signal);
+		}
 	};
 }
 
@@ -1211,7 +1254,9 @@ export async function ensureLocalInferenceHandler(
 	// The router sits at Number.MAX_SAFE_INTEGER so the runtime dispatches
 	// to it first; at dispatch time it picks a real provider via
 	// `routing-policy` and calls that handler directly.
-	installRouterHandler(runtime);
+	installRouterHandler(runtime, {
+		skipSlots: isLocalEmbeddingDisabledByEnv() ? ["TEXT_EMBEDDING"] : [],
+	});
 	logger.info(
 		"[local-inference] Installed top-priority router for cross-provider routing",
 	);

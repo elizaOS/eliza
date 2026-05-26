@@ -2,13 +2,13 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, type TestInfo, test } from "@playwright/test";
+import { assertScreenshotNotBlank } from "../ui-smoke/helpers/screenshot-quality";
 import { startLiveApiServer, type TestApiServer } from "./live-api";
 import {
   PackagedDesktopHarness,
   resolvePackagedLauncher,
 } from "./packaged-app-helpers";
 import { hasPackagedRendererBootstrapRequests } from "./windows-bootstrap";
-import { assertScreenshotNotBlank } from "../ui-smoke/helpers/screenshot-quality";
 
 type EvalOk<T> = T & { ok: true };
 type EvalErr = { ok: false; error: string };
@@ -16,7 +16,7 @@ type EvalResult<T> = EvalOk<T> | EvalErr;
 
 const SETTINGS_SELECTOR = '[data-testid="settings-shell"]';
 const PLUGINS_SELECTOR = '[data-testid="connectors-settings-content"]';
-const ONBOARDING_SELECTOR = '[data-testid="onboarding-ui-overlay"]';
+const FIRST_RUN_SELECTOR = '[data-testid="first-run-shell"]';
 const SETTINGS_ROUTE = "/settings";
 const SETTINGS_MEDIA_ROUTE = "/settings/voice";
 const PLUGINS_ROUTE = "/apps/plugins";
@@ -146,7 +146,7 @@ async function openRouteAndWait(
       selector: string;
       found: boolean;
       text: string;
-      onboardingFound: boolean;
+      firstRunFound: boolean;
       rootHtmlLength: number;
       bodyText: string;
     }>
@@ -163,8 +163,8 @@ async function openRouteAndWait(
         selector: targetSelector,
         found: Boolean(node),
         text: (node?.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 240),
-        onboardingFound: Boolean(
-          document.querySelector(${JSON.stringify(ONBOARDING_SELECTOR)}),
+        firstRunFound: Boolean(
+          document.querySelector(${JSON.stringify(FIRST_RUN_SELECTOR)}),
         ),
         rootHtmlLength: document.getElementById("root")?.innerHTML.length ?? 0,
         bodyText: (document.body?.innerText || "")
@@ -461,14 +461,14 @@ async function seedResettableState(
 ): Promise<void> {
   const result = await harness.eval<
     EvalResult<{
-      onboardingComplete: string | null;
+      firstRunComplete: string | null;
       activeServer: string | null;
       vrmPower: string | null;
     }>
   >(
     `(() => {
       try {
-        localStorage.setItem("eliza:onboarding-complete", "1");
+        localStorage.setItem("eliza:first-run-complete", "1");
         localStorage.setItem("eliza:companion-vrm-power", "quality");
         localStorage.setItem(
           "elizaos:active-server",
@@ -480,7 +480,7 @@ async function seedResettableState(
         );
         return {
           ok: true,
-          onboardingComplete: localStorage.getItem("eliza:onboarding-complete"),
+          firstRunComplete: localStorage.getItem("eliza:first-run-complete"),
           activeServer: localStorage.getItem("elizaos:active-server"),
           vrmPower: localStorage.getItem("eliza:companion-vrm-power"),
         };
@@ -638,7 +638,7 @@ async function waitForResetUiState(
       settingsVisible: boolean;
       rootHtmlLength: number;
       bodyText: string;
-      onboardingComplete: string | null;
+      firstRunComplete: string | null;
       activeServer: string | null;
       resetTest: unknown;
     }>
@@ -647,12 +647,12 @@ async function waitForResetUiState(
     `(() => {
       try {
         const overlayVisible = Boolean(
-          document.querySelector(${JSON.stringify(ONBOARDING_SELECTOR)}),
+          document.querySelector(${JSON.stringify(FIRST_RUN_SELECTOR)}),
         );
         const settingsVisible = Boolean(
           document.querySelector(${JSON.stringify(SETTINGS_SELECTOR)}),
         );
-        const onboardingComplete = localStorage.getItem("eliza:onboarding-complete");
+        const firstRunComplete = localStorage.getItem("eliza:first-run-complete");
         const activeServer = localStorage.getItem("elizaos:active-server");
         return {
           ok: true,
@@ -664,7 +664,7 @@ async function waitForResetUiState(
             .replace(/\\s+/g, " ")
             .trim()
             .slice(0, 500),
-          onboardingComplete,
+          firstRunComplete,
           activeServer,
           resetTest: window.__ELIZA_PACKAGED_RESET_TEST__ ?? null,
         };
@@ -678,11 +678,11 @@ async function waitForResetUiState(
     (current) =>
       current.ok &&
       current.overlayVisible === true &&
-      current.onboardingComplete !== "1" &&
+      current.firstRunComplete !== "1" &&
       current.activeServer == null,
     {
       timeout: 90_000,
-      message: "Timed out waiting for onboarding reset overlay.",
+      message: "Timed out waiting for first-run reset overlay.",
     },
   );
 
@@ -710,8 +710,8 @@ async function seedReturningInstallState(
 ): Promise<void> {
   const result = await waitForEval<
     EvalResult<{
-      onboardingComplete: string | null;
-      onboardingStep: string | null;
+      firstRunComplete: string | null;
+      setupStep: string | null;
       uiShellMode: string | null;
       activeServer: string | null;
     }>
@@ -733,9 +733,9 @@ async function seedReturningInstallState(
             return apiBase;
           }
         })();
-        localStorage.removeItem("elizaos:onboarding:force-fresh");
-        localStorage.setItem("eliza:onboarding-complete", "1");
-        localStorage.setItem("eliza:onboarding:step", "activate");
+        localStorage.removeItem("elizaos:first-run:force-fresh");
+        localStorage.setItem("eliza:first-run-complete", "1");
+        localStorage.setItem("eliza:setup:step", "activate");
         localStorage.setItem("eliza:ui-shell-mode", "native");
         localStorage.setItem(
           "elizaos:active-server",
@@ -748,8 +748,8 @@ async function seedReturningInstallState(
         );
         return {
           ok: true,
-          onboardingComplete: localStorage.getItem("eliza:onboarding-complete"),
-          onboardingStep: localStorage.getItem("eliza:onboarding:step"),
+          firstRunComplete: localStorage.getItem("eliza:first-run-complete"),
+          setupStep: localStorage.getItem("eliza:setup:step"),
           uiShellMode: localStorage.getItem("eliza:ui-shell-mode"),
           activeServer: localStorage.getItem("elizaos:active-server"),
         };
@@ -819,7 +819,7 @@ async function withPackagedHarness(
   let harness: PackagedDesktopHarness | null = null;
 
   try {
-    api = await startLiveApiServer({ onboardingComplete: true, port: 0 });
+    api = await startLiveApiServer({ firstRunComplete: true, port: 0 });
     harness = new PackagedDesktopHarness({
       tempRoot,
       launcherPath: launcherPath as string,
@@ -843,11 +843,11 @@ async function withPackagedHarness(
 
     // Verify that localStorage state survived the relaunch. If not, the
     // startup coordinator will fall back to a fresh-install probe path and
-    // may stall or show the onboarding overlay instead of the app shell.
+    // may stall or show the first-run overlay instead of the app shell.
     const persistenceCheck = await harness
       .eval<{
         ok: boolean;
-        onboardingComplete: string | null;
+        firstRunComplete: string | null;
         activeServer: string | null;
         apiBase: string | null;
       }>(
@@ -855,29 +855,26 @@ async function withPackagedHarness(
         try {
           return {
             ok: true,
-            onboardingComplete: localStorage.getItem("eliza:onboarding-complete"),
+            firstRunComplete: localStorage.getItem("eliza:first-run-complete"),
             activeServer: localStorage.getItem("elizaos:active-server"),
             apiBase: ${getApiBaseExpression()} ?? null,
           };
         } catch (e) {
-          return { ok: false, onboardingComplete: null, activeServer: null, apiBase: null };
+          return { ok: false, firstRunComplete: null, activeServer: null, apiBase: null };
         }
       })()`,
       )
       .catch(() => ({
         ok: false,
-        onboardingComplete: null,
+        firstRunComplete: null,
         activeServer: null,
         apiBase: null,
       }));
 
-    if (
-      !persistenceCheck.onboardingComplete ||
-      !persistenceCheck.activeServer
-    ) {
+    if (!persistenceCheck.firstRunComplete || !persistenceCheck.activeServer) {
       console.warn(
         `[packaged-harness] localStorage was NOT persisted across relaunch.`,
-        `onboardingComplete=${persistenceCheck.onboardingComplete}`,
+        `firstRunComplete=${persistenceCheck.firstRunComplete}`,
         `activeServer=${persistenceCheck.activeServer}`,
         `apiBase=${persistenceCheck.apiBase}`,
         `— re-seeding state for this session.`,
@@ -930,12 +927,12 @@ async function withPackagedHarness(
         try {
           const rootHtml = document.getElementById("root")?.innerHTML ?? "";
           const startupShell = document.querySelector('[data-testid="startup-shell-loading"]');
-          const onboardingOverlay = document.querySelector('[data-testid="onboarding-ui-overlay"]');
+          const firstRunOverlay = document.querySelector('[data-testid="first-run-shell"]');
           const startupPhase = startupShell?.getAttribute("data-startup-phase") ?? null;
           const bodyText = (document.body?.innerText || "").replace(/\\s+/g, " ").trim();
           return {
             ok: true,
-            ready: rootHtml.length > 200 && !startupShell && !onboardingOverlay,
+            ready: rootHtml.length > 200 && !startupShell && !firstRunOverlay,
             rootLength: rootHtml.length,
             bodySnippet: bodyText.slice(0, 120),
             startupPhase,
@@ -1014,7 +1011,7 @@ test("packaged desktop persists media, provider, and plugin state across relaunc
   });
 });
 
-test("packaged desktop reset from Settings returns the shell to onboarding", async ({
+test("packaged desktop reset from Settings returns the shell to first-run setup", async ({
   browserName: _browserName,
 }, testInfo) => {
   void _browserName;
@@ -1033,7 +1030,7 @@ test("packaged desktop reset from Settings returns the shell to onboarding", asy
   });
 });
 
-test("packaged desktop reset from the application menu returns the shell to onboarding", async ({
+test("packaged desktop reset from the application menu returns the shell to first-run setup", async ({
   browserName: _browserName,
 }, testInfo) => {
   void _browserName;

@@ -1321,16 +1321,16 @@ export function injectNativeLibLegacyPackaging(content) {
 /**
  * Inject the `copyForkLlamaLib` Gradle task that bundles the buun-llama-cpp
  * fork's android-arm64 .so into the APK's jniLibs/. The fork's specialized
- * KV cache types (turbo3, turbo4, turbo3_tcq) and DFlash spec-decoding kernels
+ * KV cache types (turbo3, turbo4, turbo3_tcq) and MTP spec-decoding kernels
  * live in this .so; without it, mobile only gets stock llama.cpp.
  *
  * Resolution order for the libdir:
- *   1. -Peliza.dflash.android.libdir=<path>   (gradle property)
- *   2. ELIZA_DFLASH_ANDROID_LIBDIR env var
- *   3. ~/.eliza/local-inference/bin/dflash/android-arm64-{cpu,vulkan}/
+ *   1. -Peliza.mtp.android.libdir=<path>   (gradle property)
+ *   2. ELIZA_MTP_ANDROID_LIBDIR env var
+ *   3. ~/.eliza/local-inference/bin/mtp/android-arm64-{cpu,vulkan}/
  *
  * Fails local builds when no path is configured or the dir doesn't exist. The
- * Android Capacitor JNI wrapper links against these DFlash libraries and cannot
+ * Android Capacitor JNI wrapper links against these MTP libraries and cannot
  * honestly support Eliza-1/Qwen3.5 without them. Cloud builds skip the task.
  * CI smoke builds that intentionally install no native deps can opt out with
  * -PelizaSkipForkLlamaLib=true or ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1.
@@ -1370,7 +1370,7 @@ export function injectCopyForkLlamaLibTask(content) {
     return ensureCopyForkLlamaLibGuards(content);
   }
   const block =
-    `\n// Bundle the DFlash Android llama.cpp stack into the APK so mobile\n` +
+    `\n// Bundle the MTP Android llama.cpp stack into the APK so mobile\n` +
     `// gets Eliza-1/Qwen3.5 support across every supported Android ABI\n` +
     `// (arm64-v8a, x86_64, riscv64). The arm64-v8a slice is mandatory for\n` +
     `// local-agent capable builds; x86_64 and riscv64 ship when their\n` +
@@ -1396,14 +1396,14 @@ export function injectCopyForkLlamaLibTask(content) {
     `    // backwards compatibility; other ABIs use the suffixed forms.\n` +
     `    def propSuffix = abi == 'arm64-v8a' ? '' : ".\${abi}"\n` +
     `    def envSuffix = abi == 'arm64-v8a' ? '' : "_\${abi.replace('-', '_').toUpperCase()}"\n` +
-    `    def fromProp = project.findProperty("eliza.dflash.android.libdir\${propSuffix}")\n` +
+    `    def fromProp = project.findProperty("eliza.mtp.android.libdir\${propSuffix}")\n` +
     `    if (fromProp) return fromProp.toString()\n` +
-    `    def fromEnv = System.getenv("ELIZA_DFLASH_ANDROID_LIBDIR\${envSuffix}")\n` +
+    `    def fromEnv = System.getenv("ELIZA_MTP_ANDROID_LIBDIR\${envSuffix}")\n` +
     `    if (fromEnv) return fromEnv\n` +
     `    def stateDir = System.getenv('ELIZA_STATE_DIR') ?: "\${System.getProperty('user.home')}/.eliza"\n` +
     `    def abiToken = project.ext.forkLlamaAbiTokens[abi]\n` +
     `    def candidates = ['vulkan', 'cpu'].collect { backend ->\n` +
-    `        "\${stateDir}/local-inference/bin/dflash/\${abiToken}-\${backend}"\n` +
+    `        "\${stateDir}/local-inference/bin/mtp/\${abiToken}-\${backend}"\n` +
     `    }\n` +
     `    return candidates.find { new File(it).isDirectory() }\n` +
     `}\n` +
@@ -1462,7 +1462,7 @@ export function injectCopyForkLlamaLibTask(content) {
     `            if (!libDir) {\n` +
     `                if (abi == 'arm64-v8a') {\n` +
     `                    // arm64-v8a is the mandatory baseline ABI; missing it is a hard error.\n` +
-    `                    throw new GradleException("[copyForkLlamaLib] no DFlash Android lib dir configured for arm64-v8a. Run packages/app-core/scripts/build-llama-cpp-dflash.mjs --target android-arm64-vulkan or set -Peliza.dflash.android.libdir / ELIZA_DFLASH_ANDROID_LIBDIR.")\n` +
+    `                    throw new GradleException("[copyForkLlamaLib] no MTP Android lib dir configured for arm64-v8a. Run packages/app-core/scripts/build-llama-cpp-mtp.mjs --target android-arm64-vulkan or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR.")\n` +
     `                }\n` +
     `                logger.lifecycle("[copyForkLlamaLib] no fork lib dir for ABI \${abi}; skipping")\n` +
     `                return\n` +
@@ -1470,7 +1470,7 @@ export function injectCopyForkLlamaLibTask(content) {
     `            def srcDir = new File(libDir.toString())\n` +
     `            if (!srcDir.isDirectory()) {\n` +
     `                if (abi == 'arm64-v8a') {\n` +
-    `                    throw new GradleException("[copyForkLlamaLib] DFlash Android lib dir does not exist for arm64-v8a: \${libDir}")\n` +
+    `                    throw new GradleException("[copyForkLlamaLib] MTP Android lib dir does not exist for arm64-v8a: \${libDir}")\n` +
     `                }\n` +
     `                logger.lifecycle("[copyForkLlamaLib] fork lib dir \${libDir} does not exist for ABI \${abi}; skipping")\n` +
     `                return\n` +
@@ -1501,7 +1501,7 @@ export function injectCopyForkLlamaLibTask(content) {
     `                copied++\n` +
     `                println "[copyForkLlamaLib] staged Android OpenMP runtime for \${abi} from \${libomp}"\n` +
     `            } else if (abi == 'arm64-v8a') {\n` +
-    `                throw new GradleException("[copyForkLlamaLib] Android arm64 libomp.so not found in the configured NDK; DFlash CPU backend cannot load without it.")\n` +
+    `                throw new GradleException("[copyForkLlamaLib] Android arm64 libomp.so not found in the configured NDK; MTP CPU backend cannot load without it.")\n` +
     `            } else {\n` +
     `                logger.lifecycle("[copyForkLlamaLib] no libomp.so found for \${abi}; the .so set may not link on-device")\n` +
     `            }\n` +
@@ -1810,9 +1810,13 @@ export function shouldRemoveAndroidJavaSourceRoot(
   return !protectedRoots.some((root) => normalized === path.resolve(root));
 }
 
-function removeStaleAndroidJavaSourceRoots(dstJava, { protectedRoots = [] } = {}) {
+function removeStaleAndroidJavaSourceRoots(
+  dstJava,
+  { protectedRoots = [] } = {},
+) {
   const candidates = [
     "ai.elizaos.app",
+    "ai.milady.milady",
     "com.elizaai.eliza",
     "com.elizaai.eliza",
     APP.appId,
@@ -2225,17 +2229,21 @@ function restoreAndroidManifestFromPlatformTemplateIfMissing() {
 }
 
 function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
-  const templateJava = path.join(
+  const templateJavaRoot = path.join(
     platformsDir,
     "android",
     "app",
     "src",
     "main",
     "java",
-    "ai",
-    "elizaos",
-    "app",
   );
+  const templateJava =
+    [
+      path.join(templateJavaRoot, "ai", "elizaos", "app"),
+      path.join(templateJavaRoot, "ai", "milady", "milady"),
+      path.join(templateJavaRoot, "app", "eliza"),
+    ].find((candidate) => fs.existsSync(candidate)) ??
+    path.join(templateJavaRoot, "ai", "elizaos", "app");
   const gradlePath = path.join(androidDir, "app", "build.gradle");
   const androidPackage = APP.appId;
   const dstJava = path.join(
@@ -2284,7 +2292,13 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       protectedRoots: protectedJavaRoots,
     });
     for (const staleJava of [legacyJava, appIdJava, defaultJava]) {
-      if (shouldRemoveAndroidJavaSourceRoot(staleJava, dstJava, protectedJavaRoots)) {
+      if (
+        shouldRemoveAndroidJavaSourceRoot(
+          staleJava,
+          dstJava,
+          protectedJavaRoots,
+        )
+      ) {
         fs.rmSync(staleJava, { recursive: true, force: true });
       }
     }
@@ -2323,7 +2337,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       if (!fs.existsSync(src)) continue;
       let code = fs.readFileSync(src, "utf8");
       code = code.replace(
-        /^package\s+(?:ai\.elizaos\.app|app\.eliza);/m,
+        /^package\s+(?:ai\.elizaos\.app|ai\.milady\.milady|app\.eliza);/m,
         `package ${androidPackage};`,
       );
       code = code.replaceAll(
@@ -2334,7 +2348,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       // from either the legacy package or the default package so R/BuildConfig
       // resolve after the package overlay.
       code = code.replaceAll(
-        /\bimport\s+(?:ai\.elizaos\.app|app\.eliza)\.(BuildConfig|R)\s*;/g,
+        /\bimport\s+(?:ai\.elizaos\.app|ai\.milady\.milady|app\.eliza)\.(BuildConfig|R)\s*;/g,
         `import ${androidPackage}.$1;`,
       );
       code = code.replaceAll("ai.elizaos.app://", `${APP.urlScheme}://`);
@@ -2354,7 +2368,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
         const legacyCode = fs
           .readFileSync(src, "utf8")
           .replaceAll(
-            /\bimport\s+(?:ai\.elizaos\.app|app\.eliza)\.(BuildConfig|R)\s*;/g,
+            /\bimport\s+(?:ai\.elizaos\.app|ai\.milady\.milady|app\.eliza)\.(BuildConfig|R)\s*;/g,
             `import ${androidPackage}.$1;`,
           );
         fs.writeFileSync(src, legacyCode, "utf8");
@@ -3886,9 +3900,9 @@ function resolveBrandSources() {
       path.join(appDir, "public", "apple-touch-icon.png"),
       path.join(appDir, "public", "favicon-256x256.png"),
     ]),
-    splashSource: firstExisting([
-      path.join(appDir, "public", "splash-bg.png"),
-      path.join(appDir, "public", "splash-bg.jpg"),
+    launchSource: firstExisting([
+      path.join(appDir, "public", "launch-bg.png"),
+      path.join(appDir, "public", "launch-bg.jpg"),
     ]),
   };
 }
@@ -3897,8 +3911,8 @@ async function generateIosBrandAssets() {
   const assetDir = path.join(iosDir, "App", "Assets.xcassets");
   if (!fs.existsSync(assetDir)) return;
 
-  const { iconSource, splashSource } = resolveBrandSources();
-  if (!iconSource && !splashSource) return;
+  const { iconSource, launchSource } = resolveBrandSources();
+  if (!iconSource && !launchSource) return;
 
   const imageTool = await loadImageToolForBrandAssets("iOS");
 
@@ -3925,7 +3939,7 @@ async function generateIosBrandAssets() {
     }
   }
 
-  if (splashSource) {
+  if (launchSource) {
     const splashSetDir = path.join(assetDir, "Splash.imageset");
     const contentsPath = path.join(splashSetDir, "Contents.json");
     if (fs.existsSync(contentsPath)) {
@@ -3934,7 +3948,7 @@ async function generateIosBrandAssets() {
         if (!image.filename) continue;
         await writeCoverPng(
           imageTool,
-          splashSource,
+          launchSource,
           path.join(splashSetDir, image.filename),
           2732,
           2732,
@@ -3950,8 +3964,8 @@ async function generateAndroidBrandAssets() {
   const resDir = path.join(androidDir, "app", "src", "main", "res");
   if (!fs.existsSync(resDir)) return;
 
-  const { iconSource, splashSource } = resolveBrandSources();
-  if (!iconSource && !splashSource) return;
+  const { iconSource, launchSource } = resolveBrandSources();
+  if (!iconSource && !launchSource) return;
 
   const imageTool = await loadImageToolForBrandAssets("Android");
 
@@ -3982,13 +3996,13 @@ async function generateAndroidBrandAssets() {
     }
   }
 
-  if (splashSource) {
+  if (launchSource) {
     for (const [dir, [width, height]] of Object.entries(ANDROID_SPLASH_SIZES)) {
       const out = path.join(resDir, dir);
       fs.mkdirSync(out, { recursive: true });
       await writeCoverPng(
         imageTool,
-        splashSource,
+        launchSource,
         path.join(out, "splash.png"),
         width,
         height,
@@ -4087,23 +4101,23 @@ export function patchLlamaCppCapacitorPodspecForXcframework(
 }
 
 // Wave-4-F (iOS pipeline rewire): the iOS LlamaCpp.xcframework is now
-// produced by `build-llama-cpp-dflash.mjs --target ios-arm64-metal` +
+// produced by `build-llama-cpp-mtp.mjs --target ios-arm64-metal` +
 // `--target ios-arm64-simulator-metal` and assembled by
 // `ios-xcframework/build-xcframework.mjs --verify`. The previous in-process
 // cmake invocation that built `llama-cpp-capacitor`'s bundled `ios/`
 // source produced a STOCK llama.cpp framework with none of the eliza
-// kernels (TurboQuant / QJL / PolarQuant / DFlash) and silently violated
-// AGENTS.md §3 on every iOS build. Delegating to the dflash builder
+// kernels (TurboQuant / QJL / PolarQuant / MTP) and silently violated
+// AGENTS.md §3 on every iOS build. Delegating to the mtp builder
 // ensures the same kernel-set lands on iOS as on darwin/linux/android.
 //
-// AGENTS.md §3 enforcement: build-llama-cpp-dflash.mjs hard-throws on
+// AGENTS.md §3 enforcement: build-llama-cpp-mtp.mjs hard-throws on
 // missing kernels via writeCapabilities()/requiredKernelsMissing(); the
 // xcframework packaging --verify step additionally greps the static
 // archives for AGENTS.md §3 kernel symbols. Either failure aborts the
 // iOS build before the npm-bundled stock framework can be linked.
-const DFLASH_BUILD_SCRIPT = path.resolve(
+const MTP_BUILD_SCRIPT = path.resolve(
   __dirname,
-  "build-llama-cpp-dflash.mjs",
+  "build-llama-cpp-mtp.mjs",
 );
 const IOS_XCFRAMEWORK_BUILD_SCRIPT = path.resolve(
   __dirname,
@@ -4117,30 +4131,30 @@ function elizaStateDirForBuild() {
   return path.join(os.homedir(), ".eliza");
 }
 
-function dflashTargetOutDir(target) {
+function mtpTargetOutDir(target) {
   return path.join(
     elizaStateDirForBuild(),
     "local-inference",
     "bin",
-    "dflash",
+    "mtp",
     target,
   );
 }
 
-async function ensureDflashIosTarget(target) {
-  const outDir = dflashTargetOutDir(target);
+async function ensureMtpIosTarget(target) {
+  const outDir = mtpTargetOutDir(target);
   const capabilities = path.join(outDir, "CAPABILITIES.json");
   if (fs.existsSync(capabilities)) {
     console.log(
-      `[mobile-build] Reusing existing dflash artifact for ${target} at ${outDir}`,
+      `[mobile-build] Reusing existing mtp artifact for ${target} at ${outDir}`,
     );
     return outDir;
   }
-  console.log(`[mobile-build] Building dflash artifact for ${target}`);
-  await run("node", [DFLASH_BUILD_SCRIPT, "--target", target]);
+  console.log(`[mobile-build] Building mtp artifact for ${target}`);
+  await run("node", [MTP_BUILD_SCRIPT, "--target", target]);
   if (!fs.existsSync(capabilities)) {
     throw new Error(
-      `[mobile-build] dflash build for ${target} did not produce CAPABILITIES.json at ${capabilities}. ` +
+      `[mobile-build] mtp build for ${target} did not produce CAPABILITIES.json at ${capabilities}. ` +
         `AGENTS.md §3 forbids shipping an iOS framework without the full kernel set; aborting.`,
     );
   }
@@ -4181,10 +4195,10 @@ async function ensureIosLlamaCppVendoredFramework({
   const xcframeworkDir = path.join(xcframeworksDir, "LlamaCpp.xcframework");
   patchLlamaCppCapacitorPodspecForXcframework(packageDir);
 
-  // Build (or reuse) both per-platform slices via the dflash builder so
+  // Build (or reuse) both per-platform slices via the mtp builder so
   // the iOS xcframework carries the same eliza kernel set as every
   // other supported backend. Per AGENTS.md §3, missing kernels here are
-  // a hard error: build-llama-cpp-dflash.mjs already enforces that and
+  // a hard error: build-llama-cpp-mtp.mjs already enforces that and
   // throws via writeCapabilities() before producing CAPABILITIES.json.
   const useFusedLocalInference = shouldUseIosFusedLocalInference();
   const deviceTarget = useFusedLocalInference
@@ -4198,8 +4212,8 @@ async function ensureIosLlamaCppVendoredFramework({
       "[mobile-build] Using fused iOS local-inference slices for bundled local models",
     );
   }
-  await ensureDflashIosTarget(deviceTarget);
-  await ensureDflashIosTarget(simulatorTarget);
+  await ensureMtpIosTarget(deviceTarget);
+  await ensureMtpIosTarget(simulatorTarget);
 
   fs.mkdirSync(xcframeworksDir, { recursive: true });
   fs.rmSync(xcframeworkDir, { recursive: true, force: true });
@@ -4208,9 +4222,9 @@ async function ensureIosLlamaCppVendoredFramework({
     "--output",
     xcframeworkDir,
     "--device-archive-dir",
-    dflashTargetOutDir(deviceTarget),
+    mtpTargetOutDir(deviceTarget),
     "--sim-archive-dir",
-    dflashTargetOutDir(simulatorTarget),
+    mtpTargetOutDir(simulatorTarget),
     "--verify",
   ]);
 
@@ -5615,6 +5629,16 @@ function stripAndroidForCloud() {
       "java",
       packageNameToPath(androidPackage),
     ),
+    path.join(
+      androidDir,
+      "app",
+      "src",
+      "main",
+      "java",
+      "ai",
+      "milady",
+      "milady",
+    ),
     path.join(androidDir, "app", "src", "main", "java", "ai", "elizaos", "app"),
   ];
   let removedJavaCount = 0;
@@ -5705,6 +5729,16 @@ function stripAndroidForSmsGateway() {
       "main",
       "java",
       packageNameToPath(androidPackage),
+    ),
+    path.join(
+      androidDir,
+      "app",
+      "src",
+      "main",
+      "java",
+      "ai",
+      "milady",
+      "milady",
     ),
     path.join(androidDir, "app", "src", "main", "java", "ai", "elizaos", "app"),
   ];
@@ -6114,7 +6148,7 @@ async function buildAndroidCloud({ debug = false } = {}) {
 
   // The Play-Store target intentionally builds without `-PelizaAospBuild`,
   // so BuildConfig.AOSP_BUILD = false at runtime. It does pass the cloud
-  // flags, which make injected Gradle hooks skip DFlash/native restaging and
+  // flags, which make injected Gradle hooks skip MTP/native restaging and
   // strip any merged assets/agent tree that an older generated project kept.
   const settingsGradle = fs.readFileSync(
     path.join(androidDir, "capacitor.settings.gradle"),
@@ -6265,7 +6299,9 @@ function sha256File(filePath) {
 }
 
 function currentGitRevision() {
-  const result = runCaptureSync("git", ["rev-parse", "HEAD"], { cwd: repoRoot });
+  const result = runCaptureSync("git", ["rev-parse", "HEAD"], {
+    cwd: repoRoot,
+  });
   if (result.status !== 0) return null;
   return result.stdout.trim() || null;
 }

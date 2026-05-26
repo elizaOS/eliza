@@ -2,7 +2,7 @@
  * Secrets Manager — Core Capability
  *
  * Multi-level secret management for elizaOS with:
- * - Conversational onboarding (Discord, Telegram)
+ * - Conversational setup (Discord, Telegram)
  * - Web form-based secret collection
  * - Encryption at rest (AES-256-GCM)
  * - Dynamic plugin activation
@@ -37,39 +37,17 @@ export {
 	KeyManager,
 	secureCompare,
 } from "./crypto/index.ts";
-
-// Onboarding — conversational secrets collection for Discord/Telegram
-export {
-	COMMON_API_KEY_SETTINGS,
-	createOnboardingConfig,
-	DEFAULT_ONBOARDING_MESSAGES,
-	generateSettingPrompt,
-	getNextSetting,
-	getUnconfiguredOptional,
-	getUnconfiguredRequired,
-	isOnboardingComplete,
-	missingSecretsProvider,
-	ONBOARDING_SERVICE_TYPE,
-	type OnboardingConfig,
-	OnboardingService,
-	type OnboardingSetting,
-	onboardingSettingsProvider,
-	updateSettingsAction,
-} from "./onboarding/index.ts";
-
 // Plugin
 export type { SecretsManagerPluginConfig } from "./plugin.ts";
 export {
 	secretsManagerPlugin,
 	secretsManagerPlugin as default,
 } from "./plugin.ts";
-
 // Providers
 export {
 	secretsInfoProvider,
 	secretsStatusProvider,
 } from "./providers/index.ts";
-
 // Services
 export type { PluginWithSecrets } from "./services/index.ts";
 export {
@@ -78,6 +56,24 @@ export {
 	SECRETS_SERVICE_TYPE,
 	SecretsService,
 } from "./services/index.ts";
+// Setup — conversational secrets collection for Discord/Telegram
+export {
+	COMMON_API_KEY_SETTINGS,
+	createSetupConfig,
+	DEFAULT_SETUP_MESSAGES,
+	generateSettingPrompt,
+	getNextSetting,
+	getUnconfiguredOptional,
+	getUnconfiguredRequired,
+	isSetupComplete,
+	missingSecretsProvider,
+	SETUP_SERVICE_TYPE,
+	type SetupConfig,
+	SetupService,
+	type SetupSetting,
+	setupSettingsProvider,
+	updateSettingsAction,
+} from "./setup/index.ts";
 
 // Storage
 export type { ISecretStorage } from "./storage/index.ts";

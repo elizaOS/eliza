@@ -10,7 +10,11 @@ import {
 import type { Eliza1DeviceCaps, Eliza1Manifest, Eliza1Tier } from "./types";
 
 const SHA = "0".repeat(64);
-const DFLASH_TIERS = new Set<Eliza1Tier>(["2b", "4b", "9b", "27b", "27b-256k"]);
+const DFLASH_TIERS = new Set<Eliza1Tier>(
+	ELIZA_1_TIERS.filter((tier) =>
+		REQUIRED_KERNELS_BY_TIER[tier].includes("dflash"),
+	),
+);
 const VISION_TIERS = new Set<Eliza1Tier>([
 	"0_8b",
 	"2b",
@@ -134,6 +138,7 @@ describe("Eliza-1 manifest schema constants", () => {
 		for (const tier of ELIZA_1_TIERS) {
 			expect(REQUIRED_KERNELS_BY_TIER[tier]).toContain("turbo3_tcq");
 		}
+		expect(REQUIRED_KERNELS_BY_TIER["0_8b"]).toContain("dflash");
 	});
 });
 
@@ -598,6 +603,32 @@ describe("canSetAsDefault", () => {
 	it("returns false when the manifest fails contract checks even if defaultEligible=true", () => {
 		const m = baseManifest("9b");
 		m.kernels.required = ["turboquant_q4"]; // missing qjl/polarquant/dflash
+		expect(canSetAsDefault(m, device)).toBe(false);
+	});
+
+	it("does not auto-default version-only staged bundles without release provenance", () => {
+		const m = baseManifest("0_8b");
+		m.version = "1.0.0-weights-staged.2";
+		m.defaultEligible = false;
+		m.evals.asrWer = { wer: 1.4444, passed: false };
+		m.evals.expressive = {
+			tagFaithfulness: 0,
+			mosExpressive: 0,
+			tagLeakage: 1,
+			passed: false,
+		};
+		m.evals.dflash = { acceptanceRate: 0.5, speedup: null, passed: false };
+		m.voice = {
+			version: "1",
+			frozen: true,
+			cache: {
+				speakerPreset: "cache/voice-preset-default.bin",
+				phraseCacheSeed: "cache/voice-preset-default.bin",
+			},
+			capabilities: ["tts", "emotion-tags", "singing"],
+		};
+
+		expect(validateManifest(m).ok).toBe(true);
 		expect(canSetAsDefault(m, device)).toBe(false);
 	});
 });

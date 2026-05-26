@@ -3,7 +3,7 @@
  * build-omnivoice.mjs — build the libomnivoice shared library used by
  * `@elizaos/plugin-omnivoice` via `bun:ffi`.
  *
- * Mirrors the policy of build-llama-cpp-dflash.mjs (build the GGML-based
+ * Mirrors the policy of build-llama-cpp-mtp.mjs (build the GGML-based
  * native lib using the user's system cmake + toolchain, no sudo, no
  * download) but targets the omnivoice.cpp subtree at
  * `packages/inference/omnivoice.cpp`.
@@ -114,7 +114,7 @@ function detectBackend(target) {
     return explicit;
   }
   if (process.platform === "darwin") return "metal";
-  // crude nvcc detection — same pattern build-llama-cpp-dflash.mjs uses.
+  // crude nvcc detection — same pattern build-llama-cpp-mtp.mjs uses.
   // We do NOT shell out to `which` here; presence in PATH is enough.
   for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
     if (!dir) continue;

@@ -29,9 +29,9 @@
  */
 
 import type {
-	MtpDraftHandle,
 	KernelSet,
 	MmapRegionHandle,
+	MtpDraftHandle,
 	RefCountedResource,
 	SchedulerSlot,
 	SharedResourceRegistry,

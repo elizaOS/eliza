@@ -24,7 +24,7 @@ const HOME = os.homedir();
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 const BUNDLE = path.join(HOME, ".eliza/local-inference/models/eliza-1-0_8b.bundle");
 const KOKORO_ROOT = path.join(BUNDLE, "tts/kokoro");
-const INFER_DYLIB = path.join(HOME, ".eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/libelizainference.dylib");
+const INFER_DYLIB = path.join(HOME, ".eliza/local-inference/bin/mtp/darwin-arm64-metal-fused/libelizainference.dylib");
 const WORK = "/tmp/three-voice-e2e";
 const REPORTS = path.join(REPO_ROOT, "packages/benchmarks/voice/reports");
 mkdirSync(WORK, { recursive: true });

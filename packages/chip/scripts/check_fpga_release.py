@@ -1810,7 +1810,7 @@ def latest_non_release_build_probe() -> dict:
                 "_observed_mtime": live_yosys_log.stat().st_mtime,
             }
         )
-    rows.sort(key=lambda row: row["_observed_mtime"])
+    rows.sort(key=lambda row: cast("float", row["_observed_mtime"]))
     for row in rows:
         row.pop("_observed_mtime", None)
     latest = rows[-1] if rows else None

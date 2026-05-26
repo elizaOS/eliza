@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-REPORT_DIR="${ELIZA_DFLASH_HARDWARE_REPORT_DIR:-$SCRIPT_DIR/hardware-results}"
+REPORT_DIR="${ELIZA_MTP_HARDWARE_REPORT_DIR:-$SCRIPT_DIR/hardware-results}"
 mkdir -p "$REPORT_DIR"
 REPORT_PATH="$REPORT_DIR/linux-vulkan-smoke-$(date -u +%Y%m%dT%H%M%SZ).log"
 exec > >(tee "$REPORT_PATH") 2>&1
@@ -47,14 +47,14 @@ if [[ "$(uname -s)" != "Linux" ]]; then
   fail 2 "native Linux required; this is not a MoltenVK/macOS smoke"
 fi
 
-TARGET="${ELIZA_DFLASH_TARGET:-linux-x64-vulkan}"
+TARGET="${ELIZA_MTP_TARGET:-linux-x64-vulkan}"
 ALLOW_SOFTWARE="${ELIZA_ALLOW_SOFTWARE_VULKAN:-0}"
 STATE_DIR="${ELIZA_STATE_DIR:-$HOME/.eliza}"
-OUT_DIR="${ELIZA_DFLASH_TARGET_OUT_DIR:-$STATE_DIR/local-inference/bin/dflash/$TARGET}"
+OUT_DIR="${ELIZA_MTP_TARGET_OUT_DIR:-$STATE_DIR/local-inference/bin/mtp/$TARGET}"
 CAPABILITIES="$OUT_DIR/CAPABILITIES.json"
-LLAMA_DIR="${ELIZA_DFLASH_LLAMA_DIR:-$HOME/.cache/eliza-dflash/eliza-llama-cpp}"
+LLAMA_DIR="${ELIZA_MTP_LLAMA_DIR:-$HOME/.cache/eliza-mtp/eliza-llama-cpp}"
 BUILD_BIN_DIR="$LLAMA_DIR/build/$TARGET/bin"
-GRAPH_BIN_DIR="${ELIZA_DFLASH_VULKAN_BIN_DIR:-$OUT_DIR}"
+GRAPH_BIN_DIR="${ELIZA_MTP_VULKAN_BIN_DIR:-$OUT_DIR}"
 CANONICAL_FIXTURES=(
   turbo3.json
   turbo4.json
@@ -86,11 +86,11 @@ fi
 echo "[linux-vulkan-smoke] standalone Vulkan fixture gate: ${CANONICAL_FIXTURES[*]}"
 make reference-test kernel-contract vulkan-verify
 
-if [[ "${ELIZA_DFLASH_SKIP_BUILD:-0}" != "1" ]]; then
+if [[ "${ELIZA_MTP_SKIP_BUILD:-0}" != "1" ]]; then
   echo "[linux-vulkan-smoke] building patched fork target=${TARGET}"
   set +e
-  ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD=1 \
-    node ../../app-core/scripts/build-llama-cpp-dflash.mjs --target "${TARGET}"
+  ELIZA_MTP_ALLOW_UNVERIFIED_VULKAN_BUILD=1 \
+    node ../../app-core/scripts/build-llama-cpp-mtp.mjs --target "${TARGET}"
   build_status=$?
   set -e
   if [[ "$build_status" -ne 0 ]]; then
@@ -100,8 +100,8 @@ if [[ "${ELIZA_DFLASH_SKIP_BUILD:-0}" != "1" ]]; then
   fi
   dump_capabilities "$CAPABILITIES"
 else
-  if [[ "${ELIZA_DFLASH_ALLOW_PREBUILT_VULKAN_SMOKE:-0}" != "1" ]]; then
-    fail 5 "ELIZA_DFLASH_SKIP_BUILD=1 requires ELIZA_DFLASH_ALLOW_PREBUILT_VULKAN_SMOKE=1 so stale binaries are an explicit choice"
+  if [[ "${ELIZA_MTP_ALLOW_PREBUILT_VULKAN_SMOKE:-0}" != "1" ]]; then
+    fail 5 "ELIZA_MTP_SKIP_BUILD=1 requires ELIZA_MTP_ALLOW_PREBUILT_VULKAN_SMOKE=1 so stale binaries are an explicit choice"
   fi
   if [[ ! -f "$CAPABILITIES" ]]; then
     fail 5 "prebuilt smoke requested but CAPABILITIES.json is missing at $CAPABILITIES"
@@ -112,10 +112,10 @@ fi
 
 echo "[linux-vulkan-smoke] built-fork Vulkan graph dispatch gate"
 set +e
-ELIZA_DFLASH_TARGET="$TARGET" \
+ELIZA_MTP_TARGET="$TARGET" \
 ELIZA_STATE_DIR="$STATE_DIR" \
-ELIZA_DFLASH_LLAMA_DIR="$LLAMA_DIR" \
-ELIZA_DFLASH_VULKAN_BIN_DIR="$GRAPH_BIN_DIR" \
+ELIZA_MTP_LLAMA_DIR="$LLAMA_DIR" \
+ELIZA_MTP_VULKAN_BIN_DIR="$GRAPH_BIN_DIR" \
   make vulkan-dispatch-smoke
 smoke_status=$?
 set -e
@@ -186,9 +186,9 @@ fs.writeFileSync(outPath, JSON.stringify(payload, null, 2) + "\n");
 console.log(`[linux-vulkan-smoke] wrote runtime dispatch evidence: ${outPath}`);
 NODE
 
-if [[ "${ELIZA_DFLASH_SKIP_BUILD:-0}" != "1" ]]; then
+if [[ "${ELIZA_MTP_SKIP_BUILD:-0}" != "1" ]]; then
   echo "[linux-vulkan-smoke] rebuilding target=${TARGET} with Vulkan runtime evidence enforced"
-  node ../../app-core/scripts/build-llama-cpp-dflash.mjs --target "${TARGET}"
+  node ../../app-core/scripts/build-llama-cpp-mtp.mjs --target "${TARGET}"
   dump_capabilities "$CAPABILITIES"
 fi
 

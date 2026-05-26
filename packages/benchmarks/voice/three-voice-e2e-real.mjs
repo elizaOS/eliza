@@ -40,7 +40,7 @@ import { resolvePhonemizer } from "../../../plugins/plugin-local-inference/src/s
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
 const HOME = os.homedir();
 const BUNDLE = path.join(HOME, ".eliza/local-inference/models/eliza-1-0_8b.bundle");
-const BINDIR = path.join(HOME, ".eliza/local-inference/bin/dflash/darwin-arm64-metal-fused");
+const BINDIR = path.join(HOME, ".eliza/local-inference/bin/mtp/darwin-arm64-metal-fused");
 const OMNIVOICE = path.join(BINDIR, "omnivoice-tts");
 const INFER_DYLIB = path.join(BINDIR, "libelizainference.dylib");
 const TTS_MODEL = path.join(BUNDLE, "tts/omnivoice-base-Q4_K_M.gguf");

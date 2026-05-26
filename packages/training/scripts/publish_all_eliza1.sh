@@ -18,7 +18,7 @@
 # Layout: each tier is published from its own bundle directory. Pass the
 # parent directory via --bundles-root; per-tier dirs are
 # <root>/<tier>/. Per-tier directory layout is the §2 bundle (text/,
-# tts/, asr/, vision/, dflash/, cache/, evals/, licenses/).
+# tts/, asr/, vision/, mtp/, cache/, evals/, licenses/).
 #
 # Metal verification is hardware-only. To publish a tier that includes
 # the Metal backend (0_8b, 2b, 4b, 9b, 27b) you

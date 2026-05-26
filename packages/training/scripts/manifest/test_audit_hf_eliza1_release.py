@@ -137,11 +137,11 @@ def _text_fetcher(
     active_sft_manifest: str | None = None,
     active_sft_validation: str | None = None,
     model_manifests: Mapping[str, str] | None = None,
-    dflash_target_meta: Mapping[str, str] | None = None,
-    dflash_accept_reports: Mapping[str, str] | None = None,
-    dflash_validation_reports: Mapping[str, str] | None = None,
-    dflash_runtime_reports: Mapping[str, str] | None = None,
-    dflash_tuning_reports: Mapping[str, str] | None = None,
+    mtp_target_meta: Mapping[str, str] | None = None,
+    mtp_accept_reports: Mapping[str, str] | None = None,
+    mtp_validation_reports: Mapping[str, str] | None = None,
+    mtp_runtime_reports: Mapping[str, str] | None = None,
+    mtp_tuning_reports: Mapping[str, str] | None = None,
     release_evidence: Mapping[str, str] | None = None,
     aggregate_reports: Mapping[str, str] | None = None,
     platform_evidence: Mapping[str, str] | None = None,
@@ -194,39 +194,39 @@ def _text_fetcher(
             f"{'a' * 64}  {rel}" for rel in build_plan()[tier].required_files
         ) + "\n"
         payloads[
-            f"https://huggingface.co/elizaos/eliza-1/raw/main/bundles/{tier}/dflash/target-meta.json"
+            f"https://huggingface.co/elizaos/eliza-1/raw/main/bundles/{tier}/mtp/target-meta.json"
         ] = (
-            dflash_target_meta[tier]
-            if dflash_target_meta and tier in dflash_target_meta
-            else _passing_dflash_target_meta(tier)
+            mtp_target_meta[tier]
+            if mtp_target_meta and tier in mtp_target_meta
+            else _passing_mtp_target_meta(tier)
         )
         payloads[
-            f"https://huggingface.co/elizaos/eliza-1/raw/main/bundles/{tier}/evals/dflash-accept.json"
+            f"https://huggingface.co/elizaos/eliza-1/raw/main/bundles/{tier}/evals/mtp-accept.json"
         ] = (
-            dflash_accept_reports[tier]
-            if dflash_accept_reports and tier in dflash_accept_reports
-            else _passing_dflash_accept_report(tier)
+            mtp_accept_reports[tier]
+            if mtp_accept_reports and tier in mtp_accept_reports
+            else _passing_mtp_accept_report(tier)
         )
         payloads[
-            f"https://huggingface.co/elizaos/eliza-1/raw/main/bundles/{tier}/dflash/validation-real.json"
+            f"https://huggingface.co/elizaos/eliza-1/raw/main/bundles/{tier}/mtp/validation-real.json"
         ] = (
-            dflash_validation_reports[tier]
-            if dflash_validation_reports and tier in dflash_validation_reports
-            else _passing_dflash_validation_report(tier)
+            mtp_validation_reports[tier]
+            if mtp_validation_reports and tier in mtp_validation_reports
+            else _passing_mtp_validation_report(tier)
         )
         payloads[
-            f"https://huggingface.co/elizaos/eliza-1/raw/main/bundles/{tier}/dflash/runtime-smoke-native.json"
+            f"https://huggingface.co/elizaos/eliza-1/raw/main/bundles/{tier}/mtp/runtime-smoke-native.json"
         ] = (
-            dflash_runtime_reports[tier]
-            if dflash_runtime_reports and tier in dflash_runtime_reports
-            else _passing_dflash_runtime_report(tier)
+            mtp_runtime_reports[tier]
+            if mtp_runtime_reports and tier in mtp_runtime_reports
+            else _passing_mtp_runtime_report(tier)
         )
         payloads[
-            f"https://huggingface.co/elizaos/eliza-1/raw/main/bundles/{tier}/evals/dflash-tuning-report.json"
+            f"https://huggingface.co/elizaos/eliza-1/raw/main/bundles/{tier}/evals/mtp-tuning-report.json"
         ] = (
-            dflash_tuning_reports[tier]
-            if dflash_tuning_reports and tier in dflash_tuning_reports
-            else _passing_dflash_tuning_report(tier)
+            mtp_tuning_reports[tier]
+            if mtp_tuning_reports and tier in mtp_tuning_reports
+            else _passing_mtp_tuning_report(tier)
         )
         payloads[
             f"https://huggingface.co/elizaos/eliza-1/raw/main/bundles/{tier}/evidence/release.json"
@@ -272,7 +272,7 @@ def _passing_model_readme() -> str:
             "Training data and fine-tuning examples are in `elizaos/eliza-1-training`.",
             "Each text tier ships native context and half context variants.",
             "The runtime includes image generation, structured response handling, "
-            "MTP, DFlash, llama.cpp, omnivoice.cpp, and stable-diffusion.cpp.",
+            "MTP, MTP, llama.cpp, omnivoice.cpp, and stable-diffusion.cpp.",
         ]
     )
 
@@ -563,7 +563,7 @@ def _passing_active_sft_validation() -> str:
     )
 
 
-def _passing_dflash_target_meta(tier: str) -> str:
+def _passing_mtp_target_meta(tier: str) -> str:
     return __import__("json").dumps(
         {
             "schemaVersion": 3,
@@ -576,17 +576,17 @@ def _passing_dflash_target_meta(tier: str) -> str:
                 "finalElizaWeights": True,
             },
             "drafter": {
-                "path": f"dflash/drafter-{tier}.gguf",
+                "path": f"mtp/drafter-{tier}.gguf",
                 "sha256": "b" * 64,
                 "finalElizaWeights": True,
                 "matchesTargetCheckpoint": True,
-                "provenance": "dflash-drafter:h200-kd-runtime-accepted",
+                "provenance": "mtp-drafter:h200-kd-runtime-accepted",
             },
             "acceptanceRate": 0.72,
             "acceptanceRollout": {
                 "status": "pass",
                 "gate": 0.48,
-                "report": "evals/dflash-accept.json",
+                "report": "evals/mtp-accept.json",
             },
             "acceptanceWindow": {
                 "draftedTokens": 2000,
@@ -596,25 +596,25 @@ def _passing_dflash_target_meta(tier: str) -> str:
     )
 
 
-def _passing_dflash_accept_report(tier: str) -> str:
+def _passing_mtp_accept_report(tier: str) -> str:
     return __import__("json").dumps(
         {
             "schemaVersion": 1,
-            "metric": "dflash_acceptance",
+            "metric": "mtp_acceptance",
             "status": "ok",
             "passed": True,
             "acceptanceRate": 0.72,
             "target": f"/tmp/eliza-1-bundles/eliza-1-{tier}.bundle/{text_artifact_name(tier, '256k')}",
-            "drafter": f"/tmp/eliza-1-bundles/eliza-1-{tier}.bundle/dflash/drafter-{tier}.gguf",
+            "drafter": f"/tmp/eliza-1-bundles/eliza-1-{tier}.bundle/mtp/drafter-{tier}.gguf",
         }
     )
 
 
-def _passing_dflash_validation_report(tier: str) -> str:
+def _passing_mtp_validation_report(tier: str) -> str:
     return __import__("json").dumps(
         {
             "schemaVersion": 1,
-            "kind": "dflash-drafter-validation",
+            "kind": "mtp-drafter-validation",
             "tier": tier,
             "synthetic": False,
             "pass": True,
@@ -636,7 +636,7 @@ def _passing_dflash_validation_report(tier: str) -> str:
     )
 
 
-def _passing_dflash_runtime_report(tier: str) -> str:
+def _passing_mtp_runtime_report(tier: str) -> str:
     return __import__("json").dumps(
         {
             "schemaVersion": 1,
@@ -646,7 +646,7 @@ def _passing_dflash_runtime_report(tier: str) -> str:
             "runtime": [
                 {
                     "status": 0,
-                    "dflash": {
+                    "mtp": {
                         "requiresTrueDrafting": True,
                         "draftingActive": True,
                         "drafted": 2000,
@@ -664,18 +664,18 @@ def _passing_dflash_runtime_report(tier: str) -> str:
                 "speedup": 1.21,
                 "summary": {
                     "status": "pass",
-                    "dflashDraftingActive": True,
+                    "mtpDraftingActive": True,
                 },
             },
         }
     )
 
 
-def _passing_dflash_tuning_report(tier: str) -> str:
+def _passing_mtp_tuning_report(tier: str) -> str:
     return __import__("json").dumps(
         {
             "schemaVersion": 1,
-            "kind": "dflash-tuning-report",
+            "kind": "mtp-tuning-report",
             "tier": tier,
             "status": "publishable",
             "publishEligible": True,
@@ -704,7 +704,7 @@ def _passing_release_evidence(tier: str) -> str:
         rel
         for rel in build_plan()[tier].required_files
         if rel.split("/", 1)[0]
-        in {"text", "tts", "asr", "vad", "imagegen", "vision", "dflash", "embedding", "wakeword"}
+        in {"text", "tts", "asr", "vad", "imagegen", "vision", "mtp", "embedding", "wakeword"}
     )
     return __import__("json").dumps(
         {
@@ -733,13 +733,13 @@ def _passing_release_evidence(tier: str) -> str:
                     "handle-response-tool-call",
                     "closed-action-enum",
                     "eliza-schema-guided-decode",
-                    "dflash-prefill",
+                    "mtp-prefill",
                     "deterministic-repair",
                 ],
                 "testReports": {
                     "plannerGrammar": "plugins/plugin-local-inference/src/services/__tests__/planner-grammar.test.ts",
                     "structuredOutput": "plugins/plugin-local-inference/src/services/structured-output.test.ts",
-                    "dflashStructured": "plugins/plugin-local-inference/src/services/dflash-structured.test.ts",
+                    "mtpStructured": "plugins/plugin-local-inference/src/services/mtp-structured.test.ts",
                     "deterministicRepair": "plugins/plugin-local-inference/src/services/structured-output/deterministic-repair.test.ts",
                 },
             },
@@ -1052,12 +1052,12 @@ def test_hf_release_audit_blocks_required_file_missing_from_manifest_files() -> 
     )
 
 
-def test_hf_release_audit_blocks_dflash_tuning_report_missing_from_manifest_files() -> None:
+def test_hf_release_audit_blocks_mtp_tuning_report_missing_from_manifest_files() -> None:
     bad_manifest = __import__("json").loads(_passing_model_manifest("0_8b"))
     bad_manifest["files"]["evals"] = [
         entry
         for entry in bad_manifest["files"]["evals"]
-        if entry["path"] != "evals/dflash-tuning-report.json"
+        if entry["path"] != "evals/mtp-tuning-report.json"
     ]
 
     report = audit_hf_release(
@@ -1069,7 +1069,7 @@ def test_hf_release_audit_blocks_dflash_tuning_report_missing_from_manifest_file
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
         check["name"] == "0_8b manifest files cover required runtime artifacts"
-        and "evals/dflash-tuning-report.json" in check["detail"]
+        and "evals/mtp-tuning-report.json" in check["detail"]
         for check in failed
     )
 
@@ -1197,8 +1197,8 @@ def test_hf_release_audit_requires_zimage_companion_release_payload_weights() ->
 
 def test_hf_release_audit_blocks_incomplete_structured_response_rules() -> None:
     bad_evidence = __import__("json").loads(_passing_release_evidence("4b"))
-    bad_evidence["structuredResponse"]["rules"].remove("dflash-prefill")
-    del bad_evidence["structuredResponse"]["testReports"]["dflashStructured"]
+    bad_evidence["structuredResponse"]["rules"].remove("mtp-prefill")
+    del bad_evidence["structuredResponse"]["testReports"]["mtpStructured"]
 
     report = audit_hf_release(
         fetch_json=_fetcher(),
@@ -1209,21 +1209,21 @@ def test_hf_release_audit_blocks_incomplete_structured_response_rules() -> None:
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
         check["name"] == "4b structured response release evidence passed"
-        and "rules.dflash-prefill: missing" in check["detail"]
-        and "testReports.dflashStructured: missing" in check["detail"]
+        and "rules.mtp-prefill: missing" in check["detail"]
+        and "testReports.mtpStructured: missing" in check["detail"]
         for check in failed
     )
 
 
 def test_hf_release_audit_blocks_missing_mtp_acceptance_evidence() -> None:
-    bad_meta = __import__("json").loads(_passing_dflash_target_meta("2b"))
+    bad_meta = __import__("json").loads(_passing_mtp_target_meta("2b"))
     bad_meta["acceptanceRate"] = None
     bad_meta["acceptanceRollout"] = {"status": "not-run", "gate": 0.48}
     bad_meta["acceptanceWindow"] = None
 
     report = audit_hf_release(
         fetch_json=_fetcher(),
-        fetch_text=_text_fetcher(dflash_target_meta={"2b": __import__("json").dumps(bad_meta)}),
+        fetch_text=_text_fetcher(mtp_target_meta={"2b": __import__("json").dumps(bad_meta)}),
     )
 
     assert not report.ok
@@ -1238,7 +1238,7 @@ def test_hf_release_audit_blocks_missing_mtp_acceptance_evidence() -> None:
 
 
 def test_hf_release_audit_blocks_mtp_acceptance_report_contradiction() -> None:
-    bad_report = __import__("json").loads(_passing_dflash_accept_report("2b"))
+    bad_report = __import__("json").loads(_passing_mtp_accept_report("2b"))
     bad_report["status"] = "fail"
     bad_report["passed"] = False
     bad_report["acceptanceRate"] = 0.0
@@ -1247,7 +1247,7 @@ def test_hf_release_audit_blocks_mtp_acceptance_report_contradiction() -> None:
     report = audit_hf_release(
         fetch_json=_fetcher(),
         fetch_text=_text_fetcher(
-            dflash_accept_reports={"2b": __import__("json").dumps(bad_report)}
+            mtp_accept_reports={"2b": __import__("json").dumps(bad_report)}
         ),
     )
 
@@ -1255,16 +1255,16 @@ def test_hf_release_audit_blocks_mtp_acceptance_report_contradiction() -> None:
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
         check["name"] == "2b MTP drafter release evidence passed"
-        and "evals/dflash-accept.json.status: 'fail'" in check["detail"]
-        and "evals/dflash-accept.json.passed: False" in check["detail"]
-        and "evals/dflash-accept.json.acceptanceRate: 0.0 != 0.72" in check["detail"]
+        and "evals/mtp-accept.json.status: 'fail'" in check["detail"]
+        and "evals/mtp-accept.json.passed: False" in check["detail"]
+        and "evals/mtp-accept.json.acceptanceRate: 0.0 != 0.72" in check["detail"]
         and "text/eliza-1-2b-128k.gguf" in check["detail"]
         for check in failed
     )
 
 
 def test_hf_release_audit_requires_real_mtp_validation_pass() -> None:
-    bad_report = __import__("json").loads(_passing_dflash_validation_report("0_8b"))
+    bad_report = __import__("json").loads(_passing_mtp_validation_report("0_8b"))
     bad_report["pass"] = False
     bad_report["checks"]["acceptanceRollout"]["pass"] = False
     bad_report["checks"]["acceptanceRollout"]["acceptanceRate"] = 0.041666666666666664
@@ -1272,7 +1272,7 @@ def test_hf_release_audit_requires_real_mtp_validation_pass() -> None:
     report = audit_hf_release(
         fetch_json=_fetcher(),
         fetch_text=_text_fetcher(
-            dflash_validation_reports={"0_8b": __import__("json").dumps(bad_report)}
+            mtp_validation_reports={"0_8b": __import__("json").dumps(bad_report)}
         ),
     )
 
@@ -1280,28 +1280,28 @@ def test_hf_release_audit_requires_real_mtp_validation_pass() -> None:
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
         check["name"] == "0_8b MTP drafter release evidence passed"
-        and "dflash/validation-real.json.pass: False" in check["detail"]
-        and "dflash/validation-real.json.checks.acceptanceRollout.pass: False"
+        and "mtp/validation-real.json.pass: False" in check["detail"]
+        and "mtp/validation-real.json.checks.acceptanceRollout.pass: False"
         in check["detail"]
-        and "dflash/validation-real.json.acceptanceRate: 0.041666666666666664 < gate 0.4"
+        and "mtp/validation-real.json.acceptanceRate: 0.041666666666666664 < gate 0.4"
         in check["detail"]
         for check in failed
     )
 
 
 def test_hf_release_audit_requires_native_mtp_runtime_smoke_pass() -> None:
-    bad_report = __import__("json").loads(_passing_dflash_runtime_report("4b"))
+    bad_report = __import__("json").loads(_passing_mtp_runtime_report("4b"))
     bad_report["metadataStatus"] = "metadata_invalid"
     bad_report["metadataFailures"] = ["drafter.matchesTargetCheckpoint=false"]
-    bad_report["runtime"][0]["dflash"]["accepted"] = 0
+    bad_report["runtime"][0]["mtp"]["accepted"] = 0
     bad_report["bench"]["acceptanceRate"] = 0.1
     bad_report["bench"]["speedup"] = 0.95
-    bad_report["bench"]["summary"]["dflashDraftingActive"] = False
+    bad_report["bench"]["summary"]["mtpDraftingActive"] = False
 
     report = audit_hf_release(
         fetch_json=_fetcher(),
         fetch_text=_text_fetcher(
-            dflash_runtime_reports={"4b": __import__("json").dumps(bad_report)}
+            mtp_runtime_reports={"4b": __import__("json").dumps(bad_report)}
         ),
     )
 
@@ -1309,19 +1309,19 @@ def test_hf_release_audit_requires_native_mtp_runtime_smoke_pass() -> None:
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
         check["name"] == "4b MTP drafter release evidence passed"
-        and "dflash/runtime-smoke-native.json.metadataStatus: 'metadata_invalid'"
+        and "mtp/runtime-smoke-native.json.metadataStatus: 'metadata_invalid'"
         in check["detail"]
-        and "dflash/runtime-smoke-native.json.runtime.dflash: no accepted native draft"
+        and "mtp/runtime-smoke-native.json.runtime.mtp: no accepted native draft"
         in check["detail"]
-        and "dflash/runtime-smoke-native.json.bench.acceptanceRate: 0.1 < gate 0.48"
+        and "mtp/runtime-smoke-native.json.bench.acceptanceRate: 0.1 < gate 0.48"
         in check["detail"]
-        and "dflash/runtime-smoke-native.json.bench.speedup: 0.95" in check["detail"]
+        and "mtp/runtime-smoke-native.json.bench.speedup: 0.95" in check["detail"]
         for check in failed
     )
 
 
 def test_hf_release_audit_requires_mtp_tuning_report_publishable() -> None:
-    bad_report = __import__("json").loads(_passing_dflash_tuning_report("0_8b"))
+    bad_report = __import__("json").loads(_passing_mtp_tuning_report("0_8b"))
     bad_report["status"] = "optimization-blocked"
     bad_report["publishEligible"] = False
     bad_report["releaseBench"]["status"] = "fail"
@@ -1333,7 +1333,7 @@ def test_hf_release_audit_requires_mtp_tuning_report_publishable() -> None:
     report = audit_hf_release(
         fetch_json=_fetcher(),
         fetch_text=_text_fetcher(
-            dflash_tuning_reports={"0_8b": __import__("json").dumps(bad_report)}
+            mtp_tuning_reports={"0_8b": __import__("json").dumps(bad_report)}
         ),
     )
 
@@ -1341,13 +1341,13 @@ def test_hf_release_audit_requires_mtp_tuning_report_publishable() -> None:
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
         check["name"] == "0_8b MTP drafter release evidence passed"
-        and "evals/dflash-tuning-report.json.status: 'optimization-blocked'"
+        and "evals/mtp-tuning-report.json.status: 'optimization-blocked'"
         in check["detail"]
-        and "evals/dflash-tuning-report.json.publishEligible: False"
+        and "evals/mtp-tuning-report.json.publishEligible: False"
         in check["detail"]
-        and "evals/dflash-tuning-report.json.releaseBench.status: 'fail'"
+        and "evals/mtp-tuning-report.json.releaseBench.status: 'fail'"
         in check["detail"]
-        and "evals/dflash-tuning-report.json.releaseBench.speedup: None"
+        and "evals/mtp-tuning-report.json.releaseBench.speedup: None"
         in check["detail"]
         for check in failed
     )
@@ -1626,7 +1626,7 @@ def test_hf_release_audit_blocks_dirty_quantization_sidecar() -> None:
 
 
 def test_hf_release_audit_blocks_stand_in_mtp_drafter() -> None:
-    bad_meta = __import__("json").loads(_passing_dflash_target_meta("9b"))
+    bad_meta = __import__("json").loads(_passing_mtp_target_meta("9b"))
     bad_meta["publishEligible"] = False
     bad_meta["targetText"]["finalElizaWeights"] = False
     bad_meta["drafter"]["finalElizaWeights"] = False
@@ -1634,7 +1634,7 @@ def test_hf_release_audit_blocks_stand_in_mtp_drafter() -> None:
 
     report = audit_hf_release(
         fetch_json=_fetcher(),
-        fetch_text=_text_fetcher(dflash_target_meta={"9b": __import__("json").dumps(bad_meta)}),
+        fetch_text=_text_fetcher(mtp_target_meta={"9b": __import__("json").dumps(bad_meta)}),
     )
 
     assert not report.ok
@@ -1649,13 +1649,13 @@ def test_hf_release_audit_blocks_stand_in_mtp_drafter() -> None:
 
 
 def test_hf_release_audit_blocks_wrong_mtp_artifact_paths() -> None:
-    bad_meta = __import__("json").loads(_passing_dflash_target_meta("4b"))
+    bad_meta = __import__("json").loads(_passing_mtp_target_meta("4b"))
     bad_meta["targetText"]["path"] = "text/eliza-1-4b.gguf"
-    bad_meta["drafter"]["path"] = "dflash/eliza-1-drafter-4b.gguf"
+    bad_meta["drafter"]["path"] = "mtp/eliza-1-drafter-4b.gguf"
 
     report = audit_hf_release(
         fetch_json=_fetcher(),
-        fetch_text=_text_fetcher(dflash_target_meta={"4b": __import__("json").dumps(bad_meta)}),
+        fetch_text=_text_fetcher(mtp_target_meta={"4b": __import__("json").dumps(bad_meta)}),
     )
 
     assert not report.ok
@@ -1663,7 +1663,7 @@ def test_hf_release_audit_blocks_wrong_mtp_artifact_paths() -> None:
     assert any(
         check["name"] == "4b MTP drafter release evidence passed"
         and "targetText.path: expected 'text/eliza-1-4b-256k.gguf'" in check["detail"]
-        and "drafter.path: expected 'dflash/drafter-4b.gguf'" in check["detail"]
+        and "drafter.path: expected 'mtp/drafter-4b.gguf'" in check["detail"]
         for check in failed
     )
 
@@ -1685,7 +1685,7 @@ def test_hf_release_audit_requires_upload_evidence_for_required_bundle_paths() -
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
         check["name"] == "2b release evidence is publishable"
-        and "hf.uploadEvidence.uploadedPaths.bundles/2b/dflash/drafter-2b.gguf: missing"
+        and "hf.uploadEvidence.uploadedPaths.bundles/2b/mtp/drafter-2b.gguf: missing"
         in check["detail"]
         for check in failed
     )
@@ -1720,7 +1720,7 @@ def test_hf_release_audit_blocks_aggregate_eval_gate_failures() -> None:
 def test_hf_release_audit_prefers_aggregate_over_provisional_manifest_flags() -> None:
     manifest = __import__("json").loads(_passing_model_manifest("0_8b"))
     manifest["evals"]["asrWer"]["passed"] = False
-    manifest["evals"]["dflash"] = {"passed": False}
+    manifest["evals"]["mtp"] = {"passed": False}
     manifest["evals"]["expressive"] = {"passed": False}
 
     report = audit_hf_release(

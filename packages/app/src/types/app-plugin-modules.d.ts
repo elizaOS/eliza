@@ -31,37 +31,37 @@ declare module "@elizaos/app-core" {
   export const DetachedShellRoot: ComponentType<{ route: unknown }>;
 
   export interface BuildOnboardingConnectionArgs {
-    onboardingServerTarget?:
+    firstRunRuntimeTarget?:
       | ""
       | "local"
       | "remote"
       | "elizacloud"
       | "elizacloud-hybrid";
-    onboardingCloudApiKey: string;
-    onboardingProvider: string;
-    onboardingApiKey: string;
+    firstRunCloudApiKey: string;
+    firstRunProvider: string;
+    firstRunApiKey: string;
     omitRuntimeProvider?: boolean;
-    onboardingVoiceProvider: string;
-    onboardingVoiceApiKey: string;
-    onboardingPrimaryModel: string;
-    onboardingOpenRouterModel: string;
-    onboardingRemoteConnected: boolean;
-    onboardingRemoteApiBase: string;
-    onboardingRemoteToken: string;
-    onboardingNanoModel?: string;
-    onboardingSmallModel?: string;
-    onboardingMediumModel?: string;
-    onboardingLargeModel?: string;
-    onboardingMegaModel?: string;
-    onboardingResponseHandlerModel?: string;
-    onboardingActionPlannerModel?: string;
-    onboardingFeatureTelegram?: boolean;
-    onboardingFeatureDiscord?: boolean;
-    onboardingFeaturePhone?: boolean;
-    onboardingFeatureCrypto?: boolean;
-    onboardingFeatureBrowser?: boolean;
-    onboardingFeatureComputerUse?: boolean;
-    onboardingUseLocalEmbeddings?: boolean;
+    firstRunVoiceProvider: string;
+    firstRunVoiceApiKey: string;
+    firstRunPrimaryModel: string;
+    firstRunOpenRouterModel: string;
+    firstRunRemoteConnected: boolean;
+    firstRunRemoteApiBase: string;
+    firstRunRemoteToken: string;
+    firstRunNanoModel?: string;
+    firstRunSmallModel?: string;
+    firstRunMediumModel?: string;
+    firstRunLargeModel?: string;
+    firstRunMegaModel?: string;
+    firstRunResponseHandlerModel?: string;
+    firstRunActionPlannerModel?: string;
+    firstRunFeatureTelegram?: boolean;
+    firstRunFeatureDiscord?: boolean;
+    firstRunFeaturePhone?: boolean;
+    firstRunFeatureCrypto?: boolean;
+    firstRunFeatureBrowser?: boolean;
+    firstRunFeatureComputerUse?: boolean;
+    firstRunUseLocalEmbeddings?: boolean;
   }
 
   export function buildOnboardingRuntimeConfig(

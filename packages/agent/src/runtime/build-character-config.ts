@@ -163,7 +163,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
 
   // Normalise messageExamples to the {examples: [{name,content}]} shape
   // that @elizaos/core expects.  Config may contain EITHER format:
-  //   OLD (preset/onboarding): [[{user, content}, ...], ...]
+  //   OLD (preset/first-run): [[{user, content}, ...], ...]
   //   NEW (@elizaos/core):     [{examples: [{name, content}, ...]}, ...]
   const mappedExamples = messageExamples?.map((item: unknown) => {
     // Already in new format — pass through

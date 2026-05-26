@@ -97,8 +97,8 @@ _DEFAULT_REGRESSION_TOLERANCE = 0.05
 _HIGHER_IS_BETTER = frozenset(
     {
         "text_eval",
-        "dflash_acceptance",
-        "dflash_speedup",
+        "mtp_acceptance",
+        "mtp_speedup",
         "expressive_tag_faithfulness",
         "expressive_mos",
         "format_ok",

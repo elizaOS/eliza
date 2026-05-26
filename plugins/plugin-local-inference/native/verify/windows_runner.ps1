@@ -17,7 +17,7 @@
     WINDOWS_BUILD_FORK=0 skips the build step for an existing native binary.
     WINDOWS_SKIP_GRAPH_SMOKE=1 exits non-zero after preflight; it is not
       recordable hardware evidence.
-    ELIZA_DFLASH_SMOKE_CACHE_TYPES/TOKENS/NGL/PROMPT/EXTRA_ARGS tune the
+    ELIZA_MTP_SMOKE_CACHE_TYPES/TOKENS/NGL/PROMPT/EXTRA_ARGS tune the
       llama-bench graph smoke.
     ELIZA_STATE_DIR controls the default native binary lookup root.
 #>
@@ -29,13 +29,13 @@ param(
 
   [string] $Target = "",
 
-  [string] $Model = $env:ELIZA_DFLASH_SMOKE_MODEL,
+  [string] $Model = $env:ELIZA_MTP_SMOKE_MODEL,
 
   [string] $BinDir = "",
 
   [string] $ReportDir = "",
 
-  [string] $Report = $env:ELIZA_DFLASH_HARDWARE_REPORT,
+  [string] $Report = $env:ELIZA_MTP_HARDWARE_REPORT,
 
   [string[]] $CacheTypes = @()
 )
@@ -194,7 +194,7 @@ switch ($Backend) {
   }
 }
 
-$buildScript = Join-Path $repoRoot "packages/app-core/scripts/build-llama-cpp-dflash.mjs"
+$buildScript = Join-Path $repoRoot "packages/app-core/scripts/build-llama-cpp-mtp.mjs"
 if ($env:WINDOWS_BUILD_FORK -ne "0") {
   & node $buildScript --target $Target
   if ($LASTEXITCODE -ne 0) { Fail "build target failed: $Target" }
@@ -205,7 +205,7 @@ if ([string]::IsNullOrWhiteSpace($BinDir)) {
   if ([string]::IsNullOrWhiteSpace($stateDir)) {
     $stateDir = Join-Path $HOME ".eliza"
   }
-  $BinDir = Join-Path $stateDir "local-inference/bin/dflash/$Target"
+  $BinDir = Join-Path $stateDir "local-inference/bin/mtp/$Target"
 }
 
 # Driver: llama-bench, not llama-cli. The fork's llama-cli is conversation-only
@@ -225,7 +225,7 @@ if ($env:WINDOWS_SKIP_GRAPH_SMOKE -eq "1") {
 }
 
 if ([string]::IsNullOrWhiteSpace($Model) -or -not (Test-Path $Model)) {
-  Fail "ELIZA_DFLASH_SMOKE_MODEL / -Model must point at a GGUF model for graph dispatch verification"
+  Fail "ELIZA_MTP_SMOKE_MODEL / -Model must point at a GGUF model for graph dispatch verification"
 }
 $script:ResolvedModel = $Model
 
@@ -245,8 +245,8 @@ if ($CacheTypes.Count -gt 0) {
   foreach ($cache in $CacheTypes) {
     $runs += [pscustomobject]@{ Family = $cache; Cache = $cache }
   }
-} elseif (-not [string]::IsNullOrWhiteSpace($env:ELIZA_DFLASH_SMOKE_CACHE_TYPES)) {
-  foreach ($cache in ($env:ELIZA_DFLASH_SMOKE_CACHE_TYPES -split "[,\s]+" | Where-Object { $_ })) {
+} elseif (-not [string]::IsNullOrWhiteSpace($env:ELIZA_MTP_SMOKE_CACHE_TYPES)) {
+  foreach ($cache in ($env:ELIZA_MTP_SMOKE_CACHE_TYPES -split "[,\s]+" | Where-Object { $_ })) {
     $runs += [pscustomobject]@{ Family = $cache; Cache = $cache }
   }
 } else {
@@ -263,12 +263,12 @@ $backendPattern = switch ($Backend) {
   default { "AVX|AVX2|CPU|ggml_backend_cpu|llama" }
 }
 
-$prompt = if ($env:ELIZA_DFLASH_SMOKE_PROMPT) { $env:ELIZA_DFLASH_SMOKE_PROMPT } else { "Eliza Windows backend graph dispatch smoke." }
-$tokens = if ($env:ELIZA_DFLASH_SMOKE_TOKENS) { $env:ELIZA_DFLASH_SMOKE_TOKENS } else { "4" }
-$ngl = if ($env:ELIZA_DFLASH_SMOKE_NGL) { $env:ELIZA_DFLASH_SMOKE_NGL } else { "99" }
+$prompt = if ($env:ELIZA_MTP_SMOKE_PROMPT) { $env:ELIZA_MTP_SMOKE_PROMPT } else { "Eliza Windows backend graph dispatch smoke." }
+$tokens = if ($env:ELIZA_MTP_SMOKE_TOKENS) { $env:ELIZA_MTP_SMOKE_TOKENS } else { "4" }
+$ngl = if ($env:ELIZA_MTP_SMOKE_NGL) { $env:ELIZA_MTP_SMOKE_NGL } else { "99" }
 $extraArgs = @()
-if ($env:ELIZA_DFLASH_SMOKE_EXTRA_ARGS) {
-  $extraArgs = $env:ELIZA_DFLASH_SMOKE_EXTRA_ARGS -split "\s+"
+if ($env:ELIZA_MTP_SMOKE_EXTRA_ARGS) {
+  $extraArgs = $env:ELIZA_MTP_SMOKE_EXTRA_ARGS -split "\s+"
 }
 
 $summary = Join-Path $ReportDir "$Target-graph-smoke.summary"

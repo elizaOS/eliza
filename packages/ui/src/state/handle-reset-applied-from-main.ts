@@ -5,7 +5,7 @@
  * **WHY a separate module:** `AppProvider` is enormous; this flow needs lifecycle
  * guards, `setActionNotice`, and `finishLifecycleAction` in **unit tests** without
  * mounting React. **WHY reuse `completeResetLocalState`:** Settings `handleReset`
- * and main-process reset must apply the **same** client + onboarding + cloud
+ * and main-process reset must apply the **same** client + first-run + cloud
  * teardown or the two entry points drift.
  */
 import type { AgentStatus } from "../api/client";

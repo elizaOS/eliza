@@ -7,7 +7,7 @@
  * the component stays readable.
  */
 
-import type { OnboardingOptions } from "../../api";
+import type { FirstRunOptions } from "../../api";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import type { ConfigUiHint } from "../../types";
 
@@ -61,7 +61,7 @@ export interface CloudModelSchema {
  * model.
  */
 export function buildCloudModelSchema(
-  options: OnboardingOptions["models"],
+  options: FirstRunOptions["models"],
 ): CloudModelSchema {
   const tierOptions: Record<TierKey, ModelOption[]> = {
     nano: options.nano ?? [],

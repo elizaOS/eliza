@@ -53,7 +53,7 @@ won't be auto-picked).
 
 A catalog entry is **not required** to load a local file — the catalog
 (`MODEL_CATALOG`) only supplies download URLs and default runtime flags
-(`runtime.kvCache`, `runtime.dflash`, `runtime.optimizations`). Without a
+(`runtime.kvCache`, `runtime.mtp`, `runtime.optimizations`). Without a
 catalog entry the loader falls back to plain defaults; supply the
 fork-only KV cache types (`qjl1_256` / `tbq3_0` / `q4_polar`) via
 per-load overrides if you need them and you're on the elizaOS/llama.cpp
@@ -80,7 +80,7 @@ Once a model is installed (either source), three layers route a
    one inference model at a time, so switching unloads the previous one
    first. `resolveLocalInferenceLoadArgs` merges catalog defaults
    (`runtime.kvCache.{typeK,typeV}`, `contextLength`, `gpuLayers`,
-   `flashAttention`, `mmap`/`mlock`, and the `runtime.dflash` block) with
+   `flashAttention`, `mmap`/`mlock`, and the `runtime.mtp` block) with
    per-load overrides. `POST /api/local-inference/active` switches the
    active model; `DELETE /api/local-inference/active` unloads;
    `GET /api/local-inference/active` reports state.

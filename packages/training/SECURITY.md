@@ -81,7 +81,7 @@ access required).
 ## DSPy optimized-prompt integrity (SOC2 CC6.8)
 
 The runtime cache of native-optimizer artifacts in
-``~/.eliza/optimized-prompts/<task>/`` is HMAC-protected by
+``<stateDir>/optimized-prompts/<task>/`` is HMAC-protected by
 [``packages/core/src/services/optimized-prompt.ts``](../core/src/services/optimized-prompt.ts).
 Every artifact gets a ``.mac`` sidecar containing
 ``HMAC-SHA256(payload, key)``. On load, a missing or mismatched MAC

@@ -1,7 +1,7 @@
 /**
  * Whether to prefetch the local GGUF embedding model before runtime boot.
  *
- * Chat/inference provider (what you pick in onboarding) is separate from
+ * Chat/inference provider (what you pick in first-run) is separate from
  * **embeddings** (vector memory / RAG). By default the framework keeps
  * `@elizaos/plugin-local-inference` loaded because API-based model plugins do
  * not implement TEXT_EMBEDDING — so a local model was historically always
@@ -23,6 +23,10 @@ export function isLocalEmbeddingDisabledByEnv(): boolean {
 }
 
 export function shouldWarmupLocalEmbeddingModel(): boolean {
+	if (isTruthyEnv("ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP")) {
+		return false;
+	}
+
 	if (isLocalEmbeddingDisabledByEnv()) {
 		return false;
 	}

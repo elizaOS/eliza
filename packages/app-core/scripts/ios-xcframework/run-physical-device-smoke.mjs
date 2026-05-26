@@ -17,7 +17,7 @@
  *
  *   - Metal is available through MTLCreateSystemDefaultDevice().
  *   - LlamaCpp bridge symbols resolve.
- *   - QJL / Polar / DFlash runtime symbols resolve.
+ *   - QJL / Polar / MTP runtime symbols resolve.
  *   - libelizainference voice ABI symbols resolve, unless explicitly disabled
  *     with --skip-voice-abi for diagnosis.
  *
@@ -271,7 +271,7 @@ function defaultSmokeXcframeworkPath() {
     elizaStateDir(),
     "local-inference",
     "bin",
-    "dflash",
+    "mtp",
     "ios-physical-smoke",
     "LlamaCpp.xcframework",
   );

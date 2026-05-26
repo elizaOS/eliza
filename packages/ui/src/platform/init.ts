@@ -44,10 +44,8 @@ export function isDesktopPlatform(): boolean {
  * is set by the AOSP product makefile (vendor/eliza/eliza_common.mk).
  * Stock Android leaves the user-agent untouched.
  *
- * Used by `RuntimeGate` and the Android boot pre-seed to decide whether
- * the "Choose your setup" picker is bypassed (ElizaOS — the device IS
- * the agent) or rendered (vanilla APK — the user picks Cloud / Remote /
- * Local).
+ * Used by the Android boot pre-seed to decide whether the device itself is
+ * the agent.
  */
 export function isElizaOS(): boolean {
   if (!isAndroid) return false;
@@ -62,8 +60,8 @@ export function canRunLocal(): boolean {
 
 /**
  * True when the platform might host a local agent that the UI can reach over
- * the app. Used to decide whether the RuntimeGate's "Local Agent" tile
- * should run a liveness probe before being shown. Desktop and dev mode
+ * the app. Used to decide whether the local first-run option should run a
+ * liveness probe before being shown. Desktop and dev mode
  * always qualify; Android qualifies because `ElizaAgentService` starts the
  * bundled loopback agent; iOS qualifies because the same route shape is
  * carried over in-process ITTP/Capacitor IPC, not a TCP listener.
