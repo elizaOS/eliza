@@ -183,6 +183,12 @@ function resolveStateNamespace(env: NodeJS.ProcessEnv = process.env): string {
   return env.ELIZA_NAMESPACE?.trim() || getBrandConfig().namespace || "eliza";
 }
 
+export function resolveDesktopChildNamespace(
+  env: Record<string, string | undefined>,
+): string {
+  return env.ELIZA_NAMESPACE?.trim() || getBrandConfig().namespace || "eliza";
+}
+
 function resolveExplicitStateDir(env: NodeJS.ProcessEnv): string | null {
   return (
     normalizeEnvPath(env.ELIZA_STATE_DIR) ?? normalizeEnvPath(env.MILADY_STATE_DIR)
@@ -206,6 +212,22 @@ export function applyPackagedStartupEmbeddingWarmupPolicy(
   }
   childEnv.ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP =
     childEnv.ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP?.trim() || "1";
+}
+
+export function prependDesktopChildPathDirectory(
+  childEnv: Record<string, string | undefined>,
+  directory: string,
+): boolean {
+  const existingPath = childEnv.PATH?.trim();
+  if (!existingPath) {
+    childEnv.PATH = directory;
+    return true;
+  }
+  if (existingPath.split(path.delimiter).includes(directory)) {
+    return false;
+  }
+  childEnv.PATH = `${directory}${path.delimiter}${existingPath}`;
+  return true;
 }
 
 function resolveStoreUserDataStateDir(): string {
@@ -1444,10 +1466,7 @@ export class AgentManager {
         ELIZA_API_PORT: String(apiPort),
         ELIZA_PORT: String(apiPort),
       };
-      childEnv.ELIZA_NAMESPACE =
-        childEnv.ELIZA_NAMESPACE.trim() || getBrandConfig().namespace;
-      childEnv.ELIZA_NAMESPACE =
-        childEnv.ELIZA_NAMESPACE.trim() || childEnv.ELIZA_NAMESPACE;
+      childEnv.ELIZA_NAMESPACE = resolveDesktopChildNamespace(childEnv);
       applyDesktopChildStateEnv(childEnv);
       delete childEnv.ELIZA_PORT;
       delete childEnv.NODE_PATH;
@@ -1578,9 +1597,7 @@ export class AgentManager {
       // Ensure bun's directory is on PATH so child_process.exec calls
       // (e.g. plugin-manager running `bun add ...`) can find it.
       const bunDir = path.dirname(bunExecutable);
-      const existingPath = childEnv.PATH;
-      if (!existingPath.split(path.delimiter).includes(bunDir)) {
-        childEnv.PATH = bunDir + path.delimiter + existingPath;
+      if (prependDesktopChildPathDirectory(childEnv, bunDir)) {
         diagnosticLog(`[Agent] Prepended bun dir to child PATH: ${bunDir}`);
       }
 

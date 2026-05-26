@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   applyPackagedStartupEmbeddingWarmupPolicy,
+  prependDesktopChildPathDirectory,
+  resolveDesktopChildNamespace,
   resolveDesktopChildStateDir,
 } from "./agent";
 
@@ -48,5 +50,23 @@ describe("desktop packaged embedding warmup policy", () => {
     applyPackagedStartupEmbeddingWarmupPolicy(env, true);
 
     expect(env.ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP).toBeUndefined();
+  });
+});
+
+describe("desktop child launch env", () => {
+  it("does not require ELIZA_NAMESPACE to be present", () => {
+    expect(resolveDesktopChildNamespace({})).toBe("eliza");
+    expect(resolveDesktopChildNamespace({ ELIZA_NAMESPACE: "  custom  " })).toBe(
+      "custom",
+    );
+  });
+
+  it("prepends Bun directory even when PATH is absent", () => {
+    const env: Record<string, string | undefined> = {};
+
+    expect(prependDesktopChildPathDirectory(env, "/opt/bun/bin")).toBe(true);
+    expect(env.PATH).toBe("/opt/bun/bin");
+    expect(prependDesktopChildPathDirectory(env, "/opt/bun/bin")).toBe(false);
+    expect(env.PATH).toBe("/opt/bun/bin");
   });
 });
