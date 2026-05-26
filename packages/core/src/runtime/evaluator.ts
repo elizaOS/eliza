@@ -536,37 +536,37 @@ function recoverEvaluatorTextOutput(
 // and that object was published verbatim to the user's Discord
 // channel underneath the table.
 //
-// The strip is conservative: it only removes a trailing balanced
-// `{...}` block whose body contains at least one evaluator-shaped
-// key (`success`/`decision`/`thought`/`messageToUser`/`nextTool`/...)
-// so a legitimate user-asked-for trailing JSON (e.g. a code answer
-// that ends with a JSON example) is left untouched.
-function stripTrailingEvaluatorEnvelope(text: string): string {
-	const trimmed = text.trimEnd();
-	if (!trimmed.endsWith("}")) return text;
-	let depth = 0;
-	let start = -1;
-	for (let i = trimmed.length - 1; i >= 0; i--) {
-		const c = trimmed[i];
-		if (c === "}") depth++;
-		else if (c === "{") {
-			depth--;
-			if (depth === 0) {
-				start = i;
-				break;
-			}
+	// The strip is conservative: it only removes a trailing balanced JSON object
+	// that parses as a real evaluator envelope (`success` boolean plus a valid
+	// `decision`/`route`). A legitimate user-asked-for trailing JSON object such
+	// as `{"success":true}` or `{"decision":"approve"}` is left untouched.
+	function stripTrailingEvaluatorEnvelope(text: string): string {
+		const trimmed = text.trimEnd();
+		if (!trimmed.endsWith("}")) return text;
+		const candidate = extractJsonObjects(trimmed).at(-1);
+		if (!candidate || !trimmed.endsWith(candidate)) return text;
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(candidate);
+		} catch {
+			return text;
 		}
+		if (!isEvaluatorEnvelopeObject(parsed)) return text;
+		return trimmed.slice(0, trimmed.length - candidate.length).trimEnd();
 	}
-	if (start < 0) return text;
-	const candidate = trimmed.slice(start);
-	if (
-		!/"\s*(?:success|decision|thought|messageToUser|nextTool|nextRecommendedTool|copyToClipboard|recommendedToolCallId|route)"\s*:/.test(
-			candidate,
-		)
-	) {
-		return text;
-	}
-	return trimmed.slice(0, start).trimEnd();
+
+function isEvaluatorEnvelopeObject(value: unknown): boolean {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+	const record = value as Record<string, unknown>;
+	if (typeof record.success !== "boolean") return false;
+	const decision = typeof record.decision === "string" ? record.decision : "";
+	const route = typeof record.route === "string" ? record.route : "";
+	const normalizedDecision = (decision || route).toUpperCase();
+	return (
+		normalizedDecision === "FINISH" ||
+		normalizedDecision === "CONTINUE" ||
+		normalizedDecision === "NEXT_RECOMMENDED"
+	);
 }
 
 function rawText(raw: string | { text?: string; object?: unknown }): string {

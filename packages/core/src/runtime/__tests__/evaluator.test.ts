@@ -414,6 +414,80 @@ df -h / /home
 		);
 	});
 
+	it("strips a trailing evaluator JSON envelope from recovered prose", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () =>
+					'Root is 58% used with 165 GB free.\n{"success":true,"decision":"FINISH","thought":"Done with {quoted} braces."}',
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: { id: "tool-1", name: "SHELL", params: {} },
+						result: { success: true, text: "Filesystem 58%" },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toBe("Root is 58% used with 165 GB free.");
+	});
+
+	it("preserves user-facing trailing JSON that is not an evaluator envelope", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () =>
+					'Here is the JSON you asked for:\n{"success":true}',
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: { id: "tool-1", name: "SHELL", params: {} },
+						result: { success: true, text: "JSON requested" },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toBe(
+			'Here is the JSON you asked for:\n{"success":true}',
+		);
+	});
+
 	it("recovers search-result prose that is already user-facing", async () => {
 		const runtime = {
 			useModel: vi.fn(
