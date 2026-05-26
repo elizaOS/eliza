@@ -1,4 +1,4 @@
-import type { Plugin, ModelType } from "@elizaos/core";
+import { ModelType, type Plugin } from "@elizaos/core";
 
 export function createDeterministicLlmProxyPlugin(opts: {
   embeddingDimensions: number;
