@@ -13,7 +13,7 @@ import android.provider.AlarmClock;
  * fire SET_ALARM all the time. Without this activity, a phone shipping
  * ElizaOS literally cannot have alarms set programmatically.
  *
- * Routes to eliza://clock with the action and any extras
+ * Routes to elizaos://clock with the action and any extras
  * (HOUR/MINUTES/MESSAGE/RINGTONE/SKIP_UI) preserved so the WebView can
  * either show the alarm UI or, on SKIP_UI=true, schedule it directly
  * via the Eliza alarm service.

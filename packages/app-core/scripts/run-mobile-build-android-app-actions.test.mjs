@@ -343,12 +343,12 @@ test("Android App Actions template covers ask, chat, voice, daily brief, and tas
   assert.deepEqual(
     validateAndroidAppActionsXmlResource(shortcuts, {
       androidPackage: "app.eliza",
-      urlScheme: "eliza",
+      urlScheme: "elizaos",
     }),
     [],
   );
   for (const deepLink of ANDROID_APP_ACTION_REQUIRED_DEEP_LINKS) {
-    assert.match(shortcuts, new RegExp(escapeRegExp(`eliza://${deepLink}`)));
+    assert.match(shortcuts, new RegExp(escapeRegExp(`elizaos://${deepLink}`)));
   }
   for (const marker of ANDROID_APP_ACTION_FORBIDDEN_MARKERS) {
     assert.doesNotMatch(shortcuts, new RegExp(escapeRegExp(marker)));
