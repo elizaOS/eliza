@@ -1211,7 +1211,9 @@ export async function ensureLocalInferenceHandler(
 	// The router sits at Number.MAX_SAFE_INTEGER so the runtime dispatches
 	// to it first; at dispatch time it picks a real provider via
 	// `routing-policy` and calls that handler directly.
-	installRouterHandler(runtime);
+	installRouterHandler(runtime, {
+		skipSlots: isLocalEmbeddingDisabledByEnv() ? ["TEXT_EMBEDDING"] : [],
+	});
 	logger.info(
 		"[local-inference] Installed top-priority router for cross-provider routing",
 	);

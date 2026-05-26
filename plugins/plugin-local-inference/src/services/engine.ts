@@ -208,6 +208,18 @@ function resolveActiveEliza1Bundle(
 	};
 }
 
+function resolveDirectEliza1Bundle(
+	args: LocalInferenceLoadArgs | undefined,
+	catalog: ReturnType<typeof findCatalogModel>,
+): ActiveEliza1Bundle | null {
+	if (!args?.modelId || !ELIZA_1_PLACEHOLDER_IDS.has(args.modelId)) return null;
+	return {
+		root: path.dirname(path.dirname(args.modelPath)),
+		tierId: args.modelId as Eliza1TierId,
+		voiceBackends: catalog?.voiceBackends,
+	};
+}
+
 /**
  * Map a friendly KV cache type name (`"f16"`, `"q8_0"`, `"bf16"`, etc.) to
  * the `keyof typeof GgmlType` shape node-llama-cpp expects for its
@@ -1077,7 +1089,14 @@ export class LocalInferenceEngine {
 		// `bundleRoot` and an `eliza-1-<tier>` id. Reset on every load — a
 		// non-Eliza-1 model clears it (the local embedding handler then falls
 		// through to the operator-configured provider).
-		this.activeEliza1Bundle = resolveActiveEliza1Bundle(target, catalog);
+		this.activeEliza1Bundle =
+			resolveActiveEliza1Bundle(target, catalog) ??
+			resolveDirectEliza1Bundle(resolved, catalog);
+		if (this.embeddingServer) {
+			void this.embeddingServer.stop();
+			this.embeddingServer = null;
+		}
+
 		// Resolved args (when provided) carry the merged catalog defaults +
 		// per-load overrides from the active-model coordinator. Project them
 		// onto the dispatcher-level overrides shape — engine.load is also
