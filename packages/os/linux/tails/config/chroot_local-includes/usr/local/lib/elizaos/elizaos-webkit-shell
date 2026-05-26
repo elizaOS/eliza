@@ -354,7 +354,17 @@ def main() -> int:
     shell_mode = os.environ.get("ELIZAOS_SHELL_MODE", "main")
     is_pill = shell_mode == "pill"
 
-    title = "elizaOS Voice" if is_pill else "elizaOS"
+    # ELIZAOS_SHELL_TITLE lets a caller override the window title without
+    # changing the wm_class (which stays "elizaOS" so GNOME keeps the
+    # window grouped under the same .desktop icon). Defaults preserve the
+    # historical behavior — "elizaOS Voice" for the pill, "elizaOS" for
+    # the main shell. Callers that spawn additional shells against
+    # different URLs (e.g. tails-documentation opening the offline doc
+    # in a second window) set this so users can tell the windows apart in
+    # the taskbar / Alt-Tab. WebKit may later replace the title via the
+    # HTML <title> element — that is the expected GTK browser behavior.
+    default_title = "elizaOS Voice" if is_pill else "elizaOS"
+    title = os.environ.get("ELIZAOS_SHELL_TITLE", default_title)
     window = Gtk.Window(title=title)
     if is_pill:
         configure_pill_window(window)
