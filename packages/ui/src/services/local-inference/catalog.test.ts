@@ -149,16 +149,11 @@ describe("local inference catalog", () => {
     }
   });
 
-  it("attaches a tiny DFlash companion to the 0.8B tier", () => {
-    const model = findCatalogModel("eliza-1-0_8b");
-
-    expect(model, "eliza-1-0_8b missing").toBeTruthy();
-    expect(model?.displayName).toBe("eliza-1-0.8B");
-    expect(model?.companionModelIds ?? []).toEqual(["eliza-1-0_8b-drafter"]);
-    expect(model?.runtime?.dflash?.drafterModelId).toBe("eliza-1-0_8b-drafter");
-    expect(
-      MODEL_CATALOG.some((entry) => entry.id === "eliza-1-0_8b-drafter"),
-    ).toBe(true);
+  it("does not publish external drafter companions", () => {
+    const drafters = MODEL_CATALOG.filter(
+      (model) => model.runtimeRole === "dflash-drafter",
+    );
+    expect(drafters).toEqual([]);
   });
 
   it("does not ship non-Eliza local model entries", () => {
