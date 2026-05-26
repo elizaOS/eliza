@@ -988,8 +988,11 @@ export function buildChildNodePaths(
   return [...nodePaths];
 }
 
-function resolveRuntimeEntryPath(runtimeDistPath: string): string | null {
-  const candidates = [joinPortable(runtimeDistPath, "entry.js")];
+export function resolveRuntimeEntryPath(runtimeDistPath: string): string | null {
+  const candidates = [
+    joinPortable(runtimeDistPath, "entry.js"),
+    joinPortable(runtimeDistPath, "runtime", "entry.js"),
+  ];
 
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
