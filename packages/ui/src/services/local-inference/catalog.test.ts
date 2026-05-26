@@ -59,8 +59,7 @@ describe("local inference catalog", () => {
     const visible = localInferenceService.getCatalog();
     const visibleIds = new Set(visible.map((model) => model.id));
     const hiddenCompanionIds = MODEL_CATALOG.filter(
-      (model) =>
-        model.hiddenFromCatalog || model.runtimeRole === "dflash-drafter",
+      (model) => model.hiddenFromCatalog || model.runtimeRole === "mtp-drafter",
     ).map((model) => model.id);
     expect(hiddenCompanionIds.filter((id) => visibleIds.has(id))).toEqual([]);
     expect(visible.flatMap((model) => model.companionModelIds ?? [])).toEqual(
@@ -125,33 +124,9 @@ describe("local inference catalog", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("DFlash pairs share a tokenizer family when present", () => {
-    const dflashEntries = MODEL_CATALOG.filter((m) => m.runtime?.dflash);
-    for (const entry of dflashEntries) {
-      const drafterId = entry.runtime?.dflash?.drafterModelId;
-      const drafter = MODEL_CATALOG.find((m) => m.id === drafterId);
-      expect(
-        drafter,
-        `drafter ${drafterId} of ${entry.id} not found in catalog`,
-      ).toBeDefined();
-      expect(
-        entry.tokenizerFamily,
-        `target ${entry.id} missing tokenizerFamily`,
-      ).toBeDefined();
-      expect(
-        drafter?.tokenizerFamily,
-        `drafter ${drafterId} missing tokenizerFamily`,
-      ).toBeDefined();
-      expect(
-        entry.tokenizerFamily,
-        `tokenizer mismatch: target ${entry.id} (${entry.tokenizerFamily}) != drafter ${drafterId} (${drafter?.tokenizerFamily})`,
-      ).toBe(drafter?.tokenizerFamily);
-    }
-  });
-
-  it("does not publish external drafter companions", () => {
+  it("does not publish external drafter companion entries", () => {
     const drafters = MODEL_CATALOG.filter(
-      (model) => model.runtimeRole === "dflash-drafter",
+      (model) => model.runtimeRole === "mtp-drafter",
     );
     expect(drafters).toEqual([]);
   });
@@ -172,7 +147,7 @@ describe("local inference catalog", () => {
     expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(FIRST_RUN_DEFAULT_MODEL_ID)).toBe(
       true,
     );
-    expect(defaultModel?.runtimeRole).not.toBe("dflash-drafter");
+    expect(defaultModel?.runtimeRole).not.toBe("mtp-drafter");
   });
 
   it("recommendForFirstRun resolves to a default-eligible Eliza-1 tier", () => {

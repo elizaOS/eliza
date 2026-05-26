@@ -6,8 +6,7 @@
 #
 # Default PR cells: `--suite smoke --tiers large,frontier` (Cerebras
 # gpt-oss-120b + Anthropic Opus 4.7). Nightly runs the `core` suite over the
-# same two tiers. The `small` tier requires the dflash llama-cpp fork and is
-# only attempted on manual / scheduled dispatch.
+# same two tiers.
 #
 # All cells are skip-not-fail: missing API keys or missing local binaries
 # leave a SKIPPED row in the per-job summary and never turn the workflow red.
@@ -262,94 +261,6 @@ jobs:
         if: steps.gate.outputs.skip == 'true'
         run: |
           echo "::notice::LifeOps multi-tier frontier skipped — ANTHROPIC_API_KEY not configured."
-
-  smoke-small:
-    name: "tier=small (manual/scheduled)"
-    needs: resolve-inputs
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: false
-          fetch-depth: 1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Setup Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Setup workspace dependencies
-        uses: ./.github/actions/setup-bun-workspace
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts --no-frozen-lockfile
-          install-native-deps: "false"
-
-      - name: Install Python bench package
-        run: |
-          cd packages/benchmarks/lifeops-bench
-          pip install -e .
-
-      - name: Restore dflash llama-cpp fork cache
-        id: dflash-cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/eliza-dflash/eliza-llama-cpp/build/bin/llama-server
-          key: dflash-llama-cpp-${{ runner.os }}-v1
-
-      - name: Build dflash fork (best-effort)
-        id: build
-        if: steps.dflash-cache.outputs.cache-hit != 'true'
-        continue-on-error: true
-        run: |
-          echo "[multi-tier] dflash fork not in cache — attempting build."
-          mkdir -p ~/.cache/eliza-dflash
-          if [ -x scripts/build-dflash-llama-cpp.sh ]; then
-            bash scripts/build-dflash-llama-cpp.sh
-          else
-            echo "[multi-tier] No dflash build script available — small tier will SKIP."
-            exit 0
-          fi
-
-      - name: Run multi-tier driver (small only)
-        id: run
-        run: |
-          set -e
-          RUN_DIR="${{ github.workspace }}/runs/small"
-          mkdir -p "$RUN_DIR/small"
-          lifeops-bench \
-            --agent perfect \
-            --model-tier small \
-            --suite "${{ needs.resolve-inputs.outputs.suite }}" \
-            --output-dir "$RUN_DIR/small" \
-            | tee multi-tier-small.log
-          RESULT_JSON=$(ls -t "$RUN_DIR/small"/lifeops_*.json 2>/dev/null | head -n1 || true)
-          if [ -n "$RESULT_JSON" ]; then
-            cp "$RESULT_JSON" "$RUN_DIR/small/report.json"
-          fi
-          printf '# LifeOps Multi-Tier Benchmark\n\nTier: small\nSuite: %s\n' "${{ needs.resolve-inputs.outputs.suite }}" > "$RUN_DIR/SUMMARY.md"
-          echo "run-dir=$RUN_DIR" >> "$GITHUB_OUTPUT"
-
-      - name: Upload small-tier artifacts
-        if: always() && steps.run.outputs.run-dir != ''
-        uses: actions/upload-artifact@v7
-        with:
-          name: lifeops-multi-tier-small-${{ github.run_id }}
-          path: |
-            ${{ steps.run.outputs.run-dir }}/SUMMARY.md
-            ${{ steps.run.outputs.run-dir }}/small/**/report.md
-            ${{ steps.run.outputs.run-dir }}/small/**/report.json
-            ${{ steps.run.outputs.run-dir }}/small/**/steps.csv
-          if-no-files-found: warn
-          retention-days: 30
 
   summary:
     name: "multi-tier summary"

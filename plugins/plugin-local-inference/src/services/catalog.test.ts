@@ -60,8 +60,7 @@ describe("local inference catalog", () => {
 		const visible = localInferenceService.getCatalog();
 		const visibleIds = new Set(visible.map((model) => model.id));
 		const hiddenCompanionIds = MODEL_CATALOG.filter(
-			(model) =>
-				model.hiddenFromCatalog || model.runtimeRole === "dflash-drafter",
+			(model) => model.hiddenFromCatalog,
 		).map((model) => model.id);
 		expect(hiddenCompanionIds.filter((id) => visibleIds.has(id))).toEqual([]);
 		expect(visible.flatMap((model) => model.companionModelIds ?? [])).toEqual(
@@ -130,7 +129,6 @@ describe("local inference catalog", () => {
 		for (const id of ELIZA_1_MTP_TIER_IDS) {
 			const model = findCatalogModel(id);
 			expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
-			expect(model?.runtime?.dflash, `${id} dflash`).toBeUndefined();
 			expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
 		}
 	});
@@ -149,11 +147,7 @@ describe("local inference catalog", () => {
 				).toContain(kernel);
 			}
 			expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
-			expect(model?.runtime?.dflash, `${id} dflash`).toBeUndefined();
 			expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
-			expect(model?.runtime?.optimizations?.requiresKernel).toContain(
-				"dflash",
-			);
 			if ((model?.contextLength ?? 0) >= 65536) {
 				expect(model?.runtime?.optimizations?.requiresKernel).toContain(
 					"turbo3_tcq",
@@ -165,10 +159,8 @@ describe("local inference catalog", () => {
 		}
 	});
 
-	it("does not publish external drafter companions", () => {
-		const drafters = MODEL_CATALOG.filter(
-			(m) => m.runtimeRole === "dflash-drafter",
-		);
+	it("does not publish external speculative drafter companions", () => {
+		const drafters = MODEL_CATALOG.filter((m) => m.companionModelIds?.length);
 		expect(drafters).toEqual([]);
 	});
 
@@ -214,7 +206,7 @@ describe("local inference catalog", () => {
 	});
 
 	it("does not leak implementation-family names in visible catalog copy", () => {
-		const banned = /\b(?:qwen|llama|turboquant|qjl|polarquant|dflash)\b/i;
+		const banned = /\b(?:qwen|llama|turboquant|qjl|polarquant)\b/i;
 		for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
 			expect(model.displayName).not.toMatch(banned);
 			expect(model.quant).not.toMatch(banned);
@@ -244,7 +236,6 @@ describe("local inference catalog", () => {
 		expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(FIRST_RUN_DEFAULT_MODEL_ID)).toBe(
 			true,
 		);
-		expect(defaultModel?.runtimeRole).not.toBe("dflash-drafter");
 	});
 
 	it("recommendForFirstRun resolves to a default-eligible Eliza-1 tier", () => {

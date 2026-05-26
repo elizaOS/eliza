@@ -1,8 +1,8 @@
 name: Local Inference Matrix
 
-# Builds the bun-llama-cpp fork on each runner class, runs the ablation
-# variant suite, and gates regressions against per-(backend, variant) tok/s
-# floors in packages/scripts/local-inference-thresholds.json.
+# Runs the local-inference smoke and ablation variant suite, and gates
+# regressions against per-(backend, variant) tok/s floors in
+# packages/scripts/local-inference-thresholds.json.
 #
 # Triggers:
 #   - workflow_dispatch (always; needed for macOS/CUDA cost control)
@@ -37,7 +37,6 @@ on:
   pull_request:
     paths:
       - "packages/app-core/src/services/local-inference/**"
-      - "packages/app-core/scripts/build-llama-cpp-dflash.mjs"
       - "packages/scripts/local-inference-ablation.mjs"
       - "packages/scripts/local-inference-ablation.config.json"
       - "packages/scripts/local-inference-thresholds.json"
@@ -96,16 +95,6 @@ jobs:
                 target: "linux-x64-cpu",
                 timeout: 90,
                 "continue-on-error": false,
-                build_only: false,
-              },
-              {
-                label: "ubuntu-latest vulkan (build-only)",
-                "runs-on": "ubuntu-latest",
-                backend: "vulkan",
-                target: "linux-x64-vulkan",
-                timeout: 90,
-                "continue-on-error": true,
-                build_only: true,
               },
             ];
 
@@ -117,7 +106,6 @@ jobs:
                 target: "linux-x64-cuda",
                 timeout: 120,
                 "continue-on-error": true,
-                build_only: false,
               });
             }
 
@@ -129,7 +117,6 @@ jobs:
                 target: "darwin-arm64-metal",
                 timeout: 120,
                 "continue-on-error": true,
-                build_only: false,
               });
             }
 
@@ -166,20 +153,10 @@ jobs:
         run: |
           set -euo pipefail
           APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30)
-          # Vulkan target additionally needs libvulkan-dev (loader headers
-          # path), glslang-tools, and glslc for the
-          # Vulkan_GLSLC_EXECUTABLE flag the build script passes).
-          # The build script's prepareVulkanHeaders() fetches Khronos
-          # vulkan.hpp + spirv.hpp regardless, so the only "extra" packages
-          # CI needs from apt are libvulkan-dev + glslang-tools + glslc.
-          EXTRA_PKGS=""
-          if [[ "${{ matrix.backend }}" == "vulkan" ]]; then
-            EXTRA_PKGS="libvulkan-dev glslang-tools glslc"
-          fi
           for attempt in 1 2 3; do
             if sudo apt-get "${APT_ARGS[@]}" update && \
                sudo apt-get "${APT_ARGS[@]}" install -y --fix-missing \
-                 cmake ninja-build build-essential ccache git python3 python3-pip $EXTRA_PKGS; then
+                 cmake ninja-build build-essential ccache git python3 python3-pip; then
               break
             fi
             if [ "$attempt" -eq 3 ]; then
@@ -189,9 +166,6 @@ jobs:
             sleep $((attempt * 10))
           done
           cmake --version
-          if [[ "${{ matrix.backend }}" == "vulkan" ]]; then
-            glslc --version || true
-          fi
 
       - name: Install macOS build deps
         if: ${{ runner.os == 'macOS' }}
@@ -211,38 +185,20 @@ jobs:
           fi
           hf --help >/dev/null
 
-      - name: Cache buun-llama-cpp checkout + build
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cache/eliza-dflash/buun-llama-cpp
-          key: dflash-${{ matrix.target }}-${{ hashFiles('packages/app-core/scripts/build-llama-cpp-dflash.mjs') }}
-          restore-keys: |
-            dflash-${{ matrix.target }}-
-
       - name: Cache local-inference state (binaries + models)
         uses: actions/cache@v5
         with:
           path: ${{ env.ELIZA_STATE_DIR }}/local-inference
-          key: local-inference-${{ matrix.target }}-${{ env.SMOKE_MODEL_FILE }}-${{ hashFiles('packages/app-core/scripts/build-llama-cpp-dflash.mjs') }}
+          key: local-inference-${{ matrix.target }}-${{ env.SMOKE_MODEL_FILE }}
           restore-keys: |
             local-inference-${{ matrix.target }}-${{ env.SMOKE_MODEL_FILE }}-
             local-inference-${{ matrix.target }}-
-
-      - name: Build llama-cpp fork (${{ matrix.backend }})
-        env:
-          ELIZA_DFLASH_BACKEND: ${{ matrix.backend }}
-          ELIZA_DFLASH_ALLOW_INCOMPLETE_KERNELS_FOR_SMOKE: >-
-            ${{ matrix.backend == 'cpu' && '1' || matrix.build_only && '1' || '0' }}
-        run: |
-          node packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend ${{ matrix.backend }}
 
       - name: Smoke probe binaries
         run: |
           bun ./packages/scripts/local-inference-smoke.mjs
 
       - name: Download smoke GGUF (cached)
-        if: ${{ !matrix.build_only }}
         run: |
           set -euo pipefail
           MODEL_DIR="${ELIZA_STATE_DIR}/local-inference/models"
@@ -257,9 +213,6 @@ jobs:
           ls -lh "$MODEL_DIR/${SMOKE_MODEL_FILE}"
 
       - name: Run ablation (--quick, gated)
-        if: ${{ !matrix.build_only }}
-        env:
-          ELIZA_DFLASH_BACKEND: ${{ matrix.backend }}
         run: |
           set -euo pipefail
           MODEL_PATH="${ELIZA_STATE_DIR}/local-inference/models/${SMOKE_MODEL_FILE}"
@@ -269,25 +222,6 @@ jobs:
             --quick \
             --gate packages/scripts/local-inference-thresholds.json \
             --out-dir artifacts/local-inference-ablation
-
-      - name: Verify CAPABILITIES.json (build-only)
-        if: ${{ matrix.build_only }}
-        run: |
-          set -euo pipefail
-          CAPS="${ELIZA_STATE_DIR}/local-inference/bin/dflash/${{ matrix.target }}/CAPABILITIES.json"
-          test -f "$CAPS" || { echo "missing CAPABILITIES.json: $CAPS"; exit 1; }
-          cat "$CAPS"
-          # Sanity: make sure the build emitted at least dflash and the
-          # platform-default cache type kernels are reported truthfully.
-          node -e "
-            const c = require(process.argv[1]);
-            const required = ['dflash', 'lookahead', 'ngramDraft'];
-            const missing = required.filter(k => c.kernels[k] !== true);
-            if (missing.length) {
-              console.error('CAPABILITIES.json missing kernels:', missing.join(', '));
-              process.exit(1);
-            }
-          " "$CAPS"
 
       - name: Upload ablation artifact
         if: ${{ always() }}
