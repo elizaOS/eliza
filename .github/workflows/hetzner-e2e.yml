@@ -99,16 +99,81 @@ jobs:
         if: steps.secret_config.outputs.configured == 'true'
         run: bun install --no-save --ignore-scripts
 
+      - name: Check cloud API auth
+        id: cloud_auth
+        if: steps.secret_config.outputs.configured == 'true'
+        run: |
+          set +e
+          response="$(
+            bun -e '
+              const base = (process.env.CLOUD_SMOKE_BASE_URL ?? "https://api-staging.elizacloud.ai").replace(/\/+$/, "");
+              const response = await fetch(`${base}/api/v1/eliza/agents`, {
+                headers: {
+                  authorization: `Bearer ${process.env.CLOUD_E2E_API_KEY ?? ""}`,
+                  accept: "application/json",
+                  "user-agent": "hetzner-e2e-preflight/1.0",
+                },
+                signal: AbortSignal.timeout(30_000),
+              });
+              const text = await response.text();
+              console.log(JSON.stringify({ status: response.status, body: text.slice(0, 500) }));
+            '
+          )"
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Cloud API auth preflight could not reach staging; skipping Hetzner E2E."
+            {
+              echo "### Hetzner E2E skipped"
+              echo ""
+              echo "Cloud API auth preflight could not reach staging before provisioning Hetzner capacity."
+              echo ""
+              echo "\`\`\`json"
+              echo "$response"
+              echo "\`\`\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              exit 1
+            fi
+            exit 0
+          fi
+
+          status_code="$(printf '%s' "$response" | bun -e 'const chunks=[]; for await (const chunk of Bun.stdin.stream()) chunks.push(Buffer.from(chunk)); const data = JSON.parse(Buffer.concat(chunks).toString() || "{}"); console.log(data.status ?? "");')"
+          if [ "$status_code" = "401" ] || [ "$status_code" = "403" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Cloud API rejected CLOUD_E2E_API_KEY with HTTP $status_code; skipping Hetzner E2E before provisioning."
+            {
+              echo "### Hetzner E2E skipped"
+              echo ""
+              echo "Cloud API rejected \`CLOUD_E2E_API_KEY\` with HTTP \`$status_code\` before provisioning Hetzner capacity."
+              echo ""
+              echo "Refresh the \`CLOUD_E2E_API_KEY\` / \`ELIZACLOUD_API_KEY\` secret in the \`ci-hetzner-e2e\` environment, or check the staging API-key lookup path."
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              exit 1
+            fi
+            exit 0
+          fi
+
+          if [ "${status_code#2}" != "$status_code" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "::error::Unexpected cloud API auth preflight response: $response"
+          exit 1
+
       - name: Provision Hetzner server
         id: provision
-        if: steps.secret_config.outputs.configured == 'true'
+        if: steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true'
         run: |
           set -o pipefail
           log=/tmp/hetzner-e2e-provision.log
           bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision.ts 2>&1 | tee "$log"
 
       - name: Surface provision failure diagnostic
-        if: always() && steps.secret_config.outputs.configured == 'true' && steps.provision.outcome == 'failure'
+        if: always() && steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true' && steps.provision.outcome == 'failure'
         run: |
           log=/tmp/hetzner-e2e-provision.log
           {
@@ -135,19 +200,19 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Wait for host ready
-        if: steps.secret_config.outputs.configured == 'true'
+        if: steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true'
         run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-wait-ready.ts
 
       - name: Deploy trivial agent
-        if: steps.secret_config.outputs.configured == 'true'
+        if: steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true'
         run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-deploy-agent.ts
 
       - name: Healthcheck
-        if: steps.secret_config.outputs.configured == 'true'
+        if: steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true'
         run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-healthcheck.ts
 
       - name: Upload state artifact
-        if: always() && steps.secret_config.outputs.configured == 'true'
+        if: always() && steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: hetzner-e2e-state
