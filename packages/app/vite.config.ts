@@ -11,18 +11,20 @@ import {
   type Plugin,
   transformWithEsbuild,
 } from "vite";
+import { resolveAppBranding } from "../shared/src/config/app-config.ts";
+import { colorizeDevSettingsStartupBanner } from "../shared/src/dev-settings-banner-style.ts";
+import { prependDevSubsystemFigletHeading } from "../shared/src/dev-settings-figlet-heading.ts";
 import {
-  colorizeDevSettingsStartupBanner,
   type DevSettingsRow,
   formatDevSettingsTable,
-  prependDevSubsystemFigletHeading,
-  resolveAppBranding,
+} from "../shared/src/dev-settings-table.ts";
+import {
   resolveDesktopApiPort,
   resolveDesktopApiPortPreference,
   resolveDesktopUiPort,
   resolveDesktopUiPortPreference,
-  syncElizaEnvAliases,
-} from "../shared/src/index.ts";
+} from "../shared/src/runtime-env.ts";
+import { syncElizaEnvAliases } from "../shared/src/utils/env.ts";
 import appConfig from "./app.config";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
