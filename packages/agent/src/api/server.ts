@@ -300,7 +300,6 @@ import {
 import {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
-  getErrorMessage,
   hasPersistedFirstRunState,
   isUuidLike,
   patchTouchesProviderSelection,

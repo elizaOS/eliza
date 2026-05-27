@@ -441,7 +441,11 @@ function mapToolChoice(
   | { type: "tool"; toolName: string }
   | undefined {
   if (!toolChoice) return undefined;
-  if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") {
+  if (
+    toolChoice === "auto" ||
+    toolChoice === "none" ||
+    toolChoice === "required"
+  ) {
     return toolChoice;
   }
   return { type: "tool", toolName: toolChoice.function.name };

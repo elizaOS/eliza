@@ -17,7 +17,6 @@ import {
 } from "node:fs";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
-import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import * as readline from "node:readline";
