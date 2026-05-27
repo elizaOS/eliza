@@ -1,0 +1,89 @@
+{
+  "name": "@suedeai/plugin-suede",
+  "version": "1.0.0",
+  "description": "ElizaOS plugin: rights-aware music and video generation, payable by AI agents via x402 (USDC on Base). Includes Eliza character JSON and a SuedeClient TS helper. Suede is the agent-native music and media stack with 17 pay-per-call endpoints on app.suedeai.ai.",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "plugin.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "test": "vitest run --passWithNoTests"
+  },
+  "keywords": [
+    "elizaos",
+    "elizaos-plugin",
+    "elizaos-plugins",
+    "eliza",
+    "music",
+    "media",
+    "x402",
+    "agentic-commerce",
+    "agent-commerce",
+    "usdc",
+    "base",
+    "rights",
+    "provenance",
+    "music-generation",
+    "video-generation",
+    "suede",
+    "programmable-ip"
+  ],
+  "author": "Suede AI (johnnysuedes@gmail.com)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Suede-AI/elizaos-plugin-suede.git"
+  },
+  "homepage": "https://suedeai.ai",
+  "bugs": {
+    "url": "https://github.com/Suede-AI/elizaos-plugin-suede/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@elizaos/core": ">=1.0.0"
+  },
+  "dependencies": {
+    "viem": "^2.21.0"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "SUEDE_X402_WALLET_PRIVATE_KEY": {
+        "type": "string",
+        "required": false,
+        "sensitive": true,
+        "description": "EVM private key (hex, 0x-prefixed) for the wallet that signs x402 payments on Base. Funds must hold USDC on Base mainnet."
+      },
+      "SUEDE_API_BASE": {
+        "type": "string",
+        "required": false,
+        "default": "https://app.suedeai.ai",
+        "description": "Base URL for Suede's pay-per-call API. Override only for staging."
+      },
+      "SUEDE_MANIFEST_URL": {
+        "type": "string",
+        "required": false,
+        "default": "https://app.suedeai.ai/.well-known/x402.json",
+        "description": "x402 manifest URL for endpoint discovery."
+      }
+    }
+  }
+}

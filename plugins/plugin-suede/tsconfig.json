@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "lib": ["ESNext", "DOM"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "emitDeclarationOnly": false,
+    "resolveJsonModule": true,
+    "moduleDetection": "force"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/__tests__/**", "**/*.test.ts"]
+}

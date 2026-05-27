@@ -1,0 +1,21 @@
+{
+  "name": "@suedeai/plugin-suede",
+  "version": "1.0.0",
+  "description": "ElizaOS plugin: rights-aware music and video generation, payable by AI agents via x402 (USDC on Base). Suede is the agent-native music and media stack with 17 pay-per-call endpoints on app.suedeai.ai.",
+  "author": "Suede AI",
+  "license": "MIT",
+  "homepage": "https://suedeai.ai",
+  "repository": "https://github.com/Suede-AI/elizaos-plugin-suede",
+  "npm": "https://www.npmjs.com/package/@suedeai/plugin-suede",
+  "x402Manifest": "https://app.suedeai.ai/.well-known/x402.json",
+  "tags": [
+    "music",
+    "media",
+    "x402",
+    "agentic-commerce",
+    "usdc",
+    "base",
+    "rights",
+    "provenance"
+  ]
+}
