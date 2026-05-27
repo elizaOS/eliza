@@ -67,6 +67,12 @@ async function retryTransientFsOperation(operation) {
 }
 
 if (!(await pathExists(nestedSourceDir))) {
+  if (
+    (await pathExists(path.join(distDir, "index.js"))) ||
+    (await pathExists(path.join(distDir, "index.d.ts")))
+  ) {
+    process.exit(0);
+  }
   console.error(`Compiled source directory not found: ${nestedSourceDir}`);
   process.exit(1);
 }
