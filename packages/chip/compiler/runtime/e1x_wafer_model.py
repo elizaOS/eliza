@@ -506,10 +506,19 @@ def build_scaled_8gb_report(
     normal = defect_scenario_report(cfg, NORMAL_DEFECT_SCENARIO, model)
     high = defect_scenario_report(cfg, HIGH_DEFECT_SCENARIO, model)
     e1 = e1_baseline_summary()
+    target_cycles = ceil(model.parameters * 2 / (cfg.logical_cores * cfg.int8_lanes_per_core * 2))
     return {
         "schema": "eliza.e1x.scaled_model_load.v1",
         "claim_boundary": "architecture_simulation_only_not_rtl_not_pdk_not_silicon",
         "benchmark_success_allowed": True,
+        "target_cycles": target_cycles,
+        "simulated_frequency_hz": cfg.core_clock_hz,
+        "ipc": cfg.logical_cores * cfg.int8_lanes_per_core,
+        "local_sram_mib": cfg.local_sram_mib,
+        "model_total_required_mib": model.total_required_mib,
+        "model_loaded_under_normal_defects": int(bool(normal["model_loaded"])),
+        "model_loaded_under_high_failure": int(bool(high["model_loaded"])),
+        "high_failure_repaired_logical_mesh": int(bool(high["repaired_logical_mesh"])),
         "architecture": {
             "name": cfg.name,
             "logical_rows": cfg.logical_rows,
