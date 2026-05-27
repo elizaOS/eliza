@@ -1029,6 +1029,8 @@ module e1_riscv_iommu
 
     // Downstream AR.
     always_comb begin
+        int unsigned m;
+        m = 0;
         d_arvalid = 1'b0;
         d_arid    = '0;
         d_araddr  = '0;
@@ -1062,7 +1064,7 @@ module e1_riscv_iommu
             d_arqos   = tr_qos;
             d_aruser  = tr_user;
         end else if (ar_id_grant) begin
-            int unsigned m = ar_grant_idx;
+            m = ar_grant_idx;
             d_arvalid = u_arvalid[m];
             d_arid    = u_arid[m];
             d_araddr  = u_araddr[m];   // BARE/bypass = identity
@@ -1078,6 +1080,8 @@ module e1_riscv_iommu
 
     // Downstream AW.
     always_comb begin
+        int unsigned m;
+        m = 0;
         d_awvalid = 1'b0;
         d_awid    = '0;
         d_awaddr  = '0;
@@ -1100,7 +1104,7 @@ module e1_riscv_iommu
             d_awqos   = tr_qos;
             d_awuser  = tr_user;
         end else if (aw_id_grant) begin
-            int unsigned m = aw_grant_idx;
+            m = aw_grant_idx;
             d_awvalid = u_awvalid[m];
             d_awid    = u_awid[m];
             d_awaddr  = u_awaddr[m];
@@ -1116,20 +1120,22 @@ module e1_riscv_iommu
 
     // Downstream W.
     always_comb begin
+        int unsigned m;
+        m = 0;
         d_wvalid = 1'b0;
         d_wdata  = '0;
         d_wstrb  = '0;
         d_wlast  = 1'b0;
-        for (int unsigned m = 0; m < NUM_MASTERS; m++) u_wready[m] = 1'b0;
+        for (int unsigned idx = 0; idx < NUM_MASTERS; idx++) u_wready[idx] = 1'b0;
         if (tr_state == TR_FWD_W && tr_is_write) begin
-            int unsigned m = tr_master[MIDX_W-1:0];
+            m = tr_master[MIDX_W-1:0];
             d_wvalid    = u_wvalid[m];
             d_wdata     = u_wdata[m];
             d_wstrb     = u_wstrb[m];
             d_wlast     = u_wlast[m];
             u_wready[m] = d_wready;
         end else if (aw_id_grant) begin
-            int unsigned m = aw_grant_idx;
+            m = aw_grant_idx;
             d_wvalid    = u_wvalid[m];
             d_wdata     = u_wdata[m];
             d_wstrb     = u_wstrb[m];
@@ -1163,15 +1169,17 @@ module e1_riscv_iommu
 
     // Downstream B/R ready + upstream B/R return.
     always_comb begin
-        for (int unsigned m = 0; m < NUM_MASTERS; m++) begin
-            u_bvalid[m] = 1'b0;
-            u_bid[m]    = '0;
-            u_bresp[m]  = RESP_OKAY;
-            u_rvalid[m] = 1'b0;
-            u_rid[m]    = '0;
-            u_rdata[m]  = '0;
-            u_rresp[m]  = RESP_OKAY;
-            u_rlast[m]  = 1'b0;
+        int unsigned m;
+        m = 0;
+        for (int unsigned idx = 0; idx < NUM_MASTERS; idx++) begin
+            u_bvalid[idx] = 1'b0;
+            u_bid[idx]    = '0;
+            u_bresp[idx]  = RESP_OKAY;
+            u_rvalid[idx] = 1'b0;
+            u_rid[idx]    = '0;
+            u_rdata[idx]  = '0;
+            u_rresp[idx]  = RESP_OKAY;
+            u_rlast[idx]  = 1'b0;
         end
         d_bready = 1'b0;
         d_rready = 1'b0;
@@ -1181,14 +1189,14 @@ module e1_riscv_iommu
 
         // Identity fast path B/R passthrough.
         if (aw_id_grant) begin
-            int unsigned m = aw_grant_idx;
+            m = aw_grant_idx;
             u_bvalid[m] = d_bvalid;
             u_bid[m]    = d_bid;
             u_bresp[m]  = d_bresp;
             d_bready    = u_bready[m];
         end
         if (ar_id_grant) begin
-            int unsigned m = ar_grant_idx;
+            m = ar_grant_idx;
             u_rvalid[m] = d_rvalid;
             u_rid[m]    = d_rid;
             u_rdata[m]  = d_rdata;
@@ -1199,7 +1207,7 @@ module e1_riscv_iommu
 
         // Walker-translated response forward.
         if (tr_state == TR_FWD_RESP) begin
-            int unsigned m = tr_master[MIDX_W-1:0];
+            m = tr_master[MIDX_W-1:0];
             if (tr_is_write) begin
                 u_bvalid[m] = d_bvalid;
                 u_bid[m]    = tr_axid;
@@ -1217,7 +1225,7 @@ module e1_riscv_iommu
 
         // Faulting request: return SLVERR to the originating master.
         if (tr_state == TR_FAULT) begin
-            int unsigned m = tr_master[MIDX_W-1:0];
+            m = tr_master[MIDX_W-1:0];
             if (tr_is_write) begin
                 u_bvalid[m] = 1'b1;
                 u_bid[m]    = tr_axid;
