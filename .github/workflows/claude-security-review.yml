@@ -51,7 +51,7 @@ jobs:
           fetch-depth: 2
 
       - name: Run Claude Security Review
-        # Note: Using @main as no stable version tag exists yet
+        # Pinned to SHA for supply chain security.
         uses: anthropics/claude-code-security-review@0c6a49f1fa56a1d472575da86a94dbc1edb78eda
         with:
           claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
