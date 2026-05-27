@@ -615,6 +615,293 @@ module e1_soc_integrated
         .l1i_flush_o       (l1i_prefetch_flush_o)
     );
 
+    // Production L1I/L2 fetch-cache path behind the SoC integration surface.
+    // The existing boundary ports stay visible, but the same demand and
+    // prefetch streams now feed real cache RTL instead of stopping at ports.
+    logic [63:0]                l1i_cache_resp_data_w;
+    logic [63:0]                l1i_cache_resp_data_lane1_w;
+    logic                       l1i_cache_resp_paddr_eq_req_w;
+    logic                       l1i_cache_resp_paddr_eq_req_lane1_w;
+    logic                       l1i_cache_miss_ready_w;
+    logic [PADDR_W_DEFAULT-1:0] l1i_cache_miss_paddr_line_w;
+    logic                       l1i_cache_miss_is_prefetch_w;
+    logic                       l1i_cache_refill_valid_w;
+    logic                       l1i_cache_refill_ready_w;
+    logic [127:0]               l1i_cache_refill_data_w;
+    logic [1:0]                 l1i_cache_refill_beat_idx_w;
+    logic                       l1i_cache_refill_last_w;
+    logic                       l1i_cache_miss_ready_lane1_w;
+    logic [PADDR_W_DEFAULT-1:0] l1i_cache_miss_paddr_line_lane1_w;
+    logic                       l1i_cache_miss_is_prefetch_lane1_w;
+    logic                       l1i_cache_refill_valid_lane1_w;
+    logic                       l1i_cache_refill_ready_lane1_w;
+    logic [127:0]               l1i_cache_refill_data_lane1_w;
+    logic [1:0]                 l1i_cache_refill_beat_idx_lane1_w;
+    logic                       l1i_cache_refill_last_lane1_w;
+    logic                       l1i_cache_probe_ready_w;
+    logic                       l1i_cache_probe_ack_w;
+    logic                       l1i_hpm_access_w;
+    logic                       l1i_hpm_miss_w;
+    logic                       l1i_hpm_prefetch_w;
+
+    logic                       l2_l1i_acq_ready_w;
+    logic [PADDR_W_DEFAULT-1:0] l2_l1i_acq_paddr_line_w;
+    logic                       l2_l1i_acq_is_prefetch_w;
+    logic                       l2_l1i_grant_valid_w;
+    logic                       l2_l1i_grant_ready_w;
+    logic [PADDR_W_DEFAULT-1:0] l2_l1i_grant_paddr_line_w;
+    logic [8*L1I_LINE_BYTES-1:0] l2_l1i_grant_data_w;
+    mesi_e                      l2_l1i_grant_state_w;
+    logic                       l1i_l2_busy_w;
+
+    logic                       l2_l1d_acq_ready_w;
+    logic                       l2_l1d_grant_valid_w;
+    logic [PADDR_W_DEFAULT-1:0] l2_l1d_grant_paddr_line_w;
+    logic [8*L1I_LINE_BYTES-1:0] l2_l1d_grant_data_w;
+    mesi_e                      l2_l1d_grant_state_w;
+    logic                       l2_l3_acq_ready_w;
+    logic [PADDR_W_DEFAULT-1:0] l2_l3_acq_paddr_line_w;
+    logic                       l2_l3_acq_is_write_w;
+    mesi_e                      l2_l3_acq_req_state_w;
+    logic [8*L1I_LINE_BYTES-1:0] l2_l3_acq_wb_data_w;
+    logic                       l2_l3_grant_ready_w;
+    logic [PADDR_W_DEFAULT-1:0] l2_l3_grant_paddr_line_q;
+    logic [8*L1I_LINE_BYTES-1:0] l2_l3_grant_data_q;
+    mesi_e                      l2_l3_grant_state_q;
+    logic                       l2_l3_grant_valid_q;
+    logic                       l2_l3_probe_ready_w;
+    logic                       l2_l3_probe_ack_w;
+    logic                       l2_l3_probe_has_data_w;
+    logic [8*L1I_LINE_BYTES-1:0] l2_l3_probe_wb_data_w;
+    mesi_e                      l2_l3_probe_final_state_w;
+    logic                       l2_l1d_probe_valid_w;
+    logic [PADDR_W_DEFAULT-1:0] l2_l1d_probe_paddr_line_w;
+    mesi_e                      l2_l1d_probe_target_state_w;
+    logic                       l2_ptw_req_ready_w;
+    logic                       l2_ptw_resp_valid_w;
+    logic [63:0]                l2_ptw_resp_data_w;
+    logic                       l2_hpm_access_w;
+    logic                       l2_hpm_miss_w;
+    logic                       l2_hpm_prefetch_w;
+
+    function automatic logic [8*L1I_LINE_BYTES-1:0] soc_l1i_line_payload(
+        input logic [PADDR_W_DEFAULT-1:0] paddr_line
+    );
+        logic [8*L1I_LINE_BYTES-1:0] line;
+        line = '0;
+        for (int beat = 0; beat < L1I_LINE_BYTES / 16; beat++) begin
+            line[beat*128 +: 128] = {
+                32'h1E1F_1000 ^ paddr_line[31:0],
+                32'(beat),
+                paddr_line[31:0] + (32'(beat) << 4),
+                32'hCACE_0000 | 32'(beat)
+            };
+        end
+        return line;
+    endfunction
+
+    e1_l1i_cache u_integrated_l1i (
+        .clk                       (clk),
+        .rst_n                     (rst_n),
+        .ifu_req_valid             (l1i_demand_valid_o),
+        .ifu_req_ready             (l1i_cache_ifu_req_ready_w),
+        .ifu_req_paddr             (l1i_demand_paddr_o),
+        .ifu_flush                 (resolve_i.valid && resolve_i.misprediction),
+        .ifu_resp_valid            (l1i_cache_resp_valid_o),
+        .ifu_resp_data             (l1i_cache_resp_data_w),
+        .ifu_resp_paddr_eq_req     (l1i_cache_resp_paddr_eq_req_w),
+        .ifu_req_valid_lane1       (l1i_demand_valid_lane1_o),
+        .ifu_req_ready_lane1       (l1i_cache_ifu_req_ready_lane1_w),
+        .ifu_req_paddr_lane1       (l1i_demand_paddr_lane1_o),
+        .ifu_resp_valid_lane1      (l1i_cache_resp_valid_lane1_o),
+        .ifu_resp_data_lane1       (l1i_cache_resp_data_lane1_w),
+        .ifu_resp_paddr_eq_req_lane1(l1i_cache_resp_paddr_eq_req_lane1_w),
+        .ftq_req_valid             (l1i_prefetch_valid_o),
+        .ftq_req_ready             (l1i_cache_ftq_req_ready_w),
+        .ftq_req                   (l1i_prefetch_req_o),
+        .miss_valid                (l1i_cache_miss_valid_o),
+        .miss_ready                (l1i_cache_miss_ready_w),
+        .miss_paddr_line           (l1i_cache_miss_paddr_line_w),
+        .miss_is_prefetch          (l1i_cache_miss_is_prefetch_w),
+        .refill_valid              (l1i_cache_refill_valid_w),
+        .refill_ready              (l1i_cache_refill_ready_w),
+        .refill_data               (l1i_cache_refill_data_w),
+        .refill_beat_idx           (l1i_cache_refill_beat_idx_w),
+        .refill_last               (l1i_cache_refill_last_w),
+        .miss_valid_lane1          (l1i_cache_miss_valid_lane1_o),
+        .miss_ready_lane1          (l1i_cache_miss_ready_lane1_w),
+        .miss_paddr_line_lane1     (l1i_cache_miss_paddr_line_lane1_w),
+        .miss_is_prefetch_lane1    (l1i_cache_miss_is_prefetch_lane1_w),
+        .refill_valid_lane1        (l1i_cache_refill_valid_lane1_w),
+        .refill_ready_lane1        (l1i_cache_refill_ready_lane1_w),
+        .refill_data_lane1         (l1i_cache_refill_data_lane1_w),
+        .refill_beat_idx_lane1     (l1i_cache_refill_beat_idx_lane1_w),
+        .refill_last_lane1         (l1i_cache_refill_last_lane1_w),
+        .probe_valid               (1'b0),
+        .probe_ready               (l1i_cache_probe_ready_w),
+        .probe_paddr_line          ('0),
+        .probe_ack                 (l1i_cache_probe_ack_w),
+        .hpm_l1i_access            (l1i_hpm_access_w),
+        .hpm_l1i_miss              (l1i_hpm_miss_w),
+        .hpm_l1i_prefetch          (l1i_hpm_prefetch_w)
+    );
+
+    e1_l1i_dual_miss_to_l2 u_integrated_l1i_l2_bridge (
+        .clk                       (clk),
+        .rst_n                     (rst_n),
+        .flush_i                   (resolve_i.valid && resolve_i.misprediction),
+        .miss_valid_i              (l1i_cache_miss_valid_o),
+        .miss_ready_o              (l1i_cache_miss_ready_w),
+        .miss_paddr_line_i         (l1i_cache_miss_paddr_line_w),
+        .miss_is_prefetch_i        (l1i_cache_miss_is_prefetch_w),
+        .miss_valid_lane1_i        (l1i_cache_miss_valid_lane1_o),
+        .miss_ready_lane1_o        (l1i_cache_miss_ready_lane1_w),
+        .miss_paddr_line_lane1_i   (l1i_cache_miss_paddr_line_lane1_w),
+        .miss_is_prefetch_lane1_i  (l1i_cache_miss_is_prefetch_lane1_w),
+        .l2_l1i_acq_valid_o        (l1i_l2_acq_valid_o),
+        .l2_l1i_acq_ready_i        (l2_l1i_acq_ready_w),
+        .l2_l1i_acq_paddr_line_o   (l2_l1i_acq_paddr_line_w),
+        .l2_l1i_acq_is_prefetch_o  (l2_l1i_acq_is_prefetch_w),
+        .l2_l1i_grant_valid_i      (l2_l1i_grant_valid_w),
+        .l2_l1i_grant_ready_o      (l2_l1i_grant_ready_w),
+        .l2_l1i_grant_paddr_line_i (l2_l1i_grant_paddr_line_w),
+        .l2_l1i_grant_data_i       (l2_l1i_grant_data_w),
+        .l2_l1i_grant_state_i      (l2_l1i_grant_state_w),
+        .refill_valid_o            (l1i_cache_refill_valid_w),
+        .refill_ready_i            (l1i_cache_refill_ready_w),
+        .refill_data_o             (l1i_cache_refill_data_w),
+        .refill_beat_idx_o         (l1i_cache_refill_beat_idx_w),
+        .refill_last_o             (l1i_cache_refill_last_w),
+        .refill_valid_lane1_o      (l1i_cache_refill_valid_lane1_w),
+        .refill_ready_lane1_i      (l1i_cache_refill_ready_lane1_w),
+        .refill_data_lane1_o       (l1i_cache_refill_data_lane1_w),
+        .refill_beat_idx_lane1_o   (l1i_cache_refill_beat_idx_lane1_w),
+        .refill_last_lane1_o       (l1i_cache_refill_last_lane1_w),
+        .busy_o                    (l1i_l2_busy_w),
+        .active_lane1_o            (l1i_l2_active_lane1_o)
+    );
+
+    e1_l2_cache u_integrated_l2 (
+        .clk                       (clk),
+        .rst_n                     (rst_n),
+        .l1i_acq_valid             (l1i_l2_acq_valid_o),
+        .l1i_acq_ready             (l2_l1i_acq_ready_w),
+        .l1i_acq_paddr_line        (l2_l1i_acq_paddr_line_w),
+        .l1i_acq_is_prefetch       (l2_l1i_acq_is_prefetch_w),
+        .l1i_grant_valid           (l2_l1i_grant_valid_w),
+        .l1i_grant_ready           (l2_l1i_grant_ready_w),
+        .l1i_grant_paddr_line      (l2_l1i_grant_paddr_line_w),
+        .l1i_grant_data            (l2_l1i_grant_data_w),
+        .l1i_grant_state           (l2_l1i_grant_state_w),
+        .l1d_acq_valid             (1'b0),
+        .l1d_acq_ready             (l2_l1d_acq_ready_w),
+        .l1d_acq_paddr_line        ('0),
+        .l1d_acq_is_write          (1'b0),
+        .l1d_acq_req_state         (MESI_I),
+        .l1d_acq_wb_data           ('0),
+        .l1d_grant_valid           (l2_l1d_grant_valid_w),
+        .l1d_grant_ready           (1'b1),
+        .l1d_grant_paddr_line      (l2_l1d_grant_paddr_line_w),
+        .l1d_grant_data            (l2_l1d_grant_data_w),
+        .l1d_grant_state           (l2_l1d_grant_state_w),
+        .l3_acq_valid              (l2_l3_acq_valid_o),
+        .l3_acq_ready              (l2_l3_acq_ready_w),
+        .l3_acq_paddr_line         (l2_l3_acq_paddr_line_w),
+        .l3_acq_is_write           (l2_l3_acq_is_write_w),
+        .l3_acq_req_state          (l2_l3_acq_req_state_w),
+        .l3_acq_wb_data            (l2_l3_acq_wb_data_w),
+        .l3_grant_valid            (l2_l3_grant_valid_q),
+        .l3_grant_ready            (l2_l3_grant_ready_w),
+        .l3_grant_paddr_line       (l2_l3_grant_paddr_line_q),
+        .l3_grant_data             (l2_l3_grant_data_q),
+        .l3_grant_state            (l2_l3_grant_state_q),
+        .l3_probe_valid            (1'b0),
+        .l3_probe_ready            (l2_l3_probe_ready_w),
+        .l3_probe_paddr_line       ('0),
+        .l3_probe_target_state     (MESI_I),
+        .l3_probe_ack              (l2_l3_probe_ack_w),
+        .l3_probe_has_data         (l2_l3_probe_has_data_w),
+        .l3_probe_wb_data          (l2_l3_probe_wb_data_w),
+        .l3_probe_final_state      (l2_l3_probe_final_state_w),
+        .l1d_probe_valid           (l2_l1d_probe_valid_w),
+        .l1d_probe_ready           (1'b1),
+        .l1d_probe_paddr_line      (l2_l1d_probe_paddr_line_w),
+        .l1d_probe_target_state    (l2_l1d_probe_target_state_w),
+        .l1d_probe_ack             (1'b0),
+        .l1d_probe_has_data        (1'b0),
+        .l1d_probe_wb_data         ('0),
+        .l1d_probe_final_state     (MESI_I),
+        .ptw_req_valid             (1'b0),
+        .ptw_req_ready             (l2_ptw_req_ready_w),
+        .ptw_req_paddr             ('0),
+        .ptw_req_is_write          (1'b0),
+        .ptw_req_wdata             ('0),
+        .ptw_resp_valid            (l2_ptw_resp_valid_w),
+        .ptw_resp_data             (l2_ptw_resp_data_w),
+        .hpm_l2_access             (l2_hpm_access_w),
+        .hpm_l2_miss               (l2_hpm_miss_w),
+        .hpm_l2_prefetch           (l2_hpm_prefetch_w)
+    );
+
+    assign l2_l3_acq_ready_w = 1'b1;
+    assign l2_l3_grant_valid_o = l2_l3_grant_valid_q;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            l2_l3_grant_valid_q <= 1'b0;
+            l2_l3_grant_paddr_line_q <= '0;
+            l2_l3_grant_data_q <= '0;
+            l2_l3_grant_state_q <= MESI_I;
+        end else begin
+            if (l2_l3_grant_valid_q && l2_l3_grant_ready_w) begin
+                l2_l3_grant_valid_q <= 1'b0;
+            end
+            if (l2_l3_acq_valid_o && l2_l3_acq_ready_w &&
+                !(l2_l3_grant_valid_q && !l2_l3_grant_ready_w)) begin
+                l2_l3_grant_valid_q <= 1'b1;
+                l2_l3_grant_paddr_line_q <= l2_l3_acq_paddr_line_w;
+                l2_l3_grant_data_q <= soc_l1i_line_payload(l2_l3_acq_paddr_line_w);
+                l2_l3_grant_state_q <= MESI_S;
+            end
+        end
+    end
+
+    logic unused_integrated_l1i_l2;
+    assign unused_integrated_l1i_l2 = ^{
+        l1i_cache_resp_data_w,
+        l1i_cache_resp_data_lane1_w,
+        l1i_cache_resp_paddr_eq_req_w,
+        l1i_cache_resp_paddr_eq_req_lane1_w,
+        l1i_cache_probe_ready_w,
+        l1i_cache_probe_ack_w,
+        l1i_hpm_access_w,
+        l1i_hpm_miss_w,
+        l1i_hpm_prefetch_w,
+        l1i_l2_busy_w,
+        l2_l1d_acq_ready_w,
+        l2_l1d_grant_valid_w,
+        l2_l1d_grant_paddr_line_w,
+        l2_l1d_grant_data_w,
+        l2_l1d_grant_state_w,
+        l2_l3_acq_is_write_w,
+        l2_l3_acq_req_state_w,
+        l2_l3_acq_wb_data_w,
+        l2_l3_probe_ready_w,
+        l2_l3_probe_ack_w,
+        l2_l3_probe_has_data_w,
+        l2_l3_probe_wb_data_w,
+        l2_l3_probe_final_state_w,
+        l2_l1d_probe_valid_w,
+        l2_l1d_probe_paddr_line_w,
+        l2_l1d_probe_target_state_w,
+        l2_ptw_req_ready_w,
+        l2_ptw_resp_valid_w,
+        l2_ptw_resp_data_w,
+        l2_hpm_access_w,
+        l2_hpm_miss_w,
+        l2_hpm_prefetch_w
+    };
+
     // Zihpm counter file. The integration test programs an mhpmevent CSR
     // to select a BPU strobe ID, then drives the BPU and verifies the
     // counter increments.
