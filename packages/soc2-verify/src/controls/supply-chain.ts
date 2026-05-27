@@ -3,6 +3,10 @@ import { join } from "node:path";
 import type { Check, CheckResult } from "../types.js";
 import { dirExists, fileExists, readUtf8Safe } from "../util/fs.js";
 
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 export const gitleaksWorkflow: Check = {
   id: "CC8.1-gitleaks-workflow",
   title: ".github/workflows/gitleaks.yml exists",
@@ -30,7 +34,8 @@ export const gitleaksWorkflow: Check = {
 
 export const noCommittedSecrets: Check = {
   id: "CC8.1-no-committed-secrets",
-  title: "gitleaks reports no high-severity findings at HEAD",
+  title:
+    "gitleaks reports no high-severity findings in the configured git range",
   tsc: ["CC6.1", "CC8.1"],
   severity: "critical",
   async run(ctx): Promise<CheckResult> {
@@ -47,16 +52,24 @@ export const noCommittedSecrets: Check = {
         evidence: `gitleaks not installed — install with 'brew install gitleaks' to run this check locally. CI workflow runs it on every PR.`,
       };
     }
+    const configuredLogOpts = process.env.SOC2_GITLEAKS_LOG_OPTS?.trim();
+    const logOpts =
+      configuredLogOpts && configuredLogOpts.length > 0
+        ? configuredLogOpts
+        : "--all";
+    const scanScope = configuredLogOpts || "repository history";
+    const configPath = join(ctx.elizaRoot, ".gitleaks.toml");
+    const ignorePath = join(ctx.elizaRoot, ".gitleaksignore");
     try {
       execSync(
-        `gitleaks detect --no-banner --redact --source "${ctx.elizaRoot}" --log-opts "-1" --timeout 120`,
+        `gitleaks detect --no-banner --redact --config ${shellQuote(configPath)} --gitleaks-ignore-path ${shellQuote(ignorePath)} --source ${shellQuote(ctx.elizaRoot)} --log-opts ${shellQuote(logOpts)} --timeout 120`,
         {
           stdio: "pipe",
         },
       );
       return {
         status: "pass",
-        evidence: `gitleaks: zero findings at HEAD.`,
+        evidence: `gitleaks: zero findings in ${scanScope}.`,
       };
     } catch (err) {
       const stderr = (err as { stderr?: Buffer }).stderr?.toString() ?? "";
