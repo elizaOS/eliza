@@ -104,7 +104,7 @@ export function findInflections(points: CommitHealthPoint[]): {
   }
 
   peaks.sort((a, b) => b.score - a.score);
-  drifts.sort((a, b) => (b.score - b.delta) - (a.score - a.delta));
+  drifts.sort((a, b) => b.score - b.delta - (a.score - a.delta));
 
   return {
     peaks: peaks.slice(0, PEAK_LIMIT),

@@ -79,9 +79,7 @@ export function createReportCache(cacheDir: string): ReportCache {
             commitCount: report.commitCount,
             sizeBytes: stat.size,
           });
-        } catch {
-          continue;
-        }
+        } catch {}
       }
       return out.sort((a, b) => b.generatedAt.localeCompare(a.generatedAt));
     },

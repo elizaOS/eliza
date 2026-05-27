@@ -30,14 +30,17 @@ const DEFAULT_OPTIONS: AnalysisOptions = {
   cache: "auto",
 };
 
+function defaultBudget(): number {
+  const raw = process.env.GITPATHOLOGIST_BUDGET?.trim();
+  if (!raw) return DEFAULT_OPTIONS.budget;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_OPTIONS.budget;
+}
+
 export class GitPathologyService extends Service {
   static serviceType: string = GIT_PATHOLOGY_SERVICE_NAME;
   capabilityDescription =
     "Forensic git-history analysis: per-surface health timeline, drift inflection detection, rot post-mortem.";
-
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
-  }
 
   static async start(runtime: IAgentRuntime): Promise<GitPathologyService> {
     logger.info(`${LOG_PREFIX} starting`);
@@ -52,7 +55,7 @@ export class GitPathologyService extends Service {
     surface: SurfaceSpec,
     overrides: Partial<AnalysisOptions> = {}
   ): Promise<PathologyReport> {
-    const options = { ...DEFAULT_OPTIONS, ...overrides };
+    const options = { ...DEFAULT_OPTIONS, budget: defaultBudget(), ...overrides };
     const cacheDir = defaultCacheDir(surface.repoRoot);
     const cache = createReportCache(cacheDir);
     const cacheKey = makeCacheKey({ surface: surface.path, since: options.since });

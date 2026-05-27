@@ -18,15 +18,9 @@ const UNIT_SEP = "\x1f";
 // Git appends `--name-status --numstat` lines AFTER the body, inside the same
 // RS-delimited record. The next commit begins with its own leading RS — so we
 // MUST NOT add a trailing RS here, or the file-stats become orphan records.
-const LOG_FORMAT = [
-  `${RECORD_SEP}COMMIT`,
-  "%H",
-  "%P",
-  "%an",
-  "%ae",
-  "%aI",
-  "%s",
-].join(UNIT_SEP) + `${UNIT_SEP}%b`;
+const LOG_FORMAT = `${[`${RECORD_SEP}COMMIT`, "%H", "%P", "%an", "%ae", "%aI", "%s"].join(
+  UNIT_SEP
+)}${UNIT_SEP}%b`;
 
 export interface ScanOptions {
   since: string;
@@ -109,8 +103,7 @@ export function scan(surface: SurfaceSpec, options: ScanOptions): RawCommit[] {
     const rest = record.slice("COMMIT".length);
     const fields = rest.split(UNIT_SEP);
     if (fields.length < 8) continue;
-    const [, sha, parentsStr, author, authorEmail, date, subject, bodyAndFiles] =
-      fields;
+    const [, sha, parentsStr, author, authorEmail, date, subject, bodyAndFiles] = fields;
     if (!sha || !date) continue;
     const lines = (bodyAndFiles ?? "").split("\n");
     const splitIdx = findFileBlockStart(lines);
@@ -163,7 +156,7 @@ export function fetchDiffSnippet(
   repoRoot: string,
   sha: string,
   surfacePath: string,
-  maxBytes = 16 * 1024,
+  maxBytes = 16 * 1024
 ): string {
   const args = ["show", "--no-color", "-U2", "--format=", sha, "--", surfacePath];
   const result = spawnSync("git", args, {

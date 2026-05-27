@@ -290,11 +290,7 @@ async function opCreate(
 
   const workflowId = readString(params.workflowId);
   if (!workflowId) {
-    return failed(
-      "create",
-      "workflowId is required.",
-      "MISSING_WORKFLOW_ID",
-    );
+    return failed("create", "workflowId is required.", "MISSING_WORKFLOW_ID");
   }
   const workflowName = readString(params.workflowName);
 

@@ -343,6 +343,36 @@ describe("action catalogue and retrieval", () => {
 		expect(searchMessagesAction.similes).toContain("FIND_MESSAGES");
 	});
 
+	it("maps all message-search simile hints to MESSAGE with recent context", () => {
+		const catalog = buildActionCatalog([
+			searchMessagesAction,
+			{
+				name: "TASKS",
+				description: "Build apps, websites, code projects, and files.",
+			},
+		]);
+
+		for (const candidateAction of [
+			"SEARCH_INBOX",
+			"SEARCH_EMAIL",
+			"CROSS_CHANNEL_SEARCH",
+		]) {
+			const response = retrieveActions({
+				catalog,
+				messageText: "Search there again",
+				candidateActions: [candidateAction],
+				recentConversationText: "Find email and chat history about launch",
+			});
+
+			expect(response.query.parentActionHints).toEqual(["MESSAGE"]);
+			expect(response.results[0]).toMatchObject({
+				name: "MESSAGE",
+				score: 1,
+				matchedBy: expect.arrayContaining(["exact"]),
+			});
+		}
+	});
+
 	it("does not retrieve actions from context match alone", () => {
 		const catalog = buildActionCatalog([
 			{

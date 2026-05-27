@@ -20,17 +20,23 @@ import type {
   State,
 } from "@elizaos/core";
 import { renderReport } from "../render.ts";
-import { GIT_PATHOLOGY_SERVICE_NAME, GitPathologyService } from "../services/git-pathology-service.ts";
+import {
+  GIT_PATHOLOGY_SERVICE_NAME,
+  type GitPathologyService,
+} from "../services/git-pathology-service.ts";
 import type { AnalysisOptions, Operation, PathologyReport, SurfaceSpec } from "../types.ts";
 
 const VALID_OPS: ReadonlySet<Operation> = new Set(["report", "trace", "diff", "list"]);
-const SURFACE_HINT_RE = /\b(pathology|git\s+history|code\s+health|drift|rot|inflection|when\s+did)\b/i;
+const SURFACE_HINT_RE =
+  /\b(pathology|git\s+history|code\s+health|drift|rot|inflection|when\s+did\s+(?:this\s+)?(?:code|file|module|package|plugin|service|component|path|repo|repository|branch|commit))\b/i;
 
 function getService(runtime: IAgentRuntime): GitPathologyService | null {
   return runtime.getService<GitPathologyService>(GIT_PATHOLOGY_SERVICE_NAME) ?? null;
 }
 
-function paramsRecord(options: HandlerOptions | Record<string, unknown> | undefined): Record<string, unknown> {
+function paramsRecord(
+  options: HandlerOptions | Record<string, unknown> | undefined
+): Record<string, unknown> {
   if (!options || typeof options !== "object") return {};
   const params = (options as Record<string, unknown>).params;
   if (params && typeof params === "object") return params as Record<string, unknown>;
@@ -90,7 +96,7 @@ function listResult(service: GitPathologyService, repoRoot: string): ActionResul
   }
   const lines = summaries.map(
     (s) =>
-      `- ${s.surface} (${s.commitCount} commits) — HEAD ${s.headSha.slice(0, 7)}, generated ${s.generatedAt}`,
+      `- ${s.surface} (${s.commitCount} commits) — HEAD ${s.headSha.slice(0, 7)}, generated ${s.generatedAt}`
   );
   return {
     success: true,
@@ -124,13 +130,15 @@ export const gitPathologyAction: Action & { suppressPostActionContinuation: true
   parameters: [
     {
       name: "operation",
-      description: "Which gitpathologist operation: report, list, trace (v2), diff (v2). Default: report.",
+      description:
+        "Which gitpathologist operation: report, list, trace (v2), diff (v2). Default: report.",
       required: false,
       schema: { type: "string" as const, enum: ["report", "trace", "diff", "list"] },
     },
     {
       name: "surface",
-      description: "Path or glob to analyze (relative to repo root). Required for operation=report|trace|diff.",
+      description:
+        "Path or glob to analyze (relative to repo root). Required for operation=report|trace|diff.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -168,9 +176,10 @@ export const gitPathologyAction: Action & { suppressPostActionContinuation: true
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     if (!getService(runtime)) return false;
     const content = message.content as { text?: unknown; params?: unknown };
-    const params = content.params && typeof content.params === "object"
-      ? (content.params as Record<string, unknown>)
-      : null;
+    const params =
+      content.params && typeof content.params === "object"
+        ? (content.params as Record<string, unknown>)
+        : null;
     if (params && typeof params.operation === "string") return true;
     if (params && typeof params.surface === "string") return true;
     const text = typeof content.text === "string" ? content.text : "";
@@ -181,7 +190,7 @@ export const gitPathologyAction: Action & { suppressPostActionContinuation: true
     _message: Memory,
     _state?: State,
     options?: HandlerOptions,
-    callback?: HandlerCallback,
+    callback?: HandlerCallback
   ): Promise<ActionResult> => {
     const service = getService(runtime);
     if (!service) {
@@ -210,7 +219,8 @@ export const gitPathologyAction: Action & { suppressPostActionContinuation: true
 
     const surfacePath = readString(params, "surface");
     if (!surfacePath) {
-      const text = "operation=report requires a `surface` param (path or glob relative to repo root).";
+      const text =
+        "operation=report requires a `surface` param (path or glob relative to repo root).";
       if (callback) await callback({ text });
       return { success: false, text, error: "MISSING_SURFACE" };
     }

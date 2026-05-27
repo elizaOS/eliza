@@ -26,10 +26,10 @@ describe("findInflections.peaks", () => {
   it("finds a single peak in an ascending-then-descending series", () => {
     const points = [
       point(0.05, 0.05, "a"),
-      point(0.15, 0.10, "b"),
-      point(0.40, 0.25, "c"), // peak
+      point(0.15, 0.1, "b"),
+      point(0.4, 0.25, "c"), // peak
       point(0.25, -0.15, "d"),
-      point(0.10, -0.15, "e"),
+      point(0.1, -0.15, "e"),
       point(0.05, -0.05, "f"),
     ];
     const { peaks } = findInflections(points);
@@ -38,11 +38,7 @@ describe("findInflections.peaks", () => {
   });
 
   it("ignores peaks below the minimum threshold", () => {
-    const points = [
-      point(0.0, 0),
-      point(0.02, 0.02),
-      point(0.01, -0.01),
-    ];
+    const points = [point(0.0, 0), point(0.02, 0.02), point(0.01, -0.01)];
     const { peaks } = findInflections(points);
     expect(peaks.length).toBe(0);
   });
@@ -51,14 +47,14 @@ describe("findInflections.peaks", () => {
 describe("findInflections.drifts", () => {
   it("finds a drift onset when the score drops sustainedly after a point", () => {
     const points = [
-      point(0.20, 0.05, "a"),
-      point(0.30, 0.10, "b"),
-      point(0.50, 0.20, "c"), // drift onset
-      point(0.20, -0.30, "d"),
+      point(0.2, 0.05, "a"),
+      point(0.3, 0.1, "b"),
+      point(0.5, 0.2, "c"), // drift onset
+      point(0.2, -0.3, "d"),
       point(0.05, -0.15, "e"),
-      point(-0.05, -0.10, "f"),
-      point(-0.10, -0.05, "g"),
-      point(-0.10, 0.0, "h"),
+      point(-0.05, -0.1, "f"),
+      point(-0.1, -0.05, "g"),
+      point(-0.1, 0.0, "h"),
     ];
     const { drifts } = findInflections(points);
     expect(drifts.length).toBeGreaterThanOrEqual(1);

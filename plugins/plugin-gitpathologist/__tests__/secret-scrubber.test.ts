@@ -8,10 +8,10 @@ describe("scrubSecrets", () => {
   });
 
   it("redacts OpenAI keys including project keys", () => {
-    expect(scrubSecrets("OPENAI_API_KEY=sk-proj-AAAAAAAAAAAAAAAAAAAAAAAA"))
-      .toContain("<REDACTED:OPENAI>");
-    expect(scrubSecrets("token sk-AAAAAAAAAAAAAAAAAAAAAAAA done"))
-      .toContain("<REDACTED:OPENAI>");
+    expect(scrubSecrets("OPENAI_API_KEY=sk-proj-AAAAAAAAAAAAAAAAAAAAAAAA")).toContain(
+      "<REDACTED:OPENAI>"
+    );
+    expect(scrubSecrets("token sk-AAAAAAAAAAAAAAAAAAAAAAAA done")).toContain("<REDACTED:OPENAI>");
   });
 
   it("redacts GitHub PATs", () => {
@@ -24,13 +24,15 @@ describe("scrubSecrets", () => {
   });
 
   it("redacts Bearer headers", () => {
-    expect(scrubSecrets("Authorization: Bearer abcdef1234567890ABCDEF"))
-      .toContain("<REDACTED:BEARER>");
+    expect(scrubSecrets("Authorization: Bearer abcdef1234567890ABCDEF")).toContain(
+      "<REDACTED:BEARER>"
+    );
   });
 
   it("redacts env-name patterns with secret-looking values", () => {
-    expect(scrubSecrets('SOME_API_TOKEN="abcdefghijklmnop"'))
-      .toContain("SOME_API_TOKEN=<REDACTED:ENV>");
+    expect(scrubSecrets('SOME_API_TOKEN="abcdefghijklmnop"')).toContain(
+      "SOME_API_TOKEN=<REDACTED:ENV>"
+    );
   });
 
   it("leaves benign text untouched", () => {

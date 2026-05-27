@@ -1,19 +1,15 @@
 /**
  * Phase 5 — narrate: LLM post-mortem for drift inflections.
  *
- * One LLM call per drift, capped by `budget`. When the runtime exposes no
- * `useModel`, or when the call fails or returns unparseable JSON, we fall
- * back to {@link fallbackRotCause} — the fallback is honest about its origin
- * (`narrative` says "(no LLM)").
+ * One LLM call per drift, capped by `budget`.
  *
  * All commit text + diff snippets pass through {@link scrubSecrets} before
  * leaving the process.
  */
 
-import { ModelType, type IAgentRuntime, logger } from "@elizaos/core";
+import { type IAgentRuntime, logger, ModelType } from "@elizaos/core";
 import { scrubSecrets } from "../secret-scrubber.ts";
 import type { CommitHealthPoint, InflectionPoint, RotCategory, RotCause } from "../types.ts";
-import { fallbackRotCause } from "./narrate-fallback.ts";
 import { fetchDiffSnippet } from "./scan.ts";
 
 const LOG_PREFIX = "[GitPathology/narrate]";
@@ -41,50 +37,48 @@ interface UseModelLike {
 
 export async function narrate(
   runtime: IAgentRuntime | null,
-  ctx: NarrateContext,
+  ctx: NarrateContext
 ): Promise<{ rotCauses: RotCause[]; llmCalls: number }> {
   const rotCauses: RotCause[] = [];
   let llmCalls = 0;
-  const indexBySha = new Map<string, number>(
-    ctx.timeline.map((point, idx) => [point.sha, idx]),
-  );
+  const indexBySha = new Map<string, number>(ctx.timeline.map((point, idx) => [point.sha, idx]));
   const useModelFn = (runtime as UseModelLike | null)?.useModel;
-  const canCallLlm = typeof useModelFn === "function";
   const budget = Math.max(0, Math.floor(ctx.budget));
 
-  // `budget` caps LLM spend only — it must not suppress the deterministic
-  // fallback. Every drift always gets a rotCause; the LLM is opted into when
-  // (a) the runtime exposes useModel, and (b) the running llmCalls counter is
-  // still under budget. Once exhausted, remaining drifts get the heuristic.
+  if (typeof useModelFn !== "function") {
+    logger.warn(`${LOG_PREFIX} runtime has no useModel; skipping rot-cause narration`);
+    return { rotCauses, llmCalls };
+  }
+
   for (const drift of ctx.drifts) {
+    if (llmCalls >= budget) break;
     const idx = indexBySha.get(drift.sha);
     if (idx === undefined) continue;
     const point = ctx.timeline[idx];
     if (!point) continue;
     const before = ctx.timeline.slice(Math.max(0, idx - 3), idx);
     const after = ctx.timeline.slice(idx + 1, idx + 4);
-    if (canCallLlm && useModelFn && llmCalls < budget) {
-      const diff = scrubSecrets(
-        fetchDiffSnippet(ctx.repoRoot, point.sha, ctx.surfacePath, 8 * 1024),
+    const diff = scrubSecrets(fetchDiffSnippet(ctx.repoRoot, point.sha, ctx.surfacePath, 8 * 1024));
+    try {
+      const result = await callModel(
+        useModelFn,
+        buildPrompt(ctx.surfacePath, point, before, after, diff)
       );
-      try {
-        const result = await callModel(useModelFn, buildPrompt(ctx.surfacePath, point, before, after, diff));
-        llmCalls += 1;
-        const parsed = parseRotCause(result);
-        if (parsed) {
-          rotCauses.push({
-            shaRange: rangeFor(point, after),
-            category: parsed.category,
-            evidence: evidenceShas(point, before, after),
-            narrative: parsed.narrative,
-          });
-          continue;
-        }
-      } catch (err) {
-        logger.warn(`${LOG_PREFIX} model call failed for ${point.sha}: ${(err as Error).message}`);
+      llmCalls += 1;
+      const parsed = parseRotCause(result);
+      if (parsed) {
+        rotCauses.push({
+          shaRange: rangeFor(point, after),
+          category: parsed.category,
+          evidence: evidenceShas(point, before, after),
+          narrative: parsed.narrative,
+        });
+        continue;
       }
+      logger.warn(`${LOG_PREFIX} model returned unparseable rot cause for ${point.sha}`);
+    } catch (err) {
+      logger.warn(`${LOG_PREFIX} model call failed for ${point.sha}: ${(err as Error).message}`);
     }
-    rotCauses.push(fallbackRotCause(point, before, after));
   }
 
   return { rotCauses, llmCalls };
@@ -98,7 +92,7 @@ function rangeFor(point: CommitHealthPoint, after: CommitHealthPoint[]): [string
 function evidenceShas(
   point: CommitHealthPoint,
   before: CommitHealthPoint[],
-  after: CommitHealthPoint[],
+  after: CommitHealthPoint[]
 ): string[] {
   return [...before.map((p) => p.sha), point.sha, ...after.map((p) => p.sha)];
 }
@@ -108,7 +102,7 @@ function buildPrompt(
   point: CommitHealthPoint,
   before: CommitHealthPoint[],
   after: CommitHealthPoint[],
-  diff: string,
+  diff: string
 ): string {
   const fmt = (p: CommitHealthPoint) =>
     `  ${p.sha.slice(0, 7)} [${p.type}] (${p.churn} churn, score ${p.score.toFixed(2)}) ${scrubSecrets(p.subject)}`;
@@ -141,7 +135,7 @@ function buildPrompt(
 
 async function callModel(
   useModelFn: NonNullable<UseModelLike["useModel"]>,
-  prompt: string,
+  prompt: string
 ): Promise<string> {
   const result = await useModelFn(ModelType.TEXT_SMALL, {
     prompt,
@@ -152,9 +146,7 @@ async function callModel(
   return result;
 }
 
-function parseRotCause(
-  raw: string,
-): { category: RotCategory; narrative: string } | null {
+function parseRotCause(raw: string): { category: RotCategory; narrative: string } | null {
   if (!raw) return null;
   const jsonStart = raw.indexOf("{");
   const jsonEnd = raw.lastIndexOf("}");

@@ -8,7 +8,10 @@
 
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { gitPathologyAction } from "./actions/git-pathology.ts";
-import { GIT_PATHOLOGY_SERVICE_NAME, GitPathologyService } from "./services/git-pathology-service.ts";
+import {
+  GIT_PATHOLOGY_SERVICE_NAME,
+  GitPathologyService,
+} from "./services/git-pathology-service.ts";
 
 const gitpathologistPlugin: Plugin = {
   name: "@elizaos/plugin-gitpathologist",
@@ -27,8 +30,11 @@ const gitpathologistPlugin: Plugin = {
 };
 
 export default gitpathologistPlugin;
-export { GitPathologyService, GIT_PATHOLOGY_SERVICE_NAME } from "./services/git-pathology-service.ts";
 export { gitPathologyAction } from "./actions/git-pathology.ts";
+export {
+  GIT_PATHOLOGY_SERVICE_NAME,
+  GitPathologyService,
+} from "./services/git-pathology-service.ts";
 export type {
   AnalysisOptions,
   CommitHealthPoint,

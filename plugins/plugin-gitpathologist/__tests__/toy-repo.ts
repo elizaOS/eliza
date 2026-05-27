@@ -10,7 +10,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -75,7 +75,12 @@ export function buildToyRepo(): ToyRepoSpec {
   git(repoRoot, ["init", "-q", "--initial-branch=main"]);
   git(repoRoot, ["config", "commit.gpgsign", "false"]);
 
-  const commitsByPhase = { A: [] as string[], B: [] as string[], C: [] as string[], D: [] as string[] };
+  const commitsByPhase = {
+    A: [] as string[],
+    B: [] as string[],
+    C: [] as string[],
+    D: [] as string[],
+  };
 
   // Anchor (untracked surface starts empty)
   writeFile(repoRoot, "README", "toy repo\n");
@@ -93,7 +98,11 @@ export function buildToyRepo(): ToyRepoSpec {
   for (let i = 0; i < aSubjects.length; i++) {
     writeFile(repoRoot, `${SURFACE_DIR}/feature-${i}.ts`, smallFeatureLines(i));
     git(repoRoot, ["add", `${SURFACE_DIR}/feature-${i}.ts`]);
-    commit(repoRoot, aSubjects[i] ?? `feat: a${i}`, `2026-04-${String(2 + i).padStart(2, "0")}T10:00:00Z`);
+    commit(
+      repoRoot,
+      aSubjects[i] ?? `feat: a${i}`,
+      `2026-04-${String(2 + i).padStart(2, "0")}T10:00:00Z`
+    );
     commitsByPhase.A.push(readHead(repoRoot));
   }
 
@@ -118,7 +127,11 @@ export function buildToyRepo(): ToyRepoSpec {
       writeFile(repoRoot, `${SURFACE_DIR}/dump-${f}.ts`, biggerLines(i * 10 + f, 50 + i * 10));
     }
     git(repoRoot, ["add", `${SURFACE_DIR}/`]);
-    commit(repoRoot, cSubjects[i] ?? `wip: c${i}`, `2026-04-${String(10 + i).padStart(2, "0")}T10:00:00Z`);
+    commit(
+      repoRoot,
+      cSubjects[i] ?? `wip: c${i}`,
+      `2026-04-${String(10 + i).padStart(2, "0")}T10:00:00Z`
+    );
     commitsByPhase.C.push(readHead(repoRoot));
   }
 
@@ -133,7 +146,11 @@ export function buildToyRepo(): ToyRepoSpec {
     writeFile(repoRoot, `${SURFACE_DIR}/clean-${i}.ts`, smallFeatureLines(100 + i));
     writeFile(repoRoot, `${SURFACE_DIR}/__tests__/clean-${i}.test.ts`, smallFeatureLines(200 + i));
     git(repoRoot, ["add", `${SURFACE_DIR}/`]);
-    commit(repoRoot, dSubjects[i] ?? `refactor: d${i}`, `2026-04-${String(15 + i).padStart(2, "0")}T10:00:00Z`);
+    commit(
+      repoRoot,
+      dSubjects[i] ?? `refactor: d${i}`,
+      `2026-04-${String(15 + i).padStart(2, "0")}T10:00:00Z`
+    );
     commitsByPhase.D.push(readHead(repoRoot));
   }
 

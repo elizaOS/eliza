@@ -62,7 +62,10 @@ function wipPenalty(commit: ClassifiedCommit): number {
   return commit.riskFlags.includes("wip-message") ? 0.3 : 0;
 }
 
-function findRevertTarget(commit: ClassifiedCommit, byShortSha: Map<string, number>): number | null {
+function findRevertTarget(
+  commit: ClassifiedCommit,
+  byShortSha: Map<string, number>
+): number | null {
   if (commit.type !== "revert") return null;
   const match = commit.body.match(REVERT_SHA_RE) ?? commit.subject.match(REVERT_SHA_RE);
   if (!match) return null;
@@ -83,11 +86,11 @@ export function score(commits: ClassifiedCommit[]): CommitHealthPoint[] {
     const churn = commit.files.reduce((acc, f) => acc + f.added + f.deleted, 0);
     const base = BASE[commit.type];
     const delta =
-      base
-      - churnPenalty(churn)
-      - filesPenalty(commit.files.length)
-      - wipPenalty(commit)
-      + testBonus(commit);
+      base -
+      churnPenalty(churn) -
+      filesPenalty(commit.files.length) -
+      wipPenalty(commit) +
+      testBonus(commit);
     running = ALPHA * delta + (1 - ALPHA) * running;
     points.push({ ...commit, delta, score: running, churn });
     byShortSha.set(commit.sha.slice(0, 7), i);

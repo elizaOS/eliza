@@ -11,21 +11,25 @@ function inflectionLine(point: InflectionPoint): string {
 
 function rotCauseBlock(cause: RotCause): string {
   const [from, to] = cause.shaRange;
-  const evidence = cause.evidence.length > 0 ? `\n  - Evidence: ${cause.evidence.map(short).join(", ")}` : "";
+  const evidence =
+    cause.evidence.length > 0 ? `\n  - Evidence: ${cause.evidence.map(short).join(", ")}` : "";
   return `### ${cause.category} — \`${short(from)}\`..\`${short(to)}\`\n\n${cause.narrative}${evidence}`;
 }
 
 export function renderReport(report: PathologyReport): string {
   const window = `${report.window.since.slice(0, 10)} → ${report.window.until.slice(0, 10)}`;
-  const peaks = report.peaks.length === 0
-    ? "_None detected in window._"
-    : report.peaks.map(inflectionLine).join("\n");
-  const drifts = report.drifts.length === 0
-    ? "_None detected in window._"
-    : report.drifts.map(inflectionLine).join("\n");
-  const causes = report.rotCauses.length === 0
-    ? "_No drift narration generated. Either no drifts detected, or budget = 0._"
-    : report.rotCauses.map(rotCauseBlock).join("\n\n");
+  const peaks =
+    report.peaks.length === 0
+      ? "_None detected in window._"
+      : report.peaks.map(inflectionLine).join("\n");
+  const drifts =
+    report.drifts.length === 0
+      ? "_None detected in window._"
+      : report.drifts.map(inflectionLine).join("\n");
+  const causes =
+    report.rotCauses.length === 0
+      ? "_No drift narration generated. Either no drifts detected, or budget = 0._"
+      : report.rotCauses.map(rotCauseBlock).join("\n\n");
   const authors = report.authors.length > 0 ? report.authors.join(", ") : "_none_";
 
   return `# Git Pathology — \`${report.surface}\`

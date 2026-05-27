@@ -521,6 +521,32 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
   });
 
+  it("allows positive quantitative completions with larger spelled-out counts", async () => {
+    const context = makeContext({
+      text: "[sub-agent: source count (opencode) — task_complete]\nFound thirteen matching source files; no files were missing from the requested search.",
+      messageHandler: {
+        plan: {
+          contexts: ["simple"],
+          reply: "Could you share the file count?",
+          requiresTool: false,
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply:
+        "Found thirteen matching source files; no files were missing from the requested search.",
+      debug: [
+        "verified sub-agent completion has no concrete follow-up action; using direct reply",
+      ],
+    });
+  });
+
   it("prefers a clean final answer over a raw transcript reply with incidental URLs", async () => {
     const context = makeContext({
       text: '[sub-agent: package check (opencode) — task_complete]\n[tool output: packages/core/package.json]\n{"name":"@elizaos/core","homepage":"https://github.com/elizaOS/eliza","repository":{"url":"git+https://github.com/elizaOS/eliza.git"}}\n[/tool output]@elizaos/core',

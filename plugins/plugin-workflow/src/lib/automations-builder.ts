@@ -277,7 +277,7 @@ function buildCoordinatorTaskItem(
   };
 }
 
-function buildCoordinatorTriggerItem(
+function _buildCoordinatorTriggerItem(
   trigger: TriggerSummary,
   room: AutomationRoomRecord | undefined
 ): AutomationItem {
@@ -505,7 +505,7 @@ export async function buildAutomationListResponse(
       .filter((room) => room.metadata.taskId)
       .map((room) => [room.metadata.taskId as string, room])
   );
-  const triggerRooms = new Map(
+  const _triggerRooms = new Map(
     rooms
       .filter((room) => room.metadata.triggerId)
       .map((room) => [room.metadata.triggerId as string, room])

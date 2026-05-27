@@ -34,7 +34,7 @@ describe("classifyOne", () => {
   });
 
   it("identifies reverts", () => {
-    const c = classifyOne(baseCommit("Revert \"feat: bad idea\""));
+    const c = classifyOne(baseCommit('Revert "feat: bad idea"'));
     expect(c.type).toBe("revert");
     expect(c.riskFlags).toContain("revert-subject");
   });
@@ -48,7 +48,7 @@ describe("classifyOne", () => {
     const c = classifyOne(
       baseCommit("feat: big feature", {
         files: [{ path: "src/big.ts", added: 700, deleted: 50, status: "M" }],
-      }),
+      })
     );
     expect(c.riskFlags).toContain("large-churn");
   });
@@ -77,11 +77,7 @@ describe("classifyOne", () => {
 
 describe("classify (batch)", () => {
   it("preserves order and classifies all", () => {
-    const input = [
-      baseCommit("feat: a"),
-      baseCommit("fix: b"),
-      baseCommit("wip: c"),
-    ];
+    const input = [baseCommit("feat: a"), baseCommit("fix: b"), baseCommit("wip: c")];
     const out = classify(input);
     expect(out.map((c) => c.type)).toEqual(["feature", "fix", "wip"]);
     expect(out.every((c) => c.classifiedBy === "rule")).toBe(true);

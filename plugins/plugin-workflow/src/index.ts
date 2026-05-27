@@ -10,7 +10,6 @@ import { workflowRoutes } from './routes/index';
 import {
   EmbeddedWorkflowService,
   registerWorkflowDispatchService,
-  WORKFLOW_SERVICE_TYPE,
   WorkflowCredentialStore,
   WorkflowService,
 } from './services/index';

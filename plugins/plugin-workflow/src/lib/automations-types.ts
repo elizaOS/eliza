@@ -113,8 +113,8 @@ interface TriggerConfigShape {
   lastRunAtIso?: string;
   lastStatus?: TriggerLastStatus;
   lastError?: string;
-  kind: TriggerKind;
-  workflowId: string;
+  kind?: TriggerKind;
+  workflowId?: string;
   workflowName?: string;
 }
 

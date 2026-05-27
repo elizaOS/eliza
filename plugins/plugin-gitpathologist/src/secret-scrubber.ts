@@ -22,7 +22,8 @@ const SECRET_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
   { label: "BEARER", pattern: /\bBearer\s+[A-Za-z0-9._~+/=-]{20,}/g },
 ];
 
-const SECRET_ENV_NAME = /\b([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASS|API|AUTH|CREDENTIAL)[A-Z0-9_]*)\s*[:=]\s*['"]?([A-Za-z0-9_\-.+/=]{12,})['"]?/g;
+const SECRET_ENV_NAME =
+  /\b([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASS|API|AUTH|CREDENTIAL)[A-Z0-9_]*)\s*[:=]\s*['"]?([A-Za-z0-9_\-.+/=]{12,})['"]?/g;
 
 export function scrubSecrets(input: string): string {
   if (!input) return input;
