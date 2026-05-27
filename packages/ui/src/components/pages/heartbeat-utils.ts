@@ -13,7 +13,7 @@ import type {
   UpdateTriggerRequest,
 } from "../../api/client";
 
-export type TriggerKind = "workflow";
+export type TriggerKind = "text" | "workflow";
 
 import { parsePositiveInteger } from "@elizaos/shared";
 import { CronExpressionParser } from "cron-parser";

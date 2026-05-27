@@ -308,8 +308,8 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       return true;
     }
     const requestedKind: TriggerKind = kindParsed?.ok ? kindParsed.kind : 'workflow';
-    let workflowId = parseNonEmptyString(body.workflowId);
-    let workflowName = parseNonEmptyString(body.workflowName);
+    const workflowId = parseNonEmptyString(body.workflowId);
+    const workflowName = parseNonEmptyString(body.workflowName);
     if (!workflowId) {
       error(res, "workflowId is required when kind is 'workflow'", 400);
       return true;

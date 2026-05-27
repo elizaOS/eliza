@@ -5170,6 +5170,119 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "GIT_PATHOLOGY",
+			description:
+				"Forensic git-history analysis for a path/glob surface. Returns peaks (peak quality moments), drift inflections (where rot started), and a post-mortem narrative. Use when the user asks 'when did this code get bad', 'where did rot start in X', or 'analyze git pathology for Y'. Operations (via `operation` param): report (default), list (show cached reports), trace (v2), diff (v2).",
+			parameters: [
+				{
+					name: "operation",
+					description:
+						"Which gitpathologist operation: report, list, trace (v2), diff (v2). Default: report.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["report", "trace", "diff", "list"],
+					},
+					descriptionCompressed:
+						"Which gitpathologist operation: report, list, trace (v2), diff (v2). Default: report.",
+				},
+				{
+					name: "surface",
+					description:
+						"Path or glob to analyze (relative to repo root). Required for operation=report|trace|diff.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Path or glob to analyze (relative to repo root). Required for operation=report|trace|diff.",
+				},
+				{
+					name: "since",
+					description:
+						"Lookback window. ISO date or relative (e.g. '14d', '4w'). Default '14d'.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Lookback window. ISO date or relative (e. g. '14d', '4w'). Default '14d'.",
+				},
+				{
+					name: "budget",
+					description: "Max LLM narration calls per analysis. Default 20.",
+					required: false,
+					schema: {
+						type: "integer",
+						minimum: 0,
+					},
+					descriptionCompressed:
+						"Max LLM narration calls per analysis. Default 20.",
+				},
+				{
+					name: "cache",
+					description:
+						"Cache policy: auto (default), force (recompute), read-only (fail on miss).",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["auto", "force", "read-only"],
+					},
+					descriptionCompressed:
+						"Cache policy: auto (default), force (recompute), read-only (fail on miss).",
+				},
+				{
+					name: "symptom",
+					description:
+						"Optional symptom/bug description for operation=trace (v2).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional symptom/bug description for operation=trace (v2).",
+				},
+				{
+					name: "compareTo",
+					description:
+						"Comparison target for operation=diff (v2). Surface or time window.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Comparison target for operation=diff (v2). Surface or time window.",
+				},
+			],
+			similes: [
+				"ANALYZE_GIT_PATHOLOGY",
+				"GIT_HEALTH",
+				"GIT_FORENSICS",
+				"PATHOLOGY_REPORT",
+				"CODE_HISTORY_HEALTH",
+				"WHERE_DID_ROT_START",
+			],
+			exampleCalls: [
+				{
+					user: "Use GIT_PATHOLOGY with the provided parameters.",
+					actions: ["GIT_PATHOLOGY"],
+					params: {
+						GIT_PATHOLOGY: {
+							operation: "report",
+							surface: "example",
+							since: "example",
+							budget: "example",
+							cache: "auto",
+							symptom: "example",
+							compareTo: "example",
+						},
+					},
+				},
+			],
+			descriptionCompressed:
+				"Forensic git-history analysis for a path/glob surface. Returns peaks (peak quality moments), drift inflections (where rot started), and a post-mortem...",
+		},
+		{
 			name: "GITHUB",
 			description:
 				"GitHub umbrella for pull requests, issues, and notification triage. Use action=pr_list/pr_review/issue_create/issue_assign/issue_close/issue_reopen/issue_comment/issue_label/notification_triage.",
