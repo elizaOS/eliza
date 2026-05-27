@@ -65,6 +65,30 @@ describe("parsePlannerOutput — PLAN_ACTIONS-in-text recovery (#7620)", () => {
 		expect(parsed.raw.textRecoverySource).toBeUndefined();
 	});
 
+	it("unwraps native PLAN_ACTIONS envelopes before action validation", () => {
+		const raw: GenerateTextResult = {
+			text: "",
+			finishReason: "tool-calls",
+			toolCalls: [
+				{
+					id: "call_1",
+					toolName: "PLAN_ACTIONS",
+					input: {
+						action: "TASKS_PROVISION_WORKSPACE",
+						parameters: { repo: "https://github.com/elizaOS/eliza" },
+						thought: "provisioning",
+					},
+				} as unknown as NonNullable<GenerateTextResult["toolCalls"]>[number],
+			],
+		};
+		const parsed = parsePlannerOutput(raw);
+		expect(parsed.toolCalls).toHaveLength(1);
+		expect(parsed.toolCalls[0]?.name).toBe("TASKS_PROVISION_WORKSPACE");
+		expect(parsed.toolCalls[0]?.params).toEqual({
+			repo: "https://github.com/elizaOS/eliza",
+		});
+	});
+
 	it("falls through to messageToUser when text is plain prose without an envelope", () => {
 		const raw: GenerateTextResult = {
 			text: "I'd be happy to help you with that task.",

@@ -33,6 +33,7 @@ const TIMEOUT_MIN_MS = 100;
 const TIMEOUT_MAX_MS = 600_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const STREAM_CAP_CHARS = 30_000;
+const USER_FACING_STDOUT_CAP_CHARS = 8_000;
 const SHELL_HISTORY_DEFAULT_LIMIT = 20;
 const URL_PREFIXES = ["https://", "http://"] as const;
 const SHELL_URL_METACHARS = new Set(["&", ";", "(", ")", "<", ">", "|"]);
@@ -794,6 +795,26 @@ function localStatusUserFacingText(args: {
   return undefined;
 }
 
+function isSafeSmallStdoutProjectionCommand(command: string): boolean {
+  const normalized = command.replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  return /^(?:(?:command\s+-v|pwd|ls|find|grep|rg)\b|git\s+(?:grep|status|branch|rev-parse|log|diff|show|ls-files)\b)/u.test(
+    normalized,
+  );
+}
+
+function safeSmallStdoutUserFacingText(args: {
+  command: string;
+  stdout: string;
+  stderr: string;
+}): string | undefined {
+  const stdout = args.stdout.trim();
+  if (!stdout || args.stderr.trim()) return undefined;
+  if (stdout.length > USER_FACING_STDOUT_CAP_CHARS) return undefined;
+  if (!isSafeSmallStdoutProjectionCommand(args.command)) return undefined;
+  return stdout;
+}
+
 function formatStreams(
   stdout: string,
   stderr: string,
@@ -1167,8 +1188,15 @@ export const shellAction: Action = {
         stdout: result.stdout,
       }) ??
       localResourceUserFacingText({ message, stdout: result.stdout }) ??
-      localStatusUserFacingText({ message, stdout: result.stdout });
-    return userFacingText ? { ...actionResult, userFacingText } : actionResult;
+      localStatusUserFacingText({ message, stdout: result.stdout }) ??
+      safeSmallStdoutUserFacingText({
+        command,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      });
+    return userFacingText
+      ? { ...actionResult, userFacingText, verifiedUserFacing: true }
+      : actionResult;
   },
   examples: [
     [
