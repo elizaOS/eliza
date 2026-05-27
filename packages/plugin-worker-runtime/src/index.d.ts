@@ -15,9 +15,29 @@
  * - {@link createWorkerRpcDispatcher} — worker-rpc handler
  */
 export { type BootstrapOptions, bootstrap } from "./bootstrap";
-export { type AnyHandler, buildAnnounceDescriptor, createHandlerRegistry, type HandlerEntry, type HandlerRegistry, type WorkerPluginShape, } from "./descriptor";
-export { createWorkerRpcDispatcher, type DispatchContext, } from "./dispatch";
-export { createDefaultChannel, createRequestIdAllocator, createSubprocessChannel, createWorkerChannel, type WorkerChannel, } from "./envelope";
+export {
+  type AnyHandler,
+  buildAnnounceDescriptor,
+  createHandlerRegistry,
+  type HandlerEntry,
+  type HandlerRegistry,
+  type WorkerPluginShape,
+} from "./descriptor";
+export { createWorkerRpcDispatcher, type DispatchContext } from "./dispatch";
+export {
+  createDefaultChannel,
+  createRequestIdAllocator,
+  createSubprocessChannel,
+  createWorkerChannel,
+  type WorkerChannel,
+} from "./envelope";
 export { fromWireError, toWireError, type WireError } from "./error";
-export { buildRuntimeProxyApi, RuntimeProxy, type RuntimeProxyApi, type RuntimeProxyMethod, type RuntimeProxyOptions, SUPPORTED_RUNTIME_METHODS, } from "./runtime-proxy";
+export {
+  buildRuntimeProxyApi,
+  RuntimeProxy,
+  type RuntimeProxyApi,
+  type RuntimeProxyMethod,
+  type RuntimeProxyOptions,
+  SUPPORTED_RUNTIME_METHODS,
+} from "./runtime-proxy";
 //# sourceMappingURL=index.d.ts.map

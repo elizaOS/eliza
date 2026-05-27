@@ -608,7 +608,8 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 			undefined,
 			{
 				actions: [TASKS_SPAWN_AGENT],
-				messageText: "spawn a sub-agent to build a complete Discord bot in Python",
+				messageText:
+					"spawn a sub-agent to build a complete Discord bot in Python",
 			},
 		);
 

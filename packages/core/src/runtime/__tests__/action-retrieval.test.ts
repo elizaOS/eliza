@@ -327,7 +327,8 @@ describe("action catalogue and retrieval", () => {
 			catalog,
 			messageText: "Can you find that in the chat again?",
 			candidateActions: ["SEARCH_MESSAGES"],
-			recentConversationText: "Build a small app and inspect the project files.",
+			recentConversationText:
+				"Build a small app and inspect the project files.",
 		});
 
 		expect(response.query.parentActionHints).toEqual(["MESSAGE"]);

@@ -1,5 +1,5 @@
-import type { Action, AgentContext, Provider } from "../types/components";
 import { FIRST_PARTY_CONTEXT_IDS } from "../runtime/context-normalization";
+import type { Action, AgentContext, Provider } from "../types/components";
 
 export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
 	NONE: ["general"],

@@ -226,7 +226,8 @@ export function retrieveActions(
 	const candidateActionsForSearch =
 		recentConversationText.length > 0
 			? candidateActions.filter(
-					(actionName) => parentAliasesForCandidateAction(actionName).length > 0,
+					(actionName) =>
+						parentAliasesForCandidateAction(actionName).length > 0,
 				)
 			: candidateActions;
 	const queryText = [

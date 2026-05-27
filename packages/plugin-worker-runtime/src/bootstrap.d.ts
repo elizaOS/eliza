@@ -19,12 +19,12 @@ import { type WorkerPluginShape } from "./descriptor";
 import { type WorkerChannel } from "./envelope";
 /** Options accepted by {@link bootstrap}. */
 export interface BootstrapOptions {
-    /** Override the message transport. Defaults to a Worker channel. */
-    channel?: WorkerChannel;
-    /** Override the host-rpc timeout. Default: no timeout. */
-    runtimeRpcTimeoutMs?: number;
-    /** Optional plugin config map passed to `plugin.init` if present. */
-    initConfig?: Record<string, string>;
+  /** Override the message transport. Defaults to a Worker channel. */
+  channel?: WorkerChannel;
+  /** Override the host-rpc timeout. Default: no timeout. */
+  runtimeRpcTimeoutMs?: number;
+  /** Optional plugin config map passed to `plugin.init` if present. */
+  initConfig?: Record<string, string>;
 }
 /**
  * Bootstrap the remote-mode plugin.
@@ -35,5 +35,8 @@ export interface BootstrapOptions {
  *                 worker is in steady-state dispatch mode.
  * @param options  Transport overrides for testing.
  */
-export declare function bootstrap(plugin: WorkerPluginShape, options?: BootstrapOptions): Promise<void>;
+export declare function bootstrap(
+  plugin: WorkerPluginShape,
+  options?: BootstrapOptions,
+): Promise<void>;
 //# sourceMappingURL=bootstrap.d.ts.map

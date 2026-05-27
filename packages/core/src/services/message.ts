@@ -3328,17 +3328,17 @@ export function messageHandlerFromFieldResult(
 		!preferInlineCodeSnippetDirectReply;
 	const finalContexts =
 		preferCompleteDirectReply || preferInlineCodeSnippetDirectReply
-		? [SIMPLE_CONTEXT_ID]
-		: shouldPlan && initialPlanningContexts.length === 0
-			? Array.from(
-					new Set([
-						...routedContexts.filter(
-							(context) => context !== SIMPLE_CONTEXT_ID,
-						),
-						"general",
-					]),
-				)
-			: routedContexts;
+			? [SIMPLE_CONTEXT_ID]
+			: shouldPlan && initialPlanningContexts.length === 0
+				? Array.from(
+						new Set([
+							...routedContexts.filter(
+								(context) => context !== SIMPLE_CONTEXT_ID,
+							),
+							"general",
+						]),
+					)
+				: routedContexts;
 	// Refusal suppression for the planning path (elizaOS/eliza#7620). Mirrors
 	// the logic in `parseMessageHandlerOutput`: when the planner is about to
 	// run, a refusal-shaped `replyText` from a safety-tuned hosted model is
@@ -3994,7 +3994,10 @@ function stage1HitCompletionLimit(
 	);
 }
 
-function extractJsonStringField(text: string, fieldName: string): string | null {
+function extractJsonStringField(
+	text: string,
+	fieldName: string,
+): string | null {
 	const pattern = new RegExp(
 		`"${fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\s*:\\s*"`,
 		"u",

@@ -10,6 +10,8 @@ describe("resolveProviderContexts", () => {
 		]);
 		expect(resolveProviderContexts(actionStateProvider)).toContain("tasks");
 		expect(resolveProviderContexts(actionStateProvider)).toContain("code");
-		expect(resolveProviderContexts(actionStateProvider)).toContain("agent_internal");
+		expect(resolveProviderContexts(actionStateProvider)).toContain(
+			"agent_internal",
+		);
 	});
 });

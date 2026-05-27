@@ -9,12 +9,12 @@
 import type { RemotePluginWorkerMessage } from "@elizaos/plugin-remote-manifest";
 /** Minimal contract every transport must satisfy. */
 export interface WorkerChannel {
-    /** Post a message to the host. */
-    send(message: RemotePluginWorkerMessage): void;
-    /** Subscribe to host → worker messages. Returns an unsubscribe fn. */
-    onMessage(handler: (message: RemotePluginWorkerMessage) => void): () => void;
-    /** Stop accepting messages and free transport resources. */
-    close(): void;
+  /** Post a message to the host. */
+  send(message: RemotePluginWorkerMessage): void;
+  /** Subscribe to host → worker messages. Returns an unsubscribe fn. */
+  onMessage(handler: (message: RemotePluginWorkerMessage) => void): () => void;
+  /** Stop accepting messages and free transport resources. */
+  close(): void;
 }
 /**
  * Worker-thread message-port adapter. Uses `globalThis.postMessage` /
