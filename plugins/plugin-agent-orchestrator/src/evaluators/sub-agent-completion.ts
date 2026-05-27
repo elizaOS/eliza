@@ -19,7 +19,7 @@ const ORCHESTRATOR_CONTEXT_ID = "automation" as AgentContext;
 const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'`)\]*]+/g;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const FAILURE_MARKER_RE =
-  /\b(?:no files? found|no matching files?|no matches? found|found no files?|could not find|unable to find|nothing found)\b/i;
+  /\b(?:command not found|permission denied|no such file or directory|timed? out|timeout|exited with code|exit code [1-9]\d*|non[-\s]?zero exit|could not find|unable to find)\b/i;
 const POSITIVE_QUANTITATIVE_EVIDENCE_RE =
   /\b(?:found|located|matched|identified|listed|returned|there (?:are|were)|total(?:ed)?|count(?:\s+is)?|contains?)\s+(?:[1-9]\d*|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/i;
 

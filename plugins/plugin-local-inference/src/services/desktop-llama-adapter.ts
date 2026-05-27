@@ -1435,16 +1435,19 @@ export class DesktopLlamaAdapter {
 				this.ffi.ptr(owned),
 				owned.length,
 			);
+			if (!batch) {
+				throw new Error("[desktop-llama] prefill batch allocation failed");
+			}
 			try {
 				const rc = this.shim.eliza_llama_decode(ctx, batch);
 				if (rc !== 0) {
 					throw new Error(`[desktop-llama] prefill decode rc=${rc}`);
 				}
+				this.hasDecodedFlags[sess.ctxIdx] = true;
 			} finally {
 				this.shim.eliza_llama_batch_free(batch);
 			}
 		}
-		if (tokens.length > 0) this.hasDecodedFlags[sess.ctxIdx] = true;
 	}
 
 	private nextStep(

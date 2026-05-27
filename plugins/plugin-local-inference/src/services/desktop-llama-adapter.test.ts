@@ -94,6 +94,8 @@ function makeAdapterHarness(nBatch: number) {
 		binding: adapter.createBinding(),
 		decodeBatchSizes,
 		configuredBatchSizes,
+		llama,
+		shim,
 	};
 }
 
@@ -124,5 +126,53 @@ describe("DesktopLlamaAdapter prefill", () => {
 		expect(h.configuredBatchSizes).toContain(4);
 		expect(h.decodeBatchSizes).toEqual([4, 4, 1]);
 		h.binding.llmStreamClose(stream);
+	});
+
+	it("clears KV for the next session after a chunked prefill failure", () => {
+		const h = makeAdapterHarness(4);
+		h.shim.eliza_llama_decode
+			.mockReturnValueOnce(0)
+			.mockReturnValueOnce(-1)
+			.mockReturnValue(0);
+		const stream = h.binding.llmStreamOpen({
+			ctx: 50n,
+			config: {
+				maxTokens: 0,
+				temperature: 0,
+				topP: 1,
+				topK: 0,
+				repeatPenalty: 1,
+				slotId: 0,
+				promptCacheKey: null,
+				draftMin: 0,
+				draftMax: 0,
+				draftModelPath: null,
+			},
+		});
+
+		expect(() =>
+			h.binding.llmStreamPrefill({
+				stream,
+				tokens: new Int32Array([1, 2, 3, 4, 5]),
+			}),
+		).toThrow("[desktop-llama] prefill decode rc=-1");
+		h.binding.llmStreamClose(stream);
+
+		h.binding.llmStreamOpen({
+			ctx: 50n,
+			config: {
+				maxTokens: 0,
+				temperature: 0,
+				topP: 1,
+				topK: 0,
+				repeatPenalty: 1,
+				slotId: 0,
+				promptCacheKey: null,
+				draftMin: 0,
+				draftMax: 0,
+				draftModelPath: null,
+			},
+		});
+		expect(h.llama.llama_memory_clear).toHaveBeenCalledWith(4, true);
 	});
 });

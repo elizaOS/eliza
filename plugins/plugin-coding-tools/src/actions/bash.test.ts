@@ -116,8 +116,7 @@ function makeShellRouter(
     git: {
       status: async () => unavailableCapability("git", "git.status"),
       diff: async () => unavailableCapability("git", "git.diff"),
-      commandRun: async () =>
-        unavailableCapability("git", "git.command.run"),
+      commandRun: async () => unavailableCapability("git", "git.command.run"),
     },
     model: {
       status: async () => unavailableCapability("model", "model.status"),
@@ -168,7 +167,12 @@ describe("shellAction", () => {
   });
 
   it("runs a simple foreground command (echo hello)", async () => {
-    const { runtime } = await makeRuntime();
+    const router = makeShellRouter(async () => ({
+      output: "alpha.txt\nsecret",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
     const result = await shellAction.handler?.(
       runtime,
       makeMessage(),
@@ -773,10 +777,33 @@ describe("shellAction", () => {
 
       expect(result.success).toBe(true);
       expect(result.text).toContain("$ grep -n weather weather.txt");
-      expect(result.userFacingText).toBe(
-        "1:weather: clear\n2:weather: windy",
-      );
+      expect(result.userFacingText).toBe("1:weather: clear\n2:weather: windy");
       expect(result.verifiedUserFacing).toBe(true);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not verify compound stdout even when it starts with a safe command", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "shell-compound-"));
+    await fs.writeFile(path.join(tempDir, "alpha.txt"), "alpha", "utf8");
+    const { runtime } = await makeRuntime();
+
+    try {
+      for (const command of ["ls -1; printf secret", "pwd && printf secret"]) {
+        const result = await shellAction.handler?.(
+          runtime,
+          makeMessage(
+            "11111111-aaaa-bbbb-cccc-606060606060",
+            "show me the command output",
+          ),
+          undefined,
+          { command, cwd: tempDir },
+        );
+
+        expect(result.userFacingText).toBeUndefined();
+        expect(result.verifiedUserFacing).toBeUndefined();
+      }
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true });
     }

@@ -446,9 +446,34 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
   });
 
-  it("does not use fabricated quantitative replies when completion has a failure marker plus unrelated listing", async () => {
+  it("surfaces clean zero-result completions instead of re-querying the sub-agent", async () => {
     const context = makeContext({
-      text: "[sub-agent: source count (opencode) — task_complete]\n[tool output: Find matching source files]\nNo files found\n[/tool output]\n[tool output: List project root]\nREADME.md\npackage.json\ntsconfig.json\n[/tool output]\nNo files found for the requested source-file search. The project root contains unrelated files.",
+      text: "[sub-agent: source count (opencode) — task_complete]\n[tool output: Find matching source files]\nNo files found\n[/tool output]\nNo files found for the requested source-file search.",
+      messageHandler: {
+        plan: {
+          contexts: ["simple"],
+          reply: "I found 3 source files.",
+          requiresTool: false,
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply: "No files found for the requested source-file search.",
+      debug: [
+        "verified sub-agent completion has no concrete follow-up action; using direct reply",
+      ],
+    });
+  });
+
+  it("routes command failures back through TASKS for grounded follow-up", async () => {
+    const context = makeContext({
+      text: "[sub-agent: source count (opencode) — task_complete]\n[tool output: Find matching source files]\nrg: command not found\n[/tool output]\nThe search command failed with command not found.",
       messageHandler: {
         plan: {
           contexts: ["simple"],

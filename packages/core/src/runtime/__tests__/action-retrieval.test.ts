@@ -339,6 +339,8 @@ describe("action catalogue and retrieval", () => {
 		});
 		expect(searchMessagesAction.similes).toContain("SEARCH_MESSAGES");
 		expect(searchMessagesAction.similes).toContain("MESSAGE_SEARCH");
+		expect(searchMessagesAction.similes).toContain("SEARCH_CHAT");
+		expect(searchMessagesAction.similes).toContain("FIND_MESSAGES");
 	});
 
 	it("does not retrieve actions from context match alone", () => {

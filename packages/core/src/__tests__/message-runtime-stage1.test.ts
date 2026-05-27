@@ -317,6 +317,42 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("does not recover truncated action-planning envelopes as final replies", async () => {
+		const runtime = makeRuntime([
+			{
+				text: [
+					'{"shouldRespond":"RESPOND","contexts":["general"],',
+					'"replyText":"On it.",',
+					'"requiresTool":true,',
+					'"candidateActionNames":["TASKS_SPAWN_AGENT"],',
+					'"facts":[',
+				].join(""),
+				finishReason: "length",
+				usage: {
+					promptTokens: 100,
+					completionTokens: 2048,
+					totalTokens: 2148,
+				},
+			},
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "spawn a sub-agent to write a Python hello-world snippet",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.",
+			);
+		}
+	});
+
 	it("regenerates low-quality Stage 1 direct reply text outside the JSON envelope", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
@@ -1696,6 +1732,31 @@ android smoke model works`,
 				actions: [{ name: "TASKS" }],
 				messageText:
 					"Use the OpenCode coding sub-agent to build a tiny static app with index.html, style.css, app.js, and verify the public URL.",
+			},
+		);
+
+		expect(routed.plan.simple).toBe(false);
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.contexts).toContain("general");
+		expect(routed.plan.candidateActions).toEqual(["TASKS"]);
+	});
+
+	it("does not force direct snippet replies when the user explicitly asks for a sub-agent", () => {
+		const routed = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				intents: ["write snippet"],
+				replyText: "```python\nprint('hello world')\n```",
+				candidateActionNames: [],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [{ name: "TASKS" }],
+				messageText: "spawn a sub-agent to write a Python hello-world snippet",
 			},
 		);
 

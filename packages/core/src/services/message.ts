@@ -3459,6 +3459,7 @@ function shouldPreferInlineCodeSnippetDirectReply(args: {
 	candidateActions: readonly string[];
 	contexts: readonly string[];
 }): boolean {
+	if (looksLikeExplicitDelegationRequest(args.currentMessageText)) return false;
 	if (!looksLikeInlineCodeSnippetRequest(args.currentMessageText)) return false;
 	return hasOnlyWeakDirectReplyPlanningSignals(args);
 }
@@ -4027,19 +4028,73 @@ function extractJsonStringField(
 	return null;
 }
 
+function extractJsonStringArrayField(
+	text: string,
+	fieldName: string,
+): string[] {
+	const pattern = new RegExp(
+		`"${fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\s*:\\s*\\[([^\\]]*)\\]`,
+		"u",
+	);
+	const match = pattern.exec(text);
+	if (!match?.[1]) return [];
+	const values: string[] = [];
+	const itemPattern = /"((?:\\.|[^"\\])*)"/gu;
+	for (const item of match[1].matchAll(itemPattern)) {
+		try {
+			values.push(JSON.parse(`"${item[1]}"`) as string);
+		} catch {
+			return [];
+		}
+	}
+	return values;
+}
+
+function extractJsonBooleanField(
+	text: string,
+	fieldName: string,
+): boolean | null {
+	const pattern = new RegExp(
+		`"${fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\s*:\\s*(true|false)`,
+		"u",
+	);
+	const match = pattern.exec(text);
+	if (!match) return null;
+	return match[1] === "true";
+}
+
 function recoverStage1TruncatedMessageHandler(
 	raw: string | GenerateTextResult,
 ): MessageHandlerResult | null {
 	const text = getV5ModelText(raw);
 	const replyText = extractJsonStringField(text, "replyText")?.trim();
 	if (!replyText) return null;
+	const contexts = extractJsonStringArrayField(text, "contexts");
+	const candidateActions = extractJsonStringArrayField(
+		text,
+		"candidateActionNames",
+	);
+	const requiresTool = extractJsonBooleanField(text, "requiresTool");
+	const hasOnlySimpleContext =
+		contexts.length === 0 ||
+		contexts.every((context) => context === SIMPLE_CONTEXT_ID);
+	if (!hasOnlySimpleContext) return null;
+	if (candidateActions.length > 0) return null;
+	if (requiresTool === true) return null;
+	const strippedReply = stripReasoningBlocks(replyText);
+	if (
+		!looksLikeCompleteDirectReply(strippedReply) &&
+		!looksLikeInlineCodeSnippetRequest(strippedReply)
+	) {
+		return null;
+	}
 	return {
 		processMessage: "RESPOND",
 		thought:
 			"Stage 1 hit the completion limit; recovered a completed replyText field from the truncated envelope.",
 		plan: {
 			contexts: [SIMPLE_CONTEXT_ID],
-			reply: stripReasoningBlocks(replyText),
+			reply: strippedReply,
 			simple: true,
 			requiresTool: false,
 		},
@@ -6677,13 +6732,7 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 		return false;
 	}
 
-	const asksDelegation =
-		/\b(?:spawn|delegate|use|start|ask|have)\b[\s\S]{0,80}\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
-			normalized,
-		) ||
-		/\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b[\s\S]{0,80}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
-			normalized,
-		);
+	const asksDelegation = looksLikeExplicitDelegationRequest(normalized);
 	if (!asksDelegation && looksLikeInlineCodeSnippetRequest(normalized)) {
 		return false;
 	}
@@ -6695,6 +6744,18 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 			normalized,
 		);
 	return asksDelegation || asksCodingWork;
+}
+
+function looksLikeExplicitDelegationRequest(text: string): boolean {
+	const normalized = text.toLowerCase();
+	return (
+		/\b(?:spawn|delegate|use|start|ask|have)\b[\s\S]{0,80}\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b[\s\S]{0,80}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
+			normalized,
+		)
+	);
 }
 
 function looksLikeInlineCodeSnippetRequest(text: string): boolean {
