@@ -2068,7 +2068,7 @@ pipeline-check:
 pipeline-check-strict:
 	@$(PYTHON) scripts/pipeline_check.py --strict-formal
 
-strict-release-gate-test:
+strict-release-gate-test: synth cocotb cocotb-npu cocotb-contract cocotb-cross-domain cocotb-cpu verilator formal record-tool-versions
 	@$(PYTHON) scripts/test_strict_release_gates.py
 
 archive-release: pipeline-check

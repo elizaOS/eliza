@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,7 +14,7 @@ REPORT = ROOT / "build/reports/product_release_status.json"
 
 def run_product_check(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["python3", "scripts/product_check.py", *args],
+        [sys.executable, "scripts/product_check.py", *args],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,
