@@ -102,7 +102,9 @@ module e1_fdip_l1i_prefetcher
             automatic logic [POLLUTION_COUNT_W-1:0] weak_pollution_next;
             automatic logic accepted_weak;
 
-            queue_next = '{default: ftq_prefetch_req_zero()};
+            for (int unsigned i = 0; i < QUEUE_DEPTH; i++) begin
+                queue_next[i] = ftq_prefetch_req_zero();
+            end
             count_next = '0;
             recent_line_next = recent_line_q;
             recent_valid_next = recent_valid_q;

@@ -193,7 +193,7 @@ def main() -> None:
         sys.exit(1)
 
     n_dropped = sum(drops.values())
-    print(f"\nSummary:")
+    print("\nSummary:")
     print(f"  Converted : {len(records)}")
     print(f"  Dropped   : {n_dropped}")
     if drops:

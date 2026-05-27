@@ -371,7 +371,7 @@ def test_plan_bundle_blocks_harness_eval_missing_from_evidence_and_checksums(
 
 
 def test_plan_bundle_accepts_0_8b_mtp_weight_claim(tmp_path: Path):
-    bundle = _write_bundle(tmp_path, "0_8b")
+    _write_bundle(tmp_path, "0_8b")
 
     plan = P.plan_bundle(tmp_path, "0_8b")
 

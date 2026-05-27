@@ -214,7 +214,7 @@ def analyze_overfitting(results: list[dict]):
     # Check response length variance
     lengths = [len(r) for r in responses]
     avg_len = sum(lengths) / len(lengths)
-    len_std = (sum((l - avg_len) ** 2 for l in lengths) / len(lengths)) ** 0.5
+    len_std = (sum((length - avg_len) ** 2 for length in lengths) / len(lengths)) ** 0.5
     cv = len_std / max(avg_len, 1)
     if cv < 0.1:
         print(
@@ -317,7 +317,7 @@ async def main_async(args):
                         "agent_name": agent_name,
                     }
                 )
-            except Exception as e:
+            except Exception:
                 pass
         if experiences:
             team.train_on_batch(experiences)

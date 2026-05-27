@@ -25,6 +25,7 @@ Usage:
         # Run training...
 """
 
+import importlib.util
 import logging
 import os
 import shutil
@@ -548,9 +549,7 @@ def check_prerequisites() -> list[str]:
     if not shutil.which("run-api"):
         errors.append("Atropos API not found. Install with: pip install atroposlib")
 
-    try:
-        import vllm
-    except ImportError:
+    if importlib.util.find_spec("vllm") is None:
         errors.append("vLLM not installed. Install with: pip install vllm")
 
     try:

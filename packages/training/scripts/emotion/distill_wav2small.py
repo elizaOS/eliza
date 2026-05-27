@@ -356,7 +356,6 @@ def build_student() -> Any:
             import torch.nn.functional as F
 
             n_fft = self.N_FFT
-            hop = self.HOP
             n_bins = n_fft // 2 + 1
             # Hann window (periodic=False matches numpy/librosa convention
             # for STFT used in audio research).

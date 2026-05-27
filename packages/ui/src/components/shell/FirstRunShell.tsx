@@ -236,7 +236,7 @@ function FirstRunVoiceControl(props: {
         aria-label={
           props.voice.listening ? "Stop voice input" : "Start voice input"
         }
-        className="inline-flex min-h-11 min-w-[8.5rem] items-center justify-center bg-transparent px-2 py-2 text-sm font-semibold text-[#0B35F1] transition hover:text-[#082ed6] focus-visible:outline-none focus-visible:underline"
+        className="inline-flex min-h-11 min-w-[8.5rem] items-center justify-center bg-transparent px-2 py-2 text-sm font-semibold text-[#0B35F1] transition [text-shadow:0_2px_8px_rgba(11,53,241,0.16)] hover:text-[#082ed6] focus-visible:outline-none focus-visible:underline"
       >
         {buttonLabel}
       </button>

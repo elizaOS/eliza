@@ -164,8 +164,7 @@ class MultiAgentOrchestrator:
         )
         await self.bridge.__aenter__()
 
-        # Initialize the game
-        init_result = await self.bridge.initialize(
+        await self.bridge.initialize(
             num_npcs=self.config.num_npcs,
             seed=self.config.game_seed,
             archetypes=[a.config.agent_archetype for a in self.agents],
@@ -286,8 +285,7 @@ class MultiAgentOrchestrator:
                 f"with copy of {strong.agent_id} (delight={strong.cumulative_delight:.2f})"
             )
 
-            # Save strong agent's checkpoint, then load it into weak agent
-            ckpt_path = strong.save_checkpoint(tag=f"pbt_source_{self.global_tick}")
+            strong.save_checkpoint(tag=f"pbt_source_{self.global_tick}")
 
             # Copy weights
             if weak.model is not None and strong.model is not None:

@@ -40,11 +40,10 @@ import json
 import logging
 import random
 import re
-import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
 import soundfile as sf
@@ -136,12 +135,12 @@ def _existing_state(out_dir: Path) -> dict[str, Any]:
                 existing_manifest.append(json.loads(line))
 
     existing_train = (
-        [l for l in train_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        [line for line in train_path.read_text(encoding="utf-8").splitlines() if line.strip()]
         if train_path.exists()
         else []
     )
     existing_val = (
-        [l for l in val_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        [line for line in val_path.read_text(encoding="utf-8").splitlines() if line.strip()]
         if val_path.exists()
         else []
     )
