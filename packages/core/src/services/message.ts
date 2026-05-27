@@ -3310,9 +3310,21 @@ export function messageHandlerFromFieldResult(
 			candidateActions: effectiveCandidateActions,
 			contexts: routedContexts,
 		});
+	const preferInlineCodeSnippetDirectReply =
+		!preemptDirect &&
+		requestedPlanning &&
+		shouldPreferInlineCodeSnippetDirectReply({
+			currentMessageText,
+			candidateActions: effectiveCandidateActions,
+			contexts: routedContexts,
+		});
 	const shouldPlan =
-		!preemptDirect && requestedPlanning && !preferCompleteDirectReply;
-	const finalContexts = preferCompleteDirectReply
+		!preemptDirect &&
+		requestedPlanning &&
+		!preferCompleteDirectReply &&
+		!preferInlineCodeSnippetDirectReply;
+	const finalContexts =
+		preferCompleteDirectReply || preferInlineCodeSnippetDirectReply
 		? [SIMPLE_CONTEXT_ID]
 		: shouldPlan && initialPlanningContexts.length === 0
 			? Array.from(
@@ -3336,7 +3348,11 @@ export function messageHandlerFromFieldResult(
 		simple: preemptDirect ? true : !shouldPlan,
 		requiresTool: shouldPlan,
 	};
-	if (!preferCompleteDirectReply && effectiveCandidateActions.length > 0) {
+	if (
+		!preferCompleteDirectReply &&
+		!preferInlineCodeSnippetDirectReply &&
+		effectiveCandidateActions.length > 0
+	) {
 		plan.candidateActions = effectiveCandidateActions;
 	}
 	const extract =
@@ -3433,6 +3449,15 @@ function shouldPreferCompleteDirectReply(args: {
 		looksLikeActionExplanationRequest(normalized) ||
 		looksLikeCreativeWritingRequest(normalized)
 	);
+}
+
+function shouldPreferInlineCodeSnippetDirectReply(args: {
+	currentMessageText: string;
+	candidateActions: readonly string[];
+	contexts: readonly string[];
+}): boolean {
+	if (!looksLikeInlineCodeSnippetRequest(args.currentMessageText)) return false;
+	return hasOnlyWeakDirectReplyPlanningSignals(args);
 }
 
 const WEAK_DIRECT_REPLY_OVERRIDE_ACTIONS = new Set(
@@ -5497,6 +5522,7 @@ async function recordMessageHandlerStage(args: {
 				response: responseText,
 				toolCalls: extractMessageHandlerToolCalls(args.raw),
 				usage,
+				finishReason: getStage1FinishReason(args.raw) || undefined,
 			},
 			cache: args.prefixHash
 				? {
@@ -6652,6 +6678,9 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 		/\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b[\s\S]{0,80}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
 			normalized,
 		);
+	if (!asksDelegation && looksLikeInlineCodeSnippetRequest(normalized)) {
+		return false;
+	}
 	const asksCodingWork =
 		/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b[\s\S]{0,160}\b(?:app|site|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/iu.test(
 			normalized,
@@ -6660,6 +6689,29 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 			normalized,
 		);
 	return asksDelegation || asksCodingWork;
+}
+
+function looksLikeInlineCodeSnippetRequest(text: string): boolean {
+	const normalized = text.toLowerCase();
+	if (
+		/\b(?:file|files|repo|repository|project|app|site|page|backend|frontend|deploy|build|run|execute|install|test|verify|fix|edit|modify|save|write\s+(?:to|in)\s+(?:\/|\.\/|[a-z]:\\))\b/iu.test(
+			normalized,
+		)
+	) {
+		return false;
+	}
+	const asksForSnippet =
+		/\b(?:write|give me|show me|generate|provide|create|make)\b[\s\S]{0,80}\b(?:code block|snippet|function|class|method|example|program|one[- ]?liner|hello world|fibonacci)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:code block|snippet|function|class|method|example|program|one[- ]?liner|hello world|fibonacci)\b[\s\S]{0,80}\b(?:in|using|for)\s+(?:python|javascript|typescript|java|go|rust|ruby|bash|shell|c\+\+|c#|c\b|php|swift|kotlin)\b/iu.test(
+			normalized,
+		);
+	const hasSmallScope =
+		/\b(?:hello world|fibonacci|fib|single|simple|short|small|tiny|example|snippet|function|code block|one[- ]?liner|\d+\s*[- ]?line)\b/iu.test(
+			normalized,
+		);
+	return asksForSnippet && hasSmallScope;
 }
 
 function looksLikeCreativeWritingRequest(text: string): boolean {
