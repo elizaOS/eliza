@@ -9,7 +9,6 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "viewer" / "chip-viewer-data.json"
 
@@ -44,12 +43,10 @@ def first_paragraph_after(needle: str, text: str) -> str:
 
 def load_ariane_reference() -> dict[str, Any]:
     placement = maybe_json(
-        "build/ai_eda/chipbench_d/validation/records/"
-        "chipbench-d-ariane133-placement-case.json"
+        "build/ai_eda/chipbench_d/validation/records/chipbench-d-ariane133-placement-case.json"
     )
     bundle = maybe_json(
-        "build/ai_eda/chipbench_d/validation/records/"
-        "chipbench-d-ariane133-design-bundle.json"
+        "build/ai_eda/chipbench_d/validation/records/chipbench-d-ariane133-design-bundle.json"
     )
     movable = placement.get("movable_objects", [])
     macros = Counter(item.get("macro_name", "unknown") for item in movable)
@@ -176,7 +173,9 @@ def main() -> None:
             "top": "e1_soc_top",
             "rtl_top_path": "rtl/top/e1_soc_top.sv",
             "npu_top_path": "rtl/npu/e1_npu.sv",
-            "current_boundary": first_paragraph_after("This block is not a phone-class accelerator.", npu_doc),
+            "current_boundary": first_paragraph_after(
+                "This block is not a phone-class accelerator.", npu_doc
+            ),
             "cpu_note": "E1 little core adopts CVA6/Ariane; E1 mid-core evidence is separate XS-GEM5 Kunminghu simulation.",
         },
         "layout": {
@@ -199,18 +198,52 @@ def main() -> None:
                 ["Display", "Interrupts"],
             ],
             "mmio_map": [
-                {"region": "bootrom", "base": "0x0000_0000", "source": "rtl/peripherals/e1_mmio_decode.sv"},
-                {"region": "peripherals", "base": "0x1000_0000", "source": "rtl/peripherals/e1_mmio_decode.sv"},
-                {"region": "dma", "base": "0x1001_0000", "source": "rtl/peripherals/e1_mmio_decode.sv"},
-                {"region": "npu", "base": "0x1002_0000", "source": "rtl/peripherals/e1_mmio_decode.sv"},
-                {"region": "display", "base": "0x1003_0000", "source": "rtl/peripherals/e1_mmio_decode.sv"},
-                {"region": "wbuf", "base": "0x1004_0000", "source": "rtl/peripherals/e1_mmio_decode.sv"},
-                {"region": "clint", "base": "0x0200_0000", "source": "rtl/peripherals/e1_mmio_decode.sv"},
-                {"region": "dram", "base": "0x8000_0000", "source": "rtl/peripherals/e1_mmio_decode.sv"},
+                {
+                    "region": "bootrom",
+                    "base": "0x0000_0000",
+                    "source": "rtl/peripherals/e1_mmio_decode.sv",
+                },
+                {
+                    "region": "peripherals",
+                    "base": "0x1000_0000",
+                    "source": "rtl/peripherals/e1_mmio_decode.sv",
+                },
+                {
+                    "region": "dma",
+                    "base": "0x1001_0000",
+                    "source": "rtl/peripherals/e1_mmio_decode.sv",
+                },
+                {
+                    "region": "npu",
+                    "base": "0x1002_0000",
+                    "source": "rtl/peripherals/e1_mmio_decode.sv",
+                },
+                {
+                    "region": "display",
+                    "base": "0x1003_0000",
+                    "source": "rtl/peripherals/e1_mmio_decode.sv",
+                },
+                {
+                    "region": "wbuf",
+                    "base": "0x1004_0000",
+                    "source": "rtl/peripherals/e1_mmio_decode.sv",
+                },
+                {
+                    "region": "clint",
+                    "base": "0x0200_0000",
+                    "source": "rtl/peripherals/e1_mmio_decode.sv",
+                },
+                {
+                    "region": "dram",
+                    "base": "0x8000_0000",
+                    "source": "rtl/peripherals/e1_mmio_decode.sv",
+                },
             ],
             "rtl_signals": {
                 "npu_irq_wired": "irq_npu" in soc_rtl,
-                "npu_axi_lite_master": all(token in npu_rtl for token in ["m_axil_awvalid", "m_axil_arvalid"]),
+                "npu_axi_lite_master": all(
+                    token in npu_rtl for token in ["m_axil_awvalid", "m_axil_arvalid"]
+                ),
                 "mmio_decode_mentions_npu": "npu_sel" in mmio_decode,
             },
         },

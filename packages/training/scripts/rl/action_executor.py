@@ -442,7 +442,6 @@ class ActionExecutor:
             )
 
         # Close position
-        pnl = position.get("pnl", 0)
         del self.portfolio.positions[position_id]
         self.portfolio.trade_count += 1
 
@@ -453,6 +452,7 @@ class ActionExecutor:
             message=f"Closed position in {market_id}",
             market_id=market_id,
             side=side,
+            size=amount,
             new_balance=self.portfolio.balance,
             new_positions=self.portfolio.position_count,
         )
@@ -550,9 +550,6 @@ class ActionExecutor:
                 message=f"No position found for {ticker}",
             )
 
-        position = self.portfolio.positions[position_id]
-        pnl = position.get("pnl", 0)
-
         # Close position
         del self.portfolio.positions[position_id]
         self.portfolio.trade_count += 1
@@ -563,6 +560,7 @@ class ActionExecutor:
             pnl=0,  # P&L was realized on open
             message=f"Closed {ticker} position",
             ticker=ticker,
+            size=size,
             new_balance=self.portfolio.balance,
             new_positions=self.portfolio.position_count,
         )

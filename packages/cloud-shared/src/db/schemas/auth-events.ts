@@ -1,4 +1,5 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 /**
@@ -27,9 +28,13 @@ export const authEvents = pgTable(
     request_id: text("request_id"),
     org_id: text("org_id"),
     metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    expires_at: timestamp("expires_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now() + interval '7 years'`),
   },
   (table) => ({
     ts_idx: index("auth_events_ts_idx").on(table.ts),
+    expires_at_idx: index("auth_events_expires_at_idx").on(table.expires_at),
     actor_idx: index("auth_events_actor_idx").on(table.actor_type, table.actor_id),
     action_idx: index("auth_events_action_idx").on(table.action),
     org_idx: index("auth_events_org_idx").on(table.org_id),

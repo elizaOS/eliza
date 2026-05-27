@@ -25,7 +25,19 @@ import path from "node:path";
 import { BrowserWindow } from "electrobun/bun";
 import { getBrandConfig } from "../brand-config";
 import { DEFAULT_API_PORT } from "../constants";
+import { logger } from "../logger";
 import type { SendToWebview, WebviewEvalRpc } from "../types.js";
+
+function screenCaptureErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function warnScreenCapture(
+  message: string,
+  context: Record<string, unknown>,
+): void {
+  logger.warn(`[ScreenCapture] ${message}`, context);
+}
 
 /**
  * Allow-list for game-capture URLs.
@@ -42,7 +54,11 @@ function isAllowedCaptureUrl(url: string): boolean {
       parsed.hostname === "127.0.0.1" ||
       parsed.protocol === "file:"
     );
-  } catch {
+  } catch (err) {
+    warnScreenCapture("Invalid capture URL", {
+      url,
+      error: screenCaptureErrorMessage(err),
+    });
     return false;
   }
 }
@@ -130,7 +146,14 @@ $bmp.Dispose()`;
               stderr: "ignore",
             });
           }
-        } catch {
+        } catch (err) {
+          logger.debug(
+            "[ScreenCapture] scrot screenshot failed; trying import",
+            {
+              error: screenCaptureErrorMessage(err),
+              tmpPath,
+            },
+          );
           proc = Bun.spawn(["import", "-window", "root", tmpPath], {
             stdout: "ignore",
             stderr: "ignore",
@@ -150,13 +173,22 @@ $bmp.Dispose()`;
 
       const data = fs.readFileSync(actualPath).toString("base64");
       return { available: true, data: `data:image/png;base64,${data}` };
-    } catch {
+    } catch (err) {
+      warnScreenCapture("Screenshot capture failed", {
+        error: screenCaptureErrorMessage(err),
+        tmpPath,
+      });
       return { available: false };
     } finally {
       for (const p of [tmpPath, `${tmpPath}.png`]) {
         try {
           if (fs.existsSync(p)) fs.unlinkSync(p);
-        } catch {}
+        } catch (err) {
+          logger.debug("[ScreenCapture] Screenshot temp cleanup failed", {
+            path: p,
+            error: screenCaptureErrorMessage(err),
+          });
+        }
       }
     }
   }
@@ -186,13 +218,24 @@ $bmp.Dispose()`;
           const data = fs.readFileSync(actualPath).toString("base64");
           return { available: true, data: `data:image/png;base64,${data}` };
         }
-      } catch {
-        // Fall through to full-screen capture
+      } catch (err) {
+        warnScreenCapture(
+          "Window capture failed; falling back to full screen",
+          {
+            windowId: options.windowId,
+            error: screenCaptureErrorMessage(err),
+          },
+        );
       } finally {
         for (const p of [tmpPath, `${tmpPath}.png`]) {
           try {
             if (fs.existsSync(p)) fs.unlinkSync(p);
-          } catch {}
+          } catch (err) {
+            logger.debug("[ScreenCapture] Window capture temp cleanup failed", {
+              path: p,
+              error: screenCaptureErrorMessage(err),
+            });
+          }
         }
       }
     }
@@ -246,7 +289,11 @@ $bmp.Dispose()`;
         };
       }
       return { available: true };
-    } catch {
+    } catch (err) {
+      warnScreenCapture("Screen recording failed to start", {
+        outputPath,
+        error: screenCaptureErrorMessage(err),
+      });
       this.recordingProc = null;
       this.recordingPath = null;
       this.recordingStart = null;
@@ -263,7 +310,11 @@ $bmp.Dispose()`;
     try {
       this.recordingProc.kill("SIGTERM");
       await this.recordingProc.exited;
-    } catch {}
+    } catch (err) {
+      logger.debug("[ScreenCapture] Recording process stop failed", {
+        error: screenCaptureErrorMessage(err),
+      });
+    }
 
     this.recordingProc = null;
     this.recordingPaused = false;
@@ -288,7 +339,10 @@ $bmp.Dispose()`;
       this.recordingProc.kill("SIGSTOP");
       this.recordingPaused = true;
       return { available: true };
-    } catch {
+    } catch (err) {
+      warnScreenCapture("Screen recording pause failed", {
+        error: screenCaptureErrorMessage(err),
+      });
       return { available: false };
     }
   }
@@ -301,7 +355,10 @@ $bmp.Dispose()`;
       this.recordingProc.kill("SIGCONT");
       this.recordingPaused = false;
       return { available: true };
-    } catch {
+    } catch (err) {
+      warnScreenCapture("Screen recording resume failed", {
+        error: screenCaptureErrorMessage(err),
+      });
       return { available: false };
     }
   }
@@ -422,7 +479,14 @@ $bmp.Dispose()`;
                 stderr: "ignore",
               });
             }
-          } catch {
+          } catch (err) {
+            logger.debug(
+              "[ScreenCapture] scrot frame capture failed; trying import",
+              {
+                error: screenCaptureErrorMessage(err),
+                tmpPath,
+              },
+            );
             proc = Bun.spawn(["import", "-window", "root", tmpPath], {
               stdout: "ignore",
               stderr: "ignore",
@@ -449,16 +513,27 @@ $bmp.Dispose()`;
           method: "POST",
           headers: { "Content-Type": "image/jpeg" },
           body,
-        }).catch(() => {});
-      } catch {
-        // Skip frame on error
+        }).catch((err: unknown) => {
+          logger.debug("[ScreenCapture] Frame upload failed", {
+            endpoint,
+            error: screenCaptureErrorMessage(err),
+          });
+        });
+      } catch (err) {
+        logger.debug("[ScreenCapture] Frame capture skipped", {
+          error: screenCaptureErrorMessage(err),
+          tmpPath,
+        });
       } finally {
         // Clean up temp file (handle both possible paths from screencapture)
         for (const p of [tmpPath, `${tmpPath}.jpg`]) {
           try {
             if (fs.existsSync(p)) fs.unlinkSync(p);
-          } catch {
-            // Ignore cleanup errors
+          } catch (err) {
+            logger.debug("[ScreenCapture] Frame temp cleanup failed", {
+              path: p,
+              error: screenCaptureErrorMessage(err),
+            });
           }
         }
         skipping = false;
@@ -543,9 +618,16 @@ $bmp.Dispose()`;
             method: "POST",
             headers: { "Content-Type": "image/jpeg" },
             body,
-          }).catch(() => {});
-        } catch {
-          // Skip frame
+          }).catch((err: unknown) => {
+            logger.debug("[ScreenCapture] Game frame upload failed", {
+              endpoint,
+              error: screenCaptureErrorMessage(err),
+            });
+          });
+        } catch (err) {
+          logger.debug("[ScreenCapture] Game frame capture skipped", {
+            error: screenCaptureErrorMessage(err),
+          });
         } finally {
           skipping = false;
         }
@@ -581,7 +663,11 @@ $bmp.Dispose()`;
     if (this.frameCaptureWindow) {
       try {
         this.frameCaptureWindow.close();
-      } catch {}
+      } catch (err) {
+        warnScreenCapture("Frame capture window close failed", {
+          error: screenCaptureErrorMessage(err),
+        });
+      }
       this.frameCaptureWindow = null;
     }
 
@@ -611,7 +697,11 @@ $bmp.Dispose()`;
       const base64 = options.data.replace(/^data:[^;]+;base64,/, "");
       fs.writeFileSync(filePath, Buffer.from(base64, "base64"));
       return { available: true, path: filePath };
-    } catch {
+    } catch (err) {
+      warnScreenCapture("Saving screenshot failed", {
+        filename: options.filename ?? null,
+        error: screenCaptureErrorMessage(err),
+      });
       return { available: false };
     }
   }
@@ -635,7 +725,11 @@ $bmp.Dispose()`;
     if (this.recordingProc) {
       try {
         this.recordingProc.kill("SIGTERM");
-      } catch {}
+      } catch (err) {
+        logger.debug("[ScreenCapture] Recording process dispose failed", {
+          error: screenCaptureErrorMessage(err),
+        });
+      }
       this.recordingProc = null;
       this.recordingPath = null;
       this.recordingStart = null;

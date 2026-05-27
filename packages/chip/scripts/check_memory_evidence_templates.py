@@ -17,6 +17,7 @@ PROCESS_EFFECTS_CONTRACT_PATH = "docs/spec-db/process-14a-effects.yaml"
 TEMPLATE = ROOT / "docs/evidence/memory/templates/bandwidth-latency-contended-access.template.json"
 UMA_GATE = ROOT / "docs/evidence/memory/uma-dram-evidence-gate.yaml"
 DRAM_SIM_EVIDENCE = ROOT / "docs/evidence/memory/dram_sim_evidence.yaml"
+DRAMSIM_REPORT_ARCHIVE_DIR = "docs/evidence/memory/dramsim-reports"
 
 REAL_REPORT_CANDIDATES = (
     ROOT / "docs/evidence/memory/lpddr_bandwidth_latency_benchmark_report.json",
@@ -492,7 +493,7 @@ def validate_dramsim_aggregate(errors: list[str], path: Path = DRAM_SIM_EVIDENCE
         )
         if isinstance(report_paths, list):
             expected_paths = {
-                f"build/reports/memory/dramsim3_{sku_id}_{workload}.json"
+                f"{DRAMSIM_REPORT_ARCHIVE_DIR}/dramsim3_{sku_id}_{workload}.json"
                 for workload in DRAMSIM_WORKLOADS
             }
             actual_paths = {item for item in report_paths if isinstance(item, str)}

@@ -69,6 +69,23 @@ describe("startup shell assets", () => {
     expect(bootstrapShell).not.toContain("blur-[");
   });
 
+  it("keeps the loading shell on the elizaOS white and blue startup surface", () => {
+    const source = readFileSync(
+      resolve(repoRoot, "packages/ui/src/components/shell/StartupShell.tsx"),
+      "utf8",
+    );
+
+    const loadingShell = source.slice(
+      source.indexOf("function StartupLoading"),
+      source.indexOf("function BootstrapGateShell"),
+    );
+    expect(loadingShell).toContain("bg-[#F7F9FF]");
+    expect(loadingShell).toContain("text-[#0B35F1]");
+    expect(loadingShell).not.toContain("bg-black");
+    expect(loadingShell).not.toContain("radial-gradient");
+    expect(loadingShell).not.toContain("blur-[");
+  });
+
   it("keeps the startup failure shell on the elizaOS white and blue surface", () => {
     const source = readFileSync(
       resolve(
@@ -84,5 +101,18 @@ describe("startup shell assets", () => {
     expect(source).not.toContain("text-danger");
     expect(source).not.toContain('variant="danger"');
     expect(source).not.toContain("radial-gradient");
+  });
+
+  it("keeps the first-run shell on the elizaOS white and blue surface", () => {
+    const source = readFileSync(
+      resolve(repoRoot, "packages/ui/src/components/shell/FirstRunShell.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("bg-[#F7F9FF]");
+    expect(source).toContain("text-[#0B35F1]");
+    expect(source).not.toContain("bg-black");
+    expect(source).not.toContain("radial-gradient");
+    expect(source).not.toContain("blur-[");
   });
 });

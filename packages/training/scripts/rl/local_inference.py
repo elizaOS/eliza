@@ -4,7 +4,7 @@ import gc
 import inspect
 import re
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 BackendName = Literal["mlx", "cuda", "cpu"]
 CacheImplementation = Literal["dynamic", "turboquant"]
@@ -13,6 +13,9 @@ ROLE_ARTIFACT_PATTERN = re.compile(
 )
 THINK_TAG_PATTERN = re.compile(r"<think>([\s\S]*?)</think>", re.I)
 THOUGHT_TAG_PATTERN = re.compile(r"<thought>([\s\S]*?)</thought>", re.I)
+
+if TYPE_CHECKING:
+    from .turboquant import TurboQuantSettings
 
 
 def format_messages_as_text(

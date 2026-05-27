@@ -26,6 +26,12 @@ def run_check(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 class PhysicalGateTests(unittest.TestCase):
+    def test_openlane_pd_blocker_summary_resolves_container_work_root(self) -> None:
+        self.assertEqual(
+            openlane_pd_blocker_summary.repo_root_for(Path("/work")),
+            Path("/work"),
+        )
+
     def test_scaffold_gates_pass(self) -> None:
         commands = [
             ("scripts/check_package_cross_probe.py",),
@@ -39,10 +45,13 @@ class PhysicalGateTests(unittest.TestCase):
                 result = run_check(*command)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_openlane_preflight_scaffold_has_current_diagnostic_run(self) -> None:
+    def test_openlane_preflight_scaffold_reports_blocked_without_run_evidence(self) -> None:
         result = run_check("scripts/check_openlane_run_preflight.py")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("STATUS: PASS openlane_run_preflight", result.stdout)
+        self.assertIn("STATUS: BLOCKED openlane_run_preflight", result.stdout)
+        self.assertIn(
+            "OpenLane configs are present; run/image evidence is still blocked.", result.stdout
+        )
 
     def test_openlane_preflight_writes_mode_specific_reports(self) -> None:
         normal_report = ROOT / "build/reports/openlane_run_preflight.json"
@@ -90,11 +99,12 @@ class PhysicalGateTests(unittest.TestCase):
         self.assertEqual(report["schema"], "eliza.openlane_pd_blocker_summary.v1")
         self.assertFalse(report["summary"]["release_ready"])
         self.assertFalse(report["summary"]["release_credit"])
-        self.assertGreater(report["summary"]["magic__drc_error__count"], 0)
-        self.assertIn(
-            "magic_drc_blocked",
-            {finding["code"] for finding in report["findings"]},
-        )
+        finding_codes = {finding["code"] for finding in report["findings"]}
+        if report["summary"].get("complete_run_found"):
+            self.assertGreater(report["summary"]["magic__drc_error__count"], 0)
+            self.assertIn("magic_drc_blocked", finding_codes)
+        else:
+            self.assertIn("openlane_no_complete_pd_run", finding_codes)
 
     def test_openlane_pd_blocker_summary_reports_signoff_artifact_handoff_gap(
         self,
@@ -556,7 +566,7 @@ class PhysicalGateTests(unittest.TestCase):
             report_path.parent.mkdir(parents=True)
             report_path.write_text("", encoding="utf-8")
 
-            package_relative = run_dir.relative_to(ROOT.parents[1])
+            package_relative = run_dir.relative_to(openlane_pd_blocker_summary.REPO_ROOT)
             report = openlane_pd_blocker_summary.build_report(
                 run_dir=package_relative,
                 process_table="",

@@ -1,0 +1,33 @@
+{
+  "schema": "eliza.memory.dram_sim_sweep.v1",
+  "status": "simulator_only",
+  "evidence_class": "dramsim3_behavioral_simulation",
+  "backend": "dramsim3",
+  "captured_utc": "2026-05-23T07:43:00Z",
+  "standard": "LPDDR6-14400",
+  "data_rate_mtps": 14400,
+  "bus_width_bits": 96,
+  "channels": 4,
+  "bits_per_channel": 24,
+  "capacity_gib": 24,
+  "peak_bandwidth_gbps": 172.8,
+  "workload": "pointer_chase",
+  "simulated_total_bandwidth_gbps": 27.65,
+  "simulated_p95_latency_ns": 32.92,
+  "simulator_only_note": "DRAMSim3 behavioural-model archive. Cannot satisfy the phone-class real-target bandwidth gate in docs/evidence/memory/uma-dram-evidence-gate.yaml.",
+  "claim_boundary": "DRAMSim3 behavioural simulation only; not physical LPDDR, PHY/training, SoC-top, Linux/Android, silicon, phone, or release bandwidth/latency evidence.",
+  "phone_claim_allowed": false,
+  "release_claim_allowed": false,
+  "raw_log_path": "docs/evidence/memory/dramsim-reports/raw/dramsim3_lpddr6_14400_pointer_chase.log",
+  "raw_stats_path": "docs/evidence/memory/dramsim-reports/raw/dramsim3_lpddr6_14400_pointer_chase.json",
+  "raw_artifacts": [
+    {
+      "path": "docs/evidence/memory/dramsim-reports/raw/dramsim3_lpddr6_14400_pointer_chase.log",
+      "sha256": "67396264ef2350249e10cbc9add193443053bdae50e059932371fe1ea21ff104"
+    },
+    {
+      "path": "docs/evidence/memory/dramsim-reports/raw/dramsim3_lpddr6_14400_pointer_chase.json",
+      "sha256": "87c557d33d70a8205a38ac262c9e42e82cf516514b89a21564865453aa5203bd"
+    }
+  ]
+}

@@ -12,7 +12,6 @@ import argparse
 import json
 import os
 import re
-import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -491,13 +490,13 @@ def _quantization_sidecar_blockers(
         targets = kernel_manifest.get("kernel_target")
         if targets != expected_targets:
             blockers.append(f"{rel}.kernel_target: {targets!r}")
-        for field in ("block_layout_version", "codebook_hash", "per_block_tolerance"):
-            values = kernel_manifest.get(field)
+        for manifest_field in ("block_layout_version", "codebook_hash", "per_block_tolerance"):
+            values = kernel_manifest.get(manifest_field)
             if not isinstance(values, Mapping):
-                blockers.append(f"{rel}.{field}: missing")
+                blockers.append(f"{rel}.{manifest_field}: missing")
                 continue
             missing_targets = [target for target in expected_targets if target not in values]
-            blockers.extend(f"{rel}.{field}.{target}: missing" for target in missing_targets)
+            blockers.extend(f"{rel}.{manifest_field}.{target}: missing" for target in missing_targets)
     return blockers
 
 

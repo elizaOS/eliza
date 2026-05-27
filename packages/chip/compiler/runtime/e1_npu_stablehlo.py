@@ -24,22 +24,21 @@ module is the source-of-truth entry IR for the Python lowering/partitioner.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any
 
-
-class YamlModule(Protocol):
-    YAMLError: type[Exception]
-
-    def safe_load(self, text: str) -> Any: ...
-
-
-_yaml: YamlModule | None
+_yaml_safe_load: Callable[[str], Any] | None
+_yaml_error: type[Exception]
 try:  # PyYAML is part of the chip toolchain (see requirements.txt).
-    import yaml as _yaml
+    from yaml import YAMLError as _YamlError
+    from yaml import safe_load as _safe_load
 except ImportError:  # pragma: no cover - yaml is required by the chip env.
-    _yaml = None
+    _yaml_safe_load = None
+    _yaml_error = ValueError
+else:
+    _yaml_safe_load = _safe_load
+    _yaml_error = _YamlError
 
 SCHEMA = "eliza.e1_npu_stablehlo_subset.v1"
 
@@ -602,13 +601,13 @@ def _coerce_mapping(payload: str | bytes | dict[str, Any]) -> dict[str, Any]:
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
-            if _yaml is None:
+            if _yaml_safe_load is None:
                 raise StableHloParseError(
                     "payload is neither valid JSON nor a YAML-capable runtime"
                 ) from None
             try:
-                data = _yaml.safe_load(text)
-            except _yaml.YAMLError as exc:
+                data = _yaml_safe_load(text)
+            except _yaml_error as exc:
                 raise StableHloParseError(f"failed to parse payload: {exc}") from exc
         if not isinstance(data, dict):
             raise StableHloParseError("payload must decode to a mapping")

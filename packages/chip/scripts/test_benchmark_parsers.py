@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -25,7 +26,7 @@ spec.loader.exec_module(run_benchmarks)
 
 def run_runner(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["python3", str(RUNNER_PATH), *args],
+        [sys.executable, str(RUNNER_PATH), *args],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,
@@ -473,11 +474,31 @@ def test_strict_missing_exits_two_and_preserves_blockers() -> None:
 
 
 def test_blocked_results_require_blocked_placeholder_provenance() -> None:
-    report_path = ROOT / "benchmarks/results/strict-release-gate-test/report.json"
+    temp_parent = ROOT / "benchmarks/results/test-temp"
+    temp_parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=temp_parent) as td:
+        report_id = "strict-release-gate-test"
+        out_dir = Path(td) / "out"
+        runner_result = run_runner(
+            [
+                "run",
+                "--metadata",
+                str(BLOCKED_METADATA),
+                "--strict-missing",
+                "--report-id",
+                report_id,
+                "--out-dir",
+                str(out_dir),
+            ]
+        )
+        if runner_result.returncode not in {1, 2}:
+            raise AssertionError(runner_result.stdout)
+        baseline = json.loads((out_dir / report_id / "report.json").read_text(encoding="utf-8"))
+
     for provenance in ("measured", "target-measured", "silicon-measured", "imported"):
-        report = json.loads(report_path.read_text(encoding="utf-8"))
-        result = next(row for row in report["results"] if row["status"] == "blocked")
-        result["provenance"] = provenance
+        report = json.loads(json.dumps(baseline))
+        blocked_result = next(row for row in report["results"] if row["status"] == "blocked")
+        blocked_result["provenance"] = provenance
         errors = run_benchmarks.validate_report(report)
         if not any("blocked result provenance must be blocked_placeholder" in e for e in errors):
             raise AssertionError((provenance, errors))

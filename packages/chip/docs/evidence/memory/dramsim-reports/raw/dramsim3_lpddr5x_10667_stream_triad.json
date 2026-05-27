@@ -1,0 +1,12 @@
+{
+  "schema": "eliza.memory.dram_sim_raw_stats_archive.v1",
+  "captured_utc": "2026-05-23T07:43:00Z",
+  "sku": "lpddr5x_10667",
+  "standard": "LPDDR5X-10667",
+  "workload": "stream_triad",
+  "cycle_budget": 500000,
+  "bytes_per_dramsim3_access": 32,
+  "simulated_total_bandwidth_gbps": 13.38,
+  "simulated_p95_latency_ns": 315.18,
+  "claim_boundary": "Archived DRAMSim3 stats are simulator-only and not physical phone or release evidence."
+}

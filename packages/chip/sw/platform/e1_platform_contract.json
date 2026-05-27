@@ -20,7 +20,7 @@
     "word_bytes": 4,
     "boot_rom": {
       "base": "0x00000000",
-      "size": "0x00001000",
+      "size": "0x00010000",
       "words": [
         {
           "offset": "0x00",
@@ -48,7 +48,7 @@
       {
         "name": "boot_rom",
         "base": "0x00000000",
-        "size": "0x00001000"
+        "size": "0x00010000"
       },
       {
         "name": "peripheral_control",
@@ -570,7 +570,7 @@
     "boot": {
       "reset_vector": "0x00001000",
       "rom_base": "0x00000000",
-      "rom_size": "0x00001000",
+      "rom_size": "0x00010000",
       "sbi_entry": "0x80000000",
       "kernel_entry": "0x80200000"
     },

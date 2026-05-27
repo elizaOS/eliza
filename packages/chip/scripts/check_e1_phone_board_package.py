@@ -12678,10 +12678,10 @@ def check_routed_layout_readiness_binding() -> None:
         if value is not True:
             raise SystemExit(f"routed layout readiness cross-check failed: {key}")
     for blocker in [
-        "routed KiCad PCB source is missing",
+        "production routed KiCad PCB source is present only as non-release local candidate evidence",
         "no routed copper segments or filled zones are present in the KiCad PCB",
         "PCB has no routed copper, filled zones, or DRC evidence",
-        "production STEP export is missing",
+        "candidate routed board STEP exists for review only; supplier-approved production STEP export is missing",
         "routed-board clearance rerun is blocked",
     ]:
         if blocker not in binding["release_blockers"]:
@@ -12810,8 +12810,10 @@ def check_first_article_route_execution_order() -> None:
         present = 0
         for evidence in phase["required_exit_evidence"]:
             if "*" in evidence:
-                present += len(list(ROOT.glob(evidence)))
-            elif (ROOT / evidence).exists():
+                present += sum(
+                    1 for path in ROOT.glob(evidence) if is_release_artifact_present(path)
+                )
+            elif is_release_artifact_present(ROOT / evidence):
                 present += 1
         if phase["present_exit_evidence_count"] != present:
             raise SystemExit(f"first-article route phase evidence count stale: {phase['id']}")
@@ -12852,7 +12854,7 @@ def check_first_article_route_execution_order() -> None:
         expected_path = release_manifest[output_id]["expected_path"]
         if item["expected_path"] != expected_path:
             raise SystemExit(f"first-article route handoff path stale: {output_id}")
-        present = (ROOT / expected_path).exists()
+        present = is_release_artifact_present(ROOT / expected_path)
         if item["present"] != present:
             raise SystemExit(f"first-article route handoff presence stale: {output_id}")
         if present:
@@ -12873,7 +12875,7 @@ def check_first_article_route_execution_order() -> None:
             raise SystemExit(f"first-article route handoff STEP source stale: {evidence_id}")
         if item["expected_path"] != expected_path:
             raise SystemExit(f"first-article route handoff STEP path stale: {evidence_id}")
-        present = (ROOT / expected_path).exists()
+        present = is_release_artifact_present(ROOT / expected_path)
         if item["present"] != present:
             raise SystemExit(f"first-article route handoff STEP presence stale: {evidence_id}")
         if present:
@@ -13081,7 +13083,9 @@ def check_post_route_validation_binding() -> None:
         raise SystemExit("post-route validation must remain blocked before routed outputs")
 
     outputs = binding["required_validation_outputs"]
-    present_outputs = [name for name, rel_path in outputs.items() if (ROOT / rel_path).exists()]
+    present_outputs = [
+        name for name, rel_path in outputs.items() if is_release_artifact_present(ROOT / rel_path)
+    ]
     inventory = binding["validation_output_inventory"]
     if inventory["required_output_count"] != len(outputs):
         raise SystemExit("post-route validation output count stale")
@@ -13177,7 +13181,9 @@ def check_post_route_validation_binding() -> None:
             )
         if len(item["required_evidence"]) < 3:
             raise SystemExit(f"post-route selected hardware evidence too weak: {function}")
-        present_evidence = [path for path in item["required_evidence"] if (ROOT / path).exists()]
+        present_evidence = [
+            path for path in item["required_evidence"] if is_release_artifact_present(ROOT / path)
+        ]
         if present_evidence:
             raise SystemExit(
                 f"post-route selected hardware evidence unexpectedly present: {present_evidence}"
@@ -13225,7 +13231,7 @@ def check_post_route_validation_binding() -> None:
     handoff_present = [
         key
         for key, rel_path in handoff["required_output_paths"].items()
-        if (ROOT / rel_path).exists()
+        if is_release_artifact_present(ROOT / rel_path)
     ]
     if handoff["present_output_count"] != len(handoff_present):
         raise SystemExit("post-route validation handoff present count stale")
@@ -14065,6 +14071,7 @@ def check_end_to_end_readiness() -> None:
         post_route_outputs["si_pi_report_directory"],
         post_route_outputs["rf_report_directory"],
         post_route_outputs["power_thermal_report_directory"],
+        post_route_outputs["supplier_component_3d_model_manifest"],
         post_route_outputs["routed_board_step"],
         post_route_outputs["routed_clearance_release"],
     ]
@@ -14073,7 +14080,7 @@ def check_end_to_end_readiness() -> None:
     evidence_paths = [
         evidence for item in post_route_matrix for evidence in item["required_evidence"]
     ]
-    present_evidence = [path for path in evidence_paths if (ROOT / path).exists()]
+    present_evidence = [path for path in evidence_paths if is_release_artifact_present(ROOT / path)]
     if present_evidence:
         raise SystemExit(
             f"end-to-end selected hardware evidence unexpectedly present: {present_evidence}"
@@ -14178,7 +14185,11 @@ def check_supplier_pinout_evidence() -> None:
     if not captured:
         raise SystemExit("supplier pinout manifest captured nothing")
     allowed_evidence_classes = set(manifest["cross_checks"]["captured_files_evidence_class"])
-    if not allowed_evidence_classes <= {"public_supplier_datasheet", "public_som_connector_pinout"}:
+    if not allowed_evidence_classes <= {
+        "public_supplier_datasheet",
+        "public_som_connector_pinout",
+        "public_hardware_design_pdf",
+    }:
         raise SystemExit(
             "supplier pinout manifest declares a non-public evidence class: "
             f"{sorted(allowed_evidence_classes)}"
@@ -14251,6 +14262,8 @@ def check_supplier_pinout_evidence() -> None:
 # Files under board/kicad/e1-phone/ that are intentionally owned by a gate or
 # test other than this structural check. Each entry names the owning flow so the
 # orphan report below stays a deliberate allow-list, not a silent escape hatch.
+BOARD_PACKAGE_PATH_RE = re.compile(r"board/kicad/e1-phone/[A-Za-z0-9_./<>-]+")
+BOARD_PACKAGE_TRACKED_SUFFIXES = {".yaml", ".yml", ".csv"}
 NON_BOARD_PACKAGE_OWNED_FILES = {
     # Non-release routing demonstration set: generated by
     # scripts/generate_e1_phone_routed_mainboard_demo.py and validated by
@@ -14258,7 +14271,54 @@ NON_BOARD_PACKAGE_OWNED_FILES = {
     "board/kicad/e1-phone/pcb-implementation-audit-demo.yaml": "generate_e1_phone_routed_mainboard_demo.py",
     "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-bom.csv": "generate_e1_phone_routed_mainboard_demo.py",
     "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-pos.csv": "generate_e1_phone_routed_mainboard_demo.py",
+    "board/kicad/e1-phone/kicad-cad-end-to-end-stub-audit-2026-05-22.yaml": "cad-stub-audit",
+    "board/kicad/e1-phone/production/readiness/enclosure-readiness-gap-map-2026-05-22.yaml": "product_check.py",
+    "board/kicad/e1-phone/production/readiness/release-approval-signature-blocker-matrix-2026-05-23.yaml": "check_e1_phone_release_approval_signatures.py",
+    "board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-executed-log-contract-2026-05-22.yaml": "e1_phone_first_article_executed_log_contract.py",
+    "board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-missing-evidence-2026-05-22.yaml": "e1_phone_first_article_missing_evidence_diagnostic.py",
 }
+
+
+def normalize_board_package_path(raw_path: str) -> str | None:
+    match = BOARD_PACKAGE_PATH_RE.search(raw_path)
+    if not match:
+        return None
+    return match.group(0).rstrip(".,:;)]}")
+
+
+def consume_board_package_path(consumed: set[str], raw_path: str) -> None:
+    rel = normalize_board_package_path(raw_path)
+    if rel is None:
+        return
+    consumed.add(rel)
+
+    path = ROOT / rel
+    for suffix in (".metadata.yaml", ".metadata.yml", ".metadata.json"):
+        sidecar = path.with_name(path.name + suffix)
+        if sidecar.is_file():
+            consumed.add(str(sidecar.relative_to(ROOT)))
+
+    if path.is_dir() and is_blocked_candidate_artifact(path):
+        for child in path.rglob("*"):
+            if child.is_file() and child.suffix in BOARD_PACKAGE_TRACKED_SUFFIXES:
+                consumed.add(str(child.relative_to(ROOT)))
+
+
+def expand_consumed_board_references(consumed: set[str]) -> None:
+    scanned: set[str] = set()
+    queue = list(consumed)
+    while queue:
+        rel = queue.pop()
+        if rel in scanned:
+            continue
+        scanned.add(rel)
+        path = ROOT / rel
+        if not path.is_file() or path.suffix not in {".yaml", ".yml"}:
+            continue
+        before = set(consumed)
+        for match in BOARD_PACKAGE_PATH_RE.findall(path.read_text()):
+            consume_board_package_path(consumed, match)
+        queue.extend(consumed - before)
 
 
 def check_no_orphaned_board_files() -> None:
@@ -14285,6 +14345,8 @@ def check_no_orphaned_board_files() -> None:
     consumed.add("board/kicad/e1-phone/supplier-pinouts/pinout-evidence-manifest.yaml")
     for entry in pinout_manifest["captured_pinouts"]:
         consumed.add(f"board/kicad/e1-phone/supplier-pinouts/{entry['file']}")
+
+    expand_consumed_board_references(consumed)
 
     orphans = []
     for path in sorted(board_dir.rglob("*")):

@@ -31,7 +31,6 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
-import csv
 import hashlib
 import json
 import logging
@@ -40,7 +39,6 @@ import random
 import shutil
 import subprocess
 import sys
-import wave
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
