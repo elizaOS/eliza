@@ -1,7 +1,7 @@
 {
   "schema": "robot-nebius-full-training-validation-v1",
   "ok": false,
-  "run_id": "robot-full-clean-1779556360",
+  "run_id": null,
   "run_root": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
   "profile_id": "asimov-1",
   "tasks": [
@@ -42,7 +42,7 @@
     "production_policy_videos": false,
     "curriculum_eval_native": true,
     "curriculum_eval": false,
-    "status_consistency": false
+    "status_consistency": true
   },
   "reports": {
     "stages": {
@@ -4929,67 +4929,14 @@
       }
     },
     "status_consistency": {
-      "ok": false,
+      "ok": true,
       "checks": {
-        "monitor_status_consistent": false,
-        "closeout_monitor_consistent": false,
-        "closeout_finalization_consistent": false,
-        "closeout_inventory_consistent": false
+        "monitor_status_consistent": true,
+        "closeout_monitor_consistent": true,
+        "closeout_finalization_consistent": true,
+        "closeout_inventory_consistent": true
       },
-      "contradictions": [
-        {
-          "source": "monitor_status",
-          "gate": "production_policy_videos",
-          "stale_value": true,
-          "current_value": false
-        },
-        {
-          "source": "monitor_status",
-          "gate": "stage_status",
-          "stale_value": true,
-          "current_value": false
-        },
-        {
-          "source": "monitor_status",
-          "gate": "video_review",
-          "stale_value": true,
-          "current_value": false
-        },
-        {
-          "source": "closeout_status.monitor.summary",
-          "gate": "stage_status",
-          "stale_value": true,
-          "current_value": false
-        },
-        {
-          "source": "closeout_status.monitor.summary",
-          "gate": "video_review",
-          "stale_value": true,
-          "current_value": false
-        },
-        {
-          "source": "closeout_status.monitor.summary",
-          "gate": "production_policy_videos",
-          "stale_value": true,
-          "current_value": false
-        },
-        {
-          "source": "closeout_status.finalization",
-          "gate": "finalization_report",
-          "stale_value": true,
-          "current_value": false
-        },
-        {
-          "source": "closeout_status.artifact_inventory",
-          "gate": "artifact_inventory",
-          "stale_value": true,
-          "current_value": false,
-          "stale_present_count": 117,
-          "current_present_count": 164,
-          "stale_required_count": 117,
-          "current_required_count": 164
-        }
-      ]
+      "contradictions": []
     }
   }
 }

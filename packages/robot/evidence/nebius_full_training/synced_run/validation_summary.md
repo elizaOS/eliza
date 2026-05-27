@@ -1,6 +1,6 @@
 # Nebius Full Robot Training Validation
 
-Run: `robot-full-clean-1779556360`
+Run: `unknown`
 Profile: `asimov-1`
 Overall result: `not-ready`
 
@@ -28,7 +28,7 @@ Overall result: `not-ready`
 | `production_policy_videos` | `False` |
 | `curriculum_eval_native` | `True` |
 | `curriculum_eval` | `False` |
-| `status_consistency` | `False` |
+| `status_consistency` | `True` |
 
 ## Failed Gates
 
@@ -37,7 +37,6 @@ Overall result: `not-ready`
 - `video_review`
 - `production_policy_videos`
 - `curriculum_eval`
-- `status_consistency`
 
 ## Stage Logs
 

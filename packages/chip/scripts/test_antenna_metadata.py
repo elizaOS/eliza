@@ -27,6 +27,7 @@ class AntennaMetadataBlockedStateTests(unittest.TestCase):
             report = root / "antenna_metadata.json"
             with (
                 patch.object(gate, "RUNS", root / "runs"),
+                patch.object(gate, "DERIVED_RUNS", root / "derived-runs"),
                 patch.object(gate, "REPORT", report),
                 patch.object(gate, "PADFRAME", root / "missing-padframe.yaml"),
                 patch("sys.argv", ["check_antenna_metadata.py", "--release"]),
@@ -48,7 +49,9 @@ class AntennaMetadataBlockedStateTests(unittest.TestCase):
                 payload["blocker_categories"],
                 {"missing_openlane_antenna_metadata_report": 1},
             )
-            self.assertEqual(payload["report_search"]["glob"], gate.ANTENNA_REPORT_GLOB)
+            self.assertIn(gate.ANTENNA_REPORT_GLOB, payload["report_search"]["globs"])
+            self.assertIn("runs", payload["report_search"]["roots"])
+            self.assertIn("derived-runs", payload["report_search"]["roots"])
             self.assertEqual(payload["findings"][0]["severity"], "blocker")
 
     def test_malformed_openlane_report_is_hard_fail(self) -> None:
@@ -111,18 +114,21 @@ class AntennaMetadataBlockedStateTests(unittest.TestCase):
                 {"missing_e1_chip_top_antenna_metadata_report": 1},
             )
 
-    def test_latest_report_accepts_any_openlane_step_number(self) -> None:
+    def test_latest_report_accepts_any_openlane_step_number_and_derived_reports(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             older = root / "runs" / "old" / "61-odb-checkdesignantennaproperties"
-            newer = root / "runs" / "new" / "58-odb-checkdesignantennaproperties"
+            newer = root / "derived-runs" / "new" / "58-odb-checkdesignantennaproperties"
             older.mkdir(parents=True)
             newer.mkdir(parents=True)
             older_report = older / "report.yaml"
             newer_report = newer / "report.yaml"
             older_report.write_text("- cell: e1_chip_top\n", encoding="utf-8")
             newer_report.write_text("- cell: e1_chip_top\n", encoding="utf-8")
-            with patch.object(gate, "RUNS", root / "runs"):
+            with (
+                patch.object(gate, "RUNS", root / "runs"),
+                patch.object(gate, "DERIVED_RUNS", root / "derived-runs"),
+            ):
                 os.utime(older_report, (1, 1))
                 os.utime(newer_report, (2, 2))
                 self.assertEqual(gate.latest_report(), newer_report)
