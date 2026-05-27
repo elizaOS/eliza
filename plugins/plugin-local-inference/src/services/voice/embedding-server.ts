@@ -6,13 +6,13 @@
  * on first non-empty `embed()`, and return Matryoshka-truncated vectors.
  */
 
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import {
-	type LocalEmbeddingRoute,
 	isValidEmbeddingDim,
+	type LocalEmbeddingRoute,
 	truncateMatryoshka,
 } from "./embedding";
 import { VoiceStartupError } from "./errors";
@@ -30,7 +30,7 @@ interface EmbeddingServerConfig {
 
 export class EmbeddingServer {
 	private readonly config: EmbeddingServerConfig;
-	private child: ChildProcessWithoutNullStreams | null = null;
+	private child: ChildProcess | null = null;
 	private baseUrl: string | null = null;
 	private starting: Promise<void> | null = null;
 

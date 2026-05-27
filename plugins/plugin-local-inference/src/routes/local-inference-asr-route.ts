@@ -1,14 +1,14 @@
 import type http from "node:http";
 import { type AgentRuntime, ModelType } from "@elizaos/core";
+import { decodeMonoPcm16Wav } from "../services/voice";
+import { createStreamingTranscriber } from "../services/voice/transcriber";
+import { resolveWhisperCppRuntime } from "../services/voice/whisper-cpp-asr";
 import {
 	type CompatRuntimeState,
 	ensureRouteAuthorized,
 	readCompatJsonBody,
 	sendJson,
 } from "./compat-helpers";
-import { decodeMonoPcm16Wav } from "../services/voice";
-import { createStreamingTranscriber } from "../services/voice/transcriber";
-import { resolveWhisperCppRuntime } from "../services/voice/whisper-cpp-asr";
 
 const MAX_LOCAL_ASR_AUDIO_BYTES = 16 * 1024 * 1024;
 

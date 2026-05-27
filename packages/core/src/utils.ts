@@ -586,7 +586,7 @@ export const formatTimestamp = formatTimestampBase;
 
 function parseStructuredResponseFence(text: string): string {
 	const trimmed = text.trim();
-	const match = /^\`\`\`(?:toon|text)?\s*([\s\S]*?)\s*\`\`\`$/i.exec(trimmed);
+	const match = /^```(?:toon|text)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
 	return match?.[1]?.trim() ?? trimmed;
 }
 

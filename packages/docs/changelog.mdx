@@ -1181,7 +1181,7 @@ The dashboard setup wizard now derives **step order**, **back navigation**, and 
 - **Sidebar:** completed steps are **clickable** to jump backward only (`handleSetupJumpToStep`), validated with the same rules as repeated Back—**forward** sidebar jumps are intentionally disallowed so finish/login validation cannot be skipped.
 - **Welcome “Get Started”** uses `goToSetupStep("connection")` so advanced mode can sync the Flamina guide in one place instead of raw `setState` on the step alone.
 
-Developer guide: [First-run flow](/guides/first-run-flow).
+Developer guide: [Onboarding UI flow](/guides/onboarding-ui-flow).
 
 ## Connection step: pure subflow + view registry
 
@@ -1191,7 +1191,7 @@ Inside the **`connection`** wizard step (hosting, remote backend, Eliza Cloud, n
 - **`applyConnectionTransition`** returns either a **patch** (applied via `setState` in `ConnectionStep`) or an **effect** token for **`useLocalBackend`** — **why:** disconnecting the remote client and `retryStartup` are not pure and must stay in `AppContext`.
 - **React** is split into `ConnectionStep` (snapshot + dispatch + bootstrap `useEffect`) and `components/first-run/connection/*` (one component per screen). **Why:** keeps the pure module importable from tests without jsdom, and shrinks review surface when changing one path.
 
-See the same guide: [First-run flow](/guides/first-run-flow) (section *Connection step subflow*).
+See the same guide: [Onboarding UI flow](/guides/onboarding-ui-flow) (section *Pure connection flow*).
 
 ## Desktop dev orchestrator (`dev-platform`)
 
@@ -1223,7 +1223,7 @@ After browser/OAuth login succeeds on the **Login** tab (pre-provider and provid
 - **`handleReset`** / **`completeResetLocalStateAfterServerWipe`** clear the **persisted active server**, **API base/token**, and **Eliza Cloud** UI flags after a server wipe. **Why:** otherwise the UI stayed pointed at cloud/remote after config reset, so setup looked “stuck.”
 - **`App` shell:** setup is no longer blocked by **`agentStatus === "starting"`**. **Why:** right after a reset the agent often returns to `starting`; the old gate kept the main shell (or loader) visible instead of **`SetupWizard`**, so reset looked like it did nothing after confirm.
 
-Docs: [Desktop app](/apps/desktop) (application menu), [First-run flow](/guides/first-run-flow).
+Docs: [Desktop app](/apps/desktop) (application menu), [Onboarding UI flow](/guides/onboarding-ui-flow).
 </Update>
 
 <Update label="2026-06-25" description="Week of June 19–25" tags={["Feature", "Update", "Fix"]}>

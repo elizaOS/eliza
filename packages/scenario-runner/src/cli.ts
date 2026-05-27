@@ -190,7 +190,7 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  const liveProviderSpecifier = "@elizaos/core" as string;
+  const liveProviderSpecifier = "@elizaos/core/testing" as string;
   const [
     { availableProviderNames },
     { runScenario },

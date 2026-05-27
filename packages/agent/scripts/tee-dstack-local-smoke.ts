@@ -37,26 +37,22 @@
  * Run:  bun packages/agent/scripts/tee-dstack-local-smoke.ts
  * Exit: 0 with a PASS summary; non-zero on any unexpected outcome.
  */
-import {
-  createHash,
-  randomBytes,
-  type BinaryLike,
-} from "node:crypto";
+import { type BinaryLike, createHash, randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createServer, type Server } from "node:http";
 import { collectDstackTeeEvidence } from "../src/services/dstack-tee-provider.ts";
 import {
   MODEL_KEY_ID,
+  type SealedWeightsBlob,
   sealModelWeightsShards,
   unsealModelWeights,
-  type SealedWeightsBlob,
 } from "../src/services/tee-confidential-inference.ts";
 import type { TeeEvidence } from "../src/services/tee-evidence.ts";
 import {
   HttpTeeKeyReleaseClient,
   LocalTeeKeyReleaseClient,
-  wrapTeeReleaseKey,
   type TeeKeyReleaseRequest,
+  wrapTeeReleaseKey,
 } from "../src/services/tee-key-release.ts";
 import {
   evaluateTeeEvidencePolicy,
@@ -348,8 +344,7 @@ try {
     policy: devPolicy,
   });
   assert(
-    localRelease.decision.trusted &&
-      isHex32Bytes(localRelease.keyMaterialHex),
+    localRelease.decision.trusted && isHex32Bytes(localRelease.keyMaterialHex),
     "local KDF client must release a 32-byte key under the dev policy",
   );
 

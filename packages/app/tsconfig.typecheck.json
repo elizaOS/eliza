@@ -110,7 +110,9 @@
       "@elizaos/capacitor-desktop": [
         "../../plugins/plugin-native-desktop/src/index.ts"
       ],
-      "@elizaos/capacitor-llama": ["../native-plugins/llama/src/index.ts"],
+      "@elizaos/capacitor-llama": [
+        "../../plugins/plugin-native-llama/src/index.ts"
+      ],
       "@elizaos/native-activity-tracker": [
         "../native-plugins/activity-tracker/src/index.ts"
       ],

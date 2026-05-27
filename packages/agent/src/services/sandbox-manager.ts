@@ -2,13 +2,13 @@
 
 import { mkdirSync } from "node:fs";
 import path, { join } from "node:path";
+import { resolveStateDir } from "../config/paths.ts";
 import {
   createEngine,
   detectBestEngine,
   type ISandboxEngine,
   type SandboxEngineType,
 } from "./sandbox-engine.ts";
-import { resolveStateDir } from "../config/paths.ts";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

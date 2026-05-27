@@ -56,14 +56,14 @@ export * from "./services";
 export * from "./services/agentEvent";
 export * from "./services/approval";
 export * from "./services/message";
-export * from "./services/setup-cli";
-export * from "./services/setup-rpc";
-export * from "./services/setup-state";
 export * from "./services/pairing";
 export * from "./services/pairing-integration";
 export * from "./services/pairing-migration";
 export * from "./services/plugin-hooks";
 export * from "./services/runtime-capability-service";
+export * from "./services/setup-cli";
+export * from "./services/setup-rpc";
+export * from "./services/setup-state";
 export * from "./services/tool-policy";
 export * from "./services/trajectories";
 export * from "./settings";
@@ -79,9 +79,9 @@ export {
 } from "./types";
 export * from "./types/agentEvent";
 export * from "./types/message-service";
-export * from "./types/setup";
 export * from "./types/plugin-manifest";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
+export * from "./types/setup";
 export * from "./utils";
 export {
 	addHeader,

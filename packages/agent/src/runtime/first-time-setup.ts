@@ -389,11 +389,7 @@ export async function runFirstTimeSetup(
     const observer = new ClackObserver(
       clack as unknown as ConstructorParameters<typeof ClackObserver>[0],
     );
-    cloudFirstRunResult = await runCloudSetup(
-      observer,
-      name,
-      chosenTemplate,
-    );
+    cloudFirstRunResult = await runCloudSetup(observer, name, chosenTemplate);
 
     if (cloudFirstRunResult?.agentId) {
       isCloudMode = true;

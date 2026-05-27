@@ -15,6 +15,7 @@
     "types": ["node"],
     "paths": {
       "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/core/testing": ["../core/src/testing/index.ts"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/contracts": ["../contracts/src/index.ts"],

@@ -63,9 +63,9 @@ import {
 	upsertElizaModel,
 } from "./registry";
 import {
+	type RoutingPreferences,
 	readRoutingPreferences,
 	writeRoutingPreferences,
-	type RoutingPreferences,
 } from "./routing-preferences";
 import type {
 	ActiveModelState,

@@ -371,8 +371,6 @@ export function decideBackend(input: {
 }): BackendDecision {
 	const { override, catalog } = input;
 	const optimizations = catalog?.runtime?.optimizations;
-	const hasOptimizedRuntimeConfig =
-		catalog?.runtime?.mtp !== undefined || optimizations !== undefined;
 	const kernels = optimizations?.requiresKernel ?? [];
 	const unsatisfiedKernels = computeUnsatisfiedKernels(
 		kernels,

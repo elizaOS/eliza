@@ -116,8 +116,8 @@ vi.mock("../services/voice/transcriber", () => {
 });
 
 import { installRouterHandler } from "../services/router-handler";
-import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler";
 import { VoiceStartupError } from "../services/voice/errors";
+import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler";
 
 interface Registration {
 	modelType: string | number;

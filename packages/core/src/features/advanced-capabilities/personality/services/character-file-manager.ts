@@ -8,9 +8,9 @@ import type {
 	MessageExampleGroup,
 } from "../../../../types/index.ts";
 import { Service } from "../../../../types/service.ts";
+import { resolveStateDir } from "../../../../utils/state-dir";
 import { getCharacterPersistenceService } from "../character-persistence.ts";
 import { PersonalityServiceType } from "../types.ts";
-import { resolveStateDir } from "../../../../utils/state-dir";
 
 // Validation schema for character modifications
 const CharacterModificationSchema = z.object({

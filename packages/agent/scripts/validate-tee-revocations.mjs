@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 
-const input =
-  process.argv[2] ?? "packages/agent/tee/revocations.example.json";
+const input = process.argv[2] ?? "packages/agent/tee/revocations.example.json";
 const manifest = JSON.parse(readFileSync(input, "utf8"));
 const errors = validateRevocations(manifest);
 

@@ -6,9 +6,9 @@ describe("resolveRuntimePluginImportSpecifier", () => {
     expect(resolveRuntimePluginImportSpecifier("@elizaos/plugin-lifeops")).toBe(
       "@elizaos/plugin-lifeops/plugin",
     );
-    expect(resolveRuntimePluginImportSpecifier("@elizaos/plugin-companion")).toBe(
-      "@elizaos/plugin-companion/plugin",
-    );
+    expect(
+      resolveRuntimePluginImportSpecifier("@elizaos/plugin-companion"),
+    ).toBe("@elizaos/plugin-companion/plugin");
   });
 
   it("keeps regular plugin package roots unchanged", () => {

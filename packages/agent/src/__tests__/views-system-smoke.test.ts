@@ -14,8 +14,8 @@
  * Each test verifies one stage of the pipeline.
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { EventEmitter } from "node:events";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";

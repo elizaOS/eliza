@@ -85,6 +85,12 @@ export default defineConfig({
     testTimeout: 180_000,
   },
   resolve: {
-    alias: workspaceSourceAliases,
+    alias: [
+      {
+        find: /^@elizaos\/core\/testing$/,
+        replacement: path.join(repoRoot, "packages/core/src/testing/index.ts"),
+      },
+      ...workspaceSourceAliases,
+    ],
   },
 });
