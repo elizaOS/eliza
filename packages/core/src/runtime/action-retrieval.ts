@@ -168,6 +168,14 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 // When `ELIZA_PROMPT_COMPRESS=1` is set we trade retrieval breadth for a
 // tighter token budget on the available-actions block.
 const COMPRESS_MODE_TOP_K_CAP = 8;
+const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, string> = {
+	SEARCH_MESSAGES: "MESSAGE",
+	MESSAGE_SEARCH: "MESSAGE",
+	SEARCH_CHATS: "MESSAGE",
+	SEARCH_CHAT: "MESSAGE",
+	FIND_MESSAGES: "MESSAGE",
+	FIND_MESSAGE: "MESSAGE",
+};
 
 function resolveTierOverridesFromEnv():
 	| { topK: number; stageWeights: Partial<Record<RetrievalStageName, number>> }
@@ -204,14 +212,24 @@ export function retrieveActions(
 	input: RetrieveActionsInput,
 ): ActionRetrievalResponse {
 	const candidateActions = dedupeNormalizedStrings(input.candidateActions);
-	const parentActionHints = dedupeNormalizedStrings(input.parentActionHints);
+	const parentActionHints = dedupeNormalizedStrings([
+		...(input.parentActionHints ?? []),
+		...candidateActions.flatMap((actionName) =>
+			parentAliasesForCandidateAction(actionName),
+		),
+	]);
 	const recentConversationText = shouldUseRecentConversationForActionSearch(
 		input.messageText ?? "",
 	)
 		? normalizeTextList(input.recentConversationText)
 		: [];
 	const candidateActionsForSearch =
-		recentConversationText.length > 0 ? [] : candidateActions;
+		recentConversationText.length > 0
+			? candidateActions.filter(
+					(actionName) =>
+						parentAliasesForCandidateAction(actionName).length > 0,
+				)
+			: candidateActions;
 	const queryText = [
 		input.messageText ?? "",
 		...recentConversationText,
@@ -702,6 +720,12 @@ function dedupeNormalizedStrings(values: string[] | undefined): string[] {
 	}
 
 	return result;
+}
+
+function parentAliasesForCandidateAction(actionName: string): string[] {
+	const normalized = normalizeActionName(actionName);
+	const parent = CANDIDATE_ACTION_PARENT_ALIASES[normalized];
+	return parent ? [parent] : [];
 }
 
 function shouldUseRecentConversationForActionSearch(
