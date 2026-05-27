@@ -76,12 +76,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
 
       - name: Restore live-build cache
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: |
             ${{ env.LINUX_DIR }}/cache
@@ -226,7 +226,7 @@ jobs:
         # Gated on amd64 because that's the only arch with a validated
         # artifact today — same gate as the QEMU smoke test.
         if: matrix.arch == 'amd64'
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
         with:
           subject-path: ${{ steps.iso.outputs.path }}
 
@@ -271,7 +271,7 @@ jobs:
         # disabled here; we attach the file ourselves below so that it lands
         # in the same named artifact as the ISO and SHA-256 checksum.
         if: matrix.arch == 'amd64' && steps.sbom-extract.outputs.extracted == 'true'
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610
         with:
           path: ${{ steps.sbom-extract.outputs.root }}
           format: spdx-json
@@ -293,7 +293,7 @@ jobs:
 
 
       - name: Upload ISO artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: elizaos-live-iso-${{ env.CHANNEL }}-${{ matrix.arch }}
           path: |
@@ -305,7 +305,7 @@ jobs:
 
       - name: Upload to GitHub Release
         if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'workflow_call' && inputs.publish == true)
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda
         with:
           files: |
             ${{ steps.iso.outputs.path }}

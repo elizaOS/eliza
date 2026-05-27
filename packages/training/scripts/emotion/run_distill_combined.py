@@ -47,8 +47,6 @@ import logging
 import pathlib
 import random
 import sys
-import time
-from typing import Any
 
 # Make sibling-package imports work when invoked as a script.
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]

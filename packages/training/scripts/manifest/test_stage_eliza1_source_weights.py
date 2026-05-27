@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
 
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
 if str(_TRAINING_ROOT) not in sys.path:

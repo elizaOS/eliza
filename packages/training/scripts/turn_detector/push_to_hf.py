@@ -45,9 +45,8 @@ import argparse
 import hashlib
 import json
 import os
-import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 
 def _sha256_file(path: Path) -> str:
@@ -161,16 +160,7 @@ upstream LiveKit ONNX, drop-in compatible.
 
 ## Files
 
-- `onnx/model_q8.onnx` — INT8 dynamic-quantised English ONNX.
-- `onnx/turn-detector-en-q8.gguf` — Q8_0 GGUF (when staged).
-- `onnx/tokenizer.json`, `onnx/tokenizer_config.json`, `onnx/config.json`,
-  `onnx/special_tokens_map.json`, `onnx/vocab.json`, `onnx/merges.txt` —
-  inherited from the LiveKit base. These files describe the tokenizer
-  expected by upstream LiveKit consumers; the Eliza runtime no longer
-  loads them directly (the legacy @huggingface/transformers tokenizer
-  path was removed; a ggml/llama.cpp-backed tokenizer will replace it).
-- `onnx/eval.json` — held-out F1 + mean inference latency in
-  `eval_turn_detector.gate_report` shape.
+{files_block}
 
 The other tier lives under the sibling sub-directory (`onnx/` for the
 English `v1.2.2-en` fine-tune, `intl/` for the multilingual `v0.4.1-intl`
@@ -357,11 +347,9 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("HF_TOKEN must be set in the env")
 
     try:
-        from huggingface_hub import HfApi, hf_hub_download, upload_folder
+        from huggingface_hub import hf_hub_download, upload_folder
     except ImportError as exc:
         raise RuntimeError("huggingface_hub is required") from exc
-
-    api = HfApi(token=token)
 
     onnx_path = args.bundle / "model_q8.onnx"
     if not onnx_path.is_file():

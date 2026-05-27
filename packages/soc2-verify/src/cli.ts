@@ -18,16 +18,29 @@ interface Args {
 function parseArgs(argv: string[]): Args {
   const args: Args = { strictFail: false, include: [], help: false };
   for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]!;
+    const a = argv[i];
+    if (a === undefined) continue;
     if (a === "--strict-fail") args.strictFail = true;
     else if (a === "--help" || a === "-h") args.help = true;
     else if (a === "--out") {
-      const v = argv[++i];
-      if (v !== undefined) args.out = v;
+      const v = argv[i + 1];
+      if (v !== undefined && v.length > 0 && !v.startsWith("-")) {
+        args.out = v;
+        i++;
+      }
+    } else if (a.startsWith("--out=")) {
+      const v = a.slice("--out=".length);
+      if (v.length > 0) args.out = v;
+    } else if (a === "--include") {
+      const v = argv[i + 1];
+      if (v !== undefined && v.length > 0 && !v.startsWith("-")) {
+        args.include.push(v);
+        i++;
+      }
+    } else if (a.startsWith("--include=")) {
+      const v = a.slice("--include=".length);
+      if (v.length > 0) args.include.push(v);
     }
-    else if (a.startsWith("--out=")) args.out = a.slice("--out=".length);
-    else if (a === "--include") args.include.push(argv[++i] ?? "");
-    else if (a.startsWith("--include=")) args.include.push(a.slice("--include=".length));
   }
   return args;
 }
@@ -48,6 +61,9 @@ Options:
 Outputs:
   <out>/evidence-report.json  (machine-readable, GRC-tool friendly)
   <out>/evidence-report.md    (human-readable, for auditor sampling)
+
+Environment:
+  SOC2_OUTER_ROOT      Override the parent repo root that hosts deploy/ and apps/.
 `,
   );
 }
@@ -58,6 +74,9 @@ Outputs:
  * parent of `eliza/`.
  */
 function locateRoots(): { elizaRoot: string; outerRoot: string } {
+  const outerRootOverride = process.env.SOC2_OUTER_ROOT
+    ? resolve(process.env.SOC2_OUTER_ROOT)
+    : undefined;
   let cur = dirname(new URL(import.meta.url).pathname);
   // soc2-verify/src -> soc2-verify -> packages -> eliza
   for (let i = 0; i < 6; i++) {
@@ -65,13 +84,16 @@ function locateRoots(): { elizaRoot: string; outerRoot: string } {
       existsSync(join(cur, "packages/security")) &&
       existsSync(join(cur, "packages/soc2-verify"))
     ) {
-      const outer = resolve(cur, "..");
+      const outer = outerRootOverride ?? resolve(cur, "..");
       return { elizaRoot: cur, outerRoot: outer };
     }
     cur = dirname(cur);
   }
   // fallback: cwd
-  return { elizaRoot: process.cwd(), outerRoot: resolve(process.cwd(), "..") };
+  return {
+    elizaRoot: process.cwd(),
+    outerRoot: outerRootOverride ?? resolve(process.cwd(), ".."),
+  };
 }
 
 async function main(): Promise<void> {
@@ -108,7 +130,7 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   process.stderr.write(
-    `[soc2-verify] fatal: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`,
+    `[soc2-verify] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
   );
   process.exit(2);
 });

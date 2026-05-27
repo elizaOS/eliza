@@ -926,8 +926,6 @@ class ScenarioPool:
         posts = []
 
         for market in markets[:2]:
-            question_lower = market.question.lower()
-
             if market.yes_price > 0.6:
                 sentiment = "bullish"
                 content = f"Market is pricing in high probability - {market.question[:50]}..."

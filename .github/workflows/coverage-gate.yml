@@ -52,7 +52,7 @@ jobs:
               | while IFS= read -r file; do
                   [ -f "$file" ] || continue
                   case "$file" in
-                    *.e2e.test.*|*.real.e2e.test.*|*.live.test.*) continue ;;
+                    *.e2e.test.*|*.live.test.*) continue ;;
                   esac
                   if grep -Eq "from ['\"]vitest['\"]|require\\(['\"]vitest['\"]\\)" "$file"; then
                     echo "Skipping Vitest-only test in Bun coverage gate: $file" >&2

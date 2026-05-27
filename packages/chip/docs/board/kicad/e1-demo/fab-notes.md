@@ -42,6 +42,8 @@ release-approved evidence.
 - Assembly-house DFM approval: `missing`
 - Board-house stackup, impedance, drill, annular-ring, solder-mask, and
   fabrication capability approval: `missing`
+- Footprint is not derived from a package vendor drawing.
+- No SI/PI analysis has been performed.
 - SI/PI and PDN review approval: `missing`
 - Enclosure mechanical fit approval using released board STEP and component
   heights: `missing`

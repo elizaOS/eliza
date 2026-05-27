@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -64,55 +65,55 @@ def main() -> int:
     checks = [
         Check(
             name="baseline pipeline remains green",
-            command=["python3", "scripts/pipeline_check.py"],
+            command=[sys.executable, "scripts/pipeline_check.py"],
             expected_codes={0},
             required_tokens=("Pipeline artifact check passed.",),
         ),
         Check(
             name="baseline mvp status remains reportable",
-            command=["python3", "scripts/check_mvp_status.py"],
+            command=[sys.executable, "scripts/check_mvp_status.py"],
             expected_codes={0},
             required_tokens=("STATUS SUBSYSTEM", "BLOCK"),
         ),
         Check(
             name="minimum Linux plus NPU target reports blocked without external boot proof",
-            command=["python3", "scripts/check_minimum_linux_npu_target.py"],
+            command=[sys.executable, "scripts/check_minimum_linux_npu_target.py"],
             expected_codes={0},
             required_tokens=("STATUS: BLOCKED minimum_linux_npu_target",),
         ),
         Check(
             name="minimum Linux plus NPU strict gate blocks missing boot proof",
-            command=["python3", "scripts/check_minimum_linux_npu_target.py", "--strict"],
+            command=[sys.executable, "scripts/check_minimum_linux_npu_target.py", "--strict"],
             expected_codes={2},
             required_tokens=("STATUS: BLOCKED minimum_linux_npu_target",),
         ),
         Check(
             name="linux boot artifact strict gate blocks placeholder evidence",
-            command=["python3", "scripts/check_linux_boot_artifacts.py", "--require-pass"],
+            command=[sys.executable, "scripts/check_linux_boot_artifacts.py", "--require-pass"],
             expected_codes={2},
             required_tokens=("linux boot artifacts: BLOCKED",),
         ),
         Check(
             name="local NPU ML smoke proof regenerates deterministic evidence",
-            command=["python3", "scripts/check_mvp_npu_ml_evidence.py", "--run"],
+            command=[sys.executable, "scripts/check_mvp_npu_ml_evidence.py", "--run"],
             expected_codes={0},
             required_tokens=("STATUS: PASS mvp.npu_ml_smoke",),
         ),
         Check(
             name="product release blocks unfinished hardware evidence",
-            command=["python3", "scripts/product_check.py", "--release"],
+            command=[sys.executable, "scripts/product_check.py", "--release"],
             expected_codes={1},
             required_tokens=("product release check failed", "KiCad release blockers"),
         ),
         Check(
             name="SOTA parity strict audit blocks until full phone evidence exists",
-            command=["python3", "scripts/check_sota_parity_audit.py", "--strict"],
+            command=[sys.executable, "scripts/check_sota_parity_audit.py", "--strict"],
             expected_codes={2},
             required_tokens=("STATUS: BLOCKED sota_parity",),
         ),
         Check(
             name="software bsp evidence blocks missing external boot and Android logs",
-            command=["python3", "scripts/check_software_bsp.py", "all", "--require-evidence"],
+            command=[sys.executable, "scripts/check_software_bsp.py", "all", "--require-evidence"],
             expected_codes={1},
             required_tokens=(
                 "aosp BSP BLOCKED",
@@ -122,7 +123,7 @@ def main() -> int:
         ),
         Check(
             name="cpu ap evidence blocks missing production boot proof",
-            command=["python3", "scripts/check_cpu_ap_evidence.py", "--require-evidence"],
+            command=[sys.executable, "scripts/check_cpu_ap_evidence.py", "--require-evidence"],
             expected_codes={1},
             required_tokens=("STATUS: BLOCKED cpu_ap.linux_evidence",),
         ),
@@ -141,7 +142,7 @@ def main() -> int:
         Check(
             name="benchmark strict blocks missing calibrated assets",
             command=[
-                "python3",
+                sys.executable,
                 "benchmarks/run_benchmarks.py",
                 "run",
                 "--metadata",

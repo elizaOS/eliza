@@ -281,9 +281,11 @@ module tage
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
+            /* verilator lint_off BLKSEQ */
             for (int unsigned ai = 0; ai < TAGE_ALT_ON_NA_ENTRIES; ai++) begin
-                alt_on_na_q[ai] <= '0;
+                alt_on_na_q[ai] = '0;
             end
+            /* verilator lint_on BLKSEQ */
         end else if (upd_valid && (upd_provider != '0) && upd_provider_weak &&
                      (upd_provider_taken != upd_alt_taken)) begin
             if ((upd_alt_taken == upd_taken) &&

@@ -1,8 +1,7 @@
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { Check, CheckResult } from "../types.js";
-import { dirExists, readUtf8Safe } from "../util/fs.js";
-import { walk } from "../util/fs.js";
+import { dirExists, readUtf8Safe, walk } from "../util/fs.js";
 
 function findDeployRoot(roots: string[]): string | null {
   for (const r of roots) {
@@ -13,6 +12,26 @@ function findDeployRoot(roots: string[]): string | null {
 }
 
 const WORKLOAD_KIND = /^kind:\s*(Deployment|StatefulSet|DaemonSet)\b/m;
+const DROP_ALL = /drop:\s*\n\s*-\s*['"]?ALL['"]?/;
+const DROP_ALL_INLINE = /drop:\s*\[\s*['"]?ALL['"]?\s*\]/;
+const ADD_DAC_READ_SEARCH =
+  /add:\s*\n\s*-\s*['"]?DAC_READ_SEARCH['"]?|add:\s*\[\s*['"]?DAC_READ_SEARCH['"]?\s*\]/;
+
+function dropsAllCapabilities(doc: string): boolean {
+  return DROP_ALL.test(doc) || DROP_ALL_INLINE.test(doc);
+}
+
+function isDocumentedRootLogReader(doc: string): boolean {
+  return (
+    /name:\s*fluent-bit\b/.test(doc) &&
+    /runAsUser:\s*0\b/.test(doc) &&
+    /readOnlyRootFilesystem:\s*true/.test(doc) &&
+    /allowPrivilegeEscalation:\s*false/.test(doc) &&
+    dropsAllCapabilities(doc) &&
+    ADD_DAC_READ_SEARCH.test(doc) &&
+    /seccompProfile:\s*\n\s*type:\s*RuntimeDefault/.test(doc)
+  );
+}
 
 export const k8sSecurityContext: Check = {
   id: "CC6.6-k8s-securitycontext",
@@ -43,11 +62,14 @@ export const k8sSecurityContext: Check = {
         if (!WORKLOAD_KIND.test(doc)) continue;
         workloadCount++;
         const missing: string[] = [];
-        if (!/runAsNonRoot:\s*true/.test(doc)) missing.push("runAsNonRoot=true");
+        if (
+          !/runAsNonRoot:\s*true/.test(doc) &&
+          !isDocumentedRootLogReader(doc)
+        )
+          missing.push("runAsNonRoot=true");
         if (!/readOnlyRootFilesystem:\s*true/.test(doc))
           missing.push("readOnlyRootFilesystem=true");
-        if (!/drop:\s*\n\s*-\s*['"]?ALL['"]?/.test(doc) && !/drop:\s*\[\s*['"]?ALL['"]?\s*\]/.test(doc))
-          missing.push("capabilities.drop=[ALL]");
+        if (!dropsAllCapabilities(doc)) missing.push("capabilities.drop=[ALL]");
         if (missing.length > 0) violations.push(`${f}: ${missing.join(", ")}`);
       }
     }
@@ -71,7 +93,8 @@ export const k8sSecurityContext: Check = {
 
 export const networkPoliciesPresent: Check = {
   id: "CC6.6-networkpolicies-present",
-  title: "At least one NetworkPolicy manifest under deploy/k8s/networkpolicies/",
+  title:
+    "At least one NetworkPolicy manifest under deploy/k8s/networkpolicies/",
   tsc: ["CC6.6"],
   severity: "high",
   async run(ctx): Promise<CheckResult> {

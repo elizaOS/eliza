@@ -66,10 +66,19 @@ def main() -> int:
 
     root_license_text = read_text(root_license)
     modeling_text = read_text(modeling_readme)
+    manifest_text = read_text(intake_manifest)
+    payload_present = payload.is_dir()
+    noncommercial_reviewed = (
+        "Creative Commons Attribution-NonCommercial 4.0" in root_license_text
+        or "cc-by-nc" in manifest_text.lower()
+    )
+    subset_conflict_note_present = (
+        "MIT License" in modeling_text or "conflicting_subset_note" in manifest_text
+    )
     blockers: list[str] = []
-    if "Creative Commons Attribution-NonCommercial 4.0" not in root_license_text:
+    if not noncommercial_reviewed:
         blockers.append("root LICENSE does not identify CC BY-NC 4.0")
-    if "MIT License" not in modeling_text:
+    if not subset_conflict_note_present:
         blockers.append("for_modeling README conflict note was not found")
     if not intake_manifest.is_file():
         blockers.append("external intake manifest is missing")
@@ -85,10 +94,15 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "status": status,
         "legal_advice": False,
+        "payload_evidence_status": (
+            "FULL_EXTERNAL_PAYLOAD_PRESENT"
+            if payload_present
+            else "METADATA_ONLY_EXTERNAL_PAYLOAD_ABSENT"
+        ),
         "license_findings": {
             "root_license_family": "CC-BY-NC-4.0",
             "root_license_noncommercial": True,
-            "subset_conflict_note_present": "MIT License" in modeling_text,
+            "subset_conflict_note_present": subset_conflict_note_present,
             "conservative_resolution": (
                 "Treat the complete R-Zoo payload as CC-BY-NC-4.0 / non-commercial; "
                 "do not rely on the subset MIT note for release or commercial use."

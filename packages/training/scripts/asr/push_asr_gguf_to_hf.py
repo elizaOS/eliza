@@ -53,7 +53,10 @@ def main(argv: list[str] | None = None) -> int:
 
     quant_dir: Path = args.quant_dir
     prefix = args.path_prefix.strip("/")
-    rp = (lambda name: f"{prefix}/{name}" if prefix else name)
+
+    def rp(name: str) -> str:
+        return f"{prefix}/{name}" if prefix else name
+
     expected: list[tuple[Path, str]] = []
     for level in [q.strip() for q in args.quants.split(",") if q.strip()]:
         local = quant_dir / f"eliza-1-asr-{level}.gguf"
@@ -61,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
     expected.append(
         (
             quant_dir / f"eliza-1-asr-mmproj-{args.mmproj_quant}.gguf",
-            rp(f"eliza-1-asr-mmproj.gguf"),
+            rp("eliza-1-asr-mmproj.gguf"),
         )
     )
     expected.append((quant_dir / "eval.json", rp("eval.json")))

@@ -248,7 +248,6 @@ def teacher_pass(
     audeering training horizon); RAVDESS clips are short enough that
     striping doesn't help.
     """
-    import numpy as np
     import torch
 
     model = teacher["model"].to(device).eval()
