@@ -9,10 +9,12 @@ const appContextGlobal = globalThis as typeof globalThis & {
   __ELIZAOS_UI_APP_CONTEXT__?: AppContextObject;
 };
 
-export const AppContext =
-  appContextGlobal.__ELIZAOS_UI_APP_CONTEXT__ ??
-  (appContextGlobal.__ELIZAOS_UI_APP_CONTEXT__ =
-    createContext<AppContextValue | null>(null));
+if (!appContextGlobal.__ELIZAOS_UI_APP_CONTEXT__) {
+  appContextGlobal.__ELIZAOS_UI_APP_CONTEXT__ =
+    createContext<AppContextValue | null>(null);
+}
+
+export const AppContext = appContextGlobal.__ELIZAOS_UI_APP_CONTEXT__;
 
 export function useApp(): AppContextValue {
   const ctx = useContext(AppContext);

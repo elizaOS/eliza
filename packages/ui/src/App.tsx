@@ -62,11 +62,7 @@ import { StartupScreen } from "./components/shell/StartupScreen";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { ErrorBoundary } from "./components/ui/error-boundary";
-import { VoiceWaveform } from "./components/voice/VoiceWaveform";
-import {
-  AppWorkspaceChrome,
-  type AppWorkspaceChromeProps,
-} from "./components/workspace/AppWorkspaceChrome";
+import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react";
 import type { CompanionShellComponentProps } from "./config/boot-config-store";
 import {

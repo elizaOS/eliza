@@ -23,6 +23,7 @@ export function ChatSurface({
 }: ChatSurfaceProps): React.JSX.Element {
   const [draft, setDraft] = React.useState("");
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
+  const messageCount = messages.length;
   const trimmed = draft.trim();
   const canSendNow = canSend && trimmed.length > 0;
 
@@ -33,10 +34,11 @@ export function ChatSurface({
   }, [canSendNow, onSend, trimmed]);
 
   React.useEffect(() => {
+    void messageCount;
     const node = scrollRef.current;
     if (!node) return;
     node.scrollTop = node.scrollHeight;
-  }, [messages]);
+  }, [messageCount]);
 
   return (
     <div className="flex h-full flex-col" data-testid="shell-chat-surface">
