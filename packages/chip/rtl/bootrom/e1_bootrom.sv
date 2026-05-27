@@ -23,10 +23,10 @@
 module e1_bootrom #(
     parameter ROM_HEX = "build/boot-rom/e1_secure_boot_rom.hex"
 ) (
-    input  logic [5:0]  addr,
+    input  logic [13:0] addr,
     output logic [31:0] rdata
 );
-    localparam int unsigned WORDS = 64;
+    localparam int unsigned WORDS = 16_384;
 
     logic [31:0] mem [WORDS];
 
