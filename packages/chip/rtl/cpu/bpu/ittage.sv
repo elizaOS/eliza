@@ -67,6 +67,9 @@ module ittage
     ittage_entry_t storage_d [ITTAGE_TABLES][ITTAGE_SETS_MAX][ITTAGE_WAYS];
     logic [$clog2(USEFUL_RESET_PERIOD+1)-1:0] useful_reset_ctr_q;
     logic [$clog2(USEFUL_RESET_PERIOD+1)-1:0] useful_reset_ctr_d;
+    logic [ITT_IDX_W-1:0]       upd_table_idx;
+    logic [ITTAGE_TAG_W-1:0]    upd_table_tag;
+    logic [ITT_WAY_W-1:0]       upd_table_way;
 
     function automatic logic [ITT_IDX_W-1:0] index_hash(
         input int unsigned tid,
@@ -233,6 +236,9 @@ module ittage
     always_comb begin
         storage_d = storage_q;
         useful_reset_ctr_d = useful_reset_ctr_q;
+        upd_table_idx = '0;
+        upd_table_tag = '0;
+        upd_table_way = '0;
         if (upd_valid) begin
             if (useful_reset_ctr_q == $bits(useful_reset_ctr_q)'(USEFUL_RESET_PERIOD - 1)) begin
                 useful_reset_ctr_d = '0;
@@ -253,43 +259,48 @@ module ittage
             // decremented and on saturation the table is invalidated so the
             // allocator can try a longer-history table.
             for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
-                automatic logic [ITT_IDX_W-1:0]    idx = upd_idx_per_tab[t];
-                automatic logic [ITTAGE_TAG_W-1:0] tag = upd_tag_per_tab[t];
-                automatic logic [ITT_WAY_W-1:0]    way = upd_match_way_per_tab[t];
+                upd_table_idx = upd_idx_per_tab[t];
+                upd_table_tag = upd_tag_per_tab[t];
+                upd_table_way = upd_match_way_per_tab[t];
                 if (upd_prov == t + 1) begin
                     if (upd_match_per_tab[t]) begin
-                        if (storage_q[t][idx][way].target == upd_target) begin
-                            if (storage_q[t][idx][way].ctr != {ITTAGE_CTR_W{1'b1}})
-                                storage_d[t][idx][way].ctr =
-                                    storage_q[t][idx][way].ctr + 1'b1;
-                            if (storage_q[t][idx][way].useful != {ITTAGE_USEFUL_W{1'b1}})
-                                storage_d[t][idx][way].useful =
-                                    storage_q[t][idx][way].useful + 1'b1;
+                        if (storage_q[t][upd_table_idx][upd_table_way].target == upd_target) begin
+                            if (storage_q[t][upd_table_idx][upd_table_way].ctr !=
+                                {ITTAGE_CTR_W{1'b1}})
+                                storage_d[t][upd_table_idx][upd_table_way].ctr =
+                                    storage_q[t][upd_table_idx][upd_table_way].ctr + 1'b1;
+                            if (storage_q[t][upd_table_idx][upd_table_way].useful !=
+                                {ITTAGE_USEFUL_W{1'b1}})
+                                storage_d[t][upd_table_idx][upd_table_way].useful =
+                                    storage_q[t][upd_table_idx][upd_table_way].useful + 1'b1;
                         end else if ((upd_prov >= ITTAGE_REPLACE_MIN_PROVIDER) &&
-                                     (storage_q[t][idx][way].ctr <=
+                                     (storage_q[t][upd_table_idx][upd_table_way].ctr <=
                                       ITTAGE_CTR_W'(ITTAGE_REPLACE_WEAK_CTR))) begin
-                            storage_d[t][idx][way].target = upd_target;
-                            storage_d[t][idx][way].ctr    = {1'b1, {(ITTAGE_CTR_W-1){1'b0}}};
-                            storage_d[t][idx][way].useful = '0;
+                            storage_d[t][upd_table_idx][upd_table_way].target = upd_target;
+                            storage_d[t][upd_table_idx][upd_table_way].ctr =
+                                {1'b1, {(ITTAGE_CTR_W-1){1'b0}}};
+                            storage_d[t][upd_table_idx][upd_table_way].useful = '0;
                         end else begin
-                            if (storage_q[t][idx][way].ctr == '0)
-                                storage_d[t][idx][way].valid = 1'b0;
+                            if (storage_q[t][upd_table_idx][upd_table_way].ctr == '0)
+                                storage_d[t][upd_table_idx][upd_table_way].valid = 1'b0;
                             else begin
-                                storage_d[t][idx][way].ctr = storage_q[t][idx][way].ctr - 1'b1;
-                                if (storage_q[t][idx][way].useful != '0)
-                                    storage_d[t][idx][way].useful =
-                                        storage_q[t][idx][way].useful - 1'b1;
+                                storage_d[t][upd_table_idx][upd_table_way].ctr =
+                                    storage_q[t][upd_table_idx][upd_table_way].ctr - 1'b1;
+                                if (storage_q[t][upd_table_idx][upd_table_way].useful != '0)
+                                    storage_d[t][upd_table_idx][upd_table_way].useful =
+                                        storage_q[t][upd_table_idx][upd_table_way].useful - 1'b1;
                             end
                         end
                     end
                 end
                 // Single-shot allocation on misprediction.
                 if (upd_misp && alloc_grant[t]) begin
-                    storage_d[t][idx][alloc_way[t]].valid  = 1'b1;
-                    storage_d[t][idx][alloc_way[t]].tag    = tag;
-                    storage_d[t][idx][alloc_way[t]].target = upd_target;
-                    storage_d[t][idx][alloc_way[t]].ctr    = {1'b1, {(ITTAGE_CTR_W-1){1'b0}}};
-                    storage_d[t][idx][alloc_way[t]].useful = '0;
+                    storage_d[t][upd_table_idx][alloc_way[t]].valid  = 1'b1;
+                    storage_d[t][upd_table_idx][alloc_way[t]].tag    = upd_table_tag;
+                    storage_d[t][upd_table_idx][alloc_way[t]].target = upd_target;
+                    storage_d[t][upd_table_idx][alloc_way[t]].ctr    =
+                        {1'b1, {(ITTAGE_CTR_W-1){1'b0}}};
+                    storage_d[t][upd_table_idx][alloc_way[t]].useful = '0;
                 end
             end
         end
