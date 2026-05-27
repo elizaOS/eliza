@@ -2457,6 +2457,7 @@
         "playwright": "^1.59.1",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
+        "sharp": "^0.34.5",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
       },
