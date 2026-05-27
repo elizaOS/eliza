@@ -226,10 +226,13 @@ def test_riscv64_image_has_node_agent_bundle_fallback_before_bun() -> None:
             raise AssertionError(f"install hook must provide app-local Node modules for riscv64 Node ESM: {expected}")
 
     run_agent = RUN_AGENT.read_text(encoding="utf-8")
-    node_agent = "node /opt/elizaos/app/agent-bundle.js serve --headless"
+    node_agent = "node \\\n            --no-wasm-tier-up"
     bun_agent = "/opt/elizaos/bin/bun /opt/elizaos/app/agent-bundle.js serve --headless"
     if node_agent not in run_agent:
-        raise AssertionError("run-agent.sh is missing the riscv64 node agent-bundle fallback")
+        raise AssertionError("run-agent.sh is missing the node agent-bundle fallback with V8 Wasm tier-up disabled")
+    for flag in ("--no-wasm-tier-up", "--no-wasm-dynamic-tiering", "--liftoff-only"):
+        if flag not in run_agent:
+            raise AssertionError(f"run-agent.sh node fallback is missing {flag}")
     if run_agent.index(node_agent) > run_agent.index(bun_agent):
         raise AssertionError("riscv64 node fallback must run before the Bun path that can SIGILL")
     if 'ARCH="$(dpkg --print-architecture 2>/dev/null || true)"' not in run_agent:
@@ -240,10 +243,13 @@ def test_riscv64_image_has_node_agent_bundle_fallback_before_bun() -> None:
         raise AssertionError("node fallback must cover bare arm64 agent bundles without Electrobun")
 
     run_tui = RUN_TUI_SMOKE.read_text(encoding="utf-8")
-    node_tui = "node /opt/elizaos/app/agent-bundle.js tui-smoke"
+    node_tui = "node \\\n        --no-wasm-tier-up"
     bun_tui = "/opt/elizaos/bin/bun /opt/elizaos/app/agent-bundle.js tui-smoke"
     if node_tui not in run_tui:
-        raise AssertionError("run-terminal-tui-smoke.sh is missing the node fallback")
+        raise AssertionError("run-terminal-tui-smoke.sh is missing the node fallback with V8 Wasm tier-up disabled")
+    for flag in ("--no-wasm-tier-up", "--no-wasm-dynamic-tiering", "--liftoff-only"):
+        if flag not in run_tui:
+            raise AssertionError(f"run-terminal-tui-smoke.sh node fallback is missing {flag}")
     if run_tui.index(node_tui) > run_tui.index(bun_tui):
         raise AssertionError("node TUI fallback must run before the Bun path")
     if '[ "${ARCH}" = "riscv64" ] || [ "${ARCH}" = "arm64" ]' not in run_tui:
@@ -278,8 +284,10 @@ def test_boot_health_and_tui_markers_are_serial_provable() -> None:
             raise AssertionError(f"first-boot.sh missing serial-provable boot diagnostic: {expected}")
 
     run_agent = RUN_AGENT.read_text(encoding="utf-8")
-    if "run_agent_command node-agent-bundle node /opt/elizaos/app/agent-bundle.js" not in run_agent:
+    if "run_agent_command node-agent-bundle node \\" not in run_agent:
         raise AssertionError("run-agent.sh must emit the selected riscv64 agent entrypoint")
+    if "/opt/elizaos/app/agent-bundle.js serve --headless" not in run_agent:
+        raise AssertionError("run-agent.sh must pass the staged agent-bundle.js to Debian node")
     if "elizaos-agent-exited runtime=${RUNTIME} rc=${RC}" not in run_agent:
         raise AssertionError("run-agent.sh must serial-emit nonzero runtime exits")
     if "agent-runtime.log" not in run_agent:

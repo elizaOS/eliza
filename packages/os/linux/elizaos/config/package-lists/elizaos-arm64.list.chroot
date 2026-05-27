@@ -1,4 +1,4 @@
-# arm64 kernel, bootloader, and graphical desktop.
+# arm64 kernel and bootloader.
 #
 # Gated by `#if ARCHITECTURES arm64`: live-build reads this file on every
 # build but only emits the packages below when LB_ARCHITECTURES contains
@@ -9,23 +9,6 @@ grub-efi-arm64-bin
 grub-efi-arm64-signed
 shim-signed
 
-# Desktop session (GNOME, minimal seed).
-xorg
-gdm3
-gnome-session
-gnome-shell
-gnome-terminal
-gnome-control-center
-nautilus
-network-manager
-network-manager-gnome
-pulseaudio
-pipewire
-pipewire-pulse
-
-# WebKitGTK kiosk browser for the agent home surface.
-epiphany-browser
-
 # Node.js fallback for the bare agent-bundle.js path. arm64 release images
 # currently stage the mobile bundle without the self-contained eliza-dist tree,
 # so Node is the deterministic service runtime for /api/health.
@@ -33,9 +16,4 @@ nodejs
 node-undici
 node-ws
 node-fetch
-
-# Boot splash.
-plymouth
-plymouth-themes
-plymouth-label
 #endif

@@ -12,7 +12,8 @@
 # The elizaOS hardening profile (Tor routing, AppArmor enforcement, MAC
 # randomization, amnesic tmpfs home) lives under config/profiles/secure/
 # and is composed in via build.sh when ELIZAOS_PROFILE=secure. The default
-# profile is plain elizaOS desktop.
+# profile is a headless Debian live image; the GUI/kiosk payload is opt-in
+# with ELIZAOS_PROFILE=gui or secure-gui.
 set -eu
 
 ARCH="${ELIZAOS_ARCH:-amd64}"

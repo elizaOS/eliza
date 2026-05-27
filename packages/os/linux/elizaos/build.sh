@@ -19,7 +19,7 @@
 #
 # Tunables:
 #   ELIZAOS_ARCH            amd64 | arm64 | riscv64 (default: amd64)
-#   ELIZAOS_PROFILE         default | secure
+#   ELIZAOS_PROFILE         default | gui | secure | secure-gui
 #   ELIZAOS_OUT_DIR         override host-side output dir
 #   ELIZAOS_MIN_ISO_BYTES   override 200 MiB minimum
 set -euo pipefail
@@ -407,6 +407,15 @@ echo "    profile:     ${PROFILE}"
 echo "    output dir:  ${OUT}"
 echo "    build ts:    ${BUILD_TS}"
 
+case "${PROFILE}" in
+    default|gui|secure|secure-gui) ;;
+    *)
+        echo "ERROR: unsupported ELIZAOS_PROFILE=${PROFILE}" >&2
+        echo "       expected one of: default, gui, secure, secure-gui" >&2
+        exit 64
+        ;;
+esac
+
 ensure_foreign_binfmt
 patch_debootstrap_curl_downloader
 configure_wget_ipv4_only
@@ -419,8 +428,14 @@ echo "--- step 1/5: lb config ---"
 ELIZAOS_ARCH="${ARCH}" "${HERE}/auto/config"
 rm -f "${HERE}/.lock"
 
-# Compose the secure hardening overlay on top of the default config.
-if [ "${PROFILE}" = "secure" ]; then
+# Compose optional overlays on top of the base headless config.
+if [ "${PROFILE}" = "gui" ] || [ "${PROFILE}" = "secure-gui" ]; then
+    if [ -d "${HERE}/config/profiles/gui" ]; then
+        echo "    overlaying gui profile..."
+        cp -a "${HERE}/config/profiles/gui/." "${HERE}/config/"
+    fi
+fi
+if [ "${PROFILE}" = "secure" ] || [ "${PROFILE}" = "secure-gui" ]; then
     if [ -d "${HERE}/config/profiles/secure" ]; then
         echo "    overlaying secure profile..."
         cp -a "${HERE}/config/profiles/secure/." "${HERE}/config/"

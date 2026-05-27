@@ -16,7 +16,11 @@ ARCH="$(dpkg --print-architecture 2>/dev/null || true)"
 if { [ "${ARCH}" = "riscv64" ] || [ "${ARCH}" = "arm64" ]; } \
     && command -v node >/dev/null 2>&1 \
     && [ -f /opt/elizaos/app/agent-bundle.js ]; then
-    node /opt/elizaos/app/agent-bundle.js tui-smoke --api "${URL}"
+    node \
+        --no-wasm-tier-up \
+        --no-wasm-dynamic-tiering \
+        --liftoff-only \
+        /opt/elizaos/app/agent-bundle.js tui-smoke --api "${URL}"
     echo "elizaos-tui-ready url=${URL}"
     exit 0
 fi

@@ -387,18 +387,33 @@ def validate_runtime_matrix(errors: list[str], matrix: dict) -> None:
 
 def validate_kiosk_gui_contract(errors: list[str]) -> None:
     common_packages = package_lines(ROOT / "config/package-lists/elizaos-common.list.chroot")
+    gui_package_file = ROOT / "config/profiles/gui/package-lists/elizaos-gui.list.chroot"
+    require(errors, gui_package_file.is_file(), "missing GUI profile package list")
+    gui_packages = package_lines(gui_package_file) if gui_package_file.is_file() else set()
+    for package in KIOSK_PACKAGE_REQUIREMENTS + DESKTOP_PACKAGE_REQUIREMENTS:
+        require(
+            errors,
+            package in gui_packages,
+            f"elizaos-gui.list.chroot missing GUI package {package}",
+        )
     for package in KIOSK_PACKAGE_REQUIREMENTS:
         require(
             errors,
-            package in common_packages,
-            f"elizaos-common.list.chroot missing kiosk GUI package {package}",
+            package not in common_packages,
+            f"elizaos-common.list.chroot must not install GUI package {package} in the default headless build",
         )
 
     graphical_hook = read("config/hooks/normal/0025-enable-graphical-session.hook.chroot")
     require(
         errors,
+        "GUI profile packages absent" in graphical_hook
+        and "systemctl set-default multi-user.target" in graphical_hook,
+        "graphical-session hook must keep non-GUI/default builds on multi-user.target",
+    )
+    require(
+        errors,
         "systemctl set-default graphical.target" in graphical_hook,
-        "graphical-session hook must make graphical.target the default boot target",
+        "graphical-session hook must make graphical.target the default boot target when GUI packages exist",
     )
     require(
         errors,
@@ -504,8 +519,8 @@ def main() -> int:
         for package in DESKTOP_PACKAGE_REQUIREMENTS:
             require(
                 errors,
-                package in present,
-                f"{package_file.relative_to(ROOT)} missing GUI parity package {package}",
+                package not in present,
+                f"{package_file.relative_to(ROOT)} must not install GUI package {package}; use PROFILE=gui",
             )
 
     riscv_package_file = package_dir / "elizaos-riscv64.list.chroot"
@@ -530,6 +545,12 @@ def main() -> int:
         errors,
         "grub-efi-riscv64-bin" in build_sh,
         "build.sh must patch live-build's riscv64 GRUB EFI package check",
+    )
+    require(
+        errors,
+        "default|gui|secure|secure-gui" in build_sh
+        and "config/profiles/gui" in build_sh,
+        "build.sh must support an explicit GUI profile over the default headless config",
     )
     require(
         errors,

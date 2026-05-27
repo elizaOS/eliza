@@ -50,7 +50,11 @@ run_agent_command() {
 
 run_node_agent_bundle() {
     if command -v node >/dev/null 2>&1 && [ -f /opt/elizaos/app/agent-bundle.js ]; then
-        run_agent_command node-agent-bundle node /opt/elizaos/app/agent-bundle.js serve --headless --port="${PORT}"
+        run_agent_command node-agent-bundle node \
+            --no-wasm-tier-up \
+            --no-wasm-dynamic-tiering \
+            --liftoff-only \
+            /opt/elizaos/app/agent-bundle.js serve --headless --port="${PORT}"
     fi
 }
 

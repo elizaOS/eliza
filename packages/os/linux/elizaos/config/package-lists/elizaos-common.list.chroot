@@ -12,22 +12,6 @@ systemd-sysv
 # it no login account is created and both GDM autologin and console login fail.
 user-setup
 
-# Locked single-app kiosk session.
-# cage: single-window Wayland kiosk compositor — the elizaOS app is its only
-#       window and the entire GUI (no desktop, no window switching).
-# seatd: seat/VT/input broker so cage owns the seat without a logind session.
-cage
-seatd
-# Electrobun app is GTK/WebKit-based; these are its stock Debian runtime deps.
-# libsoup-3.0 + libjavascriptcoregtk-4.1-0 are pulled in by libwebkit2gtk-4.1-0.
-libwebkit2gtk-4.1-0
-libgtk-3-0
-libdbusmenu-gtk3-4
-# Mesa GL + fonts for WebKit GPU/text rendering inside the headless compositor.
-libgl1-mesa-dri
-libegl1
-fonts-dejavu-core
-
 # elizaOS runtime dependencies.
 ca-certificates
 curl
@@ -41,12 +25,10 @@ xdg-utils
 fontconfig
 fonts-noto-core
 fonts-noto-mono
+fonts-dejavu-core
 
 # Diagnostics (small set; keep image lean).
 pciutils
 usbutils
 htop
 strace
-# grim: wlroots screen-capture (wlr-screencopy). cage is wlroots-based, so grim
-# can capture the live kiosk surface for headless render validation in CI/QEMU.
-grim

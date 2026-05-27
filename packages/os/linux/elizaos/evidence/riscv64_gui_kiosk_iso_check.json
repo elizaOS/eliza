@@ -1,6 +1,10 @@
 {
   "arch": "riscv64",
   "checks": {
+    "agent_bundle": {
+      "path": "squashfs-root/opt/elizaos/app/agent-bundle.js",
+      "present": true
+    },
     "cage": {
       "path": "squashfs-root/usr/bin/cage",
       "present": true
@@ -52,9 +56,9 @@
   },
   "claim_boundary": "static ISO squashfs payload check for graphical kiosk dependencies; not a pixel-rendered GUI runtime screenshot or physical display claim",
   "iso": {
-    "bytes": 879058944,
-    "path": "out/elizaos-linux-riscv64-default-20260524T030430Z.iso",
-    "sha256": "0816de4b5b8ea33698a22d07e42d51b756b70a5b1831b2640e640b5b30aed1a2"
+    "bytes": 926879744,
+    "path": "out/elizaos-linux-riscv64-gui-20260527T181540Z.iso",
+    "sha256": "69e27b799a0617b5c1eaaf7dd4eef330fe29c3b2364a22cb7c27c9777fb3c0a7"
   },
   "missing": [],
   "schema": "eliza.os.linux.gui_kiosk_iso_check.v1",
