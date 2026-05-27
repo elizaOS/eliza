@@ -429,9 +429,12 @@ def renode_status() -> Status:
 
 
 def benchmark_status() -> Status:
+    generated_ap = ROOT / "benchmarks/results/generated-ap-smoke/report.json"
     host_smoke = ROOT / "benchmarks/results/final-macbook-host-smoke/report.json"
     report = (
-        host_smoke
+        generated_ap
+        if generated_ap.is_file()
+        else host_smoke
         if host_smoke.is_file()
         else ROOT / "benchmarks/results/pipeline-check/report.json"
     )
@@ -440,7 +443,7 @@ def benchmark_status() -> Status:
             "benchmarks",
             BLOCK,
             "missing regenerated benchmark report",
-            "make benchmarks-dry-run or run the final-macbook-host-smoke benchmark set",
+            "python3 benchmarks/import_cpu_ap_benchmark_evidence.py or make benchmarks-dry-run",
             "regen_required",
         )
     data = json.loads(report.read_text())
