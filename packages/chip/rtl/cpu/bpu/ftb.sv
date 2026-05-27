@@ -588,25 +588,27 @@ module ftb
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
+            /* verilator lint_off BLKSEQ */
             for (int unsigned s = 0; s < SETS; s++) begin
                 for (int unsigned w = 0; w < WAYS; w++) begin
-                    storage_q[s][w].valid <= 1'b0;
-                    storage_q[s][w].parity <= 1'b0;
-                    storage_q[s][w].ctx <= '0;
-                    storage_q[s][w].tag <= '0;
-                    storage_q[s][w].target <= '0;
-                    storage_q[s][w].fall_through_pc <= '0;
-                    storage_q[s][w].target_conf <= '0;
-                    storage_q[s][w].kind <= BR_NONE;
-                    storage_q[s][w].br_valid <= '0;
-                    storage_q[s][w].slot_offset <= '0;
-                    storage_q[s][w].slot_kind <= '0;
-                    storage_q[s][w].slot_target <= '0;
-                    storage_q[s][w].slot_fall_through_pc <= '0;
-                    storage_q[s][w].slot_target_conf <= '0;
-                    storage_q[s][w].age <= '0;
+                    storage_q[s][w].valid = 1'b0;
+                    storage_q[s][w].parity = 1'b0;
+                    storage_q[s][w].ctx = '0;
+                    storage_q[s][w].tag = '0;
+                    storage_q[s][w].target = '0;
+                    storage_q[s][w].fall_through_pc = '0;
+                    storage_q[s][w].target_conf = '0;
+                    storage_q[s][w].kind = BR_NONE;
+                    storage_q[s][w].br_valid = '0;
+                    storage_q[s][w].slot_offset = '0;
+                    storage_q[s][w].slot_kind = '0;
+                    storage_q[s][w].slot_target = '0;
+                    storage_q[s][w].slot_fall_through_pc = '0;
+                    storage_q[s][w].slot_target_conf = '0;
+                    storage_q[s][w].age = '0;
                 end
             end
+            /* verilator lint_on BLKSEQ */
             pmu_miss <= 1'b0;
         end else begin
             pmu_miss <= lkp_valid && !lkp_hit;

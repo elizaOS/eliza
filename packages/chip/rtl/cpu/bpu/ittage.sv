@@ -230,30 +230,34 @@ module ittage
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
+            /* verilator lint_off BLKSEQ */
             for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
                 for (int unsigned i = 0; i < ITTAGE_SETS_MAX; i++) begin
                     for (int unsigned way = 0; way < ITTAGE_WAYS; way++) begin
-                        storage_q[t][i][way].valid  <= 1'b0;
-                        storage_q[t][i][way].tag    <= '0;
-                        storage_q[t][i][way].target <= '0;
-                        storage_q[t][i][way].ctr    <= '0;
-                        storage_q[t][i][way].useful <= '0;
+                        storage_q[t][i][way].valid  = 1'b0;
+                        storage_q[t][i][way].tag    = '0;
+                        storage_q[t][i][way].target = '0;
+                        storage_q[t][i][way].ctr    = '0;
+                        storage_q[t][i][way].useful = '0;
                     end
                 end
             end
+            /* verilator lint_on BLKSEQ */
             useful_reset_ctr_q <= '0;
         end else if (upd_valid) begin
             if (useful_reset_ctr_q == $bits(useful_reset_ctr_q)'(USEFUL_RESET_PERIOD - 1)) begin
                 useful_reset_ctr_q <= '0;
+                /* verilator lint_off BLKSEQ */
                 for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
                     for (int unsigned i = 0; i < ITTAGE_SETS_MAX; i++) begin
                         for (int unsigned way = 0; way < ITTAGE_WAYS; way++) begin
                             if (storage_q[t][i][way].useful != '0)
-                                storage_q[t][i][way].useful <=
+                                storage_q[t][i][way].useful =
                                     storage_q[t][i][way].useful - 1'b1;
                         end
                     end
                 end
+                /* verilator lint_on BLKSEQ */
             end else begin
                 useful_reset_ctr_q <= useful_reset_ctr_q + 1'b1;
             end
