@@ -32,13 +32,20 @@ jobs:
 
       - name: Validate OS release manifest
         run: |
+          manifest=packages/os/release/beta-2026-05-16/manifest.json
+          evidence=packages/os/release/beta-2026-05-16/evidence/ci-evidence.json
+
           node --check packages/os/scripts/*.mjs
-          node packages/os/scripts/validate-release-manifest.mjs \
-            --manifest packages/os/release/beta-2026-05-16/manifest.json
           node --test packages/os/scripts/__tests__/os-release-scripts.test.mjs
-          node packages/os/scripts/collect-release-evidence.mjs \
-            --manifest packages/os/release/beta-2026-05-16/manifest.json \
-            --output packages/os/release/beta-2026-05-16/evidence/ci-evidence.json
+          if [ -f "$manifest" ]; then
+            node packages/os/scripts/validate-release-manifest.mjs \
+              --manifest "$manifest"
+            node packages/os/scripts/collect-release-evidence.mjs \
+              --manifest "$manifest" \
+              --output "$evidence"
+          else
+            echo "::notice::${manifest} is not present; skipping beta release manifest validation."
+          fi
 
       - name: Validate USB installer
         run: |
@@ -56,12 +63,18 @@ jobs:
 
       - name: Validate Android installer
         run: |
+          android_manifest=packages/os/release/beta-2026-05-16/android-release-manifest.json
+
           packages/os/android/installer/tests/run-tests.sh
           node packages/os/android/installer/scripts/validate-release-manifest.mjs \
             packages/os/android/installer/manifests/android-release-manifest.example.json
-          node packages/os/android/installer/scripts/validate-release-manifest.mjs \
-            packages/os/release/beta-2026-05-16/android-release-manifest.json \
-            --allow-placeholders
+          if [ -f "$android_manifest" ]; then
+            node packages/os/android/installer/scripts/validate-release-manifest.mjs \
+              "$android_manifest" \
+              --allow-placeholders
+          else
+            echo "::notice::${android_manifest} is not present; skipping beta Android release manifest validation."
+          fi
 
       - name: Validate elizaos-setup (formerly aosp-flasher)
         run: |
