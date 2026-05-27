@@ -34,9 +34,9 @@ type PermissionProbersModule = {
   ALL_PROBERS: readonly DesktopPermissionProber[];
 };
 
-let probersByIdPromise:
-  | Promise<Map<SystemPermissionId, DesktopPermissionProber>>
-  | null = null;
+let probersByIdPromise: Promise<
+  Map<SystemPermissionId, DesktopPermissionProber>
+> | null = null;
 
 function isKnownPermissionId(value: unknown): value is SystemPermissionId {
   return (

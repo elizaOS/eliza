@@ -86,8 +86,8 @@ describe("first-party RemotePlugins", () => {
       "eliza.surface",
     ]);
     expect(
-      manifests.find((manifest) => manifest.id === "eliza.runtime")
-        ?.permissions.isolation,
+      manifests.find((manifest) => manifest.id === "eliza.runtime")?.permissions
+        .isolation,
     ).toBe("shared-worker");
   });
 

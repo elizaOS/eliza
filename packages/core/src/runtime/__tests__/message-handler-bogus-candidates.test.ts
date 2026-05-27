@@ -546,6 +546,78 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.candidateActions).toEqual(["TASKS_SPAWN_AGENT"]);
 	});
 
+	it("keeps trivial inline hello-world code requests on the simple path despite TASKS hints", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["general"],
+				candidateActionNames: ["TASKS_SPAWN_AGENT"],
+				replyText: "",
+				intents: ["write small python code snippet"],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [TASKS_SPAWN_AGENT],
+				messageText: "write a code block in python that prints hello world",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(true);
+		expect(handler.plan.requiresTool).toBe(false);
+		expect(handler.plan.contexts).toEqual(["simple"]);
+		expect(handler.plan.candidateActions).toBeUndefined();
+	});
+
+	it("keeps tight-line fibonacci snippets simple so direct reply can prioritize valid syntax", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["general"],
+				candidateActionNames: ["TASKS_SPAWN_AGENT"],
+				replyText: "```python\ndef fib(n):\n    return n\n```",
+				intents: ["write small python function"],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [TASKS_SPAWN_AGENT],
+				messageText: "give me a 3-line python fibonacci function",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(true);
+		expect(handler.plan.requiresTool).toBe(false);
+		expect(handler.plan.contexts).toEqual(["simple"]);
+		expect(handler.plan.candidateActions).toBeUndefined();
+	});
+
+	it("still routes explicit sub-agent coding requests to TASKS", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: ["TASKS_SPAWN_AGENT"],
+				replyText: "On it.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [TASKS_SPAWN_AGENT],
+				messageText: "spawn a sub-agent to build a complete Discord bot in Python",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual(["TASKS_SPAWN_AGENT"]);
+	});
+
 	it("adds a real lookup action when Stage 1 emits only a synthetic current-price candidate", () => {
 		const handler = messageHandlerFromFieldResult(
 			{

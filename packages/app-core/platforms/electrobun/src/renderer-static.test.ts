@@ -2,8 +2,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   getRendererAssetContentType,
-  resolveRendererAssetByteRange,
   resolveRendererAsset,
+  resolveRendererAssetByteRange,
 } from "./renderer-static";
 
 describe("renderer static assets", () => {

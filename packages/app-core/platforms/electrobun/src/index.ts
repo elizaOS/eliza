@@ -66,7 +66,6 @@ import {
 } from "./native/agent";
 import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
-import { getRemotePluginHost } from "./native/remote-plugin-host";
 import {
   enableVibrancy,
   ensureShadow,
@@ -74,6 +73,7 @@ import {
   setTrafficLightsPosition,
 } from "./native/mac-window-effects";
 import { getPermissionManager } from "./native/permissions";
+import { getRemotePluginHost } from "./native/remote-plugin-host";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
 import { createPillWindow, getPillWindow } from "./pill-window";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
@@ -84,8 +84,8 @@ import {
 } from "./renderer-api-proxy";
 import {
   getRendererAssetContentType,
-  resolveRendererAssetByteRange,
   resolveRendererAsset,
+  resolveRendererAssetByteRange,
 } from "./renderer-static";
 import {
   buildBunRpcHandlers,

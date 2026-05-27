@@ -1,7 +1,7 @@
-import type { IAgentRuntime, Memory } from "@elizaos/core";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", async (importOriginal) => {

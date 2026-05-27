@@ -85,7 +85,9 @@ export function resolveRendererAssetByteRange(
 
   const start = parseNonNegativeInteger(rawStart);
   if (start === null || start >= contentLength) return null;
-  const requestedEnd = rawEnd ? parseNonNegativeInteger(rawEnd) : contentLength - 1;
+  const requestedEnd = rawEnd
+    ? parseNonNegativeInteger(rawEnd)
+    : contentLength - 1;
   if (requestedEnd === null || requestedEnd < start) return null;
 
   return {

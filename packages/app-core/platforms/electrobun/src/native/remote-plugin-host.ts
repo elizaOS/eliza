@@ -6,7 +6,6 @@
 import * as fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { resolveStateDir } from "./auth-bridge";
 import type {
   HostActionMessage,
   HostRequestMessage,
@@ -44,6 +43,7 @@ import type { TraceHost } from "../trace/trace-host-requests";
 import type { SendToWebview } from "../types.js";
 import type { VoiceHost } from "../voice/voice-host-requests";
 import { getAgentManager, getDiagnosticLogPath } from "./agent";
+import { resolveStateDir } from "./auth-bridge";
 
 type RemotePluginWindowInstance = InstanceType<typeof BrowserWindow>;
 
@@ -1128,11 +1128,10 @@ export class RemotePluginHost {
           ? {}
           : { payload: response.payload }
         : {
-            error:
-              formatRemotePluginError(
-                response.error,
-                "invoke-remote-plugin: target returned failure",
-              ),
+            error: formatRemotePluginError(
+              response.error,
+              "invoke-remote-plugin: target returned failure",
+            ),
           }),
     });
   }

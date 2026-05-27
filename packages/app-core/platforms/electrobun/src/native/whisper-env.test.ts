@@ -43,12 +43,7 @@ describe("bundled Whisper desktop env", () => {
         "whisper",
         "libwhisper_eliza_adapter.dylib",
       ),
-      modelPath: path.join(
-        runtimeDist,
-        "voice",
-        "whisper",
-        "ggml-base.en.bin",
-      ),
+      modelPath: path.join(runtimeDist, "voice", "whisper", "ggml-base.en.bin"),
     });
   });
 

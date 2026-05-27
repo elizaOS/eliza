@@ -56,14 +56,15 @@ describe("desktop packaged embedding warmup policy", () => {
 describe("desktop child launch env", () => {
   it("does not require ELIZA_NAMESPACE to be present", () => {
     expect(resolveDesktopChildNamespace({})).toBe("eliza");
-    expect(resolveDesktopChildNamespace({ ELIZA_NAMESPACE: "  custom  " })).toBe(
-      "custom",
-    );
+    expect(
+      resolveDesktopChildNamespace({ ELIZA_NAMESPACE: "  custom  " }),
+    ).toBe("custom");
   });
 
   it("does not let the shared eliza default override a branded package namespace", () => {
-    expect(resolveDesktopChildNamespace({ ELIZA_NAMESPACE: "eliza" }, "milady"))
-      .toBe("milady");
+    expect(
+      resolveDesktopChildNamespace({ ELIZA_NAMESPACE: "eliza" }, "milady"),
+    ).toBe("milady");
   });
 
   it("prepends Bun directory even when PATH is absent", () => {

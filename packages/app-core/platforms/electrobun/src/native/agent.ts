@@ -202,7 +202,8 @@ export function resolveDesktopChildNamespace(
 
 function resolveExplicitStateDir(env: NodeJS.ProcessEnv): string | null {
   return (
-    normalizeEnvPath(env.ELIZA_STATE_DIR) ?? normalizeEnvPath(env.MILADY_STATE_DIR)
+    normalizeEnvPath(env.ELIZA_STATE_DIR) ??
+    normalizeEnvPath(env.MILADY_STATE_DIR)
   );
 }
 
@@ -1017,7 +1018,9 @@ export function buildChildNodePaths(
   return [...nodePaths];
 }
 
-export function resolveRuntimeEntryPath(runtimeDistPath: string): string | null {
+export function resolveRuntimeEntryPath(
+  runtimeDistPath: string,
+): string | null {
   const candidates = [
     joinPortable(runtimeDistPath, "entry.js"),
     joinPortable(runtimeDistPath, "runtime", "entry.js"),
