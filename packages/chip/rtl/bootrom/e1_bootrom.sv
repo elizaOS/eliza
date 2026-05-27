@@ -17,11 +17,11 @@
 // overlaid after the image load and are part of the published ROM contract.
 //
 // ROM_HEX selects the image. It defaults to the generated secure-boot ROM hex
-// under build/boot-rom; the parameter lets a testbench point at an alternate
-// build-staged image without editing RTL.
+// under build/boot-rom; testbenches can override the parameter without editing
+// RTL.
 
 module e1_bootrom #(
-    parameter string ROM_HEX = "build/boot-rom/e1_secure_boot_rom.hex"
+    parameter ROM_HEX = "build/boot-rom/e1_secure_boot_rom.hex"
 ) (
     input  logic [5:0]  addr,
     output logic [31:0] rdata
@@ -31,17 +31,10 @@ module e1_bootrom #(
     logic [31:0] mem [WORDS];
 
     initial begin : init_rom
-        string rom_path;
         for (int i = 0; i < WORDS; i++) begin
             mem[i] = 32'h0000_0000;
         end
-        // The image path is the ROM_HEX parameter by default; a testbench may
-        // override it with the BOOT_ROM_HEX plusarg (resolved relative to the
-        // simulator cwd) to point at an alternate build-staged image.
-        if (!$value$plusargs("BOOT_ROM_HEX=%s", rom_path)) begin
-            rom_path = ROM_HEX;
-        end
-        $readmemh(rom_path, mem);
+        $readmemh(ROM_HEX, mem);
         // Debug-visible identity/version header (published ROM contract):
         // magic "OSO", "CHIP", format version, and the 32'h0000_1000 handoff
         // word. Overlaid after the image load so external bring-up tooling can
