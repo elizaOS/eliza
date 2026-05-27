@@ -805,11 +805,11 @@ module bpu_top
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            /* verilator lint_off UNUSEDLOOP */
+            /* verilator lint_off UNUSED */
             for (int unsigned i = 0; i < H2P_META_ENTRIES; i++) begin
                 h2p_meta_ctr_q[i] <= '0;
             end
-            /* verilator lint_on UNUSEDLOOP */
+            /* verilator lint_on UNUSED */
         end else if ((H2P_META_ENABLE != 0) &&
                      resolve_update_valid && resolve.actual_kind == BR_COND &&
                      replay_h2p_conf &&
@@ -880,7 +880,7 @@ module bpu_top
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            /* verilator lint_off UNUSEDLOOP */
+            /* verilator lint_off UNUSED */
             for (int unsigned i = 0; i < LOCAL_DIR_ENTRIES; i++) begin
                 local_dir_hist_q[i] <= '0;
                 for (int unsigned h = 0; h < LOCAL_DIR_PHT_ENTRIES; h++) begin
@@ -890,7 +890,7 @@ module bpu_top
             for (int unsigned i = 0; i < LOCAL_DIR_META_ENTRIES; i++) begin
                 local_dir_meta_ctr_q[i] <= '0;
             end
-            /* verilator lint_on UNUSEDLOOP */
+            /* verilator lint_on UNUSED */
         end else if ((LOCAL_DIR_ENABLE != 0) &&
                      resolve_update_valid && resolve.actual_kind == BR_COND) begin
             if ((LOCAL_DIR_META_ENABLE != 0) && replay_local_dir_conf &&

@@ -75,7 +75,7 @@ module h2p_corrector
             feature_idx++;
         end
         /* verilator lint_off UNSIGNED */
-        /* verilator lint_off UNUSEDLOOP */
+        /* verilator lint_off UNUSED */
         for (int unsigned hist_bit = 0; hist_bit < H2P_TARGET_HIST_LEN; hist_bit++) begin
             if (target_hist[hist_bit % ITTAGE_TARGET_HISTORY_BITS]) begin
                 total = total + h2p_score_t'(weights_q[idx][feature_idx]);
@@ -92,7 +92,7 @@ module h2p_corrector
             end
             feature_idx++;
         end
-        /* verilator lint_on UNUSEDLOOP */
+        /* verilator lint_on UNUSED */
         /* verilator lint_on UNSIGNED */
         h2p_score = total;
     endfunction
@@ -140,13 +140,13 @@ module h2p_corrector
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            /* verilator lint_off UNUSEDLOOP */
+            /* verilator lint_off UNUSED */
             for (int unsigned i = 0; i < H2P_ENTRIES; i++) begin
                 for (int unsigned j = 0; j < H2P_FEATURES+1; j++) begin
                     weights_q[i][j] <= '0;
                 end
             end
-            /* verilator lint_on UNUSEDLOOP */
+            /* verilator lint_on UNUSED */
         end else if (upd_train) begin
             weights_q[upd_idx][0] <= sat_add_weight(weights_q[upd_idx][0], actual_sign);
             for (int unsigned hist_bit = 0; hist_bit < H2P_HIST_LEN; hist_bit++) begin
@@ -156,7 +156,7 @@ module h2p_corrector
                 );
             end
             /* verilator lint_off UNSIGNED */
-            /* verilator lint_off UNUSEDLOOP */
+            /* verilator lint_off UNUSED */
             for (int unsigned hist_bit = 0; hist_bit < H2P_TARGET_HIST_LEN; hist_bit++) begin
                 weights_q[upd_idx][H2P_HIST_LEN+1+hist_bit] <= sat_add_weight(
                     weights_q[upd_idx][H2P_HIST_LEN+1+hist_bit],
@@ -172,7 +172,7 @@ module h2p_corrector
                         actual_sign : -actual_sign
                 );
             end
-            /* verilator lint_on UNUSEDLOOP */
+            /* verilator lint_on UNUSED */
             /* verilator lint_on UNSIGNED */
         end
     end
