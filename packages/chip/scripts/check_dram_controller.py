@@ -96,6 +96,8 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                 "evidence_paths": [CTRL_RTL, AXI4_PKG, TB, TEST],
                 "as_of": datetime.now(UTC).isoformat(),
                 "subsystem": "memory",
+                "phone_claim_allowed": False,
+                "release_claim_allowed": False,
                 "claim_boundary": (
                     "Proves e1_dram_ctrl is a real full-AXI4 slave front-end "
                     "(read/write bursts INCR/WRAP/FIXED, AxSIZE byte addressing, "
@@ -105,6 +107,7 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                     "mem_base_addr/mem_capacity_bytes) with a DRAMsim3-LPDDR "
                     "derived row-hit/miss latency model and fail-closed DECERR "
                     "on out-of-range access, verified under Verilator + cocotb. "
+                    "This is not phone DRAM evidence and not release evidence. "
                     "Does NOT cover the LPDDR5X analog PHY / DFI 5.0 training "
                     "(physical silicon dependency in "
                     "docs/evidence/memory/lpddr-phy-procurement.yaml), on-die "
@@ -246,6 +249,7 @@ def main() -> int:
         {
             "verilator_lint": "clean",
             "cocotb": "FAIL=0",
+            "cocotb_result": "build/reports/cocotb/e1_dram_ctrl_mem_tb_test_dram_memory.xml",
             "required_tests": list(REQUIRED_TESTS),
         },
     )
