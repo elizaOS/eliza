@@ -224,6 +224,10 @@ const PLANNER_CONTROL_ACTIONS = new Set(
 const DIRECT_CHANNEL_STAGE1_MAX_TOKENS = 384;
 const DIRECT_REPLY_FAST_PATH_MAX_TOKENS = 96;
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
+const STAGE1_TRUNCATION_REPLY =
+	"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.";
+const CODE_SNIPPET_VALIDITY_INSTRUCTION =
+	"For code snippets, prioritize syntactically valid runnable code over impossible formatting constraints. If a tight line count would require invalid syntax, provide a valid version and briefly note the constraint tradeoff.";
 const DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS = new Set([
 	"shouldRespond",
 	"facts",
@@ -2634,6 +2638,7 @@ const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
 	"rules:",
 	"- answer directly in the agent's voice",
 	"- when the user asks for exact words, output only those exact words",
+	`- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
 	"- do not select actions or tools",
 	"- do not include internal reasoning",
 	"- high-stakes personal crisis/legal/medical/self-harm/police/CPS: no tactical concealment/evasion/testimony/contraband advice; direct to qualified help, and for imminent danger prioritize emergency services, poison control, or a crisis hotline",
@@ -2769,6 +2774,7 @@ async function generateDirectReplyOnce(args: {
 function shouldRegenerateStage1ReplyText(reply: string | undefined): boolean {
 	const trimmed = typeof reply === "string" ? reply.trim() : "";
 	if (!trimmed) return true;
+	if (/^```[a-z0-9_-]*\s+/iu.test(trimmed)) return false;
 	if (/^[\s{}[\]":,]+$/.test(trimmed)) return true;
 	if (/^\d+$/.test(trimmed)) return true;
 	if (/(.)\1{4,}/u.test(trimmed)) return true;
@@ -2887,11 +2893,19 @@ function renderMessageHandlerInstructions(
 		},
 		template: baseline,
 	}).trim();
+	const renderedWithSharedRules = options?.directMessage
+		? rendered
+		: [
+				rendered,
+				"",
+				"## Shared Response Quality Rules",
+				`- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
+			].join("\n");
 	if (!options?.responseHandlerFields?.trim()) {
-		return rendered;
+		return renderedWithSharedRules;
 	}
 	return [
-		rendered,
+		renderedWithSharedRules,
 		"",
 		"## Response Handler Fields",
 		"Populate every registered field. Use empty value when not applicable.",
@@ -3299,20 +3313,32 @@ export function messageHandlerFromFieldResult(
 			candidateActions: effectiveCandidateActions,
 			contexts: routedContexts,
 		});
+	const preferInlineCodeSnippetDirectReply =
+		!preemptDirect &&
+		requestedPlanning &&
+		shouldPreferInlineCodeSnippetDirectReply({
+			currentMessageText,
+			candidateActions: effectiveCandidateActions,
+			contexts: routedContexts,
+		});
 	const shouldPlan =
-		!preemptDirect && requestedPlanning && !preferCompleteDirectReply;
-	const finalContexts = preferCompleteDirectReply
-		? [SIMPLE_CONTEXT_ID]
-		: shouldPlan && initialPlanningContexts.length === 0
-			? Array.from(
-					new Set([
-						...routedContexts.filter(
-							(context) => context !== SIMPLE_CONTEXT_ID,
-						),
-						"general",
-					]),
-				)
-			: routedContexts;
+		!preemptDirect &&
+		requestedPlanning &&
+		!preferCompleteDirectReply &&
+		!preferInlineCodeSnippetDirectReply;
+	const finalContexts =
+		preferCompleteDirectReply || preferInlineCodeSnippetDirectReply
+			? [SIMPLE_CONTEXT_ID]
+			: shouldPlan && initialPlanningContexts.length === 0
+				? Array.from(
+						new Set([
+							...routedContexts.filter(
+								(context) => context !== SIMPLE_CONTEXT_ID,
+							),
+							"general",
+						]),
+					)
+				: routedContexts;
 	// Refusal suppression for the planning path (elizaOS/eliza#7620). Mirrors
 	// the logic in `parseMessageHandlerOutput`: when the planner is about to
 	// run, a refusal-shaped `replyText` from a safety-tuned hosted model is
@@ -3325,7 +3351,11 @@ export function messageHandlerFromFieldResult(
 		simple: preemptDirect ? true : !shouldPlan,
 		requiresTool: shouldPlan,
 	};
-	if (!preferCompleteDirectReply && effectiveCandidateActions.length > 0) {
+	if (
+		!preferCompleteDirectReply &&
+		!preferInlineCodeSnippetDirectReply &&
+		effectiveCandidateActions.length > 0
+	) {
 		plan.candidateActions = effectiveCandidateActions;
 	}
 	const extract =
@@ -3422,6 +3452,15 @@ function shouldPreferCompleteDirectReply(args: {
 		looksLikeActionExplanationRequest(normalized) ||
 		looksLikeCreativeWritingRequest(normalized)
 	);
+}
+
+function shouldPreferInlineCodeSnippetDirectReply(args: {
+	currentMessageText: string;
+	candidateActions: readonly string[];
+	contexts: readonly string[];
+}): boolean {
+	if (!looksLikeInlineCodeSnippetRequest(args.currentMessageText)) return false;
+	return hasOnlyWeakDirectReplyPlanningSignals(args);
 }
 
 const WEAK_DIRECT_REPLY_OVERRIDE_ACTIONS = new Set(
@@ -3927,6 +3966,98 @@ function parseMessageHandlerModelOutput(
 	return (
 		parseMessageHandlerOutput(raw) ?? synthesizeSimpleReplyFromPlainText(raw)
 	);
+}
+
+function getStage1FinishReason(raw: string | GenerateTextResult): string {
+	if (typeof raw === "string") return "";
+	return typeof raw.finishReason === "string" ? raw.finishReason : "";
+}
+
+function stage1HitCompletionLimit(
+	raw: string | GenerateTextResult,
+	maxTokens: number,
+): boolean {
+	if (typeof raw === "string") return false;
+	const finishReason = getStage1FinishReason(raw).toLowerCase();
+	if (
+		/\b(?:length|max[-_\s]?tokens?|token[-_\s]?limit|output[-_\s]?limit)\b/u.test(
+			finishReason,
+		)
+	) {
+		return true;
+	}
+	const completionTokens = raw.usage?.completionTokens;
+	return (
+		typeof completionTokens === "number" &&
+		Number.isFinite(completionTokens) &&
+		completionTokens >= maxTokens
+	);
+}
+
+function extractJsonStringField(
+	text: string,
+	fieldName: string,
+): string | null {
+	const pattern = new RegExp(
+		`"${fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"\\s*:\\s*"`,
+		"u",
+	);
+	const match = pattern.exec(text);
+	if (!match) return null;
+	const valueStart = match.index + match[0].length;
+	let escaped = false;
+	for (let i = valueStart; i < text.length; i++) {
+		const ch = text[i];
+		if (escaped) {
+			escaped = false;
+			continue;
+		}
+		if (ch === "\\") {
+			escaped = true;
+			continue;
+		}
+		if (ch === '"') {
+			try {
+				return JSON.parse(`"${text.slice(valueStart, i)}"`) as string;
+			} catch {
+				return null;
+			}
+		}
+	}
+	return null;
+}
+
+function recoverStage1TruncatedMessageHandler(
+	raw: string | GenerateTextResult,
+): MessageHandlerResult | null {
+	const text = getV5ModelText(raw);
+	const replyText = extractJsonStringField(text, "replyText")?.trim();
+	if (!replyText) return null;
+	return {
+		processMessage: "RESPOND",
+		thought:
+			"Stage 1 hit the completion limit; recovered a completed replyText field from the truncated envelope.",
+		plan: {
+			contexts: [SIMPLE_CONTEXT_ID],
+			reply: stripReasoningBlocks(replyText),
+			simple: true,
+			requiresTool: false,
+		},
+	};
+}
+
+function synthesizeStage1TruncationReply(): MessageHandlerResult {
+	return {
+		processMessage: "RESPOND",
+		thought:
+			"Stage 1 hit the completion limit and no complete replyText field could be recovered.",
+		plan: {
+			contexts: [SIMPLE_CONTEXT_ID],
+			reply: STAGE1_TRUNCATION_REPLY,
+			simple: true,
+			requiresTool: false,
+		},
+	};
 }
 
 /**
@@ -4780,6 +4911,30 @@ export async function runV5MessageRuntimeStage1(args: {
 		if (!messageHandler) {
 			messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
 		}
+		const stage1CompletionLimitHit = stage1HitCompletionLimit(
+			rawMessageHandler,
+			stage1ModelParams.maxTokens,
+		);
+		if (stage1CompletionLimitHit) {
+			args.runtime.logger?.warn?.(
+				{
+					src: "service:message",
+					finishReason: getStage1FinishReason(rawMessageHandler),
+					usage:
+						typeof rawMessageHandler === "string"
+							? undefined
+							: rawMessageHandler.usage,
+					maxTokens: stage1ModelParams.maxTokens,
+					recovered: Boolean(messageHandler),
+				},
+				"[message] Stage 1 hit the completion-token limit",
+			);
+		}
+		if (!messageHandler && stage1CompletionLimitHit) {
+			messageHandler =
+				recoverStage1TruncatedMessageHandler(rawMessageHandler) ??
+				synthesizeStage1TruncationReply();
+		}
 		if (
 			!messageHandler &&
 			isEmptyStage1Result(rawMessageHandler) &&
@@ -5373,6 +5528,7 @@ async function recordMessageHandlerStage(args: {
 				response: responseText,
 				toolCalls: extractMessageHandlerToolCalls(args.raw),
 				usage,
+				finishReason: getStage1FinishReason(args.raw) || undefined,
 			},
 			cache: args.prefixHash
 				? {
@@ -6528,6 +6684,9 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 		/\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b[\s\S]{0,80}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
 			normalized,
 		);
+	if (!asksDelegation && looksLikeInlineCodeSnippetRequest(normalized)) {
+		return false;
+	}
 	const asksCodingWork =
 		/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b[\s\S]{0,160}\b(?:app|site|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/iu.test(
 			normalized,
@@ -6536,6 +6695,29 @@ function looksLikeCodingWorkRequest(text: string): boolean {
 			normalized,
 		);
 	return asksDelegation || asksCodingWork;
+}
+
+function looksLikeInlineCodeSnippetRequest(text: string): boolean {
+	const normalized = text.toLowerCase();
+	if (
+		/\b(?:file|files|repo|repository|project|app|site|page|backend|frontend|deploy|build|run|execute|install|test|verify|fix|edit|modify|save|write\s+(?:to|in)\s+(?:\/|\.\/|[a-z]:\\))\b/iu.test(
+			normalized,
+		)
+	) {
+		return false;
+	}
+	const asksForSnippet =
+		/\b(?:write|give me|show me|generate|provide|create|make)\b[\s\S]{0,80}\b(?:code block|snippet|function|class|method|example|program|one[- ]?liner|hello world|fibonacci)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:code block|snippet|function|class|method|example|program|one[- ]?liner|hello world|fibonacci)\b[\s\S]{0,80}\b(?:in|using|for)\s+(?:python|javascript|typescript|java|go|rust|ruby|bash|shell|c\+\+|c#|c\b|php|swift|kotlin)\b/iu.test(
+			normalized,
+		);
+	const hasSmallScope =
+		/\b(?:hello world|fibonacci|fib|single|simple|short|small|tiny|example|snippet|function|code block|one[- ]?liner|\d+\s*[- ]?line)\b/iu.test(
+			normalized,
+		);
+	return asksForSnippet && hasSmallScope;
 }
 
 function looksLikeCreativeWritingRequest(text: string): boolean {

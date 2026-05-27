@@ -209,6 +209,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		const firstCall = useModelCalls(runtime)[0];
 		const params = firstCall?.[1] as {
 			tools?: Array<{ name?: string; parameters?: { required?: string[] } }>;
+			messages?: Array<{ content?: unknown }>;
 			toolChoice?: string;
 			maxTokens?: number;
 			responseSchema?: unknown;
@@ -230,8 +231,89 @@ describe("runV5MessageRuntimeStage1", () => {
 			guidedDecode: true,
 			thinking: "off",
 		});
+		const systemMessage = params.messages?.[0] as
+			| { content?: unknown }
+			| undefined;
+		expect(String(systemMessage?.content ?? "")).toContain(
+			"prioritize syntactically valid runnable code",
+		);
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Hello.");
+		}
+	});
+
+	it("recovers a completed replyText when Stage 1 hits the completion cap with truncated JSON", async () => {
+		const runtime = makeRuntime([
+			{
+				text: [
+					'{"shouldRespond":"RESPOND","contexts":["simple"],',
+					'"replyText":"```python\\ndef fibonacci(n):\\n    a, b = 0, 1\\n    for _ in range(n):\\n        a, b = b, a + b\\n    return a\\n```",',
+					'"facts":[',
+				].join(""),
+				finishReason: "length",
+				usage: {
+					promptTokens: 100,
+					completionTokens: 2048,
+					totalTokens: 2148,
+				},
+			},
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "write a 5-line python function that returns fibonacci",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toContain(
+				"def fibonacci(n):",
+			);
+			expect(result.result.responseContent?.text).not.toContain(
+				"That answer got cut off",
+			);
+		}
+		expect(runtime.logger.warn).toHaveBeenCalledWith(
+			expect.objectContaining({
+				src: "service:message",
+				finishReason: "length",
+				maxTokens: 2048,
+			}),
+			"[message] Stage 1 hit the completion-token limit",
+		);
+	});
+
+	it("surfaces a clear reply when Stage 1 truncates before a reply can be recovered", async () => {
+		const runtime = makeRuntime([
+			{
+				text: '{"shouldRespond":"RESPOND","contexts":["simple"],"replyText":"```python\\ndef fib',
+				finishReason: "length",
+				usage: {
+					promptTokens: 100,
+					completionTokens: 2048,
+					totalTokens: 2148,
+				},
+			},
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "write a 5-line python function that returns fibonacci",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.",
+			);
 		}
 	});
 
