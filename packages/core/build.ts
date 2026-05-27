@@ -740,7 +740,10 @@ async function buildTesting() {
 	const runTesting = createBuildRunner({
 		...sharedConfig,
 		buildOptions: {
-			entrypoints: [`${TS_SRC}/testing/index.ts`],
+			entrypoints: [
+				`${TS_SRC}/testing/index.ts`,
+				`${TS_SRC}/testing/live-provider.ts`,
+			],
 			outdir: "dist/testing",
 			target: "node",
 			format: "esm",
