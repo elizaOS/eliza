@@ -20,16 +20,13 @@ describe("scan (against toy repo)", () => {
 
   beforeAll(() => {
     toy = buildToyRepo();
-  });
+  }, 30_000);
   afterAll(() => {
     rmSync(toy.repoRoot, { recursive: true, force: true });
   });
 
   it("returns all commits touching the surface in chronological-reverse order", () => {
-    const commits = scan(
-      { path: toy.surface, repoRoot: toy.repoRoot },
-      { since: "1 year ago" },
-    );
+    const commits = scan({ path: toy.surface, repoRoot: toy.repoRoot }, { since: "1 year ago" });
     const expected =
       toy.commitsByPhase.A.length +
       toy.commitsByPhase.B.length +
@@ -40,10 +37,7 @@ describe("scan (against toy repo)", () => {
   });
 
   it("captures file touches with line counts", () => {
-    const commits = scan(
-      { path: toy.surface, repoRoot: toy.repoRoot },
-      { since: "1 year ago" },
-    );
+    const commits = scan({ path: toy.surface, repoRoot: toy.repoRoot }, { since: "1 year ago" });
     const wip = commits.find((c) => c.subject.startsWith("wip"));
     expect(wip).toBeDefined();
     expect(wip?.files.length).toBeGreaterThan(0);
@@ -52,10 +46,7 @@ describe("scan (against toy repo)", () => {
   });
 
   it("captures parents", () => {
-    const commits = scan(
-      { path: toy.surface, repoRoot: toy.repoRoot },
-      { since: "1 year ago" },
-    );
+    const commits = scan({ path: toy.surface, repoRoot: toy.repoRoot }, { since: "1 year ago" });
     for (const commit of commits) {
       expect(commit.parents.length).toBeGreaterThanOrEqual(1);
     }
@@ -68,7 +59,7 @@ describe("scan (against toy repo)", () => {
   it("returns empty array when surface has no commits in window", () => {
     const out = scan(
       { path: "nonexistent-dir-xyz", repoRoot: toy.repoRoot },
-      { since: "1 year ago" },
+      { since: "1 year ago" }
     );
     expect(out).toEqual([]);
   });

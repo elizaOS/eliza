@@ -51,16 +51,13 @@ describe("pipeline end-to-end on toy repo", () => {
 
   beforeAll(() => {
     toy = buildToyRepo();
-  });
+  }, 30_000);
   afterAll(() => {
     rmSync(toy.repoRoot, { recursive: true, force: true });
   });
 
   it("produces a full report with peaks and drifts", () => {
-    const report = runPipeline(
-      { path: toy.surface, repoRoot: toy.repoRoot },
-      "1 year ago",
-    );
+    const report = runPipeline({ path: toy.surface, repoRoot: toy.repoRoot }, "1 year ago");
     expect(report.commitCount).toBeGreaterThan(10);
     expect(report.timeline.length).toBe(report.commitCount);
     expect(report.headSha).toMatch(/^[0-9a-f]{40}$/);
@@ -69,10 +66,7 @@ describe("pipeline end-to-end on toy repo", () => {
   });
 
   it("classifies the WIP dump as type=wip with risk flag", () => {
-    const report = runPipeline(
-      { path: toy.surface, repoRoot: toy.repoRoot },
-      "1 year ago",
-    );
+    const report = runPipeline({ path: toy.surface, repoRoot: toy.repoRoot }, "1 year ago");
     const wip = report.timeline.find((p) => p.subject.startsWith("wip"));
     expect(wip).toBeDefined();
     expect(wip?.type).toBe("wip");
@@ -81,10 +75,7 @@ describe("pipeline end-to-end on toy repo", () => {
   });
 
   it("scores phase-A clean features higher than the WIP dump", () => {
-    const report = runPipeline(
-      { path: toy.surface, repoRoot: toy.repoRoot },
-      "1 year ago",
-    );
+    const report = runPipeline({ path: toy.surface, repoRoot: toy.repoRoot }, "1 year ago");
     const wipDelta = report.timeline.find((p) => p.subject.startsWith("wip"))?.delta ?? 0;
     const featDeltas = report.timeline
       .filter((p) => p.subject.startsWith("feat"))
@@ -95,10 +86,7 @@ describe("pipeline end-to-end on toy repo", () => {
   });
 
   it("flags the WIP commit as a drift inflection (or detects drift after it)", () => {
-    const report = runPipeline(
-      { path: toy.surface, repoRoot: toy.repoRoot },
-      "1 year ago",
-    );
+    const report = runPipeline({ path: toy.surface, repoRoot: toy.repoRoot }, "1 year ago");
     const wipSha = toy.commitsByPhase.B[0];
     expect(wipSha).toBeDefined();
     const wipIdx = report.timeline.findIndex((p) => p.sha === wipSha);
@@ -110,10 +98,7 @@ describe("pipeline end-to-end on toy repo", () => {
   });
 
   it("round-trips through the on-disk cache", () => {
-    const report = runPipeline(
-      { path: toy.surface, repoRoot: toy.repoRoot },
-      "1 year ago",
-    );
+    const report = runPipeline({ path: toy.surface, repoRoot: toy.repoRoot }, "1 year ago");
     const cache = createReportCache(defaultCacheDir(toy.repoRoot));
     cache.write(report);
     const back = cache.read(report.cacheKey);
@@ -123,10 +108,7 @@ describe("pipeline end-to-end on toy repo", () => {
   });
 
   it("listReports returns the cached report newest-first", () => {
-    const report = runPipeline(
-      { path: toy.surface, repoRoot: toy.repoRoot },
-      "1 year ago",
-    );
+    const report = runPipeline({ path: toy.surface, repoRoot: toy.repoRoot }, "1 year ago");
     const cache = createReportCache(defaultCacheDir(toy.repoRoot));
     cache.write(report);
     const list = cache.list();
