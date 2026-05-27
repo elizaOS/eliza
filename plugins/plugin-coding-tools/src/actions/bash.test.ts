@@ -724,6 +724,64 @@ describe("shellAction", () => {
     );
   });
 
+  it("projects safe small list stdout without shell meta-narration", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "shell-list-"));
+    await fs.writeFile(path.join(tempDir, "alpha.txt"), "alpha", "utf8");
+    await fs.writeFile(path.join(tempDir, "beta.txt"), "beta", "utf8");
+    const { runtime } = await makeRuntime();
+
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          "11111111-aaaa-bbbb-cccc-585858585858",
+          "list the files in this test directory",
+        ),
+        undefined,
+        { command: "ls -1", cwd: tempDir },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain("$ ls -1");
+      expect(result.text).toContain("--- stdout ---");
+      expect(result.userFacingText).toBe("alpha.txt\nbeta.txt");
+      expect(result.verifiedUserFacing).toBe(true);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("projects safe small grep stdout without shell meta-narration", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "shell-grep-"));
+    await fs.writeFile(
+      path.join(tempDir, "weather.txt"),
+      "weather: clear\nweather: windy\n",
+      "utf8",
+    );
+    const { runtime } = await makeRuntime();
+
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          "11111111-aaaa-bbbb-cccc-595959595959",
+          "grep the weather lines",
+        ),
+        undefined,
+        { command: "grep -n weather weather.txt", cwd: tempDir },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain("$ grep -n weather weather.txt");
+      expect(result.userFacingText).toBe(
+        "1:weather: clear\n2:weather: windy",
+      );
+      expect(result.verifiedUserFacing).toBe(true);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("adds user-facing text for local health JSON", async () => {
     const previousPort = process.env.ELIZA_API_PORT;
     const server = createServer((_req, res) => {

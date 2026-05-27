@@ -1,10 +1,27 @@
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@elizaos/core", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@elizaos/core")>();
+	return {
+		...actual,
+		annotateActiveTrajectoryStep: vi.fn(),
+		getTrajectoryContext: vi.fn(),
+		logger: {
+			...actual.logger,
+			info: vi.fn(),
+		},
+	};
+});
+
 import {
 	annotateActiveTrajectoryStep,
 	getTrajectoryContext,
 	logger,
 } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useSkillAction } from "./use-skill";
 
 const mockedAnnotateActiveTrajectoryStep = vi.mocked(
@@ -78,6 +95,76 @@ describe("useSkillAction", () => {
 			actions: ["USE_SKILL"],
 		});
 		expect(service.getLoadedSkill).toHaveBeenCalledWith("github");
+	});
+
+	it("exposes clean verified user-facing text from successful script stdout without cmd/output envelopes", async () => {
+		const tempDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "use-skill-wrapper-"),
+		);
+		const scriptPath = path.join(tempDir, "weather.sh");
+		await fs.writeFile(
+			scriptPath,
+			"#!/usr/bin/env bash\nprintf '%s\\n' '{\"cmd\":\"weather nyc\",\"output\":\"New York: 72F and clear.\"}'\n",
+			"utf8",
+		);
+		await fs.chmod(scriptPath, 0o755);
+
+		const skill = {
+			slug: "weather",
+			name: "Weather",
+			description: "Weather script",
+			version: "1.0.0",
+			content: "",
+			frontmatter: {},
+			path: tempDir,
+			scripts: ["weather.sh"],
+			references: [],
+			assets: [],
+			loadedAt: 0,
+			source: "bundled",
+		};
+		const service = {
+			getLoadedSkill: vi.fn((slug: string) =>
+				slug === "weather" ? skill : undefined,
+			),
+			getLoadedSkills: vi.fn(() => [skill]),
+			isSkillEnabled: vi.fn(() => true),
+			checkSkillEligibility: vi.fn(async () => ({
+				slug: "weather",
+				eligible: true,
+				reasons: [],
+				checkedAt: 0,
+			})),
+			getScriptPath: vi.fn(() => scriptPath),
+			getSkillExecutionEnv: vi.fn(() => process.env as Record<string, string>),
+		};
+		const runtimeShape = {
+			logger,
+			getService: vi.fn((name: string) =>
+				name === "AGENT_SKILLS_SERVICE" ? service : undefined,
+			),
+		};
+
+		try {
+			const result = await useSkillAction.handler(
+				Object.assign(Object.create(null) as IAgentRuntime, runtimeShape),
+				{ content: { text: "use weather skill" } } as Memory,
+				undefined,
+				{ parameters: { slug: "weather", mode: "script" } },
+				vi.fn(),
+			);
+
+			expect(result?.success).toBe(true);
+			expect(result?.text).toContain('"cmd":"weather nyc"');
+			expect(result?.data).toMatchObject({
+				stdout:
+					'{"cmd":"weather nyc","output":"New York: 72F and clear."}',
+			});
+			expect(result?.userFacingText).toBe("New York: 72F and clear.");
+			expect(result?.verifiedUserFacing).toBe(true);
+		} finally {
+			await fs.rm(tempDir, { recursive: true, force: true });
+		}
 	});
 
 	it("appends a per-skill invocation record with input/output when a trajectory step is active (W1-T5)", async () => {
