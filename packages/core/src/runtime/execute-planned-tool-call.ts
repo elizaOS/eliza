@@ -112,7 +112,10 @@ export async function executePlannedToolCall(
 		action,
 		normalizeToolArgs(toolCall),
 	);
-	const validation = validateToolArgs(action, normalizedArgs);
+	const validation = validateToolArgs(
+		action,
+		dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
+	);
 	if (!validation.valid) {
 		return emitToolResult(
 			toolCall,
@@ -467,6 +470,27 @@ export function expandEnumShortForm(
 	}
 
 	return args;
+}
+
+const PLANNER_WRAPPER_ONLY_ARG_KEYS = new Set(["subaction", "thought"]);
+
+function dropUndeclaredPlannerWrapperArgs(
+	action: Action,
+	args: Record<string, unknown>,
+): Record<string, unknown> {
+	let filtered: Record<string, unknown> | undefined;
+
+	for (const key of Object.keys(args)) {
+		if (
+			PLANNER_WRAPPER_ONLY_ARG_KEYS.has(key) &&
+			!(action.parameters ?? []).some((parameter) => parameter.name === key)
+		) {
+			filtered ??= { ...args };
+			delete filtered[key];
+		}
+	}
+
+	return filtered ?? args;
 }
 
 function normalizeToolArgs(

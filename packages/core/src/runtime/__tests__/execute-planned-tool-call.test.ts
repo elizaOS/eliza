@@ -93,6 +93,79 @@ describe("executePlannedToolCall", () => {
 		expect(handler).not.toHaveBeenCalled();
 	});
 
+	it("drops undeclared planner wrapper args without weakening strict validation", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "TASKS",
+			parameters: [
+				{
+					name: "op",
+					description: "Task operation",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["provision_workspace"],
+					},
+				},
+			],
+			handler,
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage() },
+			{
+				name: "TASKS",
+				params: {
+					op: "provision_workspace",
+					subaction: "provision_workspace",
+					thought: "set up workspace",
+				},
+			},
+		);
+
+		expect(result.success).toBe(true);
+		expect(handler).toHaveBeenCalledWith(
+			expect.any(Object),
+			expect.any(Object),
+			undefined,
+			expect.objectContaining({
+				parameters: { op: "provision_workspace" },
+			}),
+			undefined,
+			undefined,
+		);
+	});
+
+	it("still rejects unknown non-wrapper args", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "CREATE_TASK",
+			parameters: [
+				{
+					name: "title",
+					description: "Task title",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			handler,
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage() },
+			{
+				name: "CREATE_TASK",
+				params: { title: "Ship it", reciepient: "alice" },
+			},
+		);
+
+		expect(result.success).toBe(false);
+		expect(String(result.error)).toContain("Unexpected argument 'reciepient'");
+		expect(handler).not.toHaveBeenCalled();
+	});
+
 	it("passes validated parameters and HandlerCallback through to the action handler", async () => {
 		const callback: HandlerCallback = vi.fn(async () => []);
 		const handler = vi.fn(async () => ({ success: true, text: "ok" }));
