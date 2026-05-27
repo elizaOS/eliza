@@ -78,18 +78,18 @@ sweep:
   bytes_per_dramsim3_access: 32
 
 report_artifacts:
-  docs/evidence/memory/dramsim-reports/dramsim3_lpddr5x_10667_microbench.json: 1b7b574876d138cd7c0a0d1f421f2de3565b02950ff03f6fbc4817a81ad5e724
-  docs/evidence/memory/dramsim-reports/dramsim3_lpddr5x_10667_pointer_chase.json: 48304e8a244c241d035ddf2d7e677c9248654bf898de836d3144001a78ff4d9f
-  docs/evidence/memory/dramsim-reports/dramsim3_lpddr5x_10667_stream_add.json: d9e45877c977edca236a4a2e49e772b772dde85501962f8aedc86a51205bee71
-  docs/evidence/memory/dramsim-reports/dramsim3_lpddr5x_10667_stream_copy.json: fb083321e707d06cd278c480a5bbb0229230142694b05a1d76e55fc65231a8f1
-  docs/evidence/memory/dramsim-reports/dramsim3_lpddr5x_10667_stream_scale.json: 80d9f177837239d3ffc4d25c32d82d57a341ade38b12d74de383179c3772a64c
-  docs/evidence/memory/dramsim-reports/dramsim3_lpddr5x_10667_stream_triad.json: 0626821f22e70773daa1bc1a262bf6a46d4c970aff31300f1b011fe467f27d07
-  docs/evidence/memory/dramsim-reports/dramsim3_lpddr6_14400_microbench.json: 72f6b2459b21f0046598e04e40723419dec2bf7a78f27c2366685768ca4721c5
-  docs/evidence/memory/dramsim-reports/dramsim3_lpddr6_14400_pointer_chase.json: 2fc5527f976276850464cc8f2dd51d0abccc90c2153f5e088ac1075af7ee8ef5
-  docs/evidence/memory/dramsim-reports/dramsim3_lpddr6_14400_stream_add.json: 77137bd6a2051bf439739da7f635072c078f4d10e8248cd9b8a879ae1e3bc3e6
-  docs/evidence/memory/dramsim-reports/dramsim3_lpddr6_14400_stream_copy.json: ae46e58c34231d494de9f3ce248c87f80fc13a008ca887964ae8f97d08594276
-  docs/evidence/memory/dramsim-reports/dramsim3_lpddr6_14400_stream_scale.json: 754bc86fcecef5e903c72ef3ff2194b7702eb319abb7c9c701f71f007fa18a9a
-  docs/evidence/memory/dramsim-reports/dramsim3_lpddr6_14400_stream_triad.json: 2764c5a1374d905797cf636f59ee12fb850c3a4ad733c4279be1e5e0ee056002
+  build/reports/memory/dramsim3_lpddr5x_10667_microbench.json: 3cb54aee578e78ea23489ccf4a12bb039e413a56c6443f1058ad412b718c5245
+  build/reports/memory/dramsim3_lpddr5x_10667_pointer_chase.json: 673c888ba932e2b64610a2dd94bb4e79112374c620f3f7d9e95bc3a3774f7629
+  build/reports/memory/dramsim3_lpddr5x_10667_stream_add.json: aac923aa13ac94355bf02ca4963544de16106b286cd56490e429aca5108eb4ee
+  build/reports/memory/dramsim3_lpddr5x_10667_stream_copy.json: dcbcd66ddd48766dc4c0d1a420e131c5668b3852ca94769803f9a5de52964aa8
+  build/reports/memory/dramsim3_lpddr5x_10667_stream_scale.json: 4cb82168d9b0df5849d738de94ba2fa61ba919816e84a0444fed1229edfecfe7
+  build/reports/memory/dramsim3_lpddr5x_10667_stream_triad.json: c74bc4433c699616baae952c089514b09799113dbb28bd93455a5c49e0f6313c
+  build/reports/memory/dramsim3_lpddr6_14400_microbench.json: 69e94fba7e7c36eec72c232c2472c9640cd0fe26d4e60af54ea72a54b6742f38
+  build/reports/memory/dramsim3_lpddr6_14400_pointer_chase.json: 68f0f8699d751b7d410a4154753a8eea0ed9c3ff1bf5334030d4a9c88c7dfe39
+  build/reports/memory/dramsim3_lpddr6_14400_stream_add.json: 5ca6a4cea178a57315b90d02eb1b4f2bc6964d026b90c24b95a3df4ba58a0f29
+  build/reports/memory/dramsim3_lpddr6_14400_stream_copy.json: 02f661b2baecb32b480e674a742d90dbfdfc62aff04c5b647ca1a59fbc9114bd
+  build/reports/memory/dramsim3_lpddr6_14400_stream_scale.json: f6882e38bd4320dc93e26c665e147ba2cd2db57cea10830116c3f0302e438327
+  build/reports/memory/dramsim3_lpddr6_14400_stream_triad.json: 01fbfd04f66d0115d9b7100e72dd94f95bace3c2818b97075583cbabe7c5e54b
 
 skus:
   - id: lpddr5x_10667
@@ -116,12 +116,12 @@ skus:
       stream_triad: 315.18
       pointer_chase: 31.31
     report_paths:
-      - docs/evidence/memory/dramsim-reports/dramsim3_lpddr5x_10667_microbench.json
-      - docs/evidence/memory/dramsim-reports/dramsim3_lpddr5x_10667_stream_copy.json
-      - docs/evidence/memory/dramsim-reports/dramsim3_lpddr5x_10667_stream_scale.json
-      - docs/evidence/memory/dramsim-reports/dramsim3_lpddr5x_10667_stream_add.json
-      - docs/evidence/memory/dramsim-reports/dramsim3_lpddr5x_10667_stream_triad.json
-      - docs/evidence/memory/dramsim-reports/dramsim3_lpddr5x_10667_pointer_chase.json
+      - build/reports/memory/dramsim3_lpddr5x_10667_microbench.json
+      - build/reports/memory/dramsim3_lpddr5x_10667_stream_copy.json
+      - build/reports/memory/dramsim3_lpddr5x_10667_stream_scale.json
+      - build/reports/memory/dramsim3_lpddr5x_10667_stream_add.json
+      - build/reports/memory/dramsim3_lpddr5x_10667_stream_triad.json
+      - build/reports/memory/dramsim3_lpddr5x_10667_pointer_chase.json
 
   - id: lpddr6_14400
     standard: LPDDR6-14400
@@ -147,12 +147,12 @@ skus:
       stream_triad: 254.17
       pointer_chase: 32.92
     report_paths:
-      - docs/evidence/memory/dramsim-reports/dramsim3_lpddr6_14400_microbench.json
-      - docs/evidence/memory/dramsim-reports/dramsim3_lpddr6_14400_stream_copy.json
-      - docs/evidence/memory/dramsim-reports/dramsim3_lpddr6_14400_stream_scale.json
-      - docs/evidence/memory/dramsim-reports/dramsim3_lpddr6_14400_stream_add.json
-      - docs/evidence/memory/dramsim-reports/dramsim3_lpddr6_14400_stream_triad.json
-      - docs/evidence/memory/dramsim-reports/dramsim3_lpddr6_14400_pointer_chase.json
+      - build/reports/memory/dramsim3_lpddr6_14400_microbench.json
+      - build/reports/memory/dramsim3_lpddr6_14400_stream_copy.json
+      - build/reports/memory/dramsim3_lpddr6_14400_stream_scale.json
+      - build/reports/memory/dramsim3_lpddr6_14400_stream_add.json
+      - build/reports/memory/dramsim3_lpddr6_14400_stream_triad.json
+      - build/reports/memory/dramsim3_lpddr6_14400_pointer_chase.json
 
 jedec_sanity_check:
   description: >

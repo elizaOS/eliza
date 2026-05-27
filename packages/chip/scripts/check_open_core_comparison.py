@@ -97,24 +97,6 @@ def check_cell(path: str, cell: dict[str, Any]) -> list[str]:
     return errors
 
 
-def evidence_paths(value: Any) -> tuple[list[str], list[str]]:
-    if isinstance(value, str):
-        path = value.strip()
-        if path:
-            return [path], []
-        return [], ["evidence must not be empty"]
-    if isinstance(value, list):
-        paths: list[str] = []
-        errors: list[str] = []
-        for index, item in enumerate(value):
-            if isinstance(item, str) and item.strip():
-                paths.append(item.strip())
-            else:
-                errors.append(f"evidence[{index}] must be a non-empty string")
-        return paths, errors
-    return [], [f"evidence must be a string or list of strings, got {type(value).__name__}"]
-
-
 def check(comparison_path: Path) -> list[str]:
     errors: list[str] = []
     if not comparison_path.is_file():
@@ -162,12 +144,13 @@ def check(comparison_path: Path) -> list[str]:
             errors.append(f"axis '{axis}': verdict={v.get('verdict')!r} invalid")
         if not str(v.get("reason", "")).strip():
             errors.append(f"axis '{axis}': missing 'reason'")
-        if v.get("verdict") == "win" and "evidence" in v:
-            paths, evidence_errors = evidence_paths(v.get("evidence"))
-            errors.extend(f"axis '{axis}': {error}" for error in evidence_errors)
-            for evidence in paths:
-                if not (ROOT / evidence).exists():
-                    errors.append(f"axis '{axis}': verdict evidence not found: {evidence}")
+        if v.get("verdict") == "win" and v.get("evidence"):
+            evidence_paths = list(iter_evidence_paths(v["evidence"]))
+            if not evidence_paths:
+                errors.append(f"axis '{axis}': verdict evidence must be a path or list of paths")
+            for evidence_path in evidence_paths:
+                if not (ROOT / evidence_path).exists():
+                    errors.append(f"axis '{axis}': verdict evidence not found: {evidence_path}")
     for axis in sorted(set(verdicts) - axes):
         errors.append(f"verdict for unknown axis '{axis}' (not in comparison_axes)")
 
