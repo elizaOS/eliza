@@ -92,9 +92,16 @@ function isElizaOsAndroidRuntime(): boolean {
 
 /**
  * Gitpathologist ships as @elizaos/plugin-gitpathologist. Auto-loads when the
- * workspace looks like a git repo (`.git/` present at cwd) and the user has
- * not explicitly opted out via ELIZA_GITPATHOLOGIST=0.
+ * same env-resolved workspace the action will analyze looks like a git repo.
+ * Users can explicitly opt out via ELIZA_GITPATHOLOGIST=0.
  */
+function resolveGitpathologistRepoRoot(): string {
+  const fromEnv =
+    process.env.MILADY_WORKSPACE_DIR ?? process.env.ELIZA_WORKSPACE_DIR;
+  const cwd = fromEnv?.trim() ? fromEnv.trim() : process.cwd();
+  return path.resolve(cwd);
+}
+
 function gitpathologistRequested(config: ElizaConfig): boolean {
   const agentEntry = config.agents?.list?.[0];
   const fromEntry = agentEntry?.gitpathologist;
@@ -104,7 +111,7 @@ function gitpathologistRequested(config: ElizaConfig): boolean {
   const raw = process.env.ELIZA_GITPATHOLOGIST?.trim().toLowerCase();
   if (raw === "0" || raw === "false" || raw === "no") return false;
   if (raw === "1" || raw === "true" || raw === "yes") return true;
-  return existsSync(path.join(process.cwd(), ".git"));
+  return existsSync(path.join(resolveGitpathologistRepoRoot(), ".git"));
 }
 
 // ---------------------------------------------------------------------------

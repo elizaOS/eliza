@@ -5,7 +5,7 @@ export const TRIGGER_SCHEMA_VERSION = 1 as const;
 export type TriggerType = "interval" | "once" | "cron" | "event";
 export type TriggerWakeMode = "inject_now" | "next_autonomy_cycle";
 export type TriggerLastStatus = "success" | "error" | "skipped";
-export type TriggerKind = "text" | "workflow";
+export type TriggerKind = "workflow";
 
 export interface TriggerConfig {
 	version: typeof TRIGGER_SCHEMA_VERSION;
@@ -28,9 +28,8 @@ export interface TriggerConfig {
 	lastStatus?: TriggerLastStatus;
 	lastError?: string;
 	dedupeKey?: string;
-	// When undefined, treat as "text" for back-compat.
-	kind?: TriggerKind;
-	workflowId?: string;
+	kind: TriggerKind;
+	workflowId: string;
 	workflowName?: string;
 }
 

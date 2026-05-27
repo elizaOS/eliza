@@ -312,7 +312,6 @@ export * from "./test-support/index.ts";
 export * from "./test-utils/sqlite-compat.ts";
 export * from "./triggers/runtime.ts";
 export * from "./triggers/scheduling.ts";
-export * from "./triggers/text-to-workflow.ts";
 export * from "./triggers/types.ts";
 // `types/index.js` aggregates `agent-skills`, `config-like`, and `trajectory`.
 export * from "./types/index.ts";

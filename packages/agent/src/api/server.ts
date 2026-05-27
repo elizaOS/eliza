@@ -252,7 +252,6 @@ import {
   DISABLED_TRIGGER_INTERVAL_MS,
   normalizeTriggerDraft,
 } from "../triggers/scheduling.ts";
-import { deployTextTriggerWorkflow } from "../triggers/text-to-workflow.ts";
 import { handleAccountsRoutes } from "./accounts-routes.ts";
 import { handleAgentAdminRoutes } from "./agent-admin-routes.ts";
 import { handleAgentLifecycleRoutes } from "./agent-lifecycle-routes.ts";
@@ -1894,7 +1893,6 @@ async function handleRequest(
     buildTriggerConfig,
     buildTriggerMetadata,
     normalizeTriggerDraft,
-    deployTextTriggerWorkflow,
     DISABLED_TRIGGER_INTERVAL_MS,
     TRIGGER_TASK_NAME,
     TRIGGER_TASK_TAGS: [...TRIGGER_TASK_TAGS],

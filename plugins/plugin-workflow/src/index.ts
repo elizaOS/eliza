@@ -1,7 +1,6 @@
 import { type IAgentRuntime, logger, type Plugin } from '@elizaos/core';
 import { workflowAction } from './actions/index';
 import * as dbSchema from './db/index';
-import { migrateLegacyTextTriggers, migrateLegacyWorkbenchTasks } from './lib/index';
 import {
   activeWorkflowsProvider,
   pendingDraftProvider,
@@ -89,89 +88,12 @@ export const workflowPlugin: Plugin = {
     // runtime.getService("WORKFLOW_DISPATCH").execute(workflowId).
     registerWorkflowDispatchService(runtime);
 
-    // Schedule one-shot legacy migrations off the init critical path. Service
-    // startup is intentionally blocked until the runtime's initialize() flow
-    // resolves, which can take longer than a fixed retry window on cold boot.
-    // Await the runtime service-load promise instead of polling getService().
-    // Each migration is idempotent so a duplicate run on a future boot is
-    // harmless if service startup genuinely fails.
-    scheduleLegacyMigrations(runtime);
-
     logger.info(
       { src: 'plugin:workflow:plugin:init' },
       'Workflow Plugin initialized successfully (in-process runtime)'
     );
   },
 };
-
-function scheduleLegacyMigrations(runtime: IAgentRuntime): void {
-  // Defer off the init stack so this plugin's service declarations have been
-  // registered before getServiceLoadPromise() probes the service registry.
-  setImmediate(() => {
-    void runLegacyMigrationsWhenWorkflowServiceReady(runtime);
-  });
-}
-
-async function runLegacyMigrationsWhenWorkflowServiceReady(runtime: IAgentRuntime): Promise<void> {
-  try {
-    await runtime.getServiceLoadPromise(WORKFLOW_SERVICE_TYPE);
-  } catch (err) {
-    logger.warn(
-      {
-        src: 'plugin:workflow:plugin:migration',
-        err: err instanceof Error ? err.message : String(err),
-      },
-      'WorkflowService failed to start; legacy migrations will run on next boot'
-    );
-    return;
-  }
-
-  await runLegacyMigrations(runtime);
-}
-
-async function runLegacyMigrations(runtime: IAgentRuntime): Promise<void> {
-  try {
-    const summary = await migrateLegacyWorkbenchTasks(runtime);
-    logger.info(
-      {
-        src: 'plugin:workflow:plugin:migration',
-        migrated: summary.migrated,
-        skipped: summary.skipped,
-        failed: summary.failed,
-      },
-      `Workbench-task migration: ${summary.migrated} migrated, ${summary.skipped} skipped, ${summary.failed} failed`
-    );
-  } catch (err) {
-    logger.warn(
-      {
-        src: 'plugin:workflow:plugin:migration',
-        err: err instanceof Error ? err.message : String(err),
-      },
-      'Workbench-task migration threw; continuing'
-    );
-  }
-
-  try {
-    const summary = await migrateLegacyTextTriggers(runtime);
-    logger.info(
-      {
-        src: 'plugin:workflow:plugin:migration',
-        migrated: summary.migrated,
-        skipped: summary.skipped,
-        failed: summary.failed,
-      },
-      `Text-trigger migration: ${summary.migrated} migrated, ${summary.skipped} skipped, ${summary.failed} failed`
-    );
-  } catch (err) {
-    logger.warn(
-      {
-        src: 'plugin:workflow:plugin:migration',
-        err: err instanceof Error ? err.message : String(err),
-      },
-      'Text-trigger migration threw; continuing'
-    );
-  }
-}
 
 export default workflowPlugin;
 

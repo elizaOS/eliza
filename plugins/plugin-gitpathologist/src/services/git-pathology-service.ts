@@ -13,6 +13,7 @@ import { findInflections } from "../pipeline/inflect.ts";
 import { narrate } from "../pipeline/narrate.ts";
 import { headSha as readHeadSha, resolveSurfacePath, scan } from "../pipeline/scan.ts";
 import { score } from "../pipeline/score.ts";
+import { scrubSecretsDeep } from "../secret-scrubber.ts";
 import type {
   AnalysisOptions,
   CachedReportSummary,
@@ -49,7 +50,7 @@ export class GitPathologyService extends Service {
 
   async runReport(
     surface: SurfaceSpec,
-    overrides: Partial<AnalysisOptions> = {},
+    overrides: Partial<AnalysisOptions> = {}
   ): Promise<PathologyReport> {
     const options = { ...DEFAULT_OPTIONS, ...overrides };
     const cacheDir = defaultCacheDir(surface.repoRoot);
@@ -61,18 +62,18 @@ export class GitPathologyService extends Service {
       const cached = cache.read(cacheKey);
       if (cached && cached.headSha === currentHead) {
         logger.info(`${LOG_PREFIX} cache hit ${cacheKey.slice(0, 12)} surface=${surface.path}`);
-        return cached;
+        return scrubSecretsDeep(cached);
       }
       if (options.cache === "read-only") {
         throw new Error(
-          `gitpathology cache miss for ${surface.path} (HEAD changed or no prior report)`,
+          `gitpathology cache miss for ${surface.path} (HEAD changed or no prior report)`
         );
       }
     }
 
     const raw = scan(surface, { since: options.since });
     if (raw.length === 0) {
-      const empty = emptyReport(surface, options, currentHead, cacheKey);
+      const empty = scrubSecretsDeep(emptyReport(surface, options, currentHead, cacheKey));
       cache.write(empty);
       return empty;
     }
@@ -109,11 +110,12 @@ export class GitPathologyService extends Service {
       cacheKey,
     };
 
-    cache.write(report);
+    const safeReport = scrubSecretsDeep(report);
+    cache.write(safeReport);
     logger.info(
-      `${LOG_PREFIX} report written ${cacheKey.slice(0, 12)} surface=${surface.path} commits=${points.length} llm=${llmCalls}`,
+      `${LOG_PREFIX} report written ${cacheKey.slice(0, 12)} surface=${surface.path} commits=${points.length} llm=${llmCalls}`
     );
-    return report;
+    return safeReport;
   }
 
   listReports(repoRoot: string): CachedReportSummary[] {
@@ -125,7 +127,7 @@ function emptyReport(
   surface: SurfaceSpec,
   options: AnalysisOptions,
   headSha: string,
-  cacheKey: string,
+  cacheKey: string
 ): PathologyReport {
   const now = new Date().toISOString();
   return {

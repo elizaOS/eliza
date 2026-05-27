@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -34,10 +34,10 @@ describe("makeCacheKey", () => {
 
   it("differs when surface or since differs", () => {
     expect(makeCacheKey({ surface: "src/api", since: "14d" })).not.toBe(
-      makeCacheKey({ surface: "src/api", since: "7d" }),
+      makeCacheKey({ surface: "src/api", since: "7d" })
     );
     expect(makeCacheKey({ surface: "src/api", since: "14d" })).not.toBe(
-      makeCacheKey({ surface: "src/ui", since: "14d" }),
+      makeCacheKey({ surface: "src/ui", since: "14d" })
     );
   });
 });
@@ -65,22 +65,40 @@ describe("createReportCache", () => {
     expect(cache.read("nonexistent")).toBeNull();
   });
 
+  it("treats malformed cache files as misses", () => {
+    const cache = createReportCache(dir);
+    writeFileSync(path.join(dir, "bad.json"), "{not json", "utf8");
+    expect(cache.read("bad")).toBeNull();
+  });
+
   it("lists reports sorted newest-first", () => {
     const cache = createReportCache(dir);
-    cache.write(fakeReport({
-      cacheKey: "a",
-      surface: "old",
-      generatedAt: "2026-04-01T00:00:00Z",
-    }));
-    cache.write(fakeReport({
-      cacheKey: "b",
-      surface: "new",
-      generatedAt: "2026-04-10T00:00:00Z",
-    }));
+    cache.write(
+      fakeReport({
+        cacheKey: "a",
+        surface: "old",
+        generatedAt: "2026-04-01T00:00:00Z",
+      })
+    );
+    cache.write(
+      fakeReport({
+        cacheKey: "b",
+        surface: "new",
+        generatedAt: "2026-04-10T00:00:00Z",
+      })
+    );
     const list = cache.list();
     expect(list.length).toBe(2);
     expect(list[0]?.surface).toBe("new");
     expect(list[1]?.surface).toBe("old");
+  });
+
+  it("skips malformed cache files when listing reports", () => {
+    const cache = createReportCache(dir);
+    cache.write(fakeReport({ cacheKey: "good", surface: "ok" }));
+    writeFileSync(path.join(dir, "bad.json"), "{not json", "utf8");
+
+    expect(cache.list().map((entry) => entry.surface)).toEqual(["ok"]);
   });
 
   it("isFreshFor returns true only when HEAD matches", () => {

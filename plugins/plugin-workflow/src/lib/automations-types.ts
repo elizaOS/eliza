@@ -64,7 +64,7 @@ export function isAutomationConversationMetadata(
 export type TriggerType = 'interval' | 'once' | 'cron' | 'event';
 export type TriggerWakeMode = 'inject_now' | 'next_autonomy_cycle';
 export type TriggerLastStatus = 'success' | 'error' | 'skipped';
-export type TriggerKind = 'text' | 'workflow';
+export type TriggerKind = 'workflow';
 
 export interface TriggerSummary {
   id: string;
@@ -113,8 +113,8 @@ interface TriggerConfigShape {
   lastRunAtIso?: string;
   lastStatus?: TriggerLastStatus;
   lastError?: string;
-  kind?: TriggerKind;
-  workflowId?: string;
+  kind: TriggerKind;
+  workflowId: string;
   workflowName?: string;
 }
 
