@@ -162,7 +162,8 @@ export const actionsPinnedBySha: Check = {
         match = SHA_RE.exec(inspectableSource);
         if (!actionRef) continue;
         totalRefs++;
-        // Skip local actions (./...) and repo-relative reusable workflows (start with org/repo/.github/).
+        // Skip only local actions/reusable workflows. External reusable workflows
+        // execute third-party code and must be pinned just like actions.
         if (actionRef.startsWith("./")) continue;
         if (/^[^/]+\/[^/]+\/\.github\/workflows\//.test(actionRef)) continue;
         if (!ver || !/^[0-9a-f]{40}$/.test(ver)) {

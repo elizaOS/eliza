@@ -348,4 +348,35 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
       "110e8400-e29b-41d4-a716-446655440002",
     ]);
   });
+
+  it("should handle boolean to integer conversion with a native cast", async () => {
+    // Regression: the generic `::text::integer` bridge breaks here because
+    // Postgres rejects boolean text ('true'/'false') as integer input. The
+    // boolean→integer conversion must use the native cast (true→1, false→0).
+    const tableV1 = pgTable("flags", {
+      id: uuid("id").primaryKey().defaultRandom(),
+      active: boolean("active").notNull(),
+    });
+
+    await migrator.migrate("@elizaos/schema-evolution-test-bool-int-v1", {
+      flags: tableV1,
+    });
+
+    await db.insert(tableV1).values([{ active: true }, { active: false }]);
+
+    // V2: active becomes integer.
+    const tableV2 = pgTable("flags", {
+      id: uuid("id").primaryKey().defaultRandom(),
+      active: integer("active").notNull(),
+    });
+
+    // Must not throw — the generated ALTER carries `USING active::integer`.
+    await migrator.migrate("@elizaos/schema-evolution-test-bool-int-v1", {
+      flags: tableV2,
+    });
+
+    const after = await db.select().from(tableV2);
+    const values = after.map((r) => r.active).sort();
+    expect(values).toEqual([0, 1]);
+  });
 });

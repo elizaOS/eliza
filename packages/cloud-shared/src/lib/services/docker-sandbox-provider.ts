@@ -25,6 +25,7 @@ import {
   allocatePort,
   BRIDGE_PORT_MAX,
   BRIDGE_PORT_MIN,
+  buildEnsureNetworkCmd,
   dockerPlatformFlag,
   extractDockerCreateContainerId,
   getContainerName,
@@ -719,6 +720,12 @@ export class DockerSandboxProvider implements SandboxProvider {
         envFlags,
         shellQuote(resolvedImage),
       ].join(" ");
+
+      // Self-heal nodes missing the shared bridge network (Robot cores never
+      // run the cloud-init bootstrap; the network can also be pruned away).
+      // Without this, `docker create --network` below fails with an opaque
+      // "network not found" and the provision retries forever.
+      await ssh.exec(buildEnsureNetworkCmd(DOCKER_NETWORK), DOCKER_CMD_TIMEOUT_MS);
 
       const containerId = extractDockerCreateContainerId(
         await ssh.exec(dockerCreateCmd, DOCKER_CMD_TIMEOUT_MS),

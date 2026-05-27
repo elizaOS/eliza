@@ -17,7 +17,7 @@
 # Skipped:
 #   - References that already use a 40-char SHA (`@<sha>`).
 #   - Local (`uses: ./.github/actions/...`) and docker (`uses: docker://...`).
-#   - Reusable workflow references (`uses: ./.github/workflows/...`).
+#   - Local reusable workflow references (`uses: ./.github/workflows/...`).
 #
 # Idempotent and safe to re-run.
 
@@ -87,8 +87,9 @@ process_file() {
       local action_path="${BASH_REMATCH[2]}"
       local ref="${BASH_REMATCH[3]}"
       local rest="${BASH_REMATCH[4]}"
-      # Skip local actions / reusable workflows.
-      if [[ "$action_path" == .* || "$action_path" == docker:* || "$action_path" == */.github/workflows/* ]]; then
+      # Skip only local actions / reusable workflows. External reusable
+      # workflows execute third-party code and must be pinned by SHA.
+      if [[ "$action_path" == .* || "$action_path" == docker:* ]]; then
         echo "$line" >> "$tmp"; continue
       fi
       # Already a 40-char SHA?

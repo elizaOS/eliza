@@ -634,7 +634,7 @@ function generateAlterColumnSQL(
     if (needsUsing) {
       // For complex type changes, use USING clause like Drizzle
       statements.push(
-        `ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" TYPE ${newType} USING "${column}"::text::${newType};`
+        `ALTER TABLE ${tableNameWithSchema} ALTER COLUMN "${column}" TYPE ${newType} USING ${buildUsingExpression(column, changesFromType || "", newType)};`
       );
     } else {
       statements.push(
@@ -670,6 +670,22 @@ function generateAlterColumnSQL(
   }
 
   return statements;
+}
+
+/**
+ * Build the USING expression for an ALTER COLUMN TYPE conversion.
+ *
+ * The generic `::text::<target>` bridge works for most conversions, but
+ * Postgres rejects boolean text ('true'/'false') as integer input, so
+ * boolean→integer must use the native cast (true→1, false→0) instead.
+ */
+function buildUsingExpression(column: string, fromType: string, toType: string): string {
+  const from = fromType.split("(")[0].toLowerCase().trim();
+  const to = toType.split("(")[0].toLowerCase().trim();
+  if (from === "boolean" && to === "integer") {
+    return `"${column}"::${toType}`;
+  }
+  return `"${column}"::text::${toType}`;
 }
 
 /**
