@@ -82,14 +82,23 @@ export const piiEncryptionColumns: Check = {
         const encryptedPrefix = col.encryptedPrefix ?? col.source;
         // ciphertext column is the minimal evidence; nonce/auth_tag are checked too.
         const checks = [
-          new RegExp(`${encryptedPrefix}_ciphertext`),
-          new RegExp(`${encryptedPrefix}_nonce`),
-          new RegExp(`${encryptedPrefix}_auth_tag`),
+          {
+            name: `${encryptedPrefix}_ciphertext`,
+            pattern: new RegExp(`${encryptedPrefix}_ciphertext`),
+          },
+          {
+            name: `${encryptedPrefix}_nonce`,
+            pattern: new RegExp(`${encryptedPrefix}_nonce`),
+          },
+          {
+            name: `${encryptedPrefix}_auth_tag`,
+            pattern: new RegExp(`${encryptedPrefix}_auth_tag`),
+          },
         ];
-        const missing = checks.filter((r) => !r.test(src));
+        const missing = checks.filter((check) => !check.pattern.test(src));
         if (missing.length > 0) {
           problems.push(
-            `${target.table}.${col.source}: missing ${missing.map((r) => r.source).join(", ")}`,
+            `${target.table}.${col.source}: missing ${missing.map((check) => check.name).join(", ")}`,
           );
         }
       }

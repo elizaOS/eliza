@@ -56,7 +56,7 @@ jobs:
           df -h /
 
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           # Skip submodules entirely. The snap build uses
           # `bun install --ignore-scripts` (see snapcraft.yaml) and
@@ -70,12 +70,12 @@ jobs:
           submodules: false
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: "1.3.13"
 
       - name: Setup Buf
-        uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99  # v1
+        uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -106,7 +106,7 @@ jobs:
           fi
 
       - name: Build snap
-        uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79  # v1
+        uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79
         id: snapcraft
 
       - name: Verify snap contents
@@ -130,7 +130,7 @@ jobs:
           elizaos-app --help 2>&1 | head -20 || echo "Help check completed (exit $?)"
 
       - name: Upload snap artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: snap-${{ matrix.arch }}
           path: ${{ steps.snapcraft.outputs.snap }}

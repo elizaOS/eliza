@@ -83,7 +83,7 @@ jobs:
 
       - name: Checkout main repo (to create apt-repo branch if needed)
         if: steps.gpg_check.outputs.can_publish == 'true'
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
           path: main-repo
@@ -102,7 +102,7 @@ jobs:
 
       - name: Checkout apt-repo branch
         if: steps.gpg_check.outputs.can_publish == 'true'
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: apt-repo
           path: apt-repo
@@ -110,7 +110,7 @@ jobs:
 
       - name: Checkout release tag (for conf files)
         if: steps.gpg_check.outputs.can_publish == 'true'
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ inputs.tag }}
           path: src-repo

@@ -2,7 +2,7 @@
 # pin-action-shas.sh
 #
 # Rewrites `uses: owner/repo@vTAG` references in .github/workflows to use the
-# resolved commit SHA, preserving the original tag in a trailing comment.
+# resolved commit SHA.
 # This implements the OpenSSF Scorecard "Pinned-Dependencies" check (SOC2
 # CC9.2 supply-chain integrity).
 #
@@ -107,8 +107,8 @@ process_file() {
         echo "  ! could not resolve ${owner_repo}@${ref}" >&2
         echo "$line" >> "$tmp"; continue
       fi
-      local new_line="${prefix}${action_path}@${sha}  # ${ref}"
-      if [[ -n "$rest" ]] && [[ ! "$rest" =~ ^[[:space:]]*$ ]]; then
+      local new_line="${prefix}${action_path}@${sha}"
+      if [[ -n "$rest" ]] && [[ ! "$rest" =~ ^[[:space:]]*# ]] && [[ ! "$rest" =~ ^[[:space:]]*$ ]]; then
         new_line="${new_line}${rest}"
       fi
       echo "$new_line" >> "$tmp"

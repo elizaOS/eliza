@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: ./.github/actions/cloud-setup-test-env
       - name: Lint and typecheck cloud workspaces
         run: bun run verify:cloud
@@ -63,7 +63,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: ./.github/actions/cloud-setup-test-env
       - name: Run cloud unit tests
         run: bun run test:cloud
@@ -74,7 +74,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: ./.github/actions/cloud-setup-test-env
         with:
           setup-db: "true"
@@ -88,7 +88,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: ./.github/actions/cloud-setup-test-env
         with:
           setup-db: "true"
@@ -103,7 +103,7 @@ jobs:
       NODE_ENV: test
       PLAYWRIGHT_WORKERS: "1"
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: ./.github/actions/cloud-setup-test-env
         with:
           setup-db: "true"

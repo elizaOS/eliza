@@ -82,20 +82,20 @@ jobs:
 
       - name: Checkout
         if: steps.gate.outputs.skip != 'true'
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: false
           fetch-depth: 1
 
       - name: Setup Node.js
         if: steps.gate.outputs.skip != 'true'
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup Python
         if: steps.gate.outputs.skip != 'true'
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -195,7 +195,7 @@ jobs:
 
       - name: Upload run artifacts
         if: steps.gate.outputs.skip != 'true' && always() && steps.run.outputs.run-dir != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: lifeops-run-${{ matrix.agent }}-${{ github.run_id }}
           path: |
@@ -209,7 +209,7 @@ jobs:
 
       - name: Annotate PR with side-by-side summary
         if: steps.gate.outputs.skip != 'true' && github.event_name == 'pull_request' && steps.run.outputs.run-dir != ''
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b  # v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
         env:
           RUN_DIR: ${{ steps.run.outputs.run-dir }}
           RUN_ID: ${{ steps.run.outputs.run-id }}

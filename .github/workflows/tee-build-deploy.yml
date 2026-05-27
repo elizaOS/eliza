@@ -65,17 +65,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee  # v4
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee
         with:
           registry: ${{ env.DOCKER_REGISTRY }}
           username: ${{ env.DOCKER_REGISTRY_USERNAME }}
           password: ${{ env.DOCKER_REGISTRY_PASSWORD }}
 
       - name: Build and Push Docker image
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
         with:
           context: .
           file: packages/app-core/deploy/Dockerfile.ci
@@ -92,7 +92,7 @@ jobs:
           sed -i "s|\${DOCKER_IMAGE_FULL_NAME}|${{ env.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:${{ github.sha }}|g" ./tee-docker-compose.yaml
 
       - name: Deploy to Phala Cloud
-        uses: Leechael/phala-deploy-action@b6bcce6a26203fcc2fa715a49c09080e46a98927  # v2
+        uses: Leechael/phala-deploy-action@b6bcce6a26203fcc2fa715a49c09080e46a98927
         with:
           # Required parameters
           phala-api-key: ${{ secrets.PHALA_CLOUD_API_KEY }}

@@ -53,20 +53,20 @@ jobs:
     runs-on: [self-hosted, linux, x64, kvm]
     timeout-minutes: 720
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: recursive
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
 
-      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654
         with:
           distribution: temurin
           java-version: "21"
 
       # `aapt` is needed by validate.mjs for APK badging inspection.
       # Gradle (for build:android:system) needs the platform/build-tools.
-      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699  # v4
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
         if: ${{ inputs.skip-apk-rebuild != true }}
         with:
           packages: "platform-tools build-tools;36.0.0 platforms;android-36"
@@ -144,7 +144,7 @@ jobs:
 
       - name: Upload AOSP build logs and vendor image
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: openagent-e1-aosp-build-logs
           path: |
@@ -155,7 +155,7 @@ jobs:
 
       - name: Upload chip evidence logs
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: openagent-e1-chip-evidence
           path: packages/chip/docs/evidence/android/*.log
