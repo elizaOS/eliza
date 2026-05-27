@@ -43,19 +43,22 @@ fi
 command -v gh >/dev/null || { echo "gh CLI required" >&2; exit 1; }
 gh auth status >/dev/null 2>&1 || { echo "gh not authenticated" >&2; exit 1; }
 
-declare -A SHA_CACHE
+SHA_CACHE_DIR=$(mktemp -d)
+trap 'rm -rf "$SHA_CACHE_DIR"' EXIT
 
 resolve_sha() {
-  local owner_repo="$1" ref="$2" key sha obj_type obj_sha
+  local owner_repo="$1" ref="$2" key cache_key cache_file sha obj_type obj_sha
   key="${owner_repo}@${ref}"
-  if [[ -n "${SHA_CACHE[$key]:-}" ]]; then
-    echo "${SHA_CACHE[$key]}"
+  cache_key=$(printf '%s' "$key" | shasum -a 256 | awk '{print $1}')
+  cache_file="${SHA_CACHE_DIR}/${cache_key}"
+  if [[ -f "$cache_file" ]]; then
+    cat "$cache_file"
     return 0
   fi
   # Try tag first.
   local json
-  json=$(gh api "repos/${owner_repo}/git/refs/tags/${ref}" 2>/dev/null) || \
-    json=$(gh api "repos/${owner_repo}/git/refs/heads/${ref}" 2>/dev/null) || {
+  json=$(gh api "repos/${owner_repo}/git/ref/tags/${ref}" 2>/dev/null) || \
+    json=$(gh api "repos/${owner_repo}/git/ref/heads/${ref}" 2>/dev/null) || {
       echo ""
       return 1
     }
@@ -68,7 +71,7 @@ resolve_sha() {
   else
     sha="$obj_sha"
   fi
-  SHA_CACHE[$key]="$sha"
+  printf '%s' "$sha" > "$cache_file"
   echo "$sha"
 }
 
@@ -79,17 +82,23 @@ process_file() {
   local changed=0
   while IFS= read -r line; do
     # Match: optional indent + `- uses: ` or `  uses: ` + owner/repo@ref
-    if [[ "$line" =~ ^([[:space:]]*-?[[:space:]]*uses:[[:space:]]+)([^/[:space:]@]+/[^@[:space:]]+)@([^[:space:]#]+)(.*)$ ]]; then
+    if [[ "$line" =~ ^([[:space:]]*-?[[:space:]]*uses:[[:space:]]+)([^[:space:]@]+)@([^[:space:]#]+)(.*)$ ]]; then
       local prefix="${BASH_REMATCH[1]}"
-      local owner_repo="${BASH_REMATCH[2]}"
+      local action_path="${BASH_REMATCH[2]}"
       local ref="${BASH_REMATCH[3]}"
       local rest="${BASH_REMATCH[4]}"
       # Skip local actions / reusable workflows.
-      if [[ "$owner_repo" == .* || "$owner_repo" == docker:* ]]; then
+      if [[ "$action_path" == .* || "$action_path" == docker:* || "$action_path" == */.github/workflows/* ]]; then
         echo "$line" >> "$tmp"; continue
       fi
       # Already a 40-char SHA?
       if [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+        echo "$line" >> "$tmp"; continue
+      fi
+      local owner_repo
+      if [[ "$action_path" =~ ^([^/]+/[^/]+)(/.*)?$ ]]; then
+        owner_repo="${BASH_REMATCH[1]}"
+      else
         echo "$line" >> "$tmp"; continue
       fi
       local sha
@@ -98,7 +107,7 @@ process_file() {
         echo "  ! could not resolve ${owner_repo}@${ref}" >&2
         echo "$line" >> "$tmp"; continue
       fi
-      local new_line="${prefix}${owner_repo}@${sha}  # ${ref}"
+      local new_line="${prefix}${action_path}@${sha}  # ${ref}"
       if [[ -n "$rest" ]] && [[ ! "$rest" =~ ^[[:space:]]*$ ]]; then
         new_line="${new_line}${rest}"
       fi

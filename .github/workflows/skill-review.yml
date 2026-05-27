@@ -24,14 +24,14 @@ jobs:
       issues: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
           fetch-depth: 1
       # Don't fail the workflow when the Anthropic API is unavailable
       # (low credit balance, rate limit, transient outage). The bot review
       # is best-effort; a missing review must not block CI.
       - continue-on-error: true
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@787c5a0ce96a9a6cfb050ea0c8f4c05f2447c251  # v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           track_progress: true

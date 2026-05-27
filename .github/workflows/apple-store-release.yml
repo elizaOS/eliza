@@ -105,7 +105,7 @@ jobs:
       build_macos: ${{ steps.targets.outputs.macos }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
       - name: Determine version
         id: ver
@@ -152,15 +152,15 @@ jobs:
       FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
@@ -237,7 +237,7 @@ jobs:
         run: pod install
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@afeafc3d1ab54a631816aba4c914a0081c12ff2f  # v1
         with:
           ruby-version: "4.0.3"
           bundler-cache: true
@@ -283,7 +283,7 @@ jobs:
           fi
 
       - name: Upload IPA artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: ios-ipa
           path: packages/app/ios/build/Eliza.ipa
@@ -310,15 +310,15 @@ jobs:
       APP_STORE_API_KEY_P8: ${{ secrets.APP_STORE_API_KEY_P8 }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
@@ -481,7 +481,7 @@ jobs:
           rm -f "$KEY_FILE"
 
       - name: Upload pkg artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: macos-mas-pkg
           path: ${{ env.PKG_PATH }}

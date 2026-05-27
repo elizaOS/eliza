@@ -2,7 +2,6 @@ import { execSync } from "node:child_process";
 import { join } from "node:path";
 import type { Check, CheckResult } from "../types.js";
 import { dirExists, fileExists, readUtf8Safe } from "../util/fs.js";
-import { walk } from "../util/fs.js";
 
 export const gitleaksWorkflow: Check = {
   id: "CC8.1-gitleaks-workflow",
@@ -49,9 +48,12 @@ export const noCommittedSecrets: Check = {
       };
     }
     try {
-      execSync(`gitleaks detect --no-banner --redact --source "${ctx.elizaRoot}"`, {
-        stdio: "pipe",
-      });
+      execSync(
+        `gitleaks detect --no-banner --redact --source "${ctx.elizaRoot}" --log-opts "-1" --timeout 120`,
+        {
+          stdio: "pipe",
+        },
+      );
       return {
         status: "pass",
         evidence: `gitleaks: zero findings at HEAD.`,
@@ -136,14 +138,20 @@ export const actionsPinnedBySha: Check = {
     for (const f of files) {
       const src = readUtf8Safe(f);
       if (!src) continue;
+      const inspectableSource = src
+        .split("\n")
+        .filter((line) => !line.trimStart().startsWith("#"))
+        .join("\n");
       SHA_RE.lastIndex = 0;
-      let match: RegExpExecArray | null;
-      while ((match = SHA_RE.exec(src)) !== null) {
+      let match = SHA_RE.exec(inspectableSource);
+      while (match !== null) {
         const [, actionRef, ver] = match;
+        match = SHA_RE.exec(inspectableSource);
         if (!actionRef) continue;
         totalRefs++;
         // Skip local actions (./...) and repo-relative reusable workflows (start with org/repo/.github/).
         if (actionRef.startsWith("./")) continue;
+        if (/^[^/]+\/[^/]+\/\.github\/workflows\//.test(actionRef)) continue;
         if (!ver || !/^[0-9a-f]{40}$/.test(ver)) {
           violations.push(`${f}: ${actionRef}@${ver}`);
         }

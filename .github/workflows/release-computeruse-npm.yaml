@@ -105,18 +105,18 @@ jobs:
     runs-on: ${{ matrix.settings.host }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
       - name: Setup node (Windows ARM64)
         if: matrix.settings.host == 'windows-11-arm'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
 
       - name: Setup node (default)
         if: matrix.settings.host != 'windows-11-arm'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
@@ -134,12 +134,12 @@ jobs:
           cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable
         with:
           targets: ${{ matrix.settings.target }}
 
       - name: Cache cargo registry
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:
           path: |
             ~/.cargo/registry
@@ -182,7 +182,7 @@ jobs:
         shell: bash
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: bindings-${{ matrix.settings.target }}
           path: |
@@ -196,16 +196,16 @@ jobs:
     needs: build
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
       - name: Setup node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
         with:
           path: artifacts
 

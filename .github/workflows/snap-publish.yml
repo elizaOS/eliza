@@ -50,7 +50,7 @@ jobs:
       SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
           ref: ${{ inputs.tag }}
           submodules: false
@@ -90,7 +90,7 @@ jobs:
           echo "Published snap to channel: ${{ inputs.channel }}"
 
       - name: Upload snap artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: elizaos-snap-${{ inputs.version }}
           path: packages/app-core/packaging/snap/*.snap

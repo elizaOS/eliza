@@ -91,18 +91,18 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
           submodules: false
           fetch-depth: 1
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Cache uv package cache
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:
           path: ~/.cache/uv
           key: uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('packages/benchmarks/lifeops-bench/pyproject.toml') }}
@@ -138,7 +138,7 @@ jobs:
 
       - name: Upload pytest cache on failure
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: pytest-cache-${{ github.run_id }}
           path: |
@@ -156,18 +156,18 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
           submodules: false
           fetch-depth: 1
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Cache uv package cache
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:
           path: ~/.cache/uv
           key: uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('packages/benchmarks/lifeops-bench/pyproject.toml') }}
@@ -219,7 +219,7 @@ jobs:
 
       - name: Upload smoke artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: lifeops-smoke-${{ github.run_id }}
           path: |
@@ -231,7 +231,7 @@ jobs:
 
       - name: Annotate PR with smoke summary
         if: always() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b  # v7
         env:
           BENCH_DIR: ${{ env.BENCH_DIR }}
         with:
@@ -317,20 +317,20 @@ jobs:
 
       - name: Checkout
         if: steps.gate.outputs.skip != 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
           submodules: false
           fetch-depth: 1
 
       - name: Setup Python
         if: steps.gate.outputs.skip != 'true'
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Cache uv package cache
         if: steps.gate.outputs.skip != 'true'
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
         with:
           path: ~/.cache/uv
           key: uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('packages/benchmarks/lifeops-bench/pyproject.toml') }}
@@ -384,7 +384,7 @@ jobs:
 
       - name: Upload live artifacts
         if: always() && steps.gate.outputs.skip != 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: lifeops-live-${{ github.run_id }}
           path: |
