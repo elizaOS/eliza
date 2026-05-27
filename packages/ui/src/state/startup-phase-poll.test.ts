@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FirstRunOptions } from "../api";
+import {
+  type PollingBackendDeps,
+  runPollingBackend,
+} from "./startup-phase-poll";
 import type { RestoringSessionCtx } from "./startup-phase-restore";
-import { runPollingBackend, type PollingBackendDeps } from "./startup-phase-poll";
 
 const clientMock = vi.hoisted(() => ({
   getAuthStatus: vi.fn(),

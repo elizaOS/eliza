@@ -520,7 +520,9 @@ export function ConfigPageView({
                     })}
               </Button>
               {elizaCloudLoginBusy && elizaCloudLoginFallbackUrl ? (
-                <CloudLoginFallbackLink browserUrl={elizaCloudLoginFallbackUrl} />
+                <CloudLoginFallbackLink
+                  browserUrl={elizaCloudLoginFallbackUrl}
+                />
               ) : null}
             </div>
           )}

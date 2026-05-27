@@ -16,10 +16,10 @@ import type {
 } from "../../api/client-types-chat";
 import { fetchWithCsrf } from "../../api/csrf-client";
 import { isRoutineCodingAgentMessage } from "../../chat";
+import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { consumeAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import {
   CodingAgentControlChip,

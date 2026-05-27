@@ -45,6 +45,18 @@ function StartupLoading(props: { phase: string; status: string }) {
       className="fixed inset-0 flex items-center justify-center overflow-hidden bg-[#F7F9FF] text-[#0B35F1]"
       style={{ fontFamily: FONT }}
     >
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 bg-black/25 backdrop-blur-[18px]"
+      />
+      <div
+        aria-hidden="true"
+        className="absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.34) 100%)",
+        }}
+      />
       <div className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-5 px-6 text-center">
         <div className="flex items-center justify-center gap-3">
           <span className="grid h-14 w-14 place-items-center rounded-full bg-white shadow-[0_18px_48px_rgba(11,53,241,0.14)] ring-1 ring-[#0B35F1]/15">

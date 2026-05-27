@@ -4,8 +4,8 @@ import { waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   isLocalAsrCaptureSupported,
-  startLocalAsrRecorder,
   type LocalAsrRecorderOptions,
+  startLocalAsrRecorder,
 } from "./local-asr-capture";
 import { transcribeLocalInferenceWav } from "./local-asr-transcribe";
 import { createVoiceCapture } from "./voice-capture-factory";

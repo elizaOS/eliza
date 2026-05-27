@@ -22,6 +22,7 @@ export {
 } from "./browser-launch";
 export * from "./cloud-preference-patch";
 export * from "./desktop-permissions-client";
+export * from "./first-run-reset";
 export {
   type DeepLinkHandlers,
   dispatchShareTarget,
@@ -40,7 +41,6 @@ export {
   setupPlatformStyles,
 } from "./init";
 export * from "./ios-runtime";
-export * from "./first-run-reset";
 export * from "./platform-guards";
 export type * from "./types";
 export type {

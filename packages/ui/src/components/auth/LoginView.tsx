@@ -191,10 +191,7 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
       <Card className={SCREEN_CARD_CLASS}>
         <CardHeader className="pb-2 pt-6 px-6">
           <div className="mb-1">
-            <p
-              className={setupEyebrowClass}
-              style={setupBodyTextShadowStyle}
-            >
+            <p className={setupEyebrowClass} style={setupBodyTextShadowStyle}>
               Eliza
             </p>
             <SetupStepDivider />

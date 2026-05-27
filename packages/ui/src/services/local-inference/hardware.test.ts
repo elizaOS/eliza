@@ -1,8 +1,8 @@
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import {
-  assessFit,
   assessFirstRunHardware,
+  assessFit,
   type FirstRunHardwareAdvice,
 } from "./hardware";
 import type { HardwareProbe } from "./types";

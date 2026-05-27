@@ -2774,6 +2774,7 @@ async function generateDirectReplyOnce(args: {
 function shouldRegenerateStage1ReplyText(reply: string | undefined): boolean {
 	const trimmed = typeof reply === "string" ? reply.trim() : "";
 	if (!trimmed) return true;
+	if (/^```[a-z0-9_-]*\s+/iu.test(trimmed)) return false;
 	if (/^[\s{}[\]":,]+$/.test(trimmed)) return true;
 	if (/^\d+$/.test(trimmed)) return true;
 	if (/(.)\1{4,}/u.test(trimmed)) return true;
@@ -2892,12 +2893,14 @@ function renderMessageHandlerInstructions(
 		},
 		template: baseline,
 	}).trim();
-	const renderedWithSharedRules = [
-		rendered,
-		"",
-		"## Shared Response Quality Rules",
-		`- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
-	].join("\n");
+	const renderedWithSharedRules = options?.directMessage
+		? rendered
+		: [
+				rendered,
+				"",
+				"## Shared Response Quality Rules",
+				`- ${CODE_SNIPPET_VALIDITY_INSTRUCTION}`,
+			].join("\n");
 	if (!options?.responseHandlerFields?.trim()) {
 		return renderedWithSharedRules;
 	}

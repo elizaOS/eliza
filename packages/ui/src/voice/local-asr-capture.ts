@@ -118,7 +118,9 @@ const DEFAULT_LOCAL_ASR_AUTO_STOP: LocalAsrAutoStopConfig = {
 export function createLocalAsrAutoStopDetector(
   options: LocalAsrAutoStopOptions | undefined,
   startedAtMs = nowMs(),
-): ((pcm: Float32Array, sampleTimeMs?: number) => LocalAsrAutoStopUpdate) | null {
+):
+  | ((pcm: Float32Array, sampleTimeMs?: number) => LocalAsrAutoStopUpdate)
+  | null {
   if (!options) return null;
 
   const config: LocalAsrAutoStopConfig = {
@@ -257,11 +259,7 @@ export async function startLocalAsrRecorder(
     if (autoStopUpdate.shouldBuffer) {
       chunks.push(mono);
     }
-    if (
-      autoStopUpdate.shouldStop &&
-      !autoStopRequested &&
-      options.onAutoStop
-    ) {
+    if (autoStopUpdate.shouldStop && !autoStopRequested && options.onAutoStop) {
       autoStopRequested = true;
       window.setTimeout(options.onAutoStop, 0);
     }

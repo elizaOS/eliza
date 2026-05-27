@@ -142,12 +142,8 @@ export function DeferredSetupChecklist({
   className?: string;
   onOpenTask?: (task: FlaminaGuideTopic) => void;
 }) {
-  const {
-    firstRunDeferredTasks,
-    postFirstRunChecklistDismissed,
-    setState,
-    t,
-  } = useApp();
+  const { firstRunDeferredTasks, postFirstRunChecklistDismissed, setState, t } =
+    useApp();
 
   if (
     postFirstRunChecklistDismissed ||
