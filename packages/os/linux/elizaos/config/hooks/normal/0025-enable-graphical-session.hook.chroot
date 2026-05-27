@@ -21,6 +21,17 @@ set -eu
 
 log() { echo "[0025-kiosk] $*"; }
 
+# The base/default Debian image is intentionally headless. Only the GUI profile
+# installs cage + seatd + Epiphany; without those packages this hook leaves the
+# system on multi-user.target and exits cleanly.
+if [ ! -x /usr/bin/cage ] || \
+   [ ! -x /usr/bin/epiphany-browser ] || \
+   { [ ! -e /lib/systemd/system/seatd.service ] && [ ! -e /usr/lib/systemd/system/seatd.service ]; }; then
+    systemctl set-default multi-user.target
+    log "GUI profile packages absent; keeping default target at multi-user.target"
+    exit 0
+fi
+
 # 1) Default to the graphical target. Creates
 #    /etc/systemd/system/default.target -> .../graphical.target.
 systemctl set-default graphical.target

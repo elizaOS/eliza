@@ -16,9 +16,11 @@ if command -v plymouth-set-default-theme >/dev/null 2>&1; then
     plymouth-set-default-theme -R elizaos
 fi
 
-# GDM blue background.
-mkdir -p /etc/dconf/db/gdm.d
-cat > /etc/dconf/db/gdm.d/01-elizaos <<'EOF'
+# GDM blue background and desktop wallpaper defaults. Headless profiles do not
+# install dconf, so keep those builds quiet and leave the assets available.
+if command -v dconf >/dev/null 2>&1; then
+    mkdir -p /etc/dconf/db/gdm.d
+    cat > /etc/dconf/db/gdm.d/01-elizaos <<'EOF'
 [org/gnome/desktop/background]
 picture-uri='file:///usr/share/backgrounds/elizaos/login.png'
 primary-color='#0B35F1'
@@ -30,9 +32,8 @@ logo='/usr/share/icons/hicolor/256x256/apps/elizaos.png'
 fallback-logo='/usr/share/icons/hicolor/256x256/apps/elizaos.png'
 EOF
 
-# Desktop default wallpaper for new users.
-mkdir -p /etc/dconf/db/local.d
-cat > /etc/dconf/db/local.d/01-elizaos-wallpaper <<'EOF'
+    mkdir -p /etc/dconf/db/local.d
+    cat > /etc/dconf/db/local.d/01-elizaos-wallpaper <<'EOF'
 [org/gnome/desktop/background]
 picture-uri='file:///usr/share/backgrounds/elizaos/desktop.png'
 picture-uri-dark='file:///usr/share/backgrounds/elizaos/desktop.png'
@@ -44,7 +45,8 @@ picture-uri='file:///usr/share/backgrounds/elizaos/desktop.png'
 primary-color='#0B35F1'
 EOF
 
-dconf update || true
+    dconf update || true
+fi
 
 # Icon cache refresh.
 if [ -d /usr/share/icons/hicolor ] && command -v gtk-update-icon-cache >/dev/null 2>&1; then

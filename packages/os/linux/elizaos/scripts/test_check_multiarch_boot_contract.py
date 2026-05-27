@@ -36,10 +36,15 @@ def sha256_bytes(data: bytes) -> str:
 
 
 class MultiarchBootContractTests(unittest.TestCase):
-    def write_minimal_kiosk_contract_tree(self, root: Path, common_packages: str) -> None:
+    def write_minimal_kiosk_contract_tree(
+        self, root: Path, gui_packages: str, common_packages: str = ""
+    ) -> None:
         files = {
             "config/package-lists/elizaos-common.list.chroot": common_packages,
+            "config/profiles/gui/package-lists/elizaos-gui.list.chroot": gui_packages,
             "config/hooks/normal/0025-enable-graphical-session.hook.chroot": (
+                "systemctl set-default multi-user.target\n"
+                "GUI profile packages absent\n"
                 "systemctl set-default graphical.target\n"
                 "systemctl mask --force gdm3.service\n"
                 "systemctl enable seatd.service\n"
@@ -81,7 +86,7 @@ class MultiarchBootContractTests(unittest.TestCase):
             root = Path(tmp)
             self.write_minimal_kiosk_contract_tree(
                 root,
-                "\n".join(gate.KIOSK_PACKAGE_REQUIREMENTS) + "\n",
+                "\n".join(gate.KIOSK_PACKAGE_REQUIREMENTS + gate.DESKTOP_PACKAGE_REQUIREMENTS) + "\n",
             )
             errors: list[str] = []
             with mock.patch.object(gate, "ROOT", root):
