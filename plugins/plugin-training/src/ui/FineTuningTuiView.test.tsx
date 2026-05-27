@@ -1620,16 +1620,20 @@ describe("FineTuningTuiView", () => {
 
     render(React.createElement(FineTuningView));
 
-    fireEvent.change(
-      await screen.findByPlaceholderText(
-        "/path/to/trajectories.sanitized.jsonl",
-      ),
-      { target: { value: "/tmp/app-trajectories/sanitized.jsonl" } },
+    const sanitizedJsonlInput = await screen.findByPlaceholderText(
+      "/path/to/trajectories.sanitized.jsonl",
     );
+    fireEvent.change(sanitizedJsonlInput, {
+      target: { value: "/tmp/app-trajectories/sanitized.jsonl" },
+    });
     await waitFor(() => {
       expect(
-        screen.getByDisplayValue("/tmp/app-trajectories/sanitized.jsonl"),
-      ).toBeTruthy();
+        (
+          screen.getByPlaceholderText(
+            "/path/to/trajectories.sanitized.jsonl",
+          ) as HTMLInputElement
+        ).value,
+      ).toBe("/tmp/app-trajectories/sanitized.jsonl");
     });
     const rawJsonlInput = await screen.findByPlaceholderText(
       "/path/to/trajectories.raw.jsonl",
@@ -1639,8 +1643,12 @@ describe("FineTuningTuiView", () => {
     });
     await waitFor(() => {
       expect(
-        screen.getByDisplayValue("/tmp/app-trajectories/raw.jsonl"),
-      ).toBeTruthy();
+        (
+          screen.getByPlaceholderText(
+            "/path/to/trajectories.raw.jsonl",
+          ) as HTMLInputElement
+        ).value,
+      ).toBe("/tmp/app-trajectories/raw.jsonl");
     });
     const collectButton = await screen.findByText(
       "finetuningview.CollectAndIndex",
