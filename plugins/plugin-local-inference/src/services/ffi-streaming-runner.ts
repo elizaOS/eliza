@@ -277,6 +277,9 @@ export class FfiStreamingRunner {
 
 		try {
 			this.ffi.llmStreamPrefill({ stream, tokens: args.promptTokens });
+			if (args.maxTokens <= 0) {
+				return;
+			}
 
 			let tokenIndex = 0;
 			while (true) {

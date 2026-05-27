@@ -583,6 +583,12 @@ function defaultThreads(env: NodeJS.ProcessEnv = process.env): number {
 	}
 }
 
+function normalizeBatchSize(value: number | undefined): number {
+	if (value === undefined) return 256;
+	const normalized = Math.floor(value);
+	return Number.isFinite(normalized) && normalized > 0 ? normalized : 1;
+}
+
 // === Adapter ===============================================================
 
 export interface DesktopLlamaLoadOptions {
@@ -896,7 +902,7 @@ export class DesktopLlamaAdapter {
 				let nextCtx: Pointer;
 				try {
 					const ctxSize = this.loadOpts.contextSize ?? 4096;
-					const nBatch = this.loadOpts.nBatch ?? 256;
+					const nBatch = normalizeBatchSize(this.loadOpts.nBatch);
 					const threads = this.loadOpts.threads ?? defaultThreads();
 					this.shim.eliza_llama_context_params_set_n_ctx(cp, ctxSize);
 					this.shim.eliza_llama_context_params_set_n_batch(cp, nBatch);
@@ -1014,7 +1020,7 @@ export class DesktopLlamaAdapter {
 		const cp = this.shim.eliza_llama_context_params_default();
 		try {
 			const ctxSize = opts.contextSize ?? 4096;
-			const nBatch = opts.nBatch ?? 256;
+			const nBatch = normalizeBatchSize(opts.nBatch);
 			const threads = opts.threads ?? defaultThreads();
 			this.shim.eliza_llama_context_params_set_n_ctx(cp, ctxSize);
 			this.shim.eliza_llama_context_params_set_n_batch(cp, nBatch);
@@ -1415,23 +1421,30 @@ export class DesktopLlamaAdapter {
 		const sess = this.requireSession(stream);
 		const ctx = this.ctxPool[sess.ctxIdx];
 		if (!ctx) throw new Error("[desktop-llama] ctx gone mid-prefill");
-		// Copy into a session-owned buffer so the FFI batch ptr stays valid
-		// for the lifetime of `eliza_llama_decode`.
-		const owned = new Int32Array(tokens.length);
-		owned.set(tokens);
-		const batch = this.shim.eliza_llama_batch_get_one(
-			this.ffi.ptr(owned),
-			owned.length,
-		);
-		try {
-			const rc = this.shim.eliza_llama_decode(ctx, batch);
-			if (rc !== 0) {
-				throw new Error(`[desktop-llama] prefill decode rc=${rc}`);
+		const nBatch = normalizeBatchSize(this.loadOpts?.nBatch);
+		for (let offset = 0; offset < tokens.length; offset += nBatch) {
+			const chunk = tokens.subarray(
+				offset,
+				Math.min(offset + nBatch, tokens.length),
+			);
+			// Copy into a session-owned buffer so the FFI batch ptr stays valid
+			// for the lifetime of `eliza_llama_decode`.
+			const owned = new Int32Array(chunk.length);
+			owned.set(chunk);
+			const batch = this.shim.eliza_llama_batch_get_one(
+				this.ffi.ptr(owned),
+				owned.length,
+			);
+			try {
+				const rc = this.shim.eliza_llama_decode(ctx, batch);
+				if (rc !== 0) {
+					throw new Error(`[desktop-llama] prefill decode rc=${rc}`);
+				}
+			} finally {
+				this.shim.eliza_llama_batch_free(batch);
 			}
-			this.hasDecodedFlags[sess.ctxIdx] = true;
-		} finally {
-			this.shim.eliza_llama_batch_free(batch);
 		}
+		if (tokens.length > 0) this.hasDecodedFlags[sess.ctxIdx] = true;
 	}
 
 	private nextStep(
