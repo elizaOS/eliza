@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, text, uuid } from "drizzle-orm/pg-core";
+import { boolean, integer, jsonb, pgTable, text, uuid, varchar } from "drizzle-orm/pg-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { RuntimeMigrator } from "../../../runtime-migrator/runtime-migrator";
 import type { DrizzleDB } from "../../../runtime-migrator/types";
@@ -305,5 +305,47 @@ describe("Schema Evolution Test: Type Changes with Data", () => {
     expect(afterTextData[0].enabled).toBe("true");
     expect(afterTextData[1].enabled).toBe("false");
     expect(afterTextData[2].active).toBeNull();
+  });
+
+  it("should handle varchar to uuid conversion with a USING clause", async () => {
+    // Regression: Postgres introspects `varchar` as "character varying".
+    // The USING-clause check missed that spelling, so an
+    // `ALTER COLUMN ref_id TYPE uuid` was emitted without a USING clause and
+    // Postgres rejected it ("cannot be cast automatically"). This is the
+    // exact failure that blocked agent boots whose memory tables predated
+    // the uuid id migration.
+    const tableV1 = pgTable("ref_rows", {
+      id: uuid("id").primaryKey().defaultRandom(),
+      ref_id: varchar("ref_id", { length: 36 }).notNull(),
+    });
+
+    await migrator.migrate("@elizaos/schema-evolution-test-varchar-uuid-v1", {
+      ref_rows: tableV1,
+    });
+
+    await db
+      .insert(tableV1)
+      .values([
+        { ref_id: "110e8400-e29b-41d4-a716-446655440001" },
+        { ref_id: "110e8400-e29b-41d4-a716-446655440002" },
+      ]);
+
+    // V2: ref_id becomes uuid.
+    const tableV2 = pgTable("ref_rows", {
+      id: uuid("id").primaryKey().defaultRandom(),
+      ref_id: uuid("ref_id").notNull(),
+    });
+
+    // Must not throw — the generated ALTER carries `USING ref_id::text::uuid`.
+    await migrator.migrate("@elizaos/schema-evolution-test-varchar-uuid-v1", {
+      ref_rows: tableV2,
+    });
+
+    const after = await db.select().from(tableV2);
+    const refs = after.map((r) => r.ref_id).sort();
+    expect(refs).toEqual([
+      "110e8400-e29b-41d4-a716-446655440001",
+      "110e8400-e29b-41d4-a716-446655440002",
+    ]);
   });
 });
