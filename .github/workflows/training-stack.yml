@@ -10,10 +10,9 @@ name: Training Stack
 #                 packages/training/**.
 #   - gpu-build:  Self-hosted runner with `gpu-cuda-12.6` label. Builds
 #                 the full GPU Dockerfile (which exercises QJL nvcc end
-#                 to end) and runs CUDA-dependent tests. The job parses
-#                 even if no runner with that label is online — GitHub
-#                 will simply queue the job until one appears, so we
-#                 keep the queue short with a short timeout.
+#                 to end) and runs CUDA-dependent tests. Pull requests
+#                 opt in with the `gpu-ci` label; push/manual runs keep
+#                 exercising the self-hosted lane.
 #
 # CUDA / torch alignment lives in packages/training/Dockerfile and
 # packages/training/pyproject.toml — keep the runner label and the
@@ -126,10 +125,7 @@ jobs:
 
   gpu-build:
     name: GPU build (QJL nvcc + Triton JIT)
-    # Self-hosted GPU runner. If no runner with this label is online,
-    # GitHub queues the job until one appears or the workflow times out
-    # — it does not fail the run. That matches the operator note in
-    # packages/training/CI.md: "GPU jobs are skipped, not failed."
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'gpu-ci')
     runs-on: [self-hosted, gpu-cuda-12.6]
     timeout-minutes: 60
     steps:
