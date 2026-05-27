@@ -162,9 +162,10 @@ jobs:
         run: |
           for plugin in plugin-sql plugin-video plugin-agent-skills plugin-pdf \
             plugin-browser plugin-capacitor-bridge plugin-coding-tools \
-            plugin-computeruse plugin-discord plugin-elizacloud plugin-imessage \
-            plugin-local-inference plugin-mcp plugin-signal plugin-streaming \
-            plugin-telegram plugin-whatsapp plugin-workflow plugin-x402; do
+            plugin-computeruse plugin-discord plugin-edge-tts plugin-elizacloud \
+            plugin-imessage plugin-local-inference plugin-mcp plugin-signal \
+            plugin-streaming plugin-telegram plugin-whatsapp plugin-workflow \
+            plugin-x402; do
             plugin_dir="plugins/$plugin"
             if [[ -f "$plugin_dir/package.json" ]] && jq -e '.scripts.build' "$plugin_dir/package.json" >/dev/null; then
               echo "::group::Building @elizaos/$plugin"
