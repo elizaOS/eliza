@@ -1,7 +1,7 @@
 {
   "schema": "robot-nebius-full-training-validation-v1",
   "ok": false,
-  "run_id": null,
+  "run_id": "robot-full-clean-1779556360",
   "run_root": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
   "profile_id": "asimov-1",
   "tasks": [

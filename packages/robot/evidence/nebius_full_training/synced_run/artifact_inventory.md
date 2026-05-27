@@ -2,7 +2,7 @@
 
 Result: `incomplete`
 Present: `164` / `164`
-Generated: `2026-05-27T22:03:11.847015Z`
+Generated: `2026-05-27T22:04:52.530571Z`
 
 ## Category Summary
 
@@ -128,14 +128,14 @@ Generated: `2026-05-27T22:03:11.847015Z`
 | `multi_robot_contact_unitree_r1_turn_left` | `True` | `True` | `none` | `73712` | `evidence/multi_robot_smoke_review/unitree-r1_unitree-r1_turn_left_contact.jpg` |
 | `multi_robot_contact_unitree_r1_turn_right` | `True` | `True` | `none` | `73651` | `evidence/multi_robot_smoke_review/unitree-r1_unitree-r1_turn_right_contact.jpg` |
 | `multi_robot_contact_unitree_r1_combined` | `True` | `True` | `none` | `73463` | `evidence/multi_robot_smoke_review/unitree-r1_unitree-r1_combined_actions_contact.jpg` |
-| `monitor_status` | `True` | `True` | `none` | `2400` | `monitor_status.json` |
-| `monitor_summary` | `True` | `True` | `none` | `917` | `monitor_summary.md` |
-| `validation_report` | `True` | `False` | `ok_not_true` | `181910` | `validation_report.json` |
-| `validation_summary` | `True` | `True` | `none` | `2319` | `validation_summary.md` |
-| `finalization_report` | `True` | `False` | `ok_not_true` | `3789` | `finalization_report.json` |
-| `finalization_summary` | `True` | `True` | `none` | `2436` | `finalization_summary.md` |
-| `training_comparison_report` | `True` | `False` | `ok_not_true` | `41885` | `training_comparison_report.json` |
-| `training_comparison_summary` | `True` | `True` | `none` | `9227` | `training_comparison_report.md` |
+| `monitor_status` | `True` | `True` | `none` | `2666` | `monitor_status.json` |
+| `monitor_summary` | `True` | `True` | `none` | `1015` | `monitor_summary.md` |
+| `validation_report` | `True` | `False` | `ok_not_true` | `181935` | `validation_report.json` |
+| `validation_summary` | `True` | `True` | `none` | `2339` | `validation_summary.md` |
+| `finalization_report` | `True` | `False` | `ok_not_true` | `3888` | `finalization_report.json` |
+| `finalization_summary` | `True` | `True` | `none` | `2494` | `finalization_summary.md` |
+| `training_comparison_report` | `True` | `False` | `ok_not_true` | `41855` | `training_comparison_report.json` |
+| `training_comparison_summary` | `True` | `True` | `none` | `9203` | `training_comparison_report.md` |
 | `alberta_end_to_end_report_json` | `True` | `True` | `none` | `50537` | `evidence/ALBERTA_END_TO_END_REPORT.json` |
 | `alberta_end_to_end_report_md` | `True` | `True` | `none` | `18952` | `evidence/ALBERTA_END_TO_END_REPORT.md` |
 | `runtime_watch_history` | `True` | `True` | `none` | `70` | `runtime_watch_history.jsonl` |

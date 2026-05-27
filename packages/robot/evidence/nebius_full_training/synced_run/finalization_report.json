@@ -3,9 +3,9 @@
   "ok": false,
   "run_id": "robot-full-clean-1779556360",
   "run_root": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
-  "finalized_at": "2026-05-27T20:09:52.623492Z",
-  "monitor_state": "complete",
-  "monitor_ok": true,
+  "finalized_at": "2026-05-27T22:04:52.522917Z",
+  "monitor_state": "invalid",
+  "monitor_ok": false,
   "validation_ok": false,
   "artifact_inventory_ok": false,
   "artifact_inventory_ready_for_finalization": true,
@@ -31,7 +31,8 @@
     "video_review": false,
     "production_policy_videos": false,
     "curriculum_eval_native": true,
-    "curriculum_eval": false
+    "curriculum_eval": false,
+    "status_consistency": false
   },
   "summary": {
     "completed_stage_count": 6,
@@ -68,9 +69,10 @@
       "video_review",
       "production_policy_videos",
       "curriculum_eval",
+      "status_consistency",
       "training_comparison_report"
     ],
-    "next_action": "archive_and_cleanup"
+    "next_action": "inspect_failed_validation_gates"
   },
   "missing_gates": [
     "stage_status",
@@ -78,6 +80,7 @@
     "video_review",
     "production_policy_videos",
     "curriculum_eval",
+    "status_consistency",
     "training_comparison_report"
   ],
   "artifacts": {

@@ -2,7 +2,7 @@
 
 Run: `robot-full-clean-1779556360`
 Result: `not-finalized`
-Finalized at: `2026-05-27T20:09:52.623492Z`
+Finalized at: `2026-05-27T22:04:52.522917Z`
 
 ## Completion Gates
 
@@ -28,6 +28,7 @@ Finalized at: `2026-05-27T20:09:52.623492Z`
 | `production_policy_videos` | `False` |
 | `curriculum_eval_native` | `True` |
 | `curriculum_eval` | `False` |
+| `status_consistency` | `False` |
 
 ## Stage Summary
 
@@ -53,4 +54,5 @@ Completed stages: `6` / `6`
 - `video_review`
 - `production_policy_videos`
 - `curriculum_eval`
+- `status_consistency`
 - `training_comparison_report`

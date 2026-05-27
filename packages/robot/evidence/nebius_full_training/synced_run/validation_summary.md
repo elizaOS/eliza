@@ -1,6 +1,6 @@
 # Nebius Full Robot Training Validation
 
-Run: `unknown`
+Run: `robot-full-clean-1779556360`
 Profile: `asimov-1`
 Overall result: `not-ready`
 

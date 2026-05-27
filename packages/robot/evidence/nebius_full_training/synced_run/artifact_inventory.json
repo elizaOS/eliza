@@ -2,7 +2,7 @@
   "schema": "robot-nebius-training-artifact-inventory-v1",
   "ok": false,
   "run_root": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
-  "generated_at": "2026-05-27T22:03:11.847015Z",
+  "generated_at": "2026-05-27T22:04:52.530571Z",
   "present_count": 164,
   "semantic_ok_count": 160,
   "required_count": 164,
@@ -1214,7 +1214,7 @@
       "present": true,
       "semantic_ok": true,
       "semantic_reason": null,
-      "bytes": 2400
+      "bytes": 2666
     },
     {
       "name": "monitor_summary",
@@ -1223,7 +1223,7 @@
       "present": true,
       "semantic_ok": true,
       "semantic_reason": null,
-      "bytes": 917
+      "bytes": 1015
     },
     {
       "name": "validation_report",
@@ -1232,7 +1232,7 @@
       "present": true,
       "semantic_ok": false,
       "semantic_reason": "ok_not_true",
-      "bytes": 181910
+      "bytes": 181935
     },
     {
       "name": "validation_summary",
@@ -1241,7 +1241,7 @@
       "present": true,
       "semantic_ok": true,
       "semantic_reason": null,
-      "bytes": 2319
+      "bytes": 2339
     },
     {
       "name": "finalization_report",
@@ -1250,7 +1250,7 @@
       "present": true,
       "semantic_ok": false,
       "semantic_reason": "ok_not_true",
-      "bytes": 3789
+      "bytes": 3888
     },
     {
       "name": "finalization_summary",
@@ -1259,7 +1259,7 @@
       "present": true,
       "semantic_ok": true,
       "semantic_reason": null,
-      "bytes": 2436
+      "bytes": 2494
     },
     {
       "name": "training_comparison_report",
@@ -1268,7 +1268,7 @@
       "present": true,
       "semantic_ok": false,
       "semantic_reason": "ok_not_true",
-      "bytes": 41885
+      "bytes": 41855
     },
     {
       "name": "training_comparison_summary",
@@ -1277,7 +1277,7 @@
       "present": true,
       "semantic_ok": true,
       "semantic_reason": null,
-      "bytes": 9227
+      "bytes": 9203
     },
     {
       "name": "alberta_end_to_end_report_json",

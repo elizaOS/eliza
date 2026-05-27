@@ -12,6 +12,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "pd/openlane/runs"
+DERIVED_RUNS = ROOT / "build/evidence/openlane"
 PADFRAME = ROOT / "pd/padframe/e1_demo_padframe.yaml"
 REPORT = ROOT / "build/reports/antenna_metadata.json"
 SCHEMA = "eliza.antenna_metadata.v1"
@@ -19,6 +20,7 @@ CLAIM_BOUNDARY = "antenna_metadata_validation_only_not_padframe_or_release_evide
 FAIL_EXIT = 1
 BLOCKED_EXIT = 2
 ANTENNA_REPORT_GLOB = "*/*-odb-checkdesignantennaproperties/report.yaml"
+DERIVED_ANTENNA_REPORT_GLOB = "*/*-odb-checkdesignantennaproperties/report.yaml"
 RELEASE_PADFRAME_STEPS = (
     "select a foundry IO library with input, output, bidirectional, power, ground, ESD, corner, and filler cells",
     "instantiate those pad cells around e1_chip_top instead of using the padless core wrapper as the release top",
@@ -47,10 +49,12 @@ def write_report(
             evidence = report_path.relative_to(ROOT).as_posix()
         except ValueError:
             evidence = str(report_path)
-    try:
-        search_root = RUNS.relative_to(ROOT).as_posix()
-    except ValueError:
-        search_root = str(RUNS)
+    search_roots = []
+    for root in (RUNS, DERIVED_RUNS):
+        try:
+            search_roots.append(root.relative_to(ROOT).as_posix())
+        except ValueError:
+            search_roots.append(str(root))
     missing = missing or {}
     blocker_categories = blocker_categories or {}
     payload = {
@@ -75,8 +79,8 @@ def write_report(
         },
         "blocker_categories": blocker_categories,
         "report_search": {
-            "root": search_root,
-            "glob": ANTENNA_REPORT_GLOB,
+            "roots": search_roots,
+            "globs": [ANTENNA_REPORT_GLOB, DERIVED_ANTENNA_REPORT_GLOB],
         },
         "missing_metadata": missing,
         "release_padframe_steps": list(RELEASE_PADFRAME_STEPS),
@@ -97,7 +101,7 @@ def write_report(
 
 def latest_report() -> Path | None:
     reports = sorted(
-        RUNS.glob(ANTENNA_REPORT_GLOB),
+        [*RUNS.glob(ANTENNA_REPORT_GLOB), *DERIVED_RUNS.glob(DERIVED_ANTENNA_REPORT_GLOB)],
         key=lambda path: path.stat().st_mtime,
     )
     return reports[-1] if reports else None

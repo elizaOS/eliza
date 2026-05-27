@@ -1,11 +1,11 @@
 {
   "schema": "robot-nebius-full-training-monitor-v1",
-  "ok": true,
-  "state": "complete",
+  "ok": false,
+  "state": "invalid",
   "run_id": "robot-full-clean-1779556360",
   "bucket": "robot-rl-results-1779358330",
   "dest": "evidence/nebius_full_training/synced_run",
-  "observed_at": "2026-05-24T07:35:00.616793Z",
+  "observed_at": "2026-05-27T22:04:52.513287Z",
   "sync": {
     "ok": true,
     "skipped": true,
@@ -18,7 +18,8 @@
     "success_marker": true,
     "failure_marker_absent": true,
     "stage_logs": true,
-    "stage_status": true,
+    "stage_status": false,
+    "production_contract": false,
     "instance_launch_hygiene": true,
     "training_inputs": true,
     "multi_robot_readiness": true,
@@ -29,8 +30,11 @@
     "obstacle_course_benchmark": true,
     "brax_full_training_run": true,
     "brax_production_checkpoint": true,
-    "video_review": true,
-    "production_policy_videos": true
+    "video_review": false,
+    "production_policy_videos": false,
+    "curriculum_eval_native": true,
+    "curriculum_eval": false,
+    "status_consistency": false
   },
   "stage_checks": {
     "00_local_preflight": true,
@@ -57,7 +61,6 @@
       "success_marker",
       "failure_marker_absent",
       "stage_logs",
-      "stage_status",
       "instance_launch_hygiene",
       "training_inputs",
       "multi_robot_readiness",
@@ -68,11 +71,17 @@
       "obstacle_course_benchmark",
       "brax_full_training_run",
       "brax_production_checkpoint",
-      "video_review",
-      "production_policy_videos"
+      "curriculum_eval_native"
     ],
-    "missing_gates": [],
-    "next_action": "archive_and_cleanup"
+    "missing_gates": [
+      "stage_status",
+      "production_contract",
+      "video_review",
+      "production_policy_videos",
+      "curriculum_eval",
+      "status_consistency"
+    ],
+    "next_action": "inspect_failed_validation_gates"
   },
   "monitor_summary": "evidence/nebius_full_training/synced_run/monitor_summary.md"
 }

@@ -5,10 +5,10 @@
   "run_id": "robot-full-clean-1779556360",
   "bucket": "robot-rl-results-1779358330",
   "dest": "evidence/nebius_full_training/synced_run",
-  "observed_at": "2026-05-24T07:35:00.624933Z",
+  "observed_at": "2026-05-27T22:04:52.536950Z",
   "monitor": {
-    "ok": true,
-    "state": "complete",
+    "ok": false,
+    "state": "invalid",
     "summary": {
       "completed_stage_count": 6,
       "total_stage_count": 6,
@@ -26,7 +26,6 @@
         "success_marker",
         "failure_marker_absent",
         "stage_logs",
-        "stage_status",
         "instance_launch_hygiene",
         "training_inputs",
         "multi_robot_readiness",
@@ -37,20 +36,42 @@
         "obstacle_course_benchmark",
         "brax_full_training_run",
         "brax_production_checkpoint",
-        "video_review",
-        "production_policy_videos"
+        "curriculum_eval_native"
       ],
-      "missing_gates": [],
-      "next_action": "archive_and_cleanup"
+      "missing_gates": [
+        "stage_status",
+        "production_contract",
+        "video_review",
+        "production_policy_videos",
+        "curriculum_eval",
+        "status_consistency"
+      ],
+      "next_action": "inspect_failed_validation_gates"
     }
   },
   "finalization": {
-    "ok": true,
-    "missing_gates": []
+    "ok": false,
+    "missing_gates": [
+      "stage_status",
+      "production_contract",
+      "video_review",
+      "production_policy_videos",
+      "curriculum_eval",
+      "status_consistency",
+      "training_comparison_report"
+    ]
   },
   "training_report": {
     "ok": false,
-    "missing_gates": [],
+    "missing_gates": [
+      "stage_status",
+      "production_contract",
+      "video_review",
+      "production_policy_videos",
+      "curriculum_eval",
+      "status_consistency",
+      "training_comparison_report"
+    ],
     "backend_comparison": {
       "present": true,
       "profile_id": "asimov-1",
@@ -74,11 +95,11 @@
     },
     "video_review": {
       "present": true,
-      "ok": true,
-      "video_count": 25,
+      "ok": false,
+      "video_count": 28,
       "action_progress": {
-        "reviewed_video_count": 25,
-        "ok_video_count": 25,
+        "reviewed_video_count": 28,
+        "ok_video_count": 5,
         "profiles": [
           "asimov-1",
           "hiwonder-ainex",
@@ -87,15 +108,15 @@
           "unitree-r1"
         ],
         "min_visual_progress": 0.0006431908730198355,
-        "mean_visual_progress": 0.009171747360743727,
-        "mean_frame_delta": 2.338795576989651
+        "mean_visual_progress": 0.009462311165276863,
+        "mean_frame_delta": 2.4128893471456
       }
     }
   },
   "artifact_inventory": {
-    "ok": true,
-    "present_count": 117,
-    "required_count": 117,
+    "ok": false,
+    "present_count": 164,
+    "required_count": 164,
     "missing": []
   },
   "objective_audit": {
@@ -105,17 +126,24 @@
       "unified_robot_interface_all_profiles",
       "traditional_and_sota_baselines_available",
       "alberta_vs_ppo_side_by_side_comparison",
-      "continual_learning_obstacle_demo_no_forgetting",
       "checkpoint_bound_local_policy_videos_reviewed",
-      "production_robot_policy_videos_reviewed",
       "clean_relaunch_path_ready"
     ],
     "failed": [
+      "continual_learning_obstacle_demo_no_forgetting",
+      "production_robot_policy_videos_reviewed",
+      "production_curriculum_eval_passed",
       "nebius_production_training_complete"
     ]
   },
   "missing_gates": [
-    "nebius_production_training_complete"
+    "stage_status",
+    "production_contract",
+    "video_review",
+    "production_policy_videos",
+    "curriculum_eval",
+    "status_consistency",
+    "training_comparison_report"
   ],
   "monitor_status": "evidence/nebius_full_training/synced_run/monitor_status.json",
   "validation_report": "evidence/nebius_full_training/synced_run/validation_report.json",

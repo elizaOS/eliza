@@ -1,7 +1,7 @@
 # Alberta Objective Completion Audit
 
 Result: `incomplete`
-Generated: `2026-05-27T20:10:39.625967Z`
+Generated: `2026-05-27T22:04:52.535909Z`
 
 | requirement | ok | blockers |
 |---|---:|---|
@@ -9,7 +9,7 @@ Generated: `2026-05-27T20:10:39.625967Z`
 | `unified_robot_interface_all_profiles` | `True` | none |
 | `traditional_and_sota_baselines_available` | `True` | none |
 | `alberta_vs_ppo_side_by_side_comparison` | `True` | none |
-| `continual_learning_obstacle_demo_no_forgetting` | `True` | none |
+| `continual_learning_obstacle_demo_no_forgetting` | `False` | none |
 | `checkpoint_bound_local_policy_videos_reviewed` | `True` | none |
 | `production_robot_policy_videos_reviewed` | `False` | production trained-policy videos do not pass semantic telemetry and video review |
 | `production_curriculum_eval_passed` | `False` | production curriculum eval did not pass every requested task |

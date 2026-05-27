@@ -2,7 +2,7 @@
 
 Run: `robot-full-clean-1779556360`
 Result: `not-complete`
-Monitor state: `complete`
+Monitor state: `invalid`
 
 ## Alberta vs PPO
 
@@ -127,7 +127,7 @@ Warnings: `unsupported_future_curriculum_tasks, no_offline_policy_datasets`
 | requirement | result |
 |---|---:|
 | `finalization_ok` | `False` |
-| `finalization_report_matches_current_validation` | `False` |
+| `finalization_report_matches_current_validation` | `True` |
 | `validation_ok` | `False` |
 | `stage_status_ok` | `False` |
 | `runner_status_complete` | `False` |
@@ -216,5 +216,5 @@ Warnings: `unsupported_future_curriculum_tasks, no_offline_policy_datasets`
 - `video_review`
 - `production_policy_videos`
 - `curriculum_eval`
-- `training_comparison_report`
 - `status_consistency`
+- `training_comparison_report`

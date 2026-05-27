@@ -1,7 +1,7 @@
 {
   "schema": "robot-alberta-objective-completion-audit-v1",
   "ok": false,
-  "generated_at": "2026-05-27T20:10:39.625967Z",
+  "generated_at": "2026-05-27T22:04:52.535909Z",
   "package_root": "/home/shaw/milady/eliza/packages/robot",
   "nebius_run_root": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
   "passed": [
@@ -9,11 +9,11 @@
     "unified_robot_interface_all_profiles",
     "traditional_and_sota_baselines_available",
     "alberta_vs_ppo_side_by_side_comparison",
-    "continual_learning_obstacle_demo_no_forgetting",
     "checkpoint_bound_local_policy_videos_reviewed",
     "clean_relaunch_path_ready"
   ],
   "failed": [
+    "continual_learning_obstacle_demo_no_forgetting",
     "production_robot_policy_videos_reviewed",
     "production_curriculum_eval_passed",
     "nebius_production_training_complete"
@@ -178,7 +178,7 @@
     },
     {
       "name": "continual_learning_obstacle_demo_no_forgetting",
-      "ok": true,
+      "ok": false,
       "evidence": {
         "obstacle_smoke_ok": true,
         "local_4task_obstacle_ok": true,

@@ -107,6 +107,7 @@ def result(
     command: list[str],
     raw_output: Path,
     metrics: dict[str, Any],
+    required_metric: str,
 ) -> dict[str, Any]:
     return {
         "name": name,
@@ -130,7 +131,7 @@ def result(
             "runs": 1,
             "warmup_runs": 0,
             "required_metadata": [],
-            "required_metrics": sorted(metrics),
+            "required_metrics": [required_metric],
             "metric_gates": [],
             "required_calibration_assets": [],
         },
@@ -194,6 +195,7 @@ def build_report(evidence: Path) -> dict[str, Any]:
                     coremark_iterations,
                     {"coremark_lite_iterations": coremark_iterations},
                 ),
+                required_metric="coremark_lite_iterations",
             ),
             result(
                 name="generated_ap_stream_triad_lite",
@@ -203,6 +205,7 @@ def build_report(evidence: Path) -> dict[str, Any]:
                 command=["import-cpu-ap-evidence", rel(evidence), "stream_triad_lite"],
                 raw_output=evidence,
                 metrics=simulator_metrics(stream_bytes, {"stream_triad_lite_bytes": stream_bytes}),
+                required_metric="stream_triad_lite_bytes",
             ),
             result(
                 name="generated_ap_lat_mem_rd_lite",
@@ -215,6 +218,7 @@ def build_report(evidence: Path) -> dict[str, Any]:
                     lat_stride_count,
                     {"lat_mem_rd_lite_stride_count": lat_stride_count},
                 ),
+                required_metric="lat_mem_rd_lite_stride_count",
             ),
             result(
                 name="generated_ap_fio_lite",
@@ -224,6 +228,7 @@ def build_report(evidence: Path) -> dict[str, Any]:
                 command=["import-cpu-ap-evidence", rel(evidence), "fio_lite"],
                 raw_output=evidence,
                 metrics=simulator_metrics(fio_bytes, {"fio_lite_bytes": fio_bytes}),
+                required_metric="fio_lite_bytes",
             ),
         ],
     }

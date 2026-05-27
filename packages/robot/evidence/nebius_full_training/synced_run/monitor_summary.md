@@ -1,9 +1,9 @@
 # Nebius Full Training Monitor
 
 Run: `robot-full-clean-1779556360`
-State: `complete`
-Observed: `2026-05-24T07:35:00.616793Z`
-Next action: `archive_and_cleanup`
+State: `invalid`
+Observed: `2026-05-27T22:04:52.513287Z`
+Next action: `inspect_failed_validation_gates`
 
 ## Stage Progress
 
@@ -20,7 +20,12 @@ Completed: `6` / `6`
 
 ## Missing Gates
 
-- none
+- `stage_status`
+- `production_contract`
+- `video_review`
+- `production_policy_videos`
+- `curriculum_eval`
+- `status_consistency`
 
 ## Passed Gates
 
@@ -28,7 +33,6 @@ Completed: `6` / `6`
 - `success_marker`
 - `failure_marker_absent`
 - `stage_logs`
-- `stage_status`
 - `instance_launch_hygiene`
 - `training_inputs`
 - `multi_robot_readiness`
@@ -39,5 +43,4 @@ Completed: `6` / `6`
 - `obstacle_course_benchmark`
 - `brax_full_training_run`
 - `brax_production_checkpoint`
-- `video_review`
-- `production_policy_videos`
+- `curriculum_eval_native`

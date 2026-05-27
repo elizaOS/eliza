@@ -1,13 +1,13 @@
 {
   "schema": "robot-nebius-training-comparison-report-v1",
   "ok": false,
-  "generated_at": "2026-05-27T22:03:11.862174Z",
+  "generated_at": "2026-05-27T22:04:52.526039Z",
   "run_id": "robot-full-clean-1779556360",
   "run_root": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
-  "monitor_state": "complete",
+  "monitor_state": "invalid",
   "finalization_ok": false,
   "finalization_report_ok": false,
-  "finalization_matches_current_validation": false,
+  "finalization_matches_current_validation": true,
   "validation_ok": false,
   "missing_gates": [
     "stage_status",
@@ -15,8 +15,8 @@
     "video_review",
     "production_policy_videos",
     "curriculum_eval",
-    "training_comparison_report",
-    "status_consistency"
+    "status_consistency",
+    "training_comparison_report"
   ],
   "backend_comparison": {
     "present": true,
@@ -1197,7 +1197,7 @@
   },
   "completion_requirements": {
     "finalization_ok": false,
-    "finalization_report_matches_current_validation": false,
+    "finalization_report_matches_current_validation": true,
     "validation_ok": false,
     "stage_status_ok": false,
     "runner_status_complete": false,
