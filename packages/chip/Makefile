@@ -1669,6 +1669,7 @@ evidence-regression-test: no-hardware-action-check software-bsp-test physical-ga
 	ai-eda-internal-fixtures ai-eda-openroad-eda-corpus-convert ai-eda-tilos-macroplacement-convert \
 	ai-eda-circuitnet3-convert ai-eda-chipbench-d-convert ai-eda-aieda-idata-convert \
 	ai-eda-edalearn-convert ai-eda-macro-place-challenge-convert ai-eda-mlcad-fpga-macro-convert \
+	ai-eda-floorset-license-review ai-eda-floorset-hf-archive-manifest \
 	ai-eda-floorplanning-dataset-readiness ai-eda-r-zoo-convert ai-eda-r-zoo-split-manifest ai-eda-r-zoo-license-review ai-eda-r-zoo-legality-baseline ai-eda-research-code-assets-convert ai-eda-current-research-watchlist-convert ai-eda-circuitnet3-surrogate \
 	ai-eda-openabc-d-convert ai-eda-e1-softmacro-cases ai-eda-external-fixture-convert ai-eda-e1-openlane-convert \
 	ai-eda-training-corpus-manifest \
@@ -1784,7 +1785,15 @@ ai-eda-mlcad-fpga-macro-convert: ai-eda-internal-schemas-check
 	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/mlcad_2023_fpga_macro/$(AI_EDA_RUN_ID)/records
 	@$(PYTHON) scripts/ai_eda/check_mlcad_2023_fpga_macro_conversion.py --report build/ai_eda/mlcad_2023_fpga_macro/$(AI_EDA_RUN_ID)/conversion_report.json
 
-ai-eda-floorplanning-dataset-readiness: ai-eda-r-zoo-split-manifest ai-eda-r-zoo-license-review
+ai-eda-floorset-license-review:
+	@$(PYTHON) scripts/ai_eda/capture_floorset_license_review.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_floorset_license_review.py --report build/ai_eda/floorset_license_review/$(AI_EDA_RUN_ID)/license_review.json
+
+ai-eda-floorset-hf-archive-manifest:
+	@$(PYTHON) scripts/ai_eda/capture_floorset_hf_archive_manifest.py --run-id $(AI_EDA_RUN_ID)
+	@$(PYTHON) scripts/ai_eda/check_floorset_hf_archive_manifest.py --report build/ai_eda/floorset_hf_archives/$(AI_EDA_RUN_ID)/archive_manifest.json
+
+ai-eda-floorplanning-dataset-readiness: ai-eda-r-zoo-split-manifest ai-eda-r-zoo-license-review ai-eda-floorset-license-review ai-eda-floorset-hf-archive-manifest
 	@$(PYTHON) scripts/ai_eda/capture_floorplanning_dataset_readiness.py --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_floorplanning_dataset_readiness.py --report build/ai_eda/floorplanning_dataset_readiness/$(AI_EDA_RUN_ID)/floorplanning_dataset_readiness.json
 
