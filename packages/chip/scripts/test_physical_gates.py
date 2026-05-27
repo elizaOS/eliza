@@ -566,7 +566,7 @@ class PhysicalGateTests(unittest.TestCase):
             report_path.parent.mkdir(parents=True)
             report_path.write_text("", encoding="utf-8")
 
-            package_relative = run_dir.relative_to(ROOT.parents[1])
+            package_relative = run_dir.relative_to(openlane_pd_blocker_summary.REPO_ROOT)
             report = openlane_pd_blocker_summary.build_report(
                 run_dir=package_relative,
                 process_table="",
