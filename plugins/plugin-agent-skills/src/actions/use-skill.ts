@@ -113,14 +113,46 @@ function stringifyUserFacingValue(value: unknown): string | undefined {
 	}
 }
 
+function findLeadingJsonObjectEnd(text: string): number {
+	let depth = 0;
+	let inString = false;
+	let escaped = false;
+	for (let i = 0; i < text.length; i += 1) {
+		const char = text[i];
+		if (escaped) {
+			escaped = false;
+			continue;
+		}
+		if (char === "\\") {
+			escaped = inString;
+			continue;
+		}
+		if (char === '"') {
+			inString = !inString;
+			continue;
+		}
+		if (inString) continue;
+		if (char === "{") depth += 1;
+		else if (char === "}") {
+			depth -= 1;
+			if (depth === 0) return i + 1;
+		}
+	}
+	return -1;
+}
+
 function unwrapSkillStdoutEnvelope(stdout: string): string {
 	const trimmed = stdout.trim();
 	if (!trimmed) return "";
 	if (!trimmed.startsWith("{")) return trimmed;
 
+	const firstJsonEnd = findLeadingJsonObjectEnd(trimmed);
+	if (firstJsonEnd < 0) return trimmed;
+	const firstJson = trimmed.slice(0, firstJsonEnd);
+	const remainder = trimmed.slice(firstJsonEnd).trim();
 	let parsed: unknown;
 	try {
-		parsed = JSON.parse(trimmed);
+		parsed = JSON.parse(firstJson);
 	} catch {
 		return trimmed;
 	}
@@ -138,6 +170,27 @@ function unwrapSkillStdoutEnvelope(stdout: string): string {
 			return stringifyUserFacingValue(record[key]) ?? "";
 		}
 	}
+	if (remainder.startsWith("{")) {
+		const secondJsonEnd = findLeadingJsonObjectEnd(remainder);
+		if (secondJsonEnd > 0) {
+			try {
+				const second = JSON.parse(remainder.slice(0, secondJsonEnd));
+				if (second && typeof second === "object" && !Array.isArray(second)) {
+					const secondRecord = second as Record<string, unknown>;
+					for (const key of ["output", "stdout", "result"] as const) {
+						if (key in secondRecord) {
+							return stringifyUserFacingValue(secondRecord[key]) ?? "";
+						}
+					}
+				}
+			} catch {
+				// Fall through to the non-JSON remainder below.
+			}
+			const afterSecond = remainder.slice(secondJsonEnd).trim();
+			if (afterSecond) return afterSecond;
+		}
+	}
+	if (remainder) return remainder;
 	return trimmed;
 }
 

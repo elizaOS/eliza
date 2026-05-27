@@ -1577,7 +1577,7 @@ async function runProvisionWorkspace(
   runtime: IAgentRuntime,
   message: Memory,
   state: State | undefined,
-  _params: Record<string, unknown>,
+  params: Record<string, unknown>,
   _content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
@@ -1603,7 +1603,17 @@ async function runProvisionWorkspace(
     parentWorkspaceId?: string;
   };
 
-  let repo = content.repo;
+  const paramRepo = typeof params.repo === "string" ? params.repo : undefined;
+  const paramBaseBranch =
+    typeof params.baseBranch === "string" ? params.baseBranch : undefined;
+  const paramUseWorktree =
+    params.useWorktree === true || params.useWorktree === "true";
+  const paramParentWorkspaceId =
+    typeof params.parentWorkspaceId === "string"
+      ? params.parentWorkspaceId
+      : undefined;
+
+  let repo = paramRepo ?? content.repo;
   if (!repo && content.text) {
     const urlMatch = content.text.match(
       /https?:\/\/(?:github\.com|gitlab\.com|bitbucket\.org)\/[\w.-]+\/[\w.-]+(?:\.git)?/i,
@@ -1613,7 +1623,8 @@ async function runProvisionWorkspace(
     }
   }
 
-  if (!repo && !content.useWorktree) {
+  const useWorktree = paramUseWorktree || content.useWorktree === true;
+  if (!repo && !useWorktree) {
     if (callback)
       await callback({
         text: "Please specify a repository URL or use worktree mode with a parent workspace.",
@@ -1633,8 +1644,8 @@ async function runProvisionWorkspace(
     }
   }
 
-  let parentWorkspaceId = content.parentWorkspaceId;
-  if (content.useWorktree && !parentWorkspaceId) {
+  let parentWorkspaceId = paramParentWorkspaceId ?? content.parentWorkspaceId;
+  if (useWorktree && !parentWorkspaceId) {
     if (state?.codingWorkspace) {
       parentWorkspaceId = (state.codingWorkspace as { id: string }).id;
     } else {
@@ -1645,13 +1656,24 @@ async function runProvisionWorkspace(
       return { success: false, error: "MISSING_PARENT" };
     }
   }
+  if (useWorktree && !repo && parentWorkspaceId) {
+    const parentWorkspace = workspaceService.getWorkspace(parentWorkspaceId);
+    if (!parentWorkspace) {
+      if (callback)
+        await callback({
+          text: `Parent workspace ${parentWorkspaceId} not found.`,
+        });
+      return { success: false, error: "WORKSPACE_NOT_FOUND" };
+    }
+    repo = parentWorkspace.repo;
+  }
 
   try {
     const workspace: WorkspaceResult = await Promise.race([
       workspaceService.provisionWorkspace({
         repo: repo ?? "",
-        baseBranch: content.baseBranch,
-        useWorktree: content.useWorktree,
+        baseBranch: paramBaseBranch ?? content.baseBranch,
+        useWorktree,
         parentWorkspaceId,
       }),
       new Promise<never>((_, reject) =>

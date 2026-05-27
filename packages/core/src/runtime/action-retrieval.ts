@@ -223,8 +223,7 @@ export function retrieveActions(
 	)
 		? normalizeTextList(input.recentConversationText)
 		: [];
-	const candidateActionsForSearch =
-		recentConversationText.length > 0 ? [] : candidateActions;
+	const candidateActionsForSearch = candidateActions;
 	const queryText = [
 		input.messageText ?? "",
 		...recentConversationText,

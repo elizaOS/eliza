@@ -2,12 +2,26 @@ import type { IAgentRuntime, Memory } from "@elizaos/core";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@elizaos/core", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@elizaos/core")>();
+	return {
+		...actual,
+		annotateActiveTrajectoryStep: vi.fn(),
+		getTrajectoryContext: vi.fn(),
+		logger: {
+			...actual.logger,
+			info: vi.fn(),
+		},
+	};
+});
+
 import {
 	annotateActiveTrajectoryStep,
 	getTrajectoryContext,
 	logger,
 } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useSkillAction } from "./use-skill";
 
 const mockedAnnotateActiveTrajectoryStep = vi.mocked(

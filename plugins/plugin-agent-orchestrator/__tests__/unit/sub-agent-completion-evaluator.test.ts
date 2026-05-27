@@ -446,6 +446,56 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
   });
 
+  it("does not use fabricated quantitative replies when completion has a failure marker plus unrelated listing", async () => {
+    const context = makeContext({
+      text: "[sub-agent: source count (opencode) — task_complete]\n[tool output: Find matching source files]\nNo files found\n[/tool output]\n[tool output: List project root]\nREADME.md\npackage.json\ntsconfig.json\n[/tool output]\nNo files found for the requested source-file search. The project root contains unrelated files.",
+      messageHandler: {
+        plan: {
+          contexts: ["simple"],
+          reply: "I found 3 source files.",
+          requiresTool: false,
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: true,
+      setContexts: ["automation"],
+      clearReply: true,
+      addCandidateActions: ["TASKS_SEND_TO_AGENT"],
+      addParentActionHints: ["TASKS"],
+      debug: [
+        "sub-agent completion contains failure markers without clear positive evidence; routing back through TASKS for grounded follow-up",
+      ],
+    });
+  });
+
+  it("allows positive quantitative completions even when phrased as a count", async () => {
+    const context = makeContext({
+      text: "[sub-agent: source count (opencode) — task_complete]\nFound 3 matching source files: src/a.ts, src/b.ts, and src/c.ts.",
+      messageHandler: {
+        plan: {
+          contexts: ["simple"],
+          reply: "Could you share the file count?",
+          requiresTool: false,
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply: "Found 3 matching source files: src/a.ts, src/b.ts, and src/c.ts.",
+      debug: [
+        "verified sub-agent completion has no concrete follow-up action; using direct reply",
+      ],
+    });
+  });
+
   it("prefers a clean final answer over a raw transcript reply with incidental URLs", async () => {
     const context = makeContext({
       text: '[sub-agent: package check (opencode) — task_complete]\n[tool output: packages/core/package.json]\n{"name":"@elizaos/core","homepage":"https://github.com/elizaOS/eliza","repository":{"url":"git+https://github.com/elizaOS/eliza.git"}}\n[/tool output]@elizaos/core',
