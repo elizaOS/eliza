@@ -479,7 +479,7 @@ def test_blocked_results_require_blocked_placeholder_provenance() -> None:
     with tempfile.TemporaryDirectory(dir=temp_parent) as td:
         report_id = "strict-release-gate-test"
         out_dir = Path(td) / "out"
-        result = run_runner(
+        runner_result = run_runner(
             [
                 "run",
                 "--metadata",
@@ -491,14 +491,14 @@ def test_blocked_results_require_blocked_placeholder_provenance() -> None:
                 str(out_dir),
             ]
         )
-        if result.returncode not in {1, 2}:
-            raise AssertionError(result.stdout)
+        if runner_result.returncode not in {1, 2}:
+            raise AssertionError(runner_result.stdout)
         baseline = json.loads((out_dir / report_id / "report.json").read_text(encoding="utf-8"))
 
     for provenance in ("measured", "target-measured", "silicon-measured", "imported"):
         report = json.loads(json.dumps(baseline))
-        result = next(row for row in report["results"] if row["status"] == "blocked")
-        result["provenance"] = provenance
+        blocked_result = next(row for row in report["results"] if row["status"] == "blocked")
+        blocked_result["provenance"] = provenance
         errors = run_benchmarks.validate_report(report)
         if not any("blocked result provenance must be blocked_placeholder" in e for e in errors):
             raise AssertionError((provenance, errors))

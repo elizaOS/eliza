@@ -49,7 +49,9 @@ class PhysicalGateTests(unittest.TestCase):
         result = run_check("scripts/check_openlane_run_preflight.py")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("STATUS: BLOCKED openlane_run_preflight", result.stdout)
-        self.assertIn("OpenLane configs are present; run/image evidence is still blocked.", result.stdout)
+        self.assertIn(
+            "OpenLane configs are present; run/image evidence is still blocked.", result.stdout
+        )
 
     def test_openlane_preflight_writes_mode_specific_reports(self) -> None:
         normal_report = ROOT / "build/reports/openlane_run_preflight.json"
