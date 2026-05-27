@@ -7,7 +7,7 @@
   "input_artifact_hashes": {
     "board_step_readiness_status": "blocked_concept_pcb_no_routed_step",
     "assembly_clearance_status": "pass",
-    "solid_cad_status": "blocked"
+    "solid_cad_status": "generated"
   },
   "reviewer": "unreviewed",
   "reviewed_at": "unreviewed_local_candidate_2026-05-22",
@@ -18,7 +18,7 @@
   "source_reviews": {
     "board_step_readiness_status": "blocked_concept_pcb_no_routed_step",
     "assembly_clearance_status": "pass",
-    "solid_cad_status": "blocked"
+    "solid_cad_status": "generated"
   },
   "production_step_files": [],
   "blocked_candidate_step_files": [
@@ -47,7 +47,7 @@
       "step_intake_status": "development_step_generated_not_release",
       "step_output": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step",
       "step_exists": true,
-      "step_size_bytes": 32959460,
+      "step_size_bytes": 32970696,
       "step_footprint_envelope_count": 89,
       "release_credit": false
     }
@@ -116,7 +116,7 @@
     },
     {
       "id": "height_critical_components_have_cad_envelopes",
-      "pass": false,
+      "pass": true,
       "evidence": "solid-cad-handoff.json"
     },
     {

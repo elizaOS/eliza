@@ -735,6 +735,40 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             inventory["latestBuildAttempt"]["generationCommands"]["imageOnlyResumeFromCurrentTree"],
         )
 
+    def test_missing_android_archive_source_members_are_external_dependency(self) -> None:
+        inventory = {
+            "records": [
+                {
+                    "artifactId": "android-cuttlefish-x86_64-zip",
+                    "readyToArchive": False,
+                    "sourceDirectory": "/home/shaw/aosp/out/target/product/vsoc_x86_64_only",
+                    "missingMembers": ["boot.img"],
+                }
+            ]
+        }
+
+        self.assertEqual(
+            gate.android_archive_source_dependency(inventory),
+            "actionable_external_dependency",
+        )
+
+    def test_complete_android_archive_source_members_remain_repo_generation(self) -> None:
+        inventory = {
+            "records": [
+                {
+                    "artifactId": "android-chip-riscv64-zip",
+                    "readyToArchive": True,
+                    "sourceDirectory": "/home/shaw/aosp/out/target/product/eliza_ai_soc",
+                    "missingMembers": [],
+                }
+            ]
+        }
+
+        self.assertEqual(
+            gate.android_archive_source_dependency(inventory),
+            "repo_artifact_generation",
+        )
+
     def test_build_only_stage_logs_distinguish_timeout_from_pass(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

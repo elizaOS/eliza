@@ -15,7 +15,11 @@ from scripts.validate_multi_robot_training_readiness import (
 )
 from scripts.validate_nebius_full_training_run import (
     STAGES,
+    _validate_curriculum_eval_report,
+    _validate_production_contract,
     _validate_production_policy_videos,
+    _validate_status_consistency,
+    _validate_text_policy_eval_report,
     sync_from_s3,
     validate_nebius_full_training_run,
 )
@@ -24,6 +28,62 @@ from scripts.validate_nebius_full_training_run import (
 def _write_json(path: Path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n")
+
+
+def _valid_curriculum_eval_report(
+    *,
+    checkpoint: Path,
+    profile_id: str = "asimov-1",
+    tasks: tuple[str, ...] = ("stand_up", "walk_forward"),
+) -> dict:
+    return {
+        "schema": "robot-policy-curriculum-eval-v1",
+        "source": "eval_text_policy",
+        "profile_id": profile_id,
+        "policy": "checkpoint:asimov_1_alberta_full",
+        "checkpoint": str(checkpoint),
+        "n_tasks": len(tasks),
+        "n_programmatic_pass": len(tasks),
+        "programmatic_pass_rate": 1.0,
+        "mean_success_rate_overall": 1.0,
+        "tasks": [
+            {
+                "task_id": task,
+                "success_programmatic": True,
+                "success_rate": 1.0,
+                "episodes": 2,
+                "error": None,
+            }
+            for task in tasks
+        ],
+    }
+
+
+def _valid_text_policy_eval_report(
+    *,
+    checkpoint: Path,
+    profile_id: str = "asimov-1",
+    tasks: tuple[str, ...] = ("stand_up", "walk_forward"),
+) -> dict:
+    return {
+        "schema": "robot-text-policy-eval-v1",
+        "profile_id": profile_id,
+        "env": "asimov_mjx",
+        "checkpoint": str(checkpoint),
+        "policy": "alberta_streaming",
+        "tasks": {
+            task: {
+                "mean_reward": 1.0,
+                "mean_steps_survived": 20.0,
+                "success_rate": 1.0,
+                "failure_rate": 0.0,
+                "episodes": 2,
+            }
+            for task in tasks
+        },
+        "mean_reward_overall": 1.0,
+        "mean_success_rate_overall": 1.0,
+    }
 
 
 def _write_moving_video(path: Path) -> None:
@@ -42,16 +102,97 @@ def _write_moving_video(path: Path) -> None:
     writer.release()
 
 
-def _write_video_telemetry(path: Path) -> None:
+def _write_video_telemetry(
+    path: Path,
+    *,
+    profile: str = "asimov-1",
+    task_id: str = "stand_up",
+    policy_source: str = "checkpoint:asimov_1_alberta_full",
+) -> None:
+    delta_x, delta_y, delta_yaw = _task_motion(task_id)
     _write_json(
         path,
         {
+            "profile": profile,
+            "task_id": task_id,
+            "policy_source": policy_source,
             "rollout_ok": True,
             "steps_requested": 8,
             "steps_executed": 8,
             "terminated": False,
+            "goal_success": True,
+            "attempted_action": True,
+            "nonzero_action_steps": 8,
             "torso_z": {"min": 1.0, "final": 1.0},
             "upright_proj": {"min": 1.0, "final": 1.0},
+            "delta_x_m": _summary(delta_x),
+            "delta_y_m": _summary(delta_y),
+            "delta_yaw_rad": _summary(delta_yaw),
+            "action_norm": {"min": 0.1, "max": 0.2, "final": 0.1, "mean": 0.1},
+        },
+    )
+
+
+def _task_motion(task_id: str) -> tuple[float, float, float]:
+    delta_x = 0.0
+    delta_y = 0.0
+    delta_yaw = 0.0
+    if task_id == "walk_forward":
+        delta_x = 0.4
+    elif task_id == "walk_backward":
+        delta_x = -0.3
+    elif task_id == "sidestep_left":
+        delta_y = 0.3
+    elif task_id == "sidestep_right":
+        delta_y = -0.3
+    elif task_id == "turn_left":
+        delta_yaw = 0.8
+    elif task_id == "turn_right":
+        delta_yaw = -0.8
+    return delta_x, delta_y, delta_yaw
+
+
+def _summary(value: float) -> dict[str, float]:
+    return {
+        "min": min(0.0, value),
+        "max": max(0.0, value),
+        "final": value,
+        "mean": value / 2.0,
+    }
+
+
+def _write_combined_video_telemetry(
+    path: Path,
+    *,
+    profile: str,
+    commands: tuple[str, ...] = DEFAULT_MULTI_ROBOT_COMMANDS,
+    policy_source: str = "checkpoint:asimov_1_alberta_full",
+) -> None:
+    _write_json(
+        path,
+        {
+            "profile": profile,
+            "label": "combined_actions",
+            "policy_source": policy_source,
+            "rollout_ok": True,
+            "any_goal_success": True,
+            "steps_executed": len(commands) * 8,
+            "commands": [
+                {
+                    "task_id": command.replace(" ", "_"),
+                    "policy_source": policy_source,
+                    "rollout_ok": True,
+                    "goal_success": True,
+                    "attempted_action": True,
+                    "nonzero_action_steps": 8,
+                    "delta_x_m": _summary(_task_motion(command.replace(" ", "_"))[0]),
+                    "delta_y_m": _summary(_task_motion(command.replace(" ", "_"))[1]),
+                    "delta_yaw_rad": _summary(
+                        _task_motion(command.replace(" ", "_"))[2]
+                    ),
+                }
+                for command in commands
+            ],
         },
     )
 
@@ -60,22 +201,34 @@ def _safe_label(label: str) -> str:
     return label.replace(" ", "_").replace("/", "_")[:48]
 
 
-def _write_multi_robot_videos(root: Path) -> None:
-    evidence = root / "evidence" / "agent_videos"
+def _write_multi_robot_videos(
+    root: Path,
+    *,
+    evidence_name: str = "agent_videos",
+    profiles_to_write: tuple[str, ...] = DEFAULT_MULTI_ROBOT_PROFILES,
+) -> None:
+    evidence = root / "evidence" / evidence_name
     profiles = []
-    for profile in DEFAULT_MULTI_ROBOT_PROFILES:
+    for profile in profiles_to_write:
         profile_dir = evidence / profile
         expected = []
         videos = []
         for command in DEFAULT_MULTI_ROBOT_COMMANDS:
             name = f"{profile}_{_safe_label(command)}.mp4"
             _write_moving_video(profile_dir / name)
-            _write_video_telemetry((profile_dir / name).with_suffix(".telemetry.json"))
+            _write_video_telemetry(
+                (profile_dir / name).with_suffix(".telemetry.json"),
+                profile=profile,
+                task_id=command.replace(" ", "_"),
+            )
             expected.append(name)
             videos.append(name)
         combined = f"{profile}_combined_actions.mp4"
         _write_moving_video(profile_dir / combined)
-        _write_video_telemetry((profile_dir / combined).with_suffix(".telemetry.json"))
+        _write_combined_video_telemetry(
+            (profile_dir / combined).with_suffix(".telemetry.json"),
+            profile=profile,
+        )
         expected.append(combined)
         videos.append(combined)
         profiles.append(
@@ -280,7 +433,7 @@ def test_sync_from_s3_deletes_stale_local_files(monkeypatch, tmp_path: Path) -> 
     ]
 
 
-def test_validate_nebius_full_training_run_accepts_synced_artifact_tree(
+def test_validate_nebius_full_training_run_rejects_non_production_closeout(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "run"
@@ -343,7 +496,8 @@ def test_validate_nebius_full_training_run_accepts_synced_artifact_tree(
         root / "evidence" / "alberta_obstacle_course",
         env_kind="obstacle_course",
     )
-    _write_multi_robot_videos(root)
+    _write_multi_robot_videos(root, evidence_name="multi_robot_smoke_videos")
+    _write_multi_robot_videos(root, profiles_to_write=("asimov-1",))
     manifest_path = root / "evidence" / "agent_videos" / "manifest.json"
     manifest = json.loads(manifest_path.read_text())
     checkpoint = str(alberta_dir.resolve())
@@ -360,24 +514,56 @@ def test_validate_nebius_full_training_run_accepts_synced_artifact_tree(
         run_deep_validators=False,
     )
 
-    assert report["ok"] is True
+    assert report["ok"] is False
     assert report["checks"]["stage_logs"] is True
     assert report["checks"]["stage_status"] is True
+    assert report["checks"]["production_contract"] is False
     assert report["checks"]["instance_launch_hygiene"] is True
     assert report["checks"]["training_inputs"] is True
     assert report["checks"]["multi_robot_readiness"] is True
     assert report["checks"]["backend_comparison"] is True
     assert report["checks"]["video_review"] is True
     assert report["checks"]["production_policy_videos"] is True
+    assert report["checks"]["curriculum_eval"] is False
+    assert report["checks"]["curriculum_eval_native"] is False
     assert (root / "validation_report.json").is_file()
     assert (root / "validation_summary.md").is_file()
     summary = (root / "validation_summary.md").read_text()
     assert "Production Gates" in summary
     assert "Failed Gates" in summary
-    assert "- none" in summary
+    assert "- `production_contract`" in summary
+    assert "- `curriculum_eval`" in summary
+    assert "- `curriculum_eval_native`" in summary
     assert "Production Policy Videos" in summary
     assert "Checkpoint artifacts exist: `True`" in summary
     assert "Manifest checkpoint bound: `True`" in summary
+
+
+def test_production_contract_rejects_short_checkpoint_manifest(tmp_path: Path) -> None:
+    manifest = tmp_path / "checkpoints" / "asimov_1_alberta_full" / "manifest.json"
+    _write_json(
+        manifest,
+        {
+            "total_steps": 7000,
+            "requested_total_steps": 7000,
+        },
+    )
+
+    report = _validate_production_contract(
+        checkpoint_manifest=manifest,
+        require_success=True,
+        run_deep_validators=True,
+        min_alberta_steps=150_000_000,
+        min_backend_compare_steps=30_000,
+        min_benchmark_steps_per_task=16_000,
+        min_benchmark_seeds=3,
+    )
+
+    assert report["ok"] is False
+    assert report["checks"]["checkpoint_manifest_present"] is True
+    assert report["checks"]["checkpoint_total_steps"] is False
+    assert report["checks"]["checkpoint_requested_total_steps"] is False
+    assert report["actual"]["checkpoint_total_steps"] == 7000
 
 
 def test_production_policy_video_gate_rejects_empty_action_clip(tmp_path: Path) -> None:
@@ -473,6 +659,434 @@ def test_production_policy_video_gate_rejects_missing_telemetry_sidecar(tmp_path
     assert report["missing_telemetry"] == [f"{profile}_walk_forward.telemetry.json"]
 
 
+def test_production_policy_video_gate_rejects_unsuccessful_telemetry(
+    tmp_path: Path,
+) -> None:
+    evidence = tmp_path / "evidence" / "agent_videos"
+    profile = "asimov-1"
+    profile_dir = evidence / profile
+    profile_dir.mkdir(parents=True)
+    checkpoint = tmp_path / "checkpoints" / "asimov_1_alberta_full"
+    checkpoint.mkdir(parents=True)
+    (checkpoint / "manifest.json").write_text("{}\n")
+    (checkpoint / "alberta_policy.npz").write_bytes(b"checkpoint")
+    checkpoint_path = str(checkpoint.resolve())
+    commands = ("stand up", "walk forward")
+    for command in commands:
+        name = f"{profile}_{command.replace(' ', '_')}.mp4"
+        _write_moving_video(profile_dir / name)
+        telemetry = (profile_dir / name).with_suffix(".telemetry.json")
+        _write_video_telemetry(
+            telemetry,
+            profile=profile,
+            task_id=command.replace(" ", "_"),
+        )
+    _write_json(
+        profile_dir / f"{profile}_walk_forward.telemetry.json",
+        {
+            "profile": profile,
+            "task_id": "walk_forward",
+            "policy_source": "checkpoint:asimov_1_alberta_full",
+            "rollout_ok": False,
+            "goal_success": False,
+            "attempted_action": True,
+            "nonzero_action_steps": 8,
+            "torso_z": {"final": 1.0},
+            "action_norm": {"final": 0.1},
+            "delta_x_m": {"final": None},
+        },
+    )
+    combined = f"{profile}_combined_actions.mp4"
+    _write_moving_video(profile_dir / combined)
+    _write_combined_video_telemetry(
+        (profile_dir / combined).with_suffix(".telemetry.json"),
+        profile=profile,
+        commands=commands,
+    )
+    _write_json(
+        evidence / "manifest.json",
+        {
+            "ok": True,
+            "policy_checkpoint": checkpoint_path,
+            "profiles": [
+                {
+                    "profile": profile,
+                    "policy_checkpoint": checkpoint_path,
+                    "ok": True,
+                }
+            ],
+        },
+    )
+
+    report = _validate_production_policy_videos(
+        evidence,
+        checkpoint=checkpoint,
+        profile_id=profile,
+        commands=commands,
+    )
+
+    assert report["ok"] is False
+    assert report["checks"]["expected_videos"] is True
+    assert report["checks"]["expected_telemetry"] is True
+    assert report["checks"]["telemetry_sizes"] is True
+    assert report["checks"]["telemetry_semantics"] is False
+    walk_report = report["telemetry_reports"][f"{profile}_walk_forward.telemetry.json"]
+    assert walk_report["checks"]["goal_success"] is False
+    assert walk_report["checks"]["delta_x_series"] is False
+
+
+def test_production_policy_video_gate_rejects_wrong_direction_telemetry(
+    tmp_path: Path,
+) -> None:
+    evidence = tmp_path / "evidence" / "agent_videos"
+    profile = "asimov-1"
+    profile_dir = evidence / profile
+    profile_dir.mkdir(parents=True)
+    checkpoint = tmp_path / "checkpoints" / "asimov_1_alberta_full"
+    checkpoint.mkdir(parents=True)
+    (checkpoint / "manifest.json").write_text("{}\n")
+    (checkpoint / "alberta_policy.npz").write_bytes(b"checkpoint")
+    checkpoint_path = str(checkpoint.resolve())
+    commands = ("walk backward", "sidestep right", "turn right")
+    for command in commands:
+        name = f"{profile}_{command.replace(' ', '_')}.mp4"
+        _write_moving_video(profile_dir / name)
+        _write_video_telemetry(
+            (profile_dir / name).with_suffix(".telemetry.json"),
+            profile=profile,
+            task_id=command.replace(" ", "_"),
+        )
+    _write_json(
+        profile_dir / f"{profile}_walk_backward.telemetry.json",
+        {
+            "profile": profile,
+            "task_id": "walk_backward",
+            "policy_source": "checkpoint:asimov_1_alberta_full",
+            "rollout_ok": True,
+            "goal_success": True,
+            "attempted_action": True,
+            "nonzero_action_steps": 8,
+            "torso_z": {"final": 1.0},
+            "action_norm": {"final": 0.1},
+            "delta_x_m": {"final": 0.3},
+        },
+    )
+    _write_json(
+        profile_dir / f"{profile}_sidestep_right.telemetry.json",
+        {
+            "profile": profile,
+            "task_id": "sidestep_right",
+            "policy_source": "checkpoint:asimov_1_alberta_full",
+            "rollout_ok": True,
+            "goal_success": True,
+            "attempted_action": True,
+            "nonzero_action_steps": 8,
+            "torso_z": {"final": 1.0},
+            "action_norm": {"final": 0.1},
+            "delta_x_m": {"final": 0.0},
+            "delta_y_m": {"final": 0.3},
+        },
+    )
+    _write_json(
+        profile_dir / f"{profile}_turn_right.telemetry.json",
+        {
+            "profile": profile,
+            "task_id": "turn_right",
+            "policy_source": "checkpoint:asimov_1_alberta_full",
+            "rollout_ok": True,
+            "goal_success": True,
+            "attempted_action": True,
+            "nonzero_action_steps": 8,
+            "torso_z": {"final": 1.0},
+            "action_norm": {"final": 0.1},
+            "delta_yaw_rad": {"final": 0.8},
+        },
+    )
+    combined = f"{profile}_combined_actions.mp4"
+    _write_moving_video(profile_dir / combined)
+    _write_combined_video_telemetry(
+        (profile_dir / combined).with_suffix(".telemetry.json"),
+        profile=profile,
+        commands=commands,
+    )
+    _write_json(
+        evidence / "manifest.json",
+        {
+            "ok": True,
+            "policy_checkpoint": checkpoint_path,
+            "profiles": [
+                {
+                    "profile": profile,
+                    "policy_checkpoint": checkpoint_path,
+                    "ok": True,
+                }
+            ],
+        },
+    )
+
+    report = _validate_production_policy_videos(
+        evidence,
+        checkpoint=checkpoint,
+        profile_id=profile,
+        commands=commands,
+    )
+
+    assert report["ok"] is False
+    assert report["checks"]["telemetry_semantics"] is False
+    assert report["telemetry_reports"][f"{profile}_walk_backward.telemetry.json"][
+        "checks"
+    ]["delta_x_backward"] is False
+    assert report["telemetry_reports"][f"{profile}_sidestep_right.telemetry.json"][
+        "checks"
+    ]["delta_y_right"] is False
+    assert report["telemetry_reports"][f"{profile}_turn_right.telemetry.json"][
+        "checks"
+    ]["delta_yaw_right"] is False
+
+
+def test_production_policy_video_gate_rejects_combined_wrong_motion(
+    tmp_path: Path,
+) -> None:
+    evidence = tmp_path / "evidence" / "agent_videos"
+    profile = "asimov-1"
+    profile_dir = evidence / profile
+    profile_dir.mkdir(parents=True)
+    checkpoint = tmp_path / "checkpoints" / "asimov_1_alberta_full"
+    checkpoint.mkdir(parents=True)
+    (checkpoint / "manifest.json").write_text("{}\n")
+    (checkpoint / "alberta_policy.npz").write_bytes(b"checkpoint")
+    checkpoint_path = str(checkpoint.resolve())
+    commands = ("stand up", "walk forward", "turn left")
+    for command in commands:
+        name = f"{profile}_{command.replace(' ', '_')}.mp4"
+        _write_moving_video(profile_dir / name)
+        _write_video_telemetry(
+            (profile_dir / name).with_suffix(".telemetry.json"),
+            profile=profile,
+            task_id=command.replace(" ", "_"),
+        )
+    combined = f"{profile}_combined_actions.mp4"
+    _write_moving_video(profile_dir / combined)
+    _write_combined_video_telemetry(
+        (profile_dir / combined).with_suffix(".telemetry.json"),
+        profile=profile,
+        commands=commands,
+    )
+    combined_payload = json.loads(
+        (profile_dir / f"{profile}_combined_actions.telemetry.json").read_text()
+    )
+    combined_payload["commands"][1]["delta_x_m"] = _summary(-0.4)
+    _write_json(
+        profile_dir / f"{profile}_combined_actions.telemetry.json",
+        combined_payload,
+    )
+    _write_json(
+        evidence / "manifest.json",
+        {
+            "ok": True,
+            "policy_checkpoint": checkpoint_path,
+            "profiles": [
+                {
+                    "profile": profile,
+                    "policy_checkpoint": checkpoint_path,
+                    "ok": True,
+                }
+            ],
+        },
+    )
+
+    report = _validate_production_policy_videos(
+        evidence,
+        checkpoint=checkpoint,
+        profile_id=profile,
+        commands=commands,
+    )
+
+    assert report["ok"] is False
+    combined_report = report["telemetry_reports"][
+        f"{profile}_combined_actions.telemetry.json"
+    ]
+    assert combined_report["checks"]["all_goal_success"] is True
+    assert combined_report["checks"]["all_command_motion"] is False
+
+
+def test_curriculum_eval_gate_requires_checkpoint_bound_task_success(
+    tmp_path: Path,
+) -> None:
+    checkpoint = tmp_path / "checkpoints" / "asimov_1_alberta_full"
+    checkpoint.mkdir(parents=True)
+    report_path = tmp_path / "evidence" / "curriculum_eval" / "report.json"
+    _write_json(
+        report_path,
+        {
+            "schema": "robot-policy-curriculum-eval-v1",
+            "source": "eval_text_policy",
+            "profile_id": "asimov-1",
+            "policy": "checkpoint:asimov_1_alberta_full",
+            "checkpoint": str(checkpoint),
+            "n_tasks": 2,
+            "n_programmatic_pass": 1,
+            "programmatic_pass_rate": 0.5,
+            "mean_success_rate_overall": 0.5,
+            "tasks": [
+                {
+                    "task_id": "stand_up",
+                    "success_programmatic": True,
+                    "success_rate": 1.0,
+                    "episodes": 2,
+                },
+                {
+                    "task_id": "walk_forward",
+                    "success_programmatic": False,
+                    "success_rate": 0.0,
+                    "episodes": 2,
+                },
+            ],
+        },
+    )
+
+    failed = _validate_curriculum_eval_report(
+        report_path,
+        checkpoint=checkpoint,
+        profile_id="asimov-1",
+        tasks=("stand_up", "walk_forward"),
+    )
+    assert failed["ok"] is False
+    assert failed["checks"]["checkpoint_matches"] is True
+    assert failed["checks"]["all_requested_tasks_programmatic_success"] is False
+    assert failed["checks"]["programmatic_pass_rate"] is False
+
+    _write_json(report_path, _valid_curriculum_eval_report(checkpoint=checkpoint))
+
+    passed = _validate_curriculum_eval_report(
+        report_path,
+        checkpoint=checkpoint,
+        profile_id="asimov-1",
+        tasks=("stand_up", "walk_forward"),
+    )
+    assert passed["ok"] is True
+
+    payload = _valid_curriculum_eval_report(checkpoint=checkpoint)
+    payload["checkpoint"] = "checkpoints/asimov_1_alberta_full"
+    _write_json(report_path, payload)
+    relative_passed = _validate_curriculum_eval_report(
+        report_path,
+        checkpoint=checkpoint,
+        profile_id="asimov-1",
+        tasks=("stand_up", "walk_forward"),
+    )
+    assert relative_passed["ok"] is True
+    assert relative_passed["checks"]["checkpoint_matches"] is True
+
+
+def test_curriculum_eval_gate_rejects_forged_or_incomplete_reports(
+    tmp_path: Path,
+) -> None:
+    checkpoint = tmp_path / "checkpoints" / "asimov_1_alberta_full"
+    checkpoint.mkdir(parents=True)
+    report_path = tmp_path / "evidence" / "curriculum_eval" / "report.json"
+
+    payload = _valid_curriculum_eval_report(checkpoint=checkpoint)
+    payload["policy"] = "untrained_zero"
+    _write_json(report_path, payload)
+    report = _validate_curriculum_eval_report(
+        report_path,
+        checkpoint=checkpoint,
+        profile_id="asimov-1",
+        tasks=("stand_up", "walk_forward"),
+    )
+    assert report["ok"] is False
+    assert report["checks"]["policy_checkpoint"] is False
+
+    payload = _valid_curriculum_eval_report(checkpoint=checkpoint)
+    payload["checkpoint"] = checkpoint.name
+    _write_json(report_path, payload)
+    report = _validate_curriculum_eval_report(
+        report_path,
+        checkpoint=checkpoint,
+        profile_id="asimov-1",
+        tasks=("stand_up", "walk_forward"),
+    )
+    assert report["ok"] is False
+    assert report["checks"]["checkpoint_matches"] is False
+
+    payload = _valid_curriculum_eval_report(checkpoint=checkpoint)
+    payload["programmatic_pass_rate"] = 0.75
+    _write_json(report_path, payload)
+    report = _validate_curriculum_eval_report(
+        report_path,
+        checkpoint=checkpoint,
+        profile_id="asimov-1",
+        tasks=("stand_up", "walk_forward"),
+    )
+    assert report["ok"] is False
+    assert report["checks"]["programmatic_pass_rate_recomputed"] is False
+
+    payload = _valid_curriculum_eval_report(checkpoint=checkpoint)
+    payload["tasks"][0]["episodes"] = 0
+    _write_json(report_path, payload)
+    report = _validate_curriculum_eval_report(
+        report_path,
+        checkpoint=checkpoint,
+        profile_id="asimov-1",
+        tasks=("stand_up", "walk_forward"),
+    )
+    assert report["ok"] is False
+    assert report["checks"]["task_episodes"] is False
+
+
+def test_text_policy_eval_gate_requires_exact_native_schema(
+    tmp_path: Path,
+) -> None:
+    checkpoint = tmp_path / "checkpoints" / "asimov_1_alberta_full"
+    checkpoint.mkdir(parents=True)
+    native_path = tmp_path / "evidence" / "curriculum_eval" / "eval_text_policy.json"
+
+    _write_json(native_path, _valid_text_policy_eval_report(checkpoint=checkpoint))
+    passed = _validate_text_policy_eval_report(
+        native_path,
+        checkpoint=checkpoint,
+        profile_id="asimov-1",
+        tasks=("stand_up", "walk_forward"),
+    )
+    assert passed["ok"] is True
+
+    payload = _valid_text_policy_eval_report(checkpoint=checkpoint)
+    payload["checkpoint"] = "checkpoints/asimov_1_alberta_full"
+    _write_json(native_path, payload)
+    relative_passed = _validate_text_policy_eval_report(
+        native_path,
+        checkpoint=checkpoint,
+        profile_id="asimov-1",
+        tasks=("stand_up", "walk_forward"),
+    )
+    assert relative_passed["ok"] is True
+    assert relative_passed["checks"]["checkpoint_matches"] is True
+
+    payload = _valid_text_policy_eval_report(checkpoint=checkpoint)
+    payload["schema"] = "robot-policy-curriculum-eval-v1"
+    _write_json(native_path, payload)
+    failed = _validate_text_policy_eval_report(
+        native_path,
+        checkpoint=checkpoint,
+        profile_id="asimov-1",
+        tasks=("stand_up", "walk_forward"),
+    )
+    assert failed["ok"] is False
+    assert failed["checks"]["schema"] is False
+
+    legacy_path = tmp_path / "evidence" / "curriculum_v2_sota" / "eval_text_policy.json"
+    _write_json(legacy_path, _valid_text_policy_eval_report(checkpoint=checkpoint))
+    missing_exact = _validate_text_policy_eval_report(
+        tmp_path / "evidence" / "curriculum_eval" / "missing.json",
+        checkpoint=checkpoint,
+        profile_id="asimov-1",
+        tasks=("stand_up", "walk_forward"),
+    )
+    assert missing_exact["ok"] is False
+    assert missing_exact["checks"]["present"] is False
+
+
 def test_validate_nebius_full_training_run_rejects_missing_success(
     tmp_path: Path,
 ) -> None:
@@ -566,3 +1180,57 @@ def test_validate_nebius_full_training_run_rejects_missing_training_mode_flags(
     assert report["checks"]["training_inputs"] is False
     assert training["checks"]["rl_from_sim_ready"] is False
     assert training["checks"]["offline_datasets_not_blocking_current_plan"] is False
+
+
+def test_status_consistency_rejects_stale_monitor_and_closeout_claims(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "run"
+    _write_json(
+        root / "monitor_status.json",
+        {
+            "ok": True,
+            "checks": {
+                "video_review": True,
+                "production_policy_videos": True,
+            },
+        },
+    )
+    _write_json(
+        root / "closeout_status.json",
+        {
+            "monitor": {
+                "summary": {
+                    "passed_gates": ["video_review", "production_policy_videos"],
+                },
+            },
+            "finalization": {"ok": True},
+            "artifact_inventory": {
+                "ok": True,
+                "present_count": 117,
+                "required_count": 117,
+            },
+        },
+    )
+    _write_json(root / "finalization_report.json", {"ok": False})
+    _write_json(
+        root / "artifact_inventory.json",
+        {"ok": False, "present_count": 164, "required_count": 164},
+    )
+
+    report = _validate_status_consistency(
+        root,
+        {"video_review": False, "production_policy_videos": False},
+    )
+
+    assert report["ok"] is False
+    assert report["checks"]["monitor_status_consistent"] is False
+    assert report["checks"]["closeout_monitor_consistent"] is False
+    assert report["checks"]["closeout_finalization_consistent"] is False
+    assert report["checks"]["closeout_inventory_consistent"] is False
+    assert {item["source"] for item in report["contradictions"]} == {
+        "monitor_status",
+        "closeout_status.monitor.summary",
+        "closeout_status.finalization",
+        "closeout_status.artifact_inventory",
+    }

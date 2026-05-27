@@ -1,6 +1,6 @@
 schema: eliza.e1_phone_layout_optimization_execution.v1
 status: blocked_concept_layout_optimized_requires_supplier_footprints_trial_route_measurements_and_routed_step
-date: '2026-05-21'
+date: '2026-05-27'
 claim_boundary: Execution package for preserving the optimized E1 phone size, placement,
   route-density, RF, power, thermal, factory-test, and enclosure constraints through
   EVT1 routing. This is not a routed PCB, not supplier footprint evidence, not SI/PI/RF/thermal
@@ -20,12 +20,10 @@ source_artifacts:
   - board/kicad/e1-phone/trial-route-input-matrix.yaml
   - board/kicad/e1-phone/routing-acceptance-checklist.yaml
   - board/kicad/e1-phone/routed-release-plan.yaml
-  - board/kicad/e1-phone/layout-route-enclosure-release-execution.yaml
   - board/kicad/e1-phone/display-fit.yaml
   - board/kicad/e1-phone/rf-connectivity-closure.yaml
   - board/kicad/e1-phone/power-thermal-budget.yaml
   - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
-  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
 upstream_status:
   board_optimization_scorecard: blocked_concept_optimized_but_not_routed_or_enclosure_ready
   live_utilization_audit: blocked_live_courtyard_utilization_not_routed_or_supplier_ready
@@ -44,7 +42,6 @@ upstream_status:
   rf_connectivity: planning_rf_connectivity_cross_checked_not_measured
   power_thermal: blocked_power_thermal_requires_real_schematic_and_measurement
   enclosure_fit_execution: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
-  supplier_rfq_response_normalization: blocked_response_normalization_ready_no_supplier_responses_received
 locked_concept_geometry:
   device_envelope_mm:
     width: 78.0
@@ -81,80 +78,6 @@ layout_pressure_closure:
   active_region_overlap_count: 0
   known_envelope_blockers_count: 2
   status: blocked_until_supplier_footprints_routed_utilization_escape_density_and_drc_exist
-hardware_decision_traceability:
-  display_size_anchor:
-    source: board/kicad/e1-phone/display-envelope-downselect.yaml
-    selected_part: CH550FH01A-CT
-    layout_dependency: preserve_78p0_x_153p6_mm_device_envelope_until_signed_display_stack_or_smaller_supplier_pack
-    status: blocked_display_stack_connector_step_and_bringup_missing
-  camera_module_fit:
-    source: board/kicad/e1-phone/camera-module-fit-downselect.yaml
-    rejected_public_alternate: front_alternate_alibaba_junde_imx219
-    layout_dependency: do_not_widen_or_release_camera_region_until_primary_camera_supplier_xy_z_drawings_arrive
-    status: blocked_camera_xy_z_supplier_drawings_samples_and_capture_evidence_missing
-  radio_module_selection:
-    source: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
-    primary_cellular_reference: Quectel_RG255C_or_RM255C_5G_RedCap
-    wifi_bluetooth_primary: Murata_LBEE5XV2EA_802_Type_2EA
-    layout_dependency: repack_top_rf_island_or_select_smaller_supplier_approved_cellular_module_before_evt1_route
-    status: blocked_cellular_region_module_branch_rf_layout_firmware_and_regulatory_evidence_missing
-  usb_sidekey_selection:
-    source: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
-    usb_evt0_connector: GCT_USB4105
-    pd_controller: TPS65987DDH
-    charger: MAX77860
-    side_key_primary: Panasonic_EVQ_P7_EVQ_P3_EVQ_9P7
-    layout_dependency: preserve_bottom_center_usb2_pd_port_and_left_side_button_spine_until_supplier_drawings_routed_step_and_measurements_exist
-    status: blocked_usb_sidekey_supplier_drawings_route_measurements_and_enclosure_load_path_missing
-selected_supplier_response_layout_gate:
-  status: blocked_until_selected_supplier_response_packs_unlock_footprints_regions_route_density_and_enclosure_clearance
-  source_artifact: board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
-  response_gate_count: 3
-  response_gates:
-    - gate: selected_display_camera_oem_response_gate
-      selected_functions: [display_touch, rear_camera, front_camera]
-      layout_dependencies:
-        - preserve display anchor and camera region until signed drawings, pinouts,
-          connector MPNs, STEP, and samples arrive
-        - keep Alibaba/Junde IMX219 rejected for current camera region until smaller
-          supplier pack or redesign branch exists
-      blocked_outputs:
-        - supplier_footprints
-        - routed_courtyard_utilization
-        - escape_density_via_count
-        - routed_board_step
-        - routed_clearance
-      status: blocked_display_camera_supplier_responses_missing_for_layout_release
-    - gate: selected_usb_sidekey_oem_response_gate
-      selected_functions: [usb_c_receptacle_evt0, side_buttons]
-      layout_dependencies:
-        - preserve bottom-center USB2 Type-C route and side-button actuator spine
-          until connector/switch drawings and load path exist
-        - keep waterproof/superspeed and top-actuated switch alternates conditional
-          until routing and enclosure topology change exists
-      blocked_outputs:
-        - supplier_footprints
-        - usb2_route_si
-        - side_key_force_travel
-        - routed_board_step
-        - routed_clearance
-      status: blocked_usb_sidekey_supplier_responses_missing_for_layout_release
-    - gate: selected_wireless_module_oem_response_gate
-      selected_functions: [cellular, wifi_bluetooth]
-      layout_dependencies:
-        - block EVT1 route until RG255C top RF island repack or compact cellular
-          branch is supplier approved
-        - keep Murata Type 2EA region reserved but block RF/antenna routing until
-          reference layout, firmware, regulatory, and STEP packs arrive
-      blocked_outputs:
-        - supplier_footprints
-        - rf_reference_layout
-        - routed_rf_measurements
-        - routed_board_step
-        - routed_clearance
-      status: blocked_wireless_supplier_responses_missing_for_layout_release
-  all_selected_supplier_response_packs_absent: true
-  preserves_current_size_decision_until_supplier_packs_exist: true
 performance_constraint_closure:
   route_density:
     status: blocked_high_pressure_trial_route_required
@@ -360,6 +283,30 @@ component_fit_policy:
     status: blocked_primary_camera_xy_z_stack_unknown
     required_action: request signed module XY, z-height, FPC tail, connector, and
       lens-axis drawings for both cameras
+hardware_decision_traceability:
+  display_size_anchor:
+    source: board/kicad/e1-phone/display-envelope-downselect.yaml
+    selected_part: CH550FH01A-CT
+    status: blocked_display_envelope_downselect_requires_signed_display_stack_connector_and_routed_clearance
+    layout_dependency: true
+  camera_module_fit:
+    source: board/kicad/e1-phone/camera-module-fit-downselect.yaml
+    rejected_public_alternate: front_alternate_alibaba_junde_imx219
+    status: blocked_camera_module_xy_z_downselect_requires_supplier_drawings_and_samples
+    layout_dependency: true
+  radio_module_selection:
+    source: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+    primary_cellular_reference: Quectel_RG255C_or_RM255C_5G_RedCap
+    wifi_bluetooth_primary: Murata_LBEE5XV2EA_802_Type_2EA
+    status: blocked_radio_module_selection_requires_supplier_design_packs_region_decision_routed_rf_and_firmware_evidence
+    layout_dependency: true
+  usb_sidekey_selection:
+    source: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+    usb_evt0_connector: GCT_USB4105
+    pd_controller: TPS65987DDH
+    charger: MAX77860
+    status: blocked_usb_sidekey_selection_requires_supplier_drawings_real_schematic_route_measurements_and_enclosure_load_path
+    layout_dependency: true
 placement_repack_policy:
   candidate_regions_mm:
     U_CELL:
@@ -455,8 +402,8 @@ placement_repack_policy:
     - repack U_CELL for the selected 29 x 32 mm RG255C LGA plus RF keepouts or choose
       a smaller orderable cellular module before EVT1 routing
     - obtain primary front/rear camera XY and z-height drawings
-    - keep the 25 x 24 mm Alibaba/Junde IMX219 alternate rejected unless the top-right
-      camera/display/flex stack is widened and rerun through enclosure clearance
+    - keep 25 x 24 mm Junde/IMX219 camera alternate out of the current 17 x 13 mm
+      camera/FPC region unless the top-right camera/display/flex stack is widened
     - rerun RF antenna keepout and cellular/Wi-Fi coexistence placement with supplier
       reference layouts
     - rerun routed STEP/enclosure clearance once supplier 3D models are available
@@ -465,12 +412,13 @@ routed_release_output_dependencies:
     expected_path: board/kicad/e1-phone/production/reports/drc.json
     present: false
     release_required: true
-    blocker: PCB has no routed copper, filled zones, or DRC evidence
+    blocker: no release-approved routed copper, filled zones, or DRC evidence
   - id: routed_kicad_pcb
     expected_path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
     present: false
     release_required: true
-    blocker: current KiCad PCB is a concept placeholder scaffold
+    blocker: routed KiCad PCB exists only as a blocked local candidate; production
+      source remains a concept placeholder scaffold
   - id: filled_zones
     expected_path: board/kicad/e1-phone/production/reports/zone-fill.json
     present: false
@@ -511,18 +459,12 @@ cross_checks:
   repack_candidate_overlap_free_and_matches_active_matrix: true
   battery_window_has_no_live_or_candidate_intrusions: true
   junde_camera_alternate_remains_rejected: true
-  camera_fit_downselect_remains_supplier_drawing_gated: true
   wifi_and_side_button_known_outlines_fit_regions: true
   release_outputs_all_blocked: true
-  selected_supplier_response_layout_gate_fail_closed: true
 release_blockers:
   - supplier footprints, courtyards, component heights, and STEP models are missing
-  - selected supplier response packs for display, camera, USB-C/side-key, cellular,
-    and Wi-Fi/Bluetooth are missing
   - routed courtyard utilization, escape-density, via-count, and DRC reports are missing
   - screen/camera connector and primary camera XY/Z supplier drawings are missing
-  - camera fit downselect still rejects the 25 x 24 mm Alibaba/Junde alternate in the current 17 x 13 mm top-right
-    camera/FPC region
   - power efficiency, thermal soak, RF, coexistence, SAR, and factory measurements
     are missing
   - routed board STEP and enclosure clearance rerun are missing

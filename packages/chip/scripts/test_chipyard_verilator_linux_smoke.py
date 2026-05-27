@@ -96,6 +96,9 @@ def test_firemarshal_payload_config_blockers_detect_stale_payload() -> None:
         workload_json = tmp_path / "eliza-e1-linux-smoke.json"
         workload = tmp_path / "eliza-e1-linux-smoke.sh"
         build_hwprobe = tmp_path / "build-hwprobe.sh"
+        overlay_init = tmp_path / "eliza-e1-linux-smoke-overlay/etc/init.d/S00eliza-e1-linux-smoke"
+        opensbi_defconfig = tmp_path / "opensbi-eliza_defconfig"
+        opensbi_patch = tmp_path / "opensbi-eliza-platform-fast-final.patch"
         hwprobe_source = tmp_path / "eliza-riscv-hwprobe.c"
         hwprobe = tmp_path / "eliza-riscv-hwprobe"
         npu_smoke = tmp_path / "e1-npu-ml-smoke"
@@ -173,6 +176,9 @@ def test_firemarshal_payload_freshness_manifest_satisfies_mtime_drift() -> None:
         workload_json = tmp_path / "eliza-e1-linux-smoke.json"
         workload = tmp_path / "eliza-e1-linux-smoke.sh"
         build_hwprobe = tmp_path / "build-hwprobe.sh"
+        overlay_init = tmp_path / "eliza-e1-linux-smoke-overlay/etc/init.d/S00eliza-e1-linux-smoke"
+        opensbi_defconfig = tmp_path / "opensbi-eliza_defconfig"
+        opensbi_patch = tmp_path / "opensbi-eliza-platform-fast-final.patch"
         hwprobe_source = tmp_path / "eliza-riscv-hwprobe.c"
         hwprobe = tmp_path / "eliza-riscv-hwprobe"
         npu_smoke = tmp_path / "e1-npu-ml-smoke"
@@ -187,9 +193,15 @@ def test_firemarshal_payload_freshness_manifest_satisfies_mtime_drift() -> None:
             '["e1-npu-ml-smoke","/usr/bin/e1-npu-ml-smoke"]]}\n',
             encoding="utf-8",
         )
-        for executable in (workload, build_hwprobe, hwprobe, npu_smoke):
+        overlay_init.parent.mkdir(parents=True)
+        for executable in (workload, build_hwprobe, overlay_init, hwprobe, npu_smoke):
             executable.write_text("#!/bin/sh\n", encoding="utf-8")
             executable.chmod(0o755)
+        opensbi_defconfig.write_text("# CONFIG_FDT_IRQCHIP is not set\n", encoding="utf-8")
+        opensbi_patch.write_text(
+            "diff --git a/platform/generic/platform.c b/platform/generic/platform.c\n",
+            encoding="utf-8",
+        )
         hwprobe_source.write_text("int main(void) { return 0; }\n", encoding="utf-8")
         kfrag.write_text(
             'CONFIG_CMDLINE="console=ttySIF0,3686400n8 quiet loglevel=4 mem=192M"\n',
@@ -210,9 +222,12 @@ def test_firemarshal_payload_freshness_manifest_satisfies_mtime_drift() -> None:
             kfrag,
             workload,
             build_hwprobe,
+            overlay_init,
+            opensbi_defconfig,
             hwprobe_source,
             hwprobe,
             npu_smoke,
+            opensbi_patch,
         ]
         manifest.write_text(
             json.dumps(
@@ -228,10 +243,13 @@ def test_firemarshal_payload_freshness_manifest_satisfies_mtime_drift() -> None:
 
         old_json = smoke.FIREMARSHAL_SMOKE_JSON
         old_workload = smoke.FIREMARSHAL_SMOKE_WORKLOAD
+        old_overlay_init = smoke.FIREMARSHAL_SMOKE_OVERLAY_INIT
         old_build_hwprobe = smoke.FIREMARSHAL_HWPROBE_BUILD_SCRIPT
         old_hwprobe_source = smoke.FIREMARSHAL_HWPROBE_SOURCE
         old_hwprobe = smoke.FIREMARSHAL_HWPROBE_BINARY
         old_npu_smoke = smoke.FIREMARSHAL_NPU_ML_SMOKE_BINARY
+        old_opensbi_defconfig = smoke.FIREMARSHAL_OPENSBI_DEFCONFIG
+        old_opensbi_patch = smoke.FIREMARSHAL_OPENSBI_FAST_FINAL_PATCH
         old_kfrag = smoke.FIREMARSHAL_SMOKE_KFRAG
         old_config = smoke.FIREMARSHAL_SMOKE_LINUX_CONFIG
         old_payload = smoke.FIREMARSHAL_SMOKE_PAYLOAD
@@ -239,10 +257,13 @@ def test_firemarshal_payload_freshness_manifest_satisfies_mtime_drift() -> None:
         try:
             smoke.FIREMARSHAL_SMOKE_JSON = workload_json
             smoke.FIREMARSHAL_SMOKE_WORKLOAD = workload
+            smoke.FIREMARSHAL_SMOKE_OVERLAY_INIT = overlay_init
             smoke.FIREMARSHAL_HWPROBE_BUILD_SCRIPT = build_hwprobe
             smoke.FIREMARSHAL_HWPROBE_SOURCE = hwprobe_source
             smoke.FIREMARSHAL_HWPROBE_BINARY = hwprobe
             smoke.FIREMARSHAL_NPU_ML_SMOKE_BINARY = npu_smoke
+            smoke.FIREMARSHAL_OPENSBI_DEFCONFIG = opensbi_defconfig
+            smoke.FIREMARSHAL_OPENSBI_FAST_FINAL_PATCH = opensbi_patch
             smoke.FIREMARSHAL_SMOKE_KFRAG = kfrag
             smoke.FIREMARSHAL_SMOKE_LINUX_CONFIG = linux_config
             smoke.FIREMARSHAL_SMOKE_PAYLOAD = payload
@@ -251,10 +272,13 @@ def test_firemarshal_payload_freshness_manifest_satisfies_mtime_drift() -> None:
         finally:
             smoke.FIREMARSHAL_SMOKE_JSON = old_json
             smoke.FIREMARSHAL_SMOKE_WORKLOAD = old_workload
+            smoke.FIREMARSHAL_SMOKE_OVERLAY_INIT = old_overlay_init
             smoke.FIREMARSHAL_HWPROBE_BUILD_SCRIPT = old_build_hwprobe
             smoke.FIREMARSHAL_HWPROBE_SOURCE = old_hwprobe_source
             smoke.FIREMARSHAL_HWPROBE_BINARY = old_hwprobe
             smoke.FIREMARSHAL_NPU_ML_SMOKE_BINARY = old_npu_smoke
+            smoke.FIREMARSHAL_OPENSBI_DEFCONFIG = old_opensbi_defconfig
+            smoke.FIREMARSHAL_OPENSBI_FAST_FINAL_PATCH = old_opensbi_patch
             smoke.FIREMARSHAL_SMOKE_KFRAG = old_kfrag
             smoke.FIREMARSHAL_SMOKE_LINUX_CONFIG = old_config
             smoke.FIREMARSHAL_SMOKE_PAYLOAD = old_payload
@@ -362,6 +386,24 @@ def test_kfrag_absent_disabled_symbol_is_not_missing() -> None:
             raise AssertionError(missing)
 
 
+def test_firemarshal_overlay_init_is_payload_freshness_input() -> None:
+    overlay_init = "eliza-e1-linux-smoke-overlay/etc/init.d/S00eliza-e1-linux-smoke"
+    for script in (
+        ROOT / "scripts/build_firemarshal_eliza_linux_smoke_payload.sh",
+        ROOT / "scripts/run_chipyard_eliza_linux_smoke.sh",
+    ):
+        text = script.read_text(encoding="utf-8")
+        if overlay_init not in text:
+            raise AssertionError(f"{overlay_init} is not tracked by {script}")
+    freshness_inputs = {path.name for path in smoke.firemarshal_payload_freshness_inputs()}
+    if "S00eliza-e1-linux-smoke" not in freshness_inputs:
+        raise AssertionError("overlay init is not tracked by checker freshness inputs")
+    if "opensbi-eliza_defconfig" not in freshness_inputs:
+        raise AssertionError("OpenSBI defconfig is not tracked by checker freshness inputs")
+    if "opensbi-eliza-platform-fast-final.patch" not in freshness_inputs:
+        raise AssertionError("OpenSBI patch is not tracked by checker freshness inputs")
+
+
 def test_generated_model_artifact_failure_classifier_is_narrow() -> None:
     generated_failures = (
         "make: *** No rule to make target 'generated-src/mm/VTestDriver.d', needed by 'sim'.\n",
@@ -439,6 +481,7 @@ def test_smoke_progress_classification_distinguishes_stages() -> None:
     wall_timeout_progress = smoke.classify_smoke_progress(
         "OpenSBI v1.8.1\n"
         "Linux version 6.12.\n"
+        "Forcing kernel command line to: console=ttySIF0 earlycon quiet mem=128M\n"
         "[    0.000000] Initmem setup node 0 [mem 0x0000000080000000-0x000000008bffffff]\n"
         "[timeout-wrapper] label=chipyard-generated-ap-linux-smoke status=timeout\n",
         payload_trace,
@@ -460,6 +503,22 @@ def test_smoke_progress_classification_distinguishes_stages() -> None:
         raise AssertionError(
             f"expected wall-timeout guidance with Initmem marker, got {wall_timeout_progress}"
         )
+
+    interrupted_progress = smoke.classify_smoke_progress(
+        "OpenSBI v1.8.1\n"
+        "Linux version 6.12.\n"
+        "Forcing kernel command line to: console=ttySIF0 earlycon mem=128M\n"
+        "Terminated\n",
+        payload_trace,
+        {
+            "raw_transcript_closed": True,
+            "exit_code": "143",
+            "signal": "TERM",
+            "last_progress_marker": "Forcing kernel command line to: console=ttySIF0 earlycon mem=128M",
+        },
+    )
+    if interrupted_progress["stage"] != "linux_early_boot_interrupted":
+        raise AssertionError(f"expected interrupted Linux stage, got {interrupted_progress}")
 
     no_dramsim_no_uart = smoke.classify_smoke_progress(
         "eliza-evidence: disable_dramsim=1\n"
@@ -707,6 +766,49 @@ def test_live_sim_output_metadata_reports_latest_progress() -> None:
         smoke.SIM_OUTPUT_DIR = old_sim_output_dir
 
 
+def test_live_sim_output_metadata_reports_linux_memory_progress() -> None:
+    old_sim_output_dir = smoke.SIM_OUTPUT_DIR
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            smoke.SIM_OUTPUT_DIR = Path(tmp)
+            live = smoke.SIM_OUTPUT_DIR / "eliza-e1-linux-smoke-bin-nodisk.log"
+            live.write_text(
+                "\n".join(
+                    [
+                        "OpenSBI v1.2",
+                        "Domain0 Next Address      : 0x0000000080200000",
+                        "[    0.000000] Linux version 6.6.0",
+                        "[    0.000000] Memory limited to 128MB",
+                        "[    0.000000] memblock_reserve: [0x0000000080b00000-0x0000000080b00fff] dtb",
+                        "[    0.000000] OF: reserved mem: 0x0000000080000000..0x000000008003ffff",
+                        "[    0.000000] Zone ranges:",
+                        "[    0.000000] Initmem setup node 0 [mem 0x0000000080000000-0x0000000087ffffff]",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            metadata = smoke.live_sim_output_metadata(
+                "/tmp/eliza-e1-linux-smoke-bin-nodisk",
+                {"binary_arg": "/tmp/eliza-e1-linux-smoke-bin-nodisk"},
+            )
+            latest = metadata.get("latest")
+            if not isinstance(latest, dict):
+                raise AssertionError(metadata)
+            memory = latest.get("linux_memory_progress")
+            if not isinstance(memory, dict):
+                raise AssertionError(latest)
+            if memory.get("observed") is not True:
+                raise AssertionError(memory)
+            if "Initmem setup node 0" not in str(memory.get("last_marker")):
+                raise AssertionError(memory)
+            counts = memory.get("marker_counts")
+            if not isinstance(counts, dict) or counts.get("memblock_reserve") != 1:
+                raise AssertionError(memory)
+    finally:
+        smoke.SIM_OUTPUT_DIR = old_sim_output_dir
+
+
 def test_uart_tx_reconstruction_classifies_opensbi_banner_only() -> None:
     banner = "OpenSBI v1.2\n"
     uart_trace = "\n".join(f"UART TX ({byte:02x}): {chr(byte)}" for byte in banner.encode())
@@ -891,11 +993,11 @@ def test_generated_fdt_audit_covers_current_generated_dts() -> None:
     required = audit.get("required_tokens")
     if not isinstance(required, dict) or required.get("npu") is not True:
         raise AssertionError(audit)
-    if audit.get("expected_opensbi_payload_fdt_addr") != "0x88000000":
+    if audit.get("expected_opensbi_payload_fdt_addr") != "0x80b00000":
         raise AssertionError(audit)
     if audit.get("expected_opensbi_payload_fdt_addr_fits_dram") is not True:
         raise AssertionError(audit)
-    if audit.get("expected_opensbi_payload_fdt_addr_clear_of_kernel_low_window") is not True:
+    if audit.get("expected_opensbi_payload_fdt_addr_clear_of_kernel_low_window") is not False:
         raise AssertionError(audit)
 
 
@@ -904,7 +1006,7 @@ def test_opensbi_domain_handoff_audit_requires_writable_dram_fdt() -> None:
         """
 OpenSBI v1.2
 Domain0 Next Address      : 0x0000000080200000
-Domain0 Next Arg1         : 0x0000000088000000
+Domain0 Next Arg1         : 0x0000000080b00000
 Domain0 Next Mode         : S-mode
 """,
         4231,
@@ -913,7 +1015,7 @@ Domain0 Next Mode         : S-mode
         raise AssertionError(handoff)
     if handoff["domain0_next_arg1_fits_dram"] is not True:
         raise AssertionError(handoff)
-    if handoff["domain0_next_arg1_clear_of_kernel_low_window"] is not True:
+    if handoff["domain0_next_arg1_clear_of_kernel_low_window"] is not False:
         raise AssertionError(handoff)
 
     bad_handoff = smoke.parse_opensbi_domain_handoff(
@@ -928,6 +1030,40 @@ Domain0 Next Mode         : S-mode
         raise AssertionError(bad_handoff)
     if bad_handoff["domain0_next_arg1_in_dram"] is not False:
         raise AssertionError(bad_handoff)
+
+
+def test_active_live_handoff_overrides_stale_canonical_log() -> None:
+    old_root = smoke.ROOT
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            live_log = tmp_path / "external/chipyard/sims/verilator/output/live.log"
+            live_log.parent.mkdir(parents=True)
+            live_log.write_text(
+                "\n".join(
+                    [
+                        "OpenSBI v1.2",
+                        "Domain0 Next Address      : 0x0000000080200000",
+                        "Domain0 Next Arg1         : 0x0000000080b00000",
+                        "Domain0 Next Mode         : S-mode",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            smoke.ROOT = tmp_path
+            text, source = smoke.handoff_observable_text_for_report(
+                "Domain0 Next Arg1         : 0x0000000088000000\n",
+                [{"pid": 1234}],
+                {"path": "external/chipyard/sims/verilator/output/live.log"},
+            )
+            if source != "active_live_log":
+                raise AssertionError((source, text))
+            handoff = smoke.parse_opensbi_domain_handoff(text, 4096)
+            if handoff["domain0_next_arg1_matches_expected"] is not True:
+                raise AssertionError(handoff)
+    finally:
+        smoke.ROOT = old_root
 
 
 def test_fdt_handoff_diagnosis_classifies_long_libfdt_loop() -> None:
@@ -1158,12 +1294,14 @@ def main() -> int:
         test_firemarshal_payload_freshness_manifest_satisfies_mtime_drift,
         test_firemarshal_payload_config_blockers_detect_missing_hwprobe_packaging,
         test_kfrag_absent_disabled_symbol_is_not_missing,
+        test_firemarshal_overlay_init_is_payload_freshness_input,
         test_generated_model_artifact_failure_classifier_is_narrow,
         test_smoke_progress_classification_distinguishes_stages,
         test_quiet_completion_does_not_mask_nonquiet_payload_timeout,
         test_active_smoke_process_parser_keeps_commands_intact,
         test_active_simulator_artifact_users_detects_shared_simulator,
         test_live_sim_output_metadata_reports_latest_progress,
+        test_live_sim_output_metadata_reports_linux_memory_progress,
         test_uart_tx_reconstruction_classifies_opensbi_banner_only,
         test_active_attempt_metadata_prefers_current_rebuild_temp_log,
         test_active_attempt_metadata_reports_live_kernel_virtual_trace,

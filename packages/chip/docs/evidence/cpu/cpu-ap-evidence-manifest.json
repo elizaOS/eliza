@@ -70,6 +70,7 @@
       "claim_level": "required_for_ap_completion",
       "artifacts": ["build/evidence/cpu_ap/eliza_e1_opensbi_boot.log"],
       "required_markers": [
+        "OpenSBI v1.2",
         "Reset PC",
         "hart ID",
         "misa",
@@ -79,7 +80,9 @@
         "interrupt controller",
         "UART console",
         "DRAM base",
-        "OpenSBI next-stage handoff"
+        "OpenSBI next-stage handoff",
+        "Domain0 Next Arg1",
+        "0x0000000080b00000"
       ]
     },
     "linux_boot_transcript": {
@@ -120,7 +123,11 @@
       "required_markers": [
         "ISA profile",
         "misa",
-        "riscv_hwprobe",
+        "Linux CONFIG_MMU: CONFIG_MMU=y",
+        "riscv_hwprobe: syscall rc=0",
+        "riscv_hwprobe: key=mvendorid",
+        "riscv_hwprobe: key=marchid",
+        "riscv_hwprobe: key=ima_ext_0",
         "Zicsr",
         "Zifencei",
         "Sv39",

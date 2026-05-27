@@ -154,7 +154,7 @@
       "kernel_syscall_proxy"
     ]
   },
-  "generated_at_utc": "2026-05-24T06:30:28.279306+00:00",
+  "generated_at_utc": "2026-05-27T21:01:59.986213+00:00",
   "parameters": {
     "BIM_CTR_W": 2,
     "BIM_ENTRIES": 16384,
@@ -257,6 +257,9 @@
       90,
       195
     ],
+    "TAGE_PATH_HISTORY_BITS": 64,
+    "TAGE_PATH_HISTORY_SHIFT": 2,
+    "TAGE_PATH_HISTORY_TOKEN_BITS": 8,
     "TAGE_TABLES": 5,
     "TAGE_TAG_W": 8,
     "TAGE_USEFUL_RESET_PERIOD": 100000,
@@ -267,7 +270,7 @@
     "UFTB_WAYS": 4
   },
   "schema": "eliza.bpu_params.v1",
-  "source_revision": "596b1929a16f971da093a7ef16a8f871453b6b20",
+  "source_revision": "6ec0938aad3ad1ffb6020d7681712e6c6a73fe52",
   "sources": {
     "cbp5_trace_manifest": {
       "path": "docs/evidence/cpu_ap/cbp5-trace-manifest.json",
@@ -276,7 +279,7 @@
     },
     "contract": {
       "path": "docs/arch/branch-prediction.md",
-      "sha256": "08aaf84ecf5bb3f99e25457930ff31c22953d13c3dd67397e77ad2de7435a0e4"
+      "sha256": "83c084537ae3d3921a626ded41919ba40e681604747bde185d6b223e0b4ab992"
     },
     "manifest": {
       "path": "docs/generators/xiangshan/eliza-kunminghu-manifest.json",
@@ -284,11 +287,11 @@
     },
     "package": {
       "path": "rtl/cpu/bpu/bpu_pkg.sv",
-      "sha256": "74e0fece49f7aefb8e82552cea0bb579082e8e073cfc90ad52778ef4bd8589ca"
+      "sha256": "8ad0966bd87605f6b3517247bc33902f0cab504e1befa1c97a5c19dc2d931ad8"
     },
     "top": {
       "path": "rtl/cpu/bpu/bpu_top.sv",
-      "sha256": "5b270a37ce85b37743aa3f7c7d293cf87171be77b906e4c44a24d97b37ccdcac"
+      "sha256": "1d0733e426232be5c87b79f5fd6cf4b2b13cce491904836b00dd5aac3fd9f683"
     }
   },
   "status": "clean",
@@ -357,6 +360,8 @@
     "SC_LOCAL_HISTORY_ENTRIES": 1024,
     "SC_TABLES": 4,
     "TAGE_ENTRIES_TABLE": 4096,
+    "TAGE_PATH_HISTORY_BITS": 64,
+    "TAGE_PATH_HISTORY_TOKEN_BITS": 8,
     "TAGE_TABLES": 4,
     "UFTB_ENTRIES": 256,
     "UFTB_STEER_CONF_MIN": 2
@@ -372,7 +377,7 @@
     "cocotb": {
       "path": "build/reports/bpu/cocotb-aggregate.json",
       "present": true,
-      "sha256": "0d4e0e19865504cee98e692c694723e496bf3247ec0e7fef6974ed4891b689dd"
+      "sha256": "68cb7c9d8d6193e013fe0c463735599d1a6a8de094a31270f3fffab047540d10"
     },
     "formal": {
       "path": "build/reports/bpu/formal-status.yaml",
@@ -384,6 +389,106 @@
       "present": true,
       "sha256": "92a13a75c440d96ae9610be4c73535f9bc7d2ce1af489d6881b859ae07e88da0"
     }
+  },
+  "workload_agent_rtl_results_ref": {
+    "accuracy_claim": false,
+    "aggregate_mpki": 3.666617,
+    "android_claim": false,
+    "branch_replay_cap": null,
+    "branch_replay_window_mode": "prefix",
+    "cbp5_claim": false,
+    "command": "make mpki-eval-rtl-full-agent-shard",
+    "full_trace_replay": true,
+    "generated_at_utc": "2026-05-27T20:12:07.759112+00:00",
+    "harness": "cocotb-rtl-bpu_top",
+    "instruction_replay_fraction": 1.0,
+    "path": "docs/evidence/cpu_ap/mpki_results_workload_agent_rtl.json",
+    "present": true,
+    "replay_fraction": 1.0,
+    "replayed_branch_count": 10462382,
+    "replayed_instruction_count": 63293220,
+    "schema": "eliza.bpu_mpki.v1",
+    "sha256": "5fe805beca515b1616a8fc756085f7ec9fe5c02ef421bec899b724de5b2e6506",
+    "source_branch_count": 10462382,
+    "source_instruction_count": 63293220,
+    "spec2017_claim": false,
+    "trace_class": "qemu_rv64_workload",
+    "v8_claim": false
+  },
+  "workload_browser_build_crypto_rtl_results_ref": {
+    "accuracy_claim": false,
+    "aggregate_mpki": 56.309386,
+    "android_claim": false,
+    "branch_replay_cap": null,
+    "branch_replay_window_mode": "prefix",
+    "cbp5_claim": false,
+    "command": "make mpki-eval-rtl-full-browser-build-crypto-shard",
+    "full_trace_replay": true,
+    "generated_at_utc": "2026-05-27T18:36:24.671059+00:00",
+    "harness": "cocotb-rtl-bpu_top",
+    "instruction_replay_fraction": 1.0,
+    "path": "docs/evidence/cpu_ap/mpki_results_workload_browser_build_crypto_rtl.json",
+    "present": true,
+    "replay_fraction": 1.0,
+    "replayed_branch_count": 5379205,
+    "replayed_instruction_count": 35752068,
+    "schema": "eliza.bpu_mpki.v1",
+    "sha256": "8c5463f0236c8fadc89410fbb17d73296b9056e8b0a321d6b3f99874d6dacd54",
+    "source_branch_count": 5379205,
+    "source_instruction_count": 35752068,
+    "spec2017_claim": false,
+    "trace_class": "qemu_rv64_workload",
+    "v8_claim": false
+  },
+  "workload_compression_rtl_results_ref": {
+    "accuracy_claim": false,
+    "aggregate_mpki": 87.758541,
+    "android_claim": false,
+    "branch_replay_cap": null,
+    "branch_replay_window_mode": "prefix",
+    "cbp5_claim": false,
+    "command": "make mpki-eval-rtl-full-compression-shard",
+    "full_trace_replay": true,
+    "generated_at_utc": "2026-05-27T19:05:48.697454+00:00",
+    "harness": "cocotb-rtl-bpu_top",
+    "instruction_replay_fraction": 1.0,
+    "path": "docs/evidence/cpu_ap/mpki_results_workload_compression_rtl.json",
+    "present": true,
+    "replay_fraction": 1.0,
+    "replayed_branch_count": 5396802,
+    "replayed_instruction_count": 30273247,
+    "schema": "eliza.bpu_mpki.v1",
+    "sha256": "70e9b927dd00eae70034a695b1dcc6612c76eb8e7a6525c09f023ebc615c08cb",
+    "source_branch_count": 5396802,
+    "source_instruction_count": 30273247,
+    "spec2017_claim": false,
+    "trace_class": "qemu_rv64_workload",
+    "v8_claim": false
+  },
+  "workload_io_media_rtl_results_ref": {
+    "accuracy_claim": false,
+    "aggregate_mpki": 29.227677,
+    "android_claim": false,
+    "branch_replay_cap": null,
+    "branch_replay_window_mode": "prefix",
+    "cbp5_claim": false,
+    "command": "make mpki-eval-rtl-full-io-media-shard",
+    "full_trace_replay": true,
+    "generated_at_utc": "2026-05-27T17:51:41.076024+00:00",
+    "harness": "cocotb-rtl-bpu_top",
+    "instruction_replay_fraction": 1.0,
+    "path": "docs/evidence/cpu_ap/mpki_results_workload_io_media_rtl.json",
+    "present": true,
+    "replay_fraction": 1.0,
+    "replayed_branch_count": 2414579,
+    "replayed_instruction_count": 13939493,
+    "schema": "eliza.bpu_mpki.v1",
+    "sha256": "b966baf74059fc754479b97ea264913ecac3b6e1d36d0e56f2d3a166b7f772bc",
+    "source_branch_count": 2414579,
+    "source_instruction_count": 13939493,
+    "spec2017_claim": false,
+    "trace_class": "qemu_rv64_workload",
+    "v8_claim": false
   },
   "workload_mpki_results_ref": {
     "accuracy_claim": false,
@@ -530,6 +635,56 @@
         "workload": "video_blocks"
       }
     ]
+  },
+  "workload_proxy_rtl_results_ref": {
+    "accuracy_claim": false,
+    "aggregate_mpki": 68.192952,
+    "android_claim": false,
+    "branch_replay_cap": null,
+    "branch_replay_window_mode": "prefix",
+    "cbp5_claim": false,
+    "command": "make mpki-eval-rtl-full-proxy-shard",
+    "full_trace_replay": true,
+    "generated_at_utc": "2026-05-27T17:35:05.789812+00:00",
+    "harness": "cocotb-rtl-bpu_top",
+    "instruction_replay_fraction": 1.0,
+    "path": "docs/evidence/cpu_ap/mpki_results_workload_proxy_rtl.json",
+    "present": true,
+    "replay_fraction": 1.0,
+    "replayed_branch_count": 245163,
+    "replayed_instruction_count": 1167584,
+    "schema": "eliza.bpu_mpki.v1",
+    "sha256": "16f85b9bf0ba9b068b96cff6d95dd6eb92773aa63914d254b9b778076d82688a",
+    "source_branch_count": 245163,
+    "source_instruction_count": 1167584,
+    "spec2017_claim": false,
+    "trace_class": "qemu_rv64_workload",
+    "v8_claim": false
+  },
+  "workload_system_gpu_rtl_results_ref": {
+    "accuracy_claim": false,
+    "aggregate_mpki": 53.744268,
+    "android_claim": false,
+    "branch_replay_cap": null,
+    "branch_replay_window_mode": "prefix",
+    "cbp5_claim": false,
+    "command": "make mpki-eval-rtl-full-system-gpu-shard",
+    "full_trace_replay": true,
+    "generated_at_utc": "2026-05-27T18:03:59.638896+00:00",
+    "harness": "cocotb-rtl-bpu_top",
+    "instruction_replay_fraction": 1.0,
+    "path": "docs/evidence/cpu_ap/mpki_results_workload_system_gpu_rtl.json",
+    "present": true,
+    "replay_fraction": 1.0,
+    "replayed_branch_count": 1676661,
+    "replayed_instruction_count": 7610300,
+    "schema": "eliza.bpu_mpki.v1",
+    "sha256": "72b474791ffa82df3c7415005045a8f03deff38b4df0d430f19dd0cd82a68c8c",
+    "source_branch_count": 1676661,
+    "source_instruction_count": 7610300,
+    "spec2017_claim": false,
+    "trace_class": "qemu_rv64_workload",
+    "v8_claim": false
   },
   "workload_trace_manifest_ref": {
     "command": "make bpu-workload-trace-manifest-check",

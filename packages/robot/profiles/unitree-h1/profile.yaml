@@ -168,6 +168,10 @@ gait:
   foot_offset_m: -1.02
   default_height_m: 1.02
   controller: rl
+contact:
+  floor_geom_names: [floor]
+  left_foot_geom_names: [left_foot1, left_foot2, left_foot3]
+  right_foot_geom_names: [right_foot1, right_foot2, right_foot3]
 sensors:
   imu_noise_std: 0.005
   cameras:

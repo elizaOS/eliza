@@ -196,9 +196,9 @@ cross_checks:
 
 release_blockers:
   - production routed KiCad PCB source is present only as non-release local candidate evidence
-  - current KiCad PCB is a concept placeholder scaffold
-  - no routed copper segments or filled zones are present in the KiCad PCB
-  - PCB has no routed copper, filled zones, or DRC evidence
+  - routed KiCad PCB exists only as a blocked local candidate; production source remains a concept placeholder scaffold
+  - local routed KiCad candidate has copper segments but no release-approved zones, DRC, or signoff
+  - no release-approved routed copper, filled zones, or DRC evidence
   - candidate routed board STEP exists for review only; supplier-approved production STEP export is missing
   - supplier component STEP/B-rep models are missing
   - selected supplier response packs for display, camera, USB-C/side-key, cellular, and Wi-Fi/Bluetooth are missing

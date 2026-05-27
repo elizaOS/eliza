@@ -12,6 +12,15 @@ fi
 report="${ANDROID_SIM_BOOT_REPORT:-$repo_root/build/reports/android_sim_boot.json}"
 evidence_dir="$repo_root/docs/evidence/android"
 aosp_dir=${AOSP_DIR:-}
+aosp_dir_source=unset
+if [ -n "$aosp_dir" ]; then
+	aosp_dir_source=env
+elif [ "${ELIZA_DISABLE_AOSP_DIR_DEFAULTS:-0}" != "1" ] &&
+	[ -f /home/shaw/aosp/build/envsetup.sh ] &&
+	[ -d /home/shaw/aosp/device ]; then
+	aosp_dir=/home/shaw/aosp
+	aosp_dir_source=repo-default
+fi
 aosp_shell=${AOSP_SHELL:-bash}
 aosp_product=${AOSP_PRODUCT:-eliza_openagent_ai_soc_phone-trunk_staging-userdebug}
 aosp_cuttlefish_product=${AOSP_CUTTLEFISH_PRODUCT:-eliza_cf_riscv64_phone-trunk_staging-userdebug}
@@ -50,6 +59,7 @@ while [ "$#" -gt 0 ]; do
 				exit 2
 			fi
 			aosp_dir=$2
+			aosp_dir_source=arg
 			shift 2
 			;;
 		--run-cuttlefish)
@@ -313,6 +323,7 @@ write_report() {
   "reason": $(json_escape "$reason"),
   "next_step": $(json_escape "$next"),
   "aosp_dir": $(json_escape "${aosp_dir:-}"),
+  "aosp_dir_source": $(json_escape "$aosp_dir_source"),
   "aosp_product": $(json_escape "$aosp_product"),
   "run_cuttlefish": $(json_bool "$run_cuttlefish"),
   "run_cts": $(json_bool "$run_cts"),

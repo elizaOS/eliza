@@ -64,6 +64,9 @@ rationale.
 | TAGE_HIST_LEN | {8, 16, 44, 90, 195} | reach >= 100 | Geometric history, extended to 195 after mixed workload sweep. |
 | TAGE_USE_ALT_ON_NA | 0 | optional | Static global alternate-provider mode regresses; adaptive chooser below is used instead. |
 | TAGE_ALT_ON_NA_ENTRIES | 1024 | optional | Adaptive per-PC/provider use-alt chooser; capped 61-config sweep improved weighted MPKI by 0.1036. |
+| TAGE_PATH_HISTORY_BITS | 64 | 64 | Conditional TAGE folds a separate path-history stream into the direction-history index/tag hash. |
+| TAGE_PATH_HISTORY_TOKEN_BITS | 8 | 8 | Path tokens are 8-bit folded PC tokens, matching the ITTAGE path stream width while remaining independently sweepable. |
+| TAGE_PATH_HISTORY_SHIFT | 2 | optional | Low alignment bits are skipped before folding path tokens. |
 | BIM_ENTRIES | 16384 | 8192 | Base bimodal table. |
 | SC_TABLES | 6 | 4 | Wider statistical corrector promoted by full-trace finalist sweep. |
 | SC_ENTRIES_TABLE | 1024 | 512 | Doubled SC capacity for low-confidence TAGE corrections. |
@@ -124,6 +127,27 @@ saved provider/history metadata. `bpu_flush_t` is the explicit software or
 integration invalidation hook; it blocks same-cycle predictor updates,
 invalidates target-array entries, drops FTQ contents and pending L2 requests,
 and clears speculative/architectural histories plus RAS state.
+
+Predictor SRAM poisoning is fail-closed for the arrays currently carrying
+parity. uFTB/FTB/L2 FTB target entries store parity over their context, tag,
+target, branch-kind, confidence, and slot payloads, and corrupted matches are
+treated as misses instead of redirects. Conditional TAGE tagged entries store
+parity over valid/tag/counter/useful state, so a corrupted provider is ignored
+and invalidated before clean retraining can allocate replacement state. The
+base bimodal fallback stores parity over its direction counter; a corrupt
+counter reads as the reset weak-taken seed and is repaired with clean parity on
+the next update. Statistical-corrector counter and optional bias banks also
+store parity; corrupted SC entries contribute a neutral zero vote until normal
+training rewrites them. Loop-predictor entries store parity over their
+steering payload; corrupted loop entries miss and become replacement victims
+instead of supplying overrides. The H2P sidecar stores parity next to each
+signed weight; corrupted weights contribute neutral zero to the dot product
+until ordinary training rewrites clean parity. Local-direction history, PHT,
+and local-meta counters also carry parity; corrupted local state disables the
+local override path and update-side repair restarts from neutral weak state.
+ITTAGE indirect-target entries store parity across valid/tag/target/counter/
+useful payloads; corrupted indirect entries are ignored for lookup and can be
+replaced by normal misprediction allocation.
 
 The L1 FTB is backed by an 8-way L2 FTB. Resolver updates train both tiers;
 an L1 FTB miss issues a one-cycle-delayed L2 lookup, and a matching non-stale
@@ -602,6 +626,12 @@ downstream fetch logic can accept both lanes.
 | SymbiYosys formal | `make formal-bpu` | `build/reports/bpu/formal-status.yaml` |
 | MPKI eval (RTL, cocotb) | `make mpki-eval-rtl` | `docs/evidence/cpu_ap/mpki_results_synthetic.json` |
 | QEMU-RV64 workload replay (RTL, cocotb) | `make mpki-eval-rtl`, `make mpki-eval-rtl-stratified`, `make mpki-eval-rtl-full` | `docs/evidence/cpu_ap/mpki_results_workload_rtl.json` |
+| Full proxy RTL replay shard | `make mpki-eval-rtl-full-proxy-shard` | `docs/evidence/cpu_ap/mpki_results_workload_proxy_rtl.json` |
+| Full IO/media RTL replay shard | `make mpki-eval-rtl-full-io-media-shard` | `docs/evidence/cpu_ap/mpki_results_workload_io_media_rtl.json` |
+| Full system/GPU RTL replay shard | `make mpki-eval-rtl-full-system-gpu-shard` | `docs/evidence/cpu_ap/mpki_results_workload_system_gpu_rtl.json` |
+| Full browser/build/crypto RTL replay shard | `make mpki-eval-rtl-full-browser-build-crypto-shard` | `docs/evidence/cpu_ap/mpki_results_workload_browser_build_crypto_rtl.json` |
+| Full compression RTL replay shard | `make mpki-eval-rtl-full-compression-shard` | `docs/evidence/cpu_ap/mpki_results_workload_compression_rtl.json` |
+| Full agent RTL replay shard | `make mpki-eval-rtl-full-agent-shard` | `docs/evidence/cpu_ap/mpki_results_workload_agent_rtl.json` |
 | MPKI eval (model only) | `make mpki-eval-model` | `benchmarks/results/branch-prediction-mpki-model.json` |
 | Full MPKI evidence refresh | `make branch-prediction-refresh` | Regenerates model/RTL MPKI evidence, then runs `make branch-prediction-check` |
 | E1 RTL vs CVA6 model MPKI | `make bpu-vs-cva6-mpki-rtl` | `docs/evidence/cpu_ap/bpu-vs-cva6-mpki-rtl.json` |

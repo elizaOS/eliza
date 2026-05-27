@@ -135,7 +135,7 @@ async def run_inference(
     joint_names = [j.name for j in profile.kinematics.joints]
     home_rad = np.array([j.home_rad for j in profile.kinematics.joints], dtype=np.float32)
 
-    policy = TextConditionedPolicy(Path(checkpoint_dir))
+    policy = TextConditionedPolicy(Path(checkpoint_dir), strict_manifest=True)
     if policy.manifest.profile_id != config.profile_id:
         raise ValueError(
             "checkpoint profile mismatch: "

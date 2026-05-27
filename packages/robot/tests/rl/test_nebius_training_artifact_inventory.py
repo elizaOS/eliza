@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from scripts.inventory_nebius_training_artifacts import (
@@ -26,16 +27,46 @@ def test_inventory_reports_missing_artifacts(tmp_path: Path) -> None:
 
 def test_inventory_accepts_complete_artifact_tree(tmp_path: Path) -> None:
     run = tmp_path / "run"
-    for rel in REQUIRED_ARTIFACTS.values():
+    semantic_ok_reports = {
+        "validation_report": {"ok": True},
+        "finalization_report": {"ok": True},
+        "training_comparison_report": {"ok": True},
+        "production_video_review": {"ok": True},
+    }
+    for name, rel in REQUIRED_ARTIFACTS.items():
         path = run / rel
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("artifact\n")
+        if name in semantic_ok_reports:
+            path.write_text(json.dumps(semantic_ok_reports[name]) + "\n")
+        elif name == "curriculum_eval_report":
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema": "robot-policy-curriculum-eval-v1",
+                        "tasks": [],
+                    }
+                )
+                + "\n"
+            )
+        elif name == "curriculum_eval_native":
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema": "robot-text-policy-eval-v1",
+                        "tasks": {},
+                    }
+                )
+                + "\n"
+            )
+        else:
+            path.write_text("artifact\n")
 
     report = inventory_nebius_training_artifacts(run)
     write_markdown(report, run / "inventory.md")
 
     assert report["ok"] is True
     assert report["present_count"] == report["required_count"]
+    assert report["semantic_ok_count"] == report["required_count"]
     markdown = (run / "inventory.md").read_text()
     assert "complete" in markdown
     assert "Category Summary" in markdown
@@ -59,6 +90,60 @@ def test_inventory_rejects_zero_byte_required_artifacts(tmp_path: Path) -> None:
     )
     assert artifact["present"] is False
     assert artifact["bytes"] == 0
+
+
+def test_inventory_rejects_false_review_reports(tmp_path: Path) -> None:
+    run = tmp_path / "run"
+    for name, rel in REQUIRED_ARTIFACTS.items():
+        path = run / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if name in {
+            "validation_report",
+            "finalization_report",
+            "training_comparison_report",
+            "production_video_review",
+        }:
+            path.write_text(json.dumps({"ok": True}) + "\n")
+        else:
+            path.write_text("artifact\n")
+    (run / REQUIRED_ARTIFACTS["validation_report"]).write_text('{"ok": false}\n')
+
+    report = inventory_nebius_training_artifacts(run)
+
+    assert report["ok"] is False
+    assert "validation_report" in report["present"]
+    assert "validation_report" not in report["missing"]
+    assert "validation_report" in report["semantic_failed"]
+    artifact = next(
+        item for item in report["artifacts"] if item["name"] == "validation_report"
+    )
+    assert artifact["present"] is True
+    assert artifact["semantic_ok"] is False
+    assert artifact["semantic_reason"] == "ok_not_true"
+
+
+def test_inventory_rejects_false_production_video_review(tmp_path: Path) -> None:
+    run = tmp_path / "run"
+    for name, rel in REQUIRED_ARTIFACTS.items():
+        path = run / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if name in {
+            "validation_report",
+            "finalization_report",
+            "training_comparison_report",
+            "production_video_review",
+        }:
+            path.write_text(json.dumps({"ok": True}) + "\n")
+        else:
+            path.write_text("artifact\n")
+    (run / REQUIRED_ARTIFACTS["production_video_review"]).write_text(
+        '{"ok": false}\n'
+    )
+
+    report = inventory_nebius_training_artifacts(run)
+
+    assert report["ok"] is False
+    assert "production_video_review" in report["semantic_failed"]
 
 
 def test_inventory_does_not_require_closeout_status_it_writes_later() -> None:
@@ -90,6 +175,62 @@ def test_inventory_requires_obstacle_course_demo_artifacts() -> None:
     assert REQUIRED_ARTIFACTS["obstacle_course_demo_video"] == (
         "evidence/alberta_obstacle_course/obstacle_course_demo.mp4"
     )
+
+
+def test_inventory_requires_curriculum_eval_artifacts(tmp_path: Path) -> None:
+    assert REQUIRED_ARTIFACTS["curriculum_eval_report"] == (
+        "evidence/curriculum_eval/report.json"
+    )
+    assert REQUIRED_ARTIFACTS["curriculum_eval_native"] == (
+        "evidence/curriculum_eval/eval_text_policy.json"
+    )
+
+    report = inventory_nebius_training_artifacts(tmp_path / "run")
+
+    missing = report["categories"]["curriculum_eval"]["missing"]
+    assert "curriculum_eval_report" in missing
+    assert "curriculum_eval_native" in missing
+
+
+def test_inventory_rejects_curriculum_eval_schema_mismatch(tmp_path: Path) -> None:
+    run = tmp_path / "run"
+    for name, rel in REQUIRED_ARTIFACTS.items():
+        path = run / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if name in {
+            "validation_report",
+            "finalization_report",
+            "training_comparison_report",
+        }:
+            path.write_text(json.dumps({"ok": True}) + "\n")
+        elif name == "curriculum_eval_report":
+            path.write_text(
+                json.dumps({"schema": "robot-text-policy-eval-v1", "tasks": []})
+                + "\n"
+            )
+        elif name == "curriculum_eval_native":
+            path.write_text(
+                json.dumps(
+                    {
+                        "schema": "robot-text-policy-eval-v1",
+                        "tasks": {},
+                    }
+                )
+                + "\n"
+            )
+        else:
+            path.write_text("artifact\n")
+
+    report = inventory_nebius_training_artifacts(run)
+
+    assert report["ok"] is False
+    assert "curriculum_eval_report" in report["semantic_failed"]
+    artifact = next(
+        item
+        for item in report["artifacts"]
+        if item["name"] == "curriculum_eval_report"
+    )
+    assert artifact["semantic_reason"] == "schema_mismatch"
 
 
 def test_inventory_requires_stage_status_reports() -> None:
@@ -140,6 +281,29 @@ def test_inventory_requires_production_video_telemetry_sidecars() -> None:
     }
 
     assert required.issubset(REQUIRED_ARTIFACTS)
+
+
+def test_inventory_requires_all_seven_production_video_commands() -> None:
+    commands = {
+        "stand_up",
+        "walk_forward",
+        "walk_backward",
+        "sidestep_left",
+        "sidestep_right",
+        "turn_left",
+        "turn_right",
+    }
+    for command in commands:
+        assert f"production_video_asimov_{command}" in REQUIRED_ARTIFACTS
+        assert f"production_video_telemetry_asimov_{command}" in REQUIRED_ARTIFACTS
+        assert f"production_video_contact_asimov_{command}" in REQUIRED_ARTIFACTS
+        for profile_key in ("hiwonder", "unitree_g1", "unitree_h1", "unitree_r1"):
+            assert f"multi_robot_video_{profile_key}_{command}" in REQUIRED_ARTIFACTS
+            assert (
+                f"multi_robot_video_telemetry_{profile_key}_{command}"
+                in REQUIRED_ARTIFACTS
+            )
+            assert f"multi_robot_contact_{profile_key}_{command}" in REQUIRED_ARTIFACTS
 
 
 def test_inventory_requires_non_asimov_multi_robot_video_mp4s() -> None:

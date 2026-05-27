@@ -180,16 +180,16 @@ captured_pinouts:
     function: usb_pd_controller
     package: QFN-96, 9x9 mm
     status: public_pinout_evidence_captured
-    completeness: interface_groups_only_per_pin_in_binary_datasheet_table
-    next_action: pull per-pin table from TI datasheet pp.5-9 or .bsdl from ti.com
+    completeness: full_1_to_59_pin_and_exposed_pad_table_captured_from_public_datasheet
+    next_action: cross-check against TI package drawing, IBIS/BSDL if available, and CM land-pattern review before production release
   - file: max77860-pinout.yaml
     part: MAX77860EWG+
     manufacturer: Analog Devices (Maxim)
     function: charger
     package: WLP-81 9x9 array, 0.4 mm pitch
     status: public_pinout_evidence_captured
-    completeness: interface_groups_only_per_bump_in_binary_datasheet_table
-    next_action: pull per-bump table from ADI datasheet pp.5-7
+    completeness: full_A1_to_J9_bump_table_captured_from_public_datasheet
+    next_action: cross-check against ADI package drawing, land pattern, stencil, and CM WLP process review before production release
 nda_gated_pinouts: []
 
 compute_blocker_resolution:
@@ -224,6 +224,7 @@ cross_checks:
   compute_buildable_from_public_data: true
   every_captured_file_present_on_disk: true
   every_captured_file_cites_public_url: true
+  complete_pin_table_file_count: 12
   captured_files_evidence_class: [public_supplier_datasheet, public_som_connector_pinout, public_hardware_design_pdf]
   pinout_footprint_freeze_yaml_untouched: true
   supplier_to_kicad_evidence_map_yaml_untouched: true

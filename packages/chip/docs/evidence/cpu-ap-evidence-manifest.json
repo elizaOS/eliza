@@ -58,7 +58,7 @@
         "satp",
         "TLB",
         "page table",
-        "Linux CONFIG_MMU"
+        "Linux CONFIG_MMU: CONFIG_MMU=y"
       ],
       "fail_if": [
         "missing MMU transcript",
@@ -216,37 +216,62 @@
       "capture_command": "python3 scripts/capture_cpu_ap_evidence.py intake opensbi-boot --source /path/to/opensbi-serial.log --command '/exact/external/boot command'",
       "min_bytes": 240,
       "raw_required_strings": [
-        "OpenSBI v",
+        "OpenSBI v1.2",
         "Platform Name",
         "Platform Timer Device",
         "Platform Console Device",
         "Firmware Base",
         "Runtime SBI Version",
         "Domain0 Next Address",
+        "Domain0 Next Arg1",
+        "0x0000000080b00000",
         "Domain0 Next Mode",
         "Boot HART ID",
         "Boot HART Base ISA"
+      ],
+      "raw_ordered_required_strings": [
+        "OpenSBI v1.2",
+        "Domain0 Next Address",
+        "Domain0 Next Arg1",
+        "0x0000000080b00000",
+        "Domain0 Next Mode"
       ],
       "required_strings": [
         "eliza-evidence: target=cpu_ap artifact=eliza_e1_opensbi_boot",
         "eliza-evidence: command=",
         "eliza-evidence: generated_manifest=",
-        "OpenSBI v",
+        "OpenSBI v1.2",
         "Platform Name",
         "Platform Timer Device",
         "Platform Console Device",
         "Firmware Base",
         "Runtime SBI Version",
         "Domain0 Next Address",
+        "Domain0 Next Arg1",
+        "0x0000000080b00000",
         "Domain0 Next Mode",
         "Boot HART ID",
         "Boot HART Base ISA",
         "eliza-evidence: status=PASS"
       ],
+      "ordered_required_strings": [
+        "OpenSBI v1.2",
+        "Domain0 Next Address",
+        "Domain0 Next Arg1",
+        "0x0000000080b00000",
+        "Domain0 Next Mode",
+        "eliza-evidence: status=PASS"
+      ],
       "forbidden_strings": [
         "software reference only",
         "qemu-virt",
-        "no real transcript"
+        "no real transcript",
+        "diagnostic only",
+        "diagnostic-only",
+        "fallback",
+        "synthetic OpenSBI",
+        "fake OpenSBI",
+        "banner only"
       ]
     },
     "linux_boot_log": {
@@ -257,6 +282,8 @@
       "capture_command": "python3 scripts/capture_cpu_ap_evidence.py intake linux-boot --source /path/to/linux-serial.log --command '/exact/external/boot command'",
       "min_bytes": 240,
       "raw_required_strings": [
+        "OpenSBI",
+        "Linux version",
         "Linux early console",
         "generated DTS hash",
         "memory node",
@@ -265,9 +292,37 @@
         "interrupt-controller node",
         "UART node",
         "chosen stdout",
-        "Linux CONFIG_MMU",
+        "Linux CONFIG_MMU: CONFIG_MMU=y",
         "initramfs start",
-        "e1 MMIO smoke result"
+        "riscv_hwprobe: syscall rc=0",
+        "riscv_hwprobe: key=mvendorid",
+        "riscv_hwprobe: key=marchid",
+        "riscv_hwprobe: key=ima_ext_0",
+        "e1-npu-ml-smoke: PASS",
+        "device=/dev/e1-npu",
+        "require_npu=true",
+        "CPU fallback percent=0",
+        "e1 MMIO smoke result: PASS"
+      ],
+      "at_least_one": [
+        [
+          "Kernel command line:",
+          "Forcing kernel command line to:"
+        ]
+      ],
+      "raw_ordered_required_strings": [
+        "Linux early console",
+        "Linux CONFIG_MMU: CONFIG_MMU=y",
+        "Run /init as init process",
+        "initramfs start",
+        "riscv_hwprobe: syscall rc=0",
+        "riscv_hwprobe: key=mvendorid",
+        "riscv_hwprobe: key=marchid",
+        "riscv_hwprobe: key=ima_ext_0",
+        "e1-npu-ml-smoke: PASS",
+        "device=/dev/e1-npu",
+        "CPU fallback percent=0",
+        "e1 MMIO smoke result: PASS"
       ],
       "required_strings": [
         "eliza-evidence: target=cpu_ap artifact=eliza_e1_linux_boot",
@@ -281,15 +336,50 @@
         "interrupt-controller node",
         "UART node",
         "chosen stdout",
-        "Linux CONFIG_MMU",
+        "Linux CONFIG_MMU: CONFIG_MMU=y",
         "initramfs start",
-        "e1 MMIO smoke result",
+        "riscv_hwprobe: syscall rc=0",
+        "riscv_hwprobe: key=mvendorid",
+        "riscv_hwprobe: key=marchid",
+        "riscv_hwprobe: key=ima_ext_0",
+        "e1-npu-ml-smoke: PASS",
+        "device=/dev/e1-npu",
+        "require_npu=true",
+        "CPU fallback percent=0",
+        "e1 MMIO smoke result: PASS",
+        "eliza-evidence: status=PASS"
+      ],
+      "ordered_required_strings": [
+        "Linux early console",
+        "Linux CONFIG_MMU: CONFIG_MMU=y",
+        "Run /init as init process",
+        "initramfs start",
+        "riscv_hwprobe: syscall rc=0",
+        "riscv_hwprobe: key=mvendorid",
+        "riscv_hwprobe: key=marchid",
+        "riscv_hwprobe: key=ima_ext_0",
+        "e1-npu-ml-smoke: PASS",
+        "device=/dev/e1-npu",
+        "CPU fallback percent=0",
+        "e1 MMIO smoke result: PASS",
         "eliza-evidence: status=PASS"
       ],
       "forbidden_strings": [
         "software reference only",
         "qemu-virt",
-        "no real transcript"
+        "no real transcript",
+        "Kernel panic",
+        "panic - not syncing",
+        "Oops",
+        "riscv_hwprobe: FAIL",
+        "e1-mmio-smoke: FAIL",
+        "e1-npu-ml-smoke: FAIL",
+        "CPU-only fallback rejected",
+        "device=/dev/mem generated-mmio",
+        "eliza-k",
+        "ignore_loglevel",
+        "initcall_debug",
+        "eliza-evidence: kernel_panic=1"
       ]
     },
     "trap_timer_irq_log": {
@@ -352,7 +442,11 @@
         "ISA profile",
         "RV64GC",
         "misa",
-        "riscv_hwprobe",
+        "Linux CONFIG_MMU: CONFIG_MMU=y",
+        "riscv_hwprobe: syscall rc=0",
+        "riscv_hwprobe: key=mvendorid",
+        "riscv_hwprobe: key=marchid",
+        "riscv_hwprobe: key=ima_ext_0",
         "Zicsr",
         "Zifencei",
         "Sv39",
@@ -371,7 +465,11 @@
         "ISA profile",
         "RV64GC",
         "misa",
-        "riscv_hwprobe",
+        "Linux CONFIG_MMU: CONFIG_MMU=y",
+        "riscv_hwprobe: syscall rc=0",
+        "riscv_hwprobe: key=mvendorid",
+        "riscv_hwprobe: key=marchid",
+        "riscv_hwprobe: key=ima_ext_0",
         "Zicsr",
         "Zifencei",
         "Sv39",
@@ -387,7 +485,9 @@
       "forbidden_strings": [
         "software reference only",
         "qemu-virt",
-        "no real transcript"
+        "no real transcript",
+        "riscv_hwprobe: FAIL",
+        "Linux hwprobe syscall: not executed by this M-mode bare-metal generated-AP probe"
       ]
     },
     "ap_benchmark_log": {
@@ -412,7 +512,8 @@
         "process corner count",
         "worst process corner",
         "frequency derate",
-        "pdk signoff claim=none"
+        "pdk signoff claim=none",
+        "STATUS: PASS chipyard.verilator_ap_benchmarks"
       ],
       "required_strings": [
         "eliza-evidence: target=cpu_ap artifact=eliza_e1_ap_benchmarks",
@@ -433,6 +534,7 @@
         "worst process corner",
         "frequency derate",
         "pdk signoff claim=none",
+        "STATUS: PASS chipyard.verilator_ap_benchmarks",
         "eliza-evidence: status=PASS"
       ],
       "forbidden_strings": [

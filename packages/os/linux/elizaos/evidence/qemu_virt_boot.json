@@ -2,7 +2,7 @@
   "boot_completed": true,
   "claim_boundary": "qemu_virt_boot_transcript_evidence_only_no_silicon_or_physical_board_claim",
   "cpus": 4,
-  "duration_s": 381,
+  "duration_s": 305,
   "forbidden_markers_present": [],
   "iso_boot_artifacts": {
     "found": {
@@ -13,8 +13,8 @@
     },
     "missing": []
   },
-  "iso_path": "/home/shaw/milady/eliza/packages/os/linux/elizaos/out/elizaos-linux-riscv64-default-20260524T030430Z.iso",
-  "iso_sha256": "0816de4b5b8ea33698a22d07e42d51b756b70a5b1831b2640e640b5b30aed1a2",
+  "iso_path": "/home/shaw/milady/eliza/packages/os/linux/elizaos/out/elizaos-linux-riscv64-gui-20260527T181540Z.iso",
+  "iso_sha256": "69e27b799a0617b5c1eaaf7dd4eef330fe29c3b2364a22cb7c27c9777fb3c0a7",
   "markers_found": [
     "Linux version",
     "elizaos-firstboot-ready",
@@ -27,9 +27,9 @@
   "provenance": "qemu_virt",
   "qemu_exit_code": 0,
   "schema": "eliza.os.linux.qemu_virt_boot.v1",
-  "start_utc": "2026-05-24T03:44:14Z",
-  "timeout_s": 1200,
-  "transcript_path": "evidence/qemu_virt_boot_20260524T030430Z.transcript.log",
-  "transcript_sha256": "a23b0f40a05437df882c76a0c0ae49d7de57c85a8222e3ce3d374f32f1adfbdf",
+  "start_utc": "2026-05-27T20:56:26Z",
+  "timeout_s": 600,
+  "transcript_path": "evidence/qemu_virt_boot.transcript.log",
+  "transcript_sha256": "524fb8feec968cdcf6195a020cf7b5d9dc6041dd5dd1b265dd075a1ff2c0a69c",
   "u_boot_path": null
 }

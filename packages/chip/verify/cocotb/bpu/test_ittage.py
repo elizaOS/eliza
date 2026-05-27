@@ -16,6 +16,11 @@ async def reset(dut):
     dut.upd_target.value = 0
     dut.upd_misp.value = 0
     dut.upd_provider.value = 0
+    dut.test_corrupt_parity_valid.value = 0
+    dut.test_corrupt_parity_table.value = 0
+    dut.test_corrupt_parity_pc.value = 0
+    dut.test_corrupt_parity_hist.value = 0
+    dut.test_corrupt_parity_way.value = 0
     dut.probe_table.value = 0
     dut.probe_idx.value = 0
     for _ in range(4):
@@ -26,7 +31,7 @@ async def reset(dut):
 
 VADDR_W = 39
 TAGE_HIST_LEN_MAX = 195
-ITT_IDX_W = 11
+ITT_IDX_W = 10
 ITTAGE_TAG_W = 11
 ITTAGE_ENTRIES = (1024, 1024, 2048, 2048, 2048)
 ITTAGE_WAYS = 2
@@ -176,6 +181,65 @@ async def ittage_misprediction_allocates(dut):
     # If we hit, the target must be the trained one.
     if int(dut.lkp_hit.value):
         assert int(dut.lkp_target.value) == target
+    await RisingEdge(dut.clk)
+    dut.lkp_valid.value = 0
+
+
+@cocotb.test()
+async def ittage_parity_error_invalidates_indirect_target(dut):
+    """A corrupted ITTAGE entry must miss instead of redirecting fetch."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    table = 4
+    pc = 0x9000_2400
+    target = 0x9000_6400
+    dut.upd_valid.value = 1
+    dut.upd_pc.value = pc
+    dut.upd_hist.value = 0
+    dut.upd_target.value = target
+    dut.upd_misp.value = 1
+    dut.upd_provider.value = table
+    await RisingEdge(dut.clk)
+    dut.upd_valid.value = 0
+    await RisingEdge(dut.clk)
+
+    dut.lkp_valid.value = 1
+    dut.lkp_pc.value = pc
+    dut.lkp_hist.value = 0
+    await Timer(1, units="ps")
+    assert int(dut.lkp_hit.value) == 1
+    assert int(dut.lkp_provider.value) == table + 1
+    assert int(dut.lkp_target.value) == target
+
+    dut.test_corrupt_parity_table.value = table
+    dut.test_corrupt_parity_pc.value = pc
+    dut.test_corrupt_parity_hist.value = 0
+    for way in range(ITTAGE_WAYS):
+        dut.test_corrupt_parity_valid.value = 1
+        dut.test_corrupt_parity_way.value = way
+        await RisingEdge(dut.clk)
+    dut.test_corrupt_parity_valid.value = 0
+    await Timer(1, units="ps")
+    assert int(dut.lkp_hit.value) == 0
+
+    dut.lkp_valid.value = 0
+    dut.upd_valid.value = 1
+    dut.upd_pc.value = pc
+    dut.upd_hist.value = 0
+    dut.upd_target.value = target
+    dut.upd_misp.value = 1
+    dut.upd_provider.value = table
+    await RisingEdge(dut.clk)
+    dut.upd_valid.value = 0
+    await RisingEdge(dut.clk)
+
+    dut.lkp_valid.value = 1
+    dut.lkp_pc.value = pc
+    dut.lkp_hist.value = 0
+    await Timer(1, units="ps")
+    assert int(dut.lkp_hit.value) == 1
+    assert int(dut.lkp_target.value) == target
     await RisingEdge(dut.clk)
     dut.lkp_valid.value = 0
 

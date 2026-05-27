@@ -71,15 +71,24 @@ module bpu_top
     // -----------------------------------------------------------------------
     logic [TAGE_HIST_LEN_MAX-1:0] ghist_spec_q;
     logic [TAGE_HIST_LEN_MAX-1:0] ghist_arch_q;
+    localparam int unsigned TAGE_PATH_HISTORY_PHYS_BITS = 64;
+    localparam int unsigned TAGE_PATH_HISTORY_PAD =
+        TAGE_HIST_LEN_MAX - TAGE_PATH_HISTORY_PHYS_BITS;
     localparam int unsigned ITTAGE_TARGET_HISTORY_PAD =
         TAGE_HIST_LEN_MAX - ITTAGE_TARGET_HISTORY_BITS;
     localparam int unsigned ITTAGE_PATH_HISTORY_PHYS_BITS = 64;
     localparam int unsigned ITTAGE_PATH_HISTORY_PAD =
         TAGE_HIST_LEN_MAX - ITTAGE_PATH_HISTORY_PHYS_BITS;
+    logic [TAGE_PATH_HISTORY_PHYS_BITS-1:0] tage_path_hist_spec_q;
+    logic [TAGE_PATH_HISTORY_PHYS_BITS-1:0] tage_path_hist_arch_q;
     logic [ITTAGE_TARGET_HISTORY_BITS-1:0] ittage_target_hist_spec_q;
     logic [ITTAGE_TARGET_HISTORY_BITS-1:0] ittage_target_hist_arch_q;
     logic [ITTAGE_PATH_HISTORY_PHYS_BITS-1:0] ittage_path_hist_spec_q;
     logic [ITTAGE_PATH_HISTORY_PHYS_BITS-1:0] ittage_path_hist_arch_q;
+    logic [TAGE_HIST_LEN_MAX-1:0] tage_path_hist_spec_ext;
+    logic [TAGE_HIST_LEN_MAX-1:0] tage_path_hist_arch_ext;
+    logic [TAGE_HIST_LEN_MAX-1:0] tage_lkp_hist;
+    logic [TAGE_HIST_LEN_MAX-1:0] tage_upd_hist;
     logic [TAGE_HIST_LEN_MAX-1:0] ittage_target_hist_spec_ext;
     logic [TAGE_HIST_LEN_MAX-1:0] ittage_target_hist_arch_ext;
     logic [TAGE_HIST_LEN_MAX-1:0] ittage_path_hist_spec_ext;
@@ -108,6 +117,7 @@ module bpu_top
     logic                         replay_ras_restore_valid;
     logic [VADDR_W-1:0]           replay_ras_restore_addr;
     logic [TAGE_HIST_LEN_MAX-1:0] redirect_ghist_spec;
+    logic [TAGE_PATH_HISTORY_PHYS_BITS-1:0] redirect_tage_path_hist_spec;
     logic [ITTAGE_TARGET_HISTORY_BITS-1:0] redirect_target_hist_spec;
     logic [ITTAGE_PATH_HISTORY_PHYS_BITS-1:0] redirect_path_hist_spec;
     logic                         push_ready;
@@ -155,6 +165,21 @@ module bpu_top
     /* verilator lint_on UNUSEDSIGNAL */
 
     /* verilator lint_off UNUSEDSIGNAL */
+    function automatic logic [TAGE_PATH_HISTORY_PHYS_BITS-1:0] tage_path_hist_push(
+        input logic [TAGE_PATH_HISTORY_PHYS_BITS-1:0] hist,
+        input logic [VADDR_W-1:0] pc
+    );
+        logic [TAGE_PATH_HISTORY_TOKEN_BITS-1:0] token;
+        token = '0;
+        for (int unsigned i = TAGE_PATH_HISTORY_SHIFT; i < VADDR_W; i++) begin
+            token[(i - TAGE_PATH_HISTORY_SHIFT) % TAGE_PATH_HISTORY_TOKEN_BITS] =
+                token[(i - TAGE_PATH_HISTORY_SHIFT) % TAGE_PATH_HISTORY_TOKEN_BITS] ^ pc[i];
+        end
+        tage_path_hist_push = {token, hist[TAGE_PATH_HISTORY_PHYS_BITS-1:TAGE_PATH_HISTORY_TOKEN_BITS]};
+    endfunction
+    /* verilator lint_on UNUSEDSIGNAL */
+
+    /* verilator lint_off UNUSEDSIGNAL */
     function automatic logic [LOOP_PATH_SIG_W-1:0] loop_path_signature(
         input logic [TAGE_HIST_LEN_MAX-1:0] context_hist,
         input logic [VADDR_W-1:0] pc
@@ -176,6 +201,12 @@ module bpu_top
         ittage_target_hist_from_ext = hist[TAGE_HIST_LEN_MAX-1 -: ITTAGE_TARGET_HISTORY_BITS];
     endfunction
 
+    function automatic logic [TAGE_PATH_HISTORY_PHYS_BITS-1:0] tage_path_hist_from_ext(
+        input logic [TAGE_HIST_LEN_MAX-1:0] hist
+    );
+        tage_path_hist_from_ext = hist[TAGE_HIST_LEN_MAX-1 -: TAGE_PATH_HISTORY_PHYS_BITS];
+    endfunction
+
     function automatic logic [ITTAGE_PATH_HISTORY_PHYS_BITS-1:0] ittage_path_hist_from_ext(
         input logic [TAGE_HIST_LEN_MAX-1:0] hist
     );
@@ -183,6 +214,16 @@ module bpu_top
     endfunction
     /* verilator lint_on UNUSEDSIGNAL */
 
+    assign tage_path_hist_spec_ext =
+        (TAGE_PATH_HISTORY_BITS == 0) ? '0 :
+        {tage_path_hist_spec_q, {TAGE_PATH_HISTORY_PAD{1'b0}}};
+    assign tage_path_hist_arch_ext =
+        (TAGE_PATH_HISTORY_BITS == 0) ? '0 :
+        {tage_path_hist_arch_q, {TAGE_PATH_HISTORY_PAD{1'b0}}};
+    assign tage_lkp_hist = ghist_spec_q ^ tage_path_hist_spec_ext;
+    assign tage_upd_hist =
+        (ftq_replay_valid ? ftq_replay_entry.ghist_snapshot : ghist_arch_q) ^
+        (ftq_replay_valid ? ftq_replay_entry.tage_path_hist_snapshot : tage_path_hist_arch_ext);
     assign ittage_target_hist_spec_ext =
         {ittage_target_hist_spec_q, {ITTAGE_TARGET_HISTORY_PAD{1'b0}}};
     assign ittage_target_hist_arch_ext =
@@ -245,6 +286,14 @@ module bpu_top
         if (resolve.actual_kind == BR_COND) begin
             redirect_ghist_spec = {replay_tage_hist[TAGE_HIST_LEN_MAX-2:0],
                                    resolve.actual_taken};
+        end
+
+        redirect_tage_path_hist_spec = ftq_replay_valid ?
+            tage_path_hist_from_ext(ftq_replay_entry.tage_path_hist_snapshot) :
+            tage_path_hist_arch_q;
+        if (TAGE_PATH_HISTORY_BITS != 0 && resolve.actual_kind != BR_NONE) begin
+            redirect_tage_path_hist_spec =
+                tage_path_hist_push(redirect_tage_path_hist_spec, resolve.pc);
         end
 
         redirect_target_hist_spec = ftq_replay_valid ?
@@ -362,6 +411,7 @@ module bpu_top
     logic [7:0]            l2_req_epoch_q;
     /* verilator lint_off UNUSEDSIGNAL */
     logic [TAGE_HIST_LEN_MAX-1:0] l2_req_ghist_snapshot_q;
+    logic [TAGE_PATH_HISTORY_PHYS_BITS-1:0] l2_req_tage_path_hist_snapshot_q;
     /* verilator lint_on UNUSEDSIGNAL */
     logic [ITTAGE_TARGET_HISTORY_BITS-1:0] l2_req_target_hist_snapshot_q;
     logic [ITTAGE_PATH_HISTORY_PHYS_BITS-1:0] l2_req_path_hist_snapshot_q;
@@ -612,6 +662,7 @@ module bpu_top
             l2_req_ftq_ptr_q <= '0;
             l2_req_epoch_q <= '0;
             l2_req_ghist_snapshot_q <= '0;
+            l2_req_tage_path_hist_snapshot_q <= '0;
             l2_req_target_hist_snapshot_q <= '0;
             l2_req_path_hist_snapshot_q <= '0;
             l2_req_ras_top_q <= '0;
@@ -634,6 +685,7 @@ module bpu_top
                 l2_req_ftq_ptr_q <= ftq_push_ptr;
                 l2_req_epoch_q <= bpu_epoch_q;
                 l2_req_ghist_snapshot_q <= ghist_spec_q;
+                l2_req_tage_path_hist_snapshot_q <= tage_path_hist_spec_q;
                 l2_req_target_hist_snapshot_q <= ittage_target_hist_spec_q;
                 l2_req_path_hist_snapshot_q <= ittage_path_hist_spec_q;
                 l2_req_ras_top_q <= ras_top_idx;
@@ -690,7 +742,7 @@ module bpu_top
         .rst_n          (rst_n),
         .lkp_valid      (lkp_fire),
         .lkp_pc         (ftb_first_slot_context_pc),
-        .lkp_hist       (ghist_spec_q),
+        .lkp_hist       (tage_lkp_hist),
         .lkp_taken      (tage_taken),
         .lkp_taken_alt  (tage_taken_alt),
         .lkp_hit_vec    (tage_hit_vec),
@@ -698,7 +750,7 @@ module bpu_top
         .lkp_provider_taken(tage_provider_taken),
         .upd_valid      (resolve_update_valid && resolve.actual_kind == BR_COND),
         .upd_pc         (resolve_context_pc),
-        .upd_hist       (replay_tage_hist),
+        .upd_hist       (tage_upd_hist),
         .upd_taken      (resolve.actual_taken),
         .upd_misp       (resolve.misprediction),
         .upd_provider   (replay_tage_provider),
@@ -766,7 +818,10 @@ module bpu_top
         .upd_path_hist  (ftq_replay_valid ?
             ittage_path_hist_from_ext(ftq_replay_entry.ittage_path_hist_snapshot) :
             ittage_path_hist_arch_q),
-        .upd_taken      (resolve.actual_taken)
+        .upd_taken      (resolve.actual_taken),
+        .test_corrupt_parity_valid(1'b0),
+        .test_corrupt_parity_pc('0),
+        .test_corrupt_parity_feature('0)
     );
 
     typedef logic signed [H2P_META_CTR_W-1:0] h2p_meta_ctr_t;
@@ -838,15 +893,23 @@ module bpu_top
     typedef logic signed [LOCAL_DIR_META_CTR_W-1:0] local_dir_meta_ctr_t;
 
     logic [LOCAL_DIR_HIST_W-1:0] local_dir_hist_q [LOCAL_DIR_ENTRIES];
+    logic                        local_dir_hist_parity_q [LOCAL_DIR_ENTRIES];
     local_dir_ctr_t local_dir_ctr_q [LOCAL_DIR_ENTRIES][LOCAL_DIR_PHT_ENTRIES];
+    logic           local_dir_ctr_parity_q [LOCAL_DIR_ENTRIES][LOCAL_DIR_PHT_ENTRIES];
     local_dir_meta_ctr_t local_dir_meta_ctr_q [LOCAL_DIR_META_ENTRIES];
+    logic                local_dir_meta_parity_q [LOCAL_DIR_META_ENTRIES];
     logic [LOCAL_DIR_IDX_W-1:0] local_dir_lkp_idx;
     logic [LOCAL_DIR_IDX_W-1:0] local_dir_upd_idx;
     logic [LOCAL_DIR_META_IDX_W-1:0] local_dir_meta_lkp_idx;
     logic [LOCAL_DIR_META_IDX_W-1:0] local_dir_meta_upd_idx;
     logic [LOCAL_DIR_HIST_W-1:0] local_dir_lkp_hist;
     logic [LOCAL_DIR_HIST_W-1:0] local_dir_upd_hist;
+    logic local_dir_lkp_hist_ok;
+    logic local_dir_upd_hist_ok;
+    logic local_dir_lkp_ctr_ok;
+    logic local_dir_meta_lkp_ok;
     local_dir_ctr_t local_dir_lkp_ctr;
+    local_dir_meta_ctr_t local_dir_meta_lkp_ctr;
     logic local_dir_conf;
     logic local_dir_taken;
     logic local_dir_meta_allow;
@@ -861,18 +924,36 @@ module bpu_top
         ftb_first_slot_context_pc[2 +: LOCAL_DIR_META_IDX_W];
     assign local_dir_meta_upd_idx =
         resolve_context_pc[2 +: LOCAL_DIR_META_IDX_W];
-    assign local_dir_lkp_hist = local_dir_hist_q[local_dir_lkp_idx];
-    assign local_dir_upd_hist = local_dir_hist_q[local_dir_upd_idx];
+    assign local_dir_lkp_hist_ok =
+        local_dir_hist_parity_q[local_dir_lkp_idx] ==
+        (^local_dir_hist_q[local_dir_lkp_idx]);
+    assign local_dir_upd_hist_ok =
+        local_dir_hist_parity_q[local_dir_upd_idx] ==
+        (^local_dir_hist_q[local_dir_upd_idx]);
+    assign local_dir_lkp_hist =
+        local_dir_lkp_hist_ok ? local_dir_hist_q[local_dir_lkp_idx] : '0;
+    assign local_dir_upd_hist =
+        local_dir_upd_hist_ok ? local_dir_hist_q[local_dir_upd_idx] : '0;
     assign local_dir_lkp_ctr =
         local_dir_ctr_q[local_dir_lkp_idx][local_dir_lkp_hist];
+    assign local_dir_lkp_ctr_ok =
+        local_dir_ctr_parity_q[local_dir_lkp_idx][local_dir_lkp_hist] ==
+        (^local_dir_lkp_ctr);
     assign local_dir_taken = local_dir_lkp_ctr[1];
+    assign local_dir_meta_lkp_ctr = local_dir_meta_ctr_q[local_dir_meta_lkp_idx];
+    assign local_dir_meta_lkp_ok =
+        local_dir_meta_parity_q[local_dir_meta_lkp_idx] ==
+        (^local_dir_meta_lkp_ctr);
     assign local_dir_conf = (LOCAL_DIR_ENABLE != 0) &&
+                            local_dir_lkp_hist_ok &&
+                            local_dir_lkp_ctr_ok &&
                             ((local_dir_lkp_ctr == 2'b00) ||
                              (local_dir_lkp_ctr == 2'b11));
     assign local_dir_meta_allow =
         (LOCAL_DIR_META_ENABLE == 0) ||
-        (local_dir_meta_ctr_q[local_dir_meta_lkp_idx] >=
-         local_dir_meta_ctr_t'(LOCAL_DIR_META_THRESHOLD));
+        (local_dir_meta_lkp_ok &&
+         (local_dir_meta_lkp_ctr >=
+          local_dir_meta_ctr_t'(LOCAL_DIR_META_THRESHOLD)));
     assign local_dir_meta_side_correct =
         (replay_local_dir_taken == resolve.actual_taken);
     assign local_dir_meta_base_correct =
@@ -883,12 +964,15 @@ module bpu_top
             /* verilator lint_off UNUSEDLOOP */
             for (int unsigned i = 0; i < LOCAL_DIR_ENTRIES; i++) begin
                 local_dir_hist_q[i] <= '0;
+                local_dir_hist_parity_q[i] <= 1'b0;
                 for (int unsigned h = 0; h < LOCAL_DIR_PHT_ENTRIES; h++) begin
                     local_dir_ctr_q[i][h] <= 2'b01;
+                    local_dir_ctr_parity_q[i][h] <= ^2'b01;
                 end
             end
             for (int unsigned i = 0; i < LOCAL_DIR_META_ENTRIES; i++) begin
                 local_dir_meta_ctr_q[i] <= '0;
+                local_dir_meta_parity_q[i] <= 1'b0;
             end
             /* verilator lint_on UNUSEDLOOP */
         end else if ((LOCAL_DIR_ENABLE != 0) &&
@@ -897,33 +981,70 @@ module bpu_top
                 replay_local_dir_train_valid &&
                 (local_dir_meta_side_correct != local_dir_meta_base_correct)) begin
                 if (local_dir_meta_side_correct) begin
-                    if (local_dir_meta_ctr_q[local_dir_meta_upd_idx] !=
-                        local_dir_meta_ctr_t'((1 << (LOCAL_DIR_META_CTR_W - 1)) - 1)) begin
+                    if ((local_dir_meta_parity_q[local_dir_meta_upd_idx] !=
+                         (^local_dir_meta_ctr_q[local_dir_meta_upd_idx])) ||
+                        (local_dir_meta_ctr_q[local_dir_meta_upd_idx] !=
+                        local_dir_meta_ctr_t'((1 << (LOCAL_DIR_META_CTR_W - 1)) - 1))) begin
                         local_dir_meta_ctr_q[local_dir_meta_upd_idx] <=
-                            local_dir_meta_ctr_q[local_dir_meta_upd_idx] +
+                            (local_dir_meta_parity_q[local_dir_meta_upd_idx] ==
+                             (^local_dir_meta_ctr_q[local_dir_meta_upd_idx]) ?
+                             local_dir_meta_ctr_q[local_dir_meta_upd_idx] : '0) +
                             local_dir_meta_ctr_t'(1);
+                        local_dir_meta_parity_q[local_dir_meta_upd_idx] <=
+                            ^((local_dir_meta_parity_q[local_dir_meta_upd_idx] ==
+                               (^local_dir_meta_ctr_q[local_dir_meta_upd_idx]) ?
+                               local_dir_meta_ctr_q[local_dir_meta_upd_idx] : '0) +
+                              local_dir_meta_ctr_t'(1));
                     end
                 end else begin
-                    if (local_dir_meta_ctr_q[local_dir_meta_upd_idx] !=
-                        local_dir_meta_ctr_t'(-(1 << (LOCAL_DIR_META_CTR_W - 1)))) begin
+                    if ((local_dir_meta_parity_q[local_dir_meta_upd_idx] !=
+                         (^local_dir_meta_ctr_q[local_dir_meta_upd_idx])) ||
+                        (local_dir_meta_ctr_q[local_dir_meta_upd_idx] !=
+                        local_dir_meta_ctr_t'(-(1 << (LOCAL_DIR_META_CTR_W - 1))))) begin
                         local_dir_meta_ctr_q[local_dir_meta_upd_idx] <=
-                            local_dir_meta_ctr_q[local_dir_meta_upd_idx] -
+                            (local_dir_meta_parity_q[local_dir_meta_upd_idx] ==
+                             (^local_dir_meta_ctr_q[local_dir_meta_upd_idx]) ?
+                             local_dir_meta_ctr_q[local_dir_meta_upd_idx] : '0) -
                             local_dir_meta_ctr_t'(1);
+                        local_dir_meta_parity_q[local_dir_meta_upd_idx] <=
+                            ^((local_dir_meta_parity_q[local_dir_meta_upd_idx] ==
+                               (^local_dir_meta_ctr_q[local_dir_meta_upd_idx]) ?
+                               local_dir_meta_ctr_q[local_dir_meta_upd_idx] : '0) -
+                              local_dir_meta_ctr_t'(1));
                     end
                 end
             end
             if (resolve.actual_taken) begin
-                if (local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist] != 2'b11)
+                if ((local_dir_ctr_parity_q[local_dir_upd_idx][local_dir_upd_hist] !=
+                     (^local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist])) ||
+                    (local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist] != 2'b11)) begin
                     local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist] <=
-                        local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist] + 2'b01;
+                        ((local_dir_ctr_parity_q[local_dir_upd_idx][local_dir_upd_hist] ==
+                          (^local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist])) ?
+                         local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist] : 2'b01) + 2'b01;
+                    local_dir_ctr_parity_q[local_dir_upd_idx][local_dir_upd_hist] <=
+                        ^(((local_dir_ctr_parity_q[local_dir_upd_idx][local_dir_upd_hist] ==
+                            (^local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist])) ?
+                           local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist] : 2'b01) + 2'b01);
+                end
             end else begin
-                if (local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist] != 2'b00)
+                if ((local_dir_ctr_parity_q[local_dir_upd_idx][local_dir_upd_hist] !=
+                     (^local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist])) ||
+                    (local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist] != 2'b00)) begin
                     local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist] <=
-                        local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist] - 2'b01;
+                        ((local_dir_ctr_parity_q[local_dir_upd_idx][local_dir_upd_hist] ==
+                          (^local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist])) ?
+                         local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist] : 2'b01) - 2'b01;
+                    local_dir_ctr_parity_q[local_dir_upd_idx][local_dir_upd_hist] <=
+                        ^(((local_dir_ctr_parity_q[local_dir_upd_idx][local_dir_upd_hist] ==
+                            (^local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist])) ?
+                           local_dir_ctr_q[local_dir_upd_idx][local_dir_upd_hist] : 2'b01) - 2'b01);
+                end
             end
             local_dir_hist_q[local_dir_upd_idx] <=
-                {local_dir_hist_q[local_dir_upd_idx][LOCAL_DIR_HIST_W-2:0],
-                 resolve.actual_taken};
+                {local_dir_upd_hist[LOCAL_DIR_HIST_W-2:0], resolve.actual_taken};
+            local_dir_hist_parity_q[local_dir_upd_idx] <=
+                ^{local_dir_upd_hist[LOCAL_DIR_HIST_W-2:0], resolve.actual_taken};
         end
     end
 
@@ -1015,7 +1136,10 @@ module bpu_top
                 ittage_target_hist_arch_ext,
             resolve_context_pc)),
         .upd_target (resolve.actual_target),
-        .upd_taken  (resolve.actual_taken)
+        .upd_taken  (resolve.actual_taken),
+        .test_corrupt_parity_valid(1'b0),
+        .test_corrupt_parity_pc('0),
+        .test_corrupt_parity_path_sig('0)
     );
 
     logic [VADDR_W-1:0]    ras_top_addr;
@@ -1217,7 +1341,12 @@ module bpu_top
         .upd_hist   (replay_ittage_hist),
         .upd_target (resolve.actual_target),
         .upd_misp   (resolve.misprediction),
-        .upd_provider(replay_ittage_provider)
+        .upd_provider(replay_ittage_provider),
+        .test_corrupt_parity_valid(1'b0),
+        .test_corrupt_parity_table('0),
+        .test_corrupt_parity_pc('0),
+        .test_corrupt_parity_hist('0),
+        .test_corrupt_parity_way('0)
     );
 
     // -----------------------------------------------------------------------
@@ -1426,6 +1555,7 @@ module bpu_top
         push_entry.ras_restore_valid = ras_top_valid;
         push_entry.ras_restore_addr = ras_top_addr;
         push_entry.ghist_snapshot = ghist_spec_q;
+        push_entry.tage_path_hist_snapshot = tage_path_hist_spec_ext;
         push_entry.ittage_hist_snapshot = ittage_lkp_hist;
         push_entry.ittage_target_hist_snapshot = ittage_target_hist_spec_ext;
         push_entry.ittage_path_hist_snapshot = ittage_path_hist_spec_ext;
@@ -1542,6 +1672,8 @@ module bpu_top
         if (!rst_n) begin
             ghist_spec_q <= '0;
             ghist_arch_q <= '0;
+            tage_path_hist_spec_q <= '0;
+            tage_path_hist_arch_q <= '0;
             ittage_target_hist_spec_q <= '0;
             ittage_target_hist_arch_q <= '0;
             ittage_path_hist_spec_q <= '0;
@@ -1550,6 +1682,8 @@ module bpu_top
             if (predictor_flush.valid) begin
                 ghist_spec_q <= '0;
                 ghist_arch_q <= '0;
+                tage_path_hist_spec_q <= '0;
+                tage_path_hist_arch_q <= '0;
                 ittage_target_hist_spec_q <= '0;
                 ittage_target_hist_arch_q <= '0;
                 ittage_path_hist_spec_q <= '0;
@@ -1560,6 +1694,7 @@ module bpu_top
                 // The current flush policy discards all younger entries on a
                 // misprediction, so no younger FTQ effects survive this point.
                 ghist_spec_q <= redirect_ghist_spec;
+                tage_path_hist_spec_q <= redirect_tage_path_hist_spec;
                 ittage_target_hist_spec_q <= redirect_target_hist_spec;
                 ittage_path_hist_spec_q <= redirect_path_hist_spec;
             end else if (ftq_patch_applied) begin
@@ -1570,6 +1705,11 @@ module bpu_top
                 if (l2_ftb_kind == BR_COND) begin
                     ghist_spec_q <=
                         {l2_req_ghist_snapshot_q[TAGE_HIST_LEN_MAX-2:0], 1'b1};
+                end
+                if (TAGE_PATH_HISTORY_BITS != 0 && l2_ftb_kind != BR_NONE) begin
+                    tage_path_hist_spec_q <=
+                        tage_path_hist_push(l2_req_tage_path_hist_snapshot_q,
+                                            l2_first_slot_pc);
                 end
                 if (l2_ftb_kind == BR_CALL || l2_ftb_kind == BR_IND) begin
                     ittage_target_hist_spec_q <=
@@ -1597,9 +1737,21 @@ module bpu_top
                 ittage_path_hist_spec_q <=
                     ittage_path_hist_push(ittage_path_hist_spec_q, ftb_first_slot_pc);
             end
+            if (TAGE_PATH_HISTORY_BITS != 0 &&
+                !(resolve.valid && resolve.misprediction) &&
+                !ftq_patch_applied &&
+                lkp_fire && pred_d.valid && pred_d.kind != BR_NONE) begin
+                tage_path_hist_spec_q <=
+                    tage_path_hist_push(tage_path_hist_spec_q, ftb_first_slot_pc);
+            end
             if (resolve_update_valid && resolve.actual_kind == BR_COND) begin
                 ghist_arch_q <= {ghist_arch_q[TAGE_HIST_LEN_MAX-2:0],
                                  resolve.actual_taken};
+            end
+            if (TAGE_PATH_HISTORY_BITS != 0 &&
+                resolve_update_valid && resolve.actual_kind != BR_NONE) begin
+                tage_path_hist_arch_q <=
+                    tage_path_hist_push(tage_path_hist_arch_q, resolve.pc);
             end
             if (resolve_update_valid &&
                 (resolve.actual_kind == BR_CALL || resolve.actual_kind == BR_IND)) begin

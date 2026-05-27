@@ -1,6 +1,6 @@
 {
   "claim_boundary": "Rough CAD mass estimate using nominal densities; not measured mass.",
-  "total_estimated_mass_g": 182.18,
+  "total_estimated_mass_g": 182.19,
   "mass_by_role_g": {
     "EMI shield": 7.01,
     "I/O": 1.77,
@@ -8,10 +8,12 @@
     "PCB": 4.17,
     "PCB assembly marker": 0.0,
     "PCB component marker": 0.0,
+    "PCB connector marker": 0.0,
     "PCB mechanical marker": 0.0,
     "PCB passive marker": 0.0,
     "PCB protection marker": 0.0,
     "PCB test marker": 0.0,
+    "PCB trace marker": 0.01,
     "RF feed": 0.0,
     "RF keepout": 0.0,
     "RF tuner": 0.0,
@@ -45,7 +47,9 @@
       "volume_mm3": 14302.89,
       "density_g_per_cm3": 1.15,
       "mass_g": 16.448,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_side_frame",
@@ -53,7 +57,9 @@
       "volume_mm3": 5653.086,
       "density_g_per_cm3": 1.15,
       "mass_g": 6.501,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "screen_cover_glass",
@@ -61,7 +67,9 @@
       "volume_mm3": 8152.377,
       "density_g_per_cm3": 2.5,
       "mass_g": 20.381,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "display_lcm",
@@ -69,7 +77,9 @@
       "volume_mm3": 30993.592,
       "density_g_per_cm3": 1.2,
       "mass_g": 37.192,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "main_pcb",
@@ -77,7 +87,9 @@
       "volume_mm3": 2252.8,
       "density_g_per_cm3": 1.85,
       "mass_g": 4.168,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "battery_pouch",
@@ -85,7 +97,9 @@
       "volume_mm3": 31180.8,
       "density_g_per_cm3": 2.65,
       "mass_g": 82.629,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "battery_back_void_foam_pad",
@@ -93,7 +107,9 @@
       "volume_mm3": 864.0,
       "density_g_per_cm3": 1.2,
       "mass_g": 1.037,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "usb_c_receptacle",
@@ -101,7 +117,9 @@
       "volume_mm3": 226.629,
       "density_g_per_cm3": 7.8,
       "mass_g": 1.768,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "usb_c_external_aperture",
@@ -109,7 +127,9 @@
       "volume_mm3": 12.852,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "usb_c_perimeter_gasket_top",
@@ -117,7 +137,9 @@
       "volume_mm3": 1.795,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.002,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "usb_c_perimeter_gasket_bottom",
@@ -125,7 +147,9 @@
       "volume_mm3": 1.795,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.002,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "usb_c_perimeter_gasket_left",
@@ -133,7 +157,9 @@
       "volume_mm3": 0.677,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.001,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "usb_c_perimeter_gasket_right",
@@ -141,7 +167,9 @@
       "volume_mm3": 0.677,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.001,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "usb_c_molded_drip_break_lip",
@@ -149,7 +177,9 @@
       "volume_mm3": 2.673,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.003,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "usb_c_internal_drain_shelf",
@@ -157,7 +187,9 @@
       "volume_mm3": 7.885,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.009,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "bottom_speaker_module",
@@ -165,7 +197,9 @@
       "volume_mm3": 577.5,
       "density_g_per_cm3": 2.2,
       "mass_g": 1.27,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "earpiece_receiver",
@@ -173,7 +207,9 @@
       "volume_mm3": 180.0,
       "density_g_per_cm3": 2.2,
       "mass_g": 0.396,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "bottom_mic",
@@ -181,7 +217,9 @@
       "volume_mm3": 9.275,
       "density_g_per_cm3": 2.2,
       "mass_g": 0.02,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "top_mic",
@@ -189,7 +227,9 @@
       "volume_mm3": 9.275,
       "density_g_per_cm3": 2.2,
       "mass_g": 0.02,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "rear_camera_module",
@@ -197,7 +237,9 @@
       "volume_mm3": 510.0,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.612,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "rear_camera_shell_aperture",
@@ -205,7 +247,9 @@
       "volume_mm3": 8.989,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "orange_rear_camera_bezel_top",
@@ -213,7 +257,9 @@
       "volume_mm3": 1.764,
       "density_g_per_cm3": 2.2,
       "mass_g": 0.004,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_rear_camera_bezel_bottom",
@@ -221,7 +267,9 @@
       "volume_mm3": 1.764,
       "density_g_per_cm3": 2.2,
       "mass_g": 0.004,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_rear_camera_bezel_left",
@@ -229,7 +277,9 @@
       "volume_mm3": 1.484,
       "density_g_per_cm3": 2.2,
       "mass_g": 0.003,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_rear_camera_bezel_right",
@@ -237,7 +287,9 @@
       "volume_mm3": 1.484,
       "density_g_per_cm3": 2.2,
       "mass_g": 0.003,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "rear_flash_shell_aperture",
@@ -245,7 +297,9 @@
       "volume_mm3": 0.387,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "orange_rear_flash_bezel_top",
@@ -253,7 +307,9 @@
       "volume_mm3": 0.167,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_rear_flash_bezel_bottom",
@@ -261,7 +317,9 @@
       "volume_mm3": 0.167,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_rear_flash_bezel_left",
@@ -269,7 +327,9 @@
       "volume_mm3": 0.119,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_rear_flash_bezel_right",
@@ -277,7 +337,9 @@
       "volume_mm3": 0.119,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "rear_camera_lens_window",
@@ -285,7 +347,9 @@
       "volume_mm3": 19.917,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "rear_camera_optical_sight_tunnel",
@@ -293,7 +357,9 @@
       "volume_mm3": 62.941,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "rear_flash_led",
@@ -301,7 +367,9 @@
       "volume_mm3": 0.7,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.001,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "rear_flash_led_window",
@@ -309,7 +377,9 @@
       "volume_mm3": 1.093,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.001,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "front_camera_module",
@@ -317,7 +387,9 @@
       "volume_mm3": 135.2,
       "density_g_per_cm3": 2.2,
       "mass_g": 0.297,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "front_camera_under_glass",
@@ -325,7 +397,9 @@
       "volume_mm3": 0.724,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "rear_camera_cover_adhesive_top",
@@ -333,7 +407,9 @@
       "volume_mm3": 0.727,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.001,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "rear_camera_cover_adhesive_bottom",
@@ -341,7 +417,9 @@
       "volume_mm3": 0.727,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.001,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "rear_camera_cover_adhesive_left",
@@ -349,7 +427,9 @@
       "volume_mm3": 0.662,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.001,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "rear_camera_cover_adhesive_right",
@@ -357,7 +437,9 @@
       "volume_mm3": 0.662,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.001,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "rear_camera_light_baffle_top",
@@ -365,7 +447,9 @@
       "volume_mm3": 1.598,
       "density_g_per_cm3": 2.2,
       "mass_g": 0.004,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "rear_camera_light_baffle_bottom",
@@ -373,7 +457,9 @@
       "volume_mm3": 1.598,
       "density_g_per_cm3": 2.2,
       "mass_g": 0.004,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "front_camera_black_mask_window",
@@ -381,7 +467,9 @@
       "volume_mm3": 2.0,
       "density_g_per_cm3": 2.5,
       "mass_g": 0.005,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "rear_flash_window_adhesive_top",
@@ -389,7 +477,9 @@
       "volume_mm3": 0.18,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "rear_flash_window_adhesive_bottom",
@@ -397,7 +487,9 @@
       "volume_mm3": 0.18,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "rear_flash_window_adhesive_left",
@@ -405,7 +497,9 @@
       "volume_mm3": 0.115,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "rear_flash_window_adhesive_right",
@@ -413,7 +507,9 @@
       "volume_mm3": 0.115,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "front_camera_under_glass_adhesive_top",
@@ -421,7 +517,9 @@
       "volume_mm3": 0.134,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "front_camera_under_glass_adhesive_bottom",
@@ -429,7 +527,9 @@
       "volume_mm3": 0.134,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "front_camera_under_glass_adhesive_left",
@@ -437,7 +537,9 @@
       "volume_mm3": 0.109,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "front_camera_under_glass_adhesive_right",
@@ -445,7 +547,9 @@
       "volume_mm3": 0.109,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "rear_flash_camera_septum",
@@ -453,7 +557,9 @@
       "volume_mm3": 10.458,
       "density_g_per_cm3": 2.2,
       "mass_g": 0.023,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "power_button_cap",
@@ -461,7 +567,9 @@
       "volume_mm3": 26.4,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.032,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "volume_button_cap",
@@ -469,7 +577,9 @@
       "volume_mm3": 46.2,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.055,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "handset_acoustic_slot",
@@ -477,7 +587,9 @@
       "volume_mm3": 4.0,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "handset_acoustic_mesh",
@@ -485,7 +597,9 @@
       "volume_mm3": 0.84,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.001,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "bottom_speaker_grille_slot_1",
@@ -493,7 +607,9 @@
       "volume_mm3": 1.68,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "bottom_speaker_grille_slot_2",
@@ -501,7 +617,9 @@
       "volume_mm3": 1.68,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "bottom_speaker_grille_slot_3",
@@ -509,7 +627,9 @@
       "volume_mm3": 1.68,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "bottom_speaker_grille_slot_4",
@@ -517,7 +637,9 @@
       "volume_mm3": 1.68,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "bottom_speaker_grille_slot_5",
@@ -525,7 +647,9 @@
       "volume_mm3": 1.68,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "bottom_speaker_dust_mesh",
@@ -533,7 +657,9 @@
       "volume_mm3": 9.216,
       "density_g_per_cm3": 2.2,
       "mass_g": 0.02,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "split_interconnect_top_connector",
@@ -541,7 +667,9 @@
       "volume_mm3": 34.56,
       "density_g_per_cm3": 3.0,
       "mass_g": 0.104,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "split_interconnect_bottom_connector",
@@ -549,7 +677,9 @@
       "volume_mm3": 34.56,
       "density_g_per_cm3": 3.0,
       "mass_g": 0.104,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "split_interconnect_side_flex",
@@ -557,7 +687,9 @@
       "volume_mm3": 38.016,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.046,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "split_interconnect_top_flex_tail",
@@ -565,7 +697,9 @@
       "volume_mm3": 4.5,
       "density_g_per_cm3": 3.0,
       "mass_g": 0.014,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "split_interconnect_bottom_flex_tail",
@@ -573,7 +707,9 @@
       "volume_mm3": 4.5,
       "density_g_per_cm3": 3.0,
       "mass_g": 0.014,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "bottom_microphone_port_1",
@@ -581,7 +717,9 @@
       "volume_mm3": 0.249,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "bottom_microphone_mesh_1",
@@ -589,7 +727,9 @@
       "volume_mm3": 0.235,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "bottom_microphone_port_2",
@@ -597,7 +737,9 @@
       "volume_mm3": 0.249,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "bottom_microphone_mesh_2",
@@ -605,7 +747,9 @@
       "volume_mm3": 0.235,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "top_microphone_port",
@@ -613,7 +757,9 @@
       "volume_mm3": 0.249,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "top_microphone_mesh",
@@ -621,7 +767,9 @@
       "volume_mm3": 0.235,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "power_button_elastomer_gasket",
@@ -629,7 +777,9 @@
       "volume_mm3": 10.075,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.012,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "power_button_labyrinth_upper_rail",
@@ -637,7 +787,9 @@
       "volume_mm3": 0.814,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.001,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "power_button_labyrinth_lower_rail",
@@ -645,7 +797,9 @@
       "volume_mm3": 0.814,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.001,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "volume_button_elastomer_gasket",
@@ -653,7 +807,9 @@
       "volume_mm3": 17.05,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.02,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "volume_button_labyrinth_upper_rail",
@@ -661,7 +817,9 @@
       "volume_mm3": 0.814,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.001,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "volume_button_labyrinth_lower_rail",
@@ -669,7 +827,9 @@
       "volume_mm3": 0.814,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.001,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "screen_adhesive_top",
@@ -677,7 +837,9 @@
       "volume_mm3": 11.34,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.013,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "screen_adhesive_bottom",
@@ -685,7 +847,9 @@
       "volume_mm3": 11.34,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.013,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "screen_adhesive_left",
@@ -693,7 +857,9 @@
       "volume_mm3": 24.781,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.028,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "screen_adhesive_right",
@@ -701,7 +867,9 @@
       "volume_mm3": 24.781,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.028,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_screw_boss_1",
@@ -709,7 +877,9 @@
       "volume_mm3": 38.544,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.044,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_screw_boss_2",
@@ -717,7 +887,9 @@
       "volume_mm3": 38.544,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.044,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_screw_boss_3",
@@ -725,7 +897,9 @@
       "volume_mm3": 38.544,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.044,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_screw_boss_4",
@@ -733,7 +907,9 @@
       "volume_mm3": 38.544,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.044,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_screw_boss_5",
@@ -741,7 +917,9 @@
       "volume_mm3": 38.544,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.044,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_screw_boss_6",
@@ -749,7 +927,9 @@
       "volume_mm3": 38.544,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.044,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_screw_boss_7",
@@ -757,7 +937,9 @@
       "volume_mm3": 38.544,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.044,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_screw_boss_8",
@@ -765,7 +947,9 @@
       "volume_mm3": 38.544,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.044,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_screw_boss_9",
@@ -773,7 +957,9 @@
       "volume_mm3": 38.544,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.044,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_screw_boss_10",
@@ -781,7 +967,9 @@
       "volume_mm3": 38.544,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.044,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_snap_hook_1",
@@ -789,7 +977,9 @@
       "volume_mm3": 9.1,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.01,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_snap_hook_2",
@@ -797,7 +987,9 @@
       "volume_mm3": 9.1,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.01,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_snap_hook_3",
@@ -805,7 +997,9 @@
       "volume_mm3": 9.1,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.01,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_snap_hook_4",
@@ -813,7 +1007,9 @@
       "volume_mm3": 9.1,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.01,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_snap_hook_5",
@@ -821,7 +1017,9 @@
       "volume_mm3": 9.1,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.01,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_snap_hook_6",
@@ -829,7 +1027,9 @@
       "volume_mm3": 9.1,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.01,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_snap_hook_7",
@@ -837,7 +1037,9 @@
       "volume_mm3": 9.1,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.01,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_snap_hook_8",
@@ -845,7 +1047,9 @@
       "volume_mm3": 9.1,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.01,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_battery_left_rib",
@@ -853,7 +1057,9 @@
       "volume_mm3": 102.9,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.123,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_battery_right_rib",
@@ -861,7 +1067,9 @@
       "volume_mm3": 102.9,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.123,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_usb_reinforcement_saddle",
@@ -869,7 +1077,9 @@
       "volume_mm3": 72.0,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.086,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "display_fpc_connector",
@@ -877,7 +1087,9 @@
       "volume_mm3": 69.92,
       "density_g_per_cm3": 3.0,
       "mass_g": 0.21,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "display_fpc_bend_keepout",
@@ -885,7 +1097,9 @@
       "volume_mm3": 66.0,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "bottom_speaker_acoustic_chamber",
@@ -893,7 +1107,9 @@
       "volume_mm3": 514.8,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "earpiece_gasket",
@@ -901,7 +1117,9 @@
       "volume_mm3": 15.95,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.018,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_corner_rib_1",
@@ -909,7 +1127,9 @@
       "volume_mm3": 15.12,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.017,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_corner_rib_1_leg",
@@ -917,7 +1137,9 @@
       "volume_mm3": 15.12,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.017,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_corner_rib_2",
@@ -925,7 +1147,9 @@
       "volume_mm3": 15.12,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.017,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_corner_rib_2_leg",
@@ -933,7 +1157,9 @@
       "volume_mm3": 15.12,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.017,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_corner_rib_3",
@@ -941,7 +1167,9 @@
       "volume_mm3": 15.12,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.017,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_corner_rib_3_leg",
@@ -949,7 +1177,9 @@
       "volume_mm3": 15.12,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.017,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_corner_rib_4",
@@ -957,7 +1187,9 @@
       "volume_mm3": 15.12,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.017,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "orange_corner_rib_4_leg",
@@ -965,7 +1197,9 @@
       "volume_mm3": 15.12,
       "density_g_per_cm3": 1.15,
       "mass_g": 0.017,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "glass_perimeter_cushion_top",
@@ -973,7 +1207,9 @@
       "volume_mm3": 15.525,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.019,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "glass_perimeter_cushion_bottom",
@@ -981,7 +1217,9 @@
       "volume_mm3": 15.525,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.019,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "glass_perimeter_cushion_left",
@@ -989,7 +1227,9 @@
       "volume_mm3": 34.193,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.041,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "glass_perimeter_cushion_right",
@@ -997,7 +1237,9 @@
       "volume_mm3": 34.193,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.041,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "cellular_top_antenna_keepout",
@@ -1005,7 +1247,9 @@
       "volume_mm3": 744.0,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "cellular_bottom_antenna_keepout",
@@ -1013,7 +1257,9 @@
       "volume_mm3": 744.0,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "wifi_bt_side_antenna_keepout",
@@ -1021,7 +1267,9 @@
       "volume_mm3": 340.0,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "antenna_aperture_tuner",
@@ -1029,7 +1277,9 @@
       "volume_mm3": 2.0,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "soc_shield_can",
@@ -1037,7 +1287,9 @@
       "volume_mm3": 345.6,
       "density_g_per_cm3": 7.8,
       "mass_g": 2.696,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "pmic_shield_can",
@@ -1045,7 +1297,9 @@
       "volume_mm3": 121.0,
       "density_g_per_cm3": 7.8,
       "mass_g": 0.944,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "radio_shield_can",
@@ -1053,7 +1307,9 @@
       "volume_mm3": 432.0,
       "density_g_per_cm3": 7.8,
       "mass_g": 3.37,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "cellular_lga_module_keepout",
@@ -1061,7 +1317,9 @@
       "volume_mm3": 2227.2,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "wifi_bt_module_keepout",
@@ -1069,7 +1327,9 @@
       "volume_mm3": 141.0,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "compute_som_sodimm_connector",
@@ -1077,7 +1337,9 @@
       "volume_mm3": 50.7,
       "density_g_per_cm3": 3.0,
       "mass_g": 0.152,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "compute_som_daughterboard_keepout",
@@ -1085,7 +1347,9 @@
       "volume_mm3": 2448.0,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "soc_package_marker",
@@ -1093,7 +1357,9 @@
       "volume_mm3": 40.56,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "dram_package_marker",
@@ -1101,7 +1367,9 @@
       "volume_mm3": 16.72,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "storage_package_marker",
@@ -1109,7 +1377,9 @@
       "volume_mm3": 22.77,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "pmic_package_marker",
@@ -1117,7 +1387,39 @@
       "volume_mm3": 10.78,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "usb_pd_controller_package_marker",
+      "role": "PCB component marker",
+      "volume_mm3": 17.82,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "charger_package_marker",
+      "role": "PCB component marker",
+      "volume_mm3": 3.2,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "battery_connector_package_marker",
+      "role": "PCB connector marker",
+      "volume_mm3": 3.24,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "audio_codec_package_marker",
@@ -1125,7 +1427,9 @@
       "volume_mm3": 10.78,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "rf_transceiver_package_marker",
@@ -1133,7 +1437,9 @@
       "volume_mm3": 12.375,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "gnss_lna_package_marker",
@@ -1141,7 +1447,9 @@
       "volume_mm3": 1.5,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "backlight_bias_package_marker",
@@ -1149,7 +1457,9 @@
       "volume_mm3": 3.52,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "fuel_gauge_package_marker",
@@ -1157,7 +1467,9 @@
       "volume_mm3": 0.513,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "haptic_driver_package_marker",
@@ -1165,7 +1477,9 @@
       "volume_mm3": 0.353,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "usim_levelshift_package_marker",
@@ -1173,7 +1487,9 @@
       "volume_mm3": 0.983,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "esim_package_marker",
@@ -1181,7 +1497,9 @@
       "volume_mm3": 0.72,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "nfc_controller_package_marker",
@@ -1189,7 +1507,9 @@
       "volume_mm3": 5.5,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "nfc_loop_match_marker",
@@ -1197,7 +1517,9 @@
       "volume_mm3": 0.672,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.001,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "sensor_hub_package_marker",
@@ -1205,7 +1527,9 @@
       "volume_mm3": 1.8,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "esd_array_6ch_marker",
@@ -1213,7 +1537,9 @@
       "volume_mm3": 0.32,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "tvs_diode_2p_marker",
@@ -1221,7 +1547,9 @@
       "volume_mm3": 0.154,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "testpoint_1mm_marker",
@@ -1229,7 +1557,9 @@
       "volume_mm3": 0.04,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "fiducial_1mm_marker",
@@ -1237,7 +1567,9 @@
       "volume_mm3": 0.03,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "mounting_hole_1p2_marker",
@@ -1245,7 +1577,9 @@
       "volume_mm3": 0.058,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "r0402_component_marker",
@@ -1253,7 +1587,9 @@
       "volume_mm3": 0.08,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "c0402_component_marker",
@@ -1261,7 +1597,9 @@
       "volume_mm3": 0.08,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "l0402_component_marker",
@@ -1269,7 +1607,9 @@
       "volume_mm3": 0.12,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "pi_match_0402_marker",
@@ -1277,7 +1617,9 @@
       "volume_mm3": 0.475,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.001,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "rc_array_4ch_marker",
@@ -1285,7 +1627,9 @@
       "volume_mm3": 0.36,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "shunt_1206_marker",
@@ -1293,7 +1637,9 @@
       "volume_mm3": 1.126,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.001,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "wifi_bt_rf_feed_development_envelope",
@@ -1301,7 +1647,9 @@
       "volume_mm3": 1.575,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "cellular_rf_feed_development_envelope",
@@ -1309,7 +1657,9 @@
       "volume_mm3": 2.363,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "display_fpc_tail",
@@ -1317,7 +1667,9 @@
       "volume_mm3": 7.2,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "rear_camera_fpc_tail",
@@ -1325,7 +1677,9 @@
       "volume_mm3": 1.152,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "front_camera_fpc_tail",
@@ -1333,7 +1687,9 @@
       "volume_mm3": 0.864,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "side_key_flex_tail",
@@ -1341,7 +1697,9 @@
       "volume_mm3": 3.36,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.004,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "battery_connector_lead_flex",
@@ -1349,7 +1707,9 @@
       "volume_mm3": 1.152,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "usb_c_power_data_escape_tail",
@@ -1357,7 +1717,39 @@
       "volume_mm3": 2.16,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "usb_pd_controller_escape_trace_marker",
+      "role": "PCB trace marker",
+      "volume_mm3": 1.08,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.001,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
+    },
+    {
+      "name": "pd_charger_control_trace_marker",
+      "role": "PCB trace marker",
+      "volume_mm3": 1.2,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.001,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
+    },
+    {
+      "name": "charger_battery_power_sense_trace_marker",
+      "role": "PCB trace marker",
+      "volume_mm3": 2.304,
+      "density_g_per_cm3": 3.0,
+      "mass_g": 0.007,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "bottom_speaker_lead_pair",
@@ -1365,7 +1757,9 @@
       "volume_mm3": 1.2,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "bottom_microphone_flex_leads",
@@ -1373,7 +1767,9 @@
       "volume_mm3": 0.96,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "top_microphone_flex_tail",
@@ -1381,7 +1777,9 @@
       "volume_mm3": 1.728,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.002,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "earpiece_receiver_lead_flex",
@@ -1389,7 +1787,9 @@
       "volume_mm3": 1.344,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "haptic_flex_tail",
@@ -1397,7 +1797,9 @@
       "volume_mm3": 1.44,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.002,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "sim_esim_signal_flex_marker",
@@ -1405,7 +1807,9 @@
       "volume_mm3": 1.08,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "nfc_loop_antenna_flex_marker",
@@ -1413,7 +1817,9 @@
       "volume_mm3": 0.72,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.001,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "cellular_div_rf_feed_development_envelope",
@@ -1421,7 +1827,9 @@
       "volume_mm3": 1.512,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "cellular_gnss_rf_feed_development_envelope",
@@ -1429,7 +1837,9 @@
       "volume_mm3": 1.26,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "wifi_bt_rf1_feed_development_envelope",
@@ -1437,7 +1847,9 @@
       "volume_mm3": 1.26,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.002,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "haptic_lra",
@@ -1445,7 +1857,9 @@
       "volume_mm3": 180.0,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.216,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "sim_tray_keepout",
@@ -1453,7 +1867,9 @@
       "volume_mm3": 638.0,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "sim_tray_outline",
@@ -1461,7 +1877,9 @@
       "volume_mm3": 57.6,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "rear_camera_cover_glass",
@@ -1469,7 +1887,9 @@
       "volume_mm3": 46.552,
       "density_g_per_cm3": 2.5,
       "mass_g": 0.116,
-      "excluded_placeholder": false
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
     },
     {
       "name": "service_label_recess",
@@ -1477,71 +1897,89 @@
       "volume_mm3": 72.0,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "display_touch_fpc_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 3.0,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "display_touch_fpc_to_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "rear_camera_csi_fpc_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 2.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "rear_camera_csi_fpc_to_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 2.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "front_camera_csi_fpc_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 2.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "front_camera_csi_fpc_to_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 2.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "side_key_flex_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "side_key_flex_to_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "battery_lead_flex_from_terminal",
@@ -1549,7 +1987,9 @@
       "volume_mm3": 0.002,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "battery_lead_flex_to_terminal",
@@ -1557,7 +1997,9 @@
       "volume_mm3": 0.002,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "usb_c_escape_tail_from_terminal",
@@ -1565,7 +2007,9 @@
       "volume_mm3": 0.002,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "usb_c_escape_tail_to_terminal",
@@ -1573,7 +2017,69 @@
       "volume_mm3": 0.002,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "usb_c_to_pd_controller_escape_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "usb_c_to_pd_controller_escape_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "pd_controller_to_charger_control_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "pd_controller_to_charger_control_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "charger_to_battery_power_sense_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "charger_to_battery_power_sense_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "bottom_speaker_lead_pair_from_terminal",
@@ -1581,7 +2087,9 @@
       "volume_mm3": 0.002,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "bottom_speaker_lead_pair_to_terminal",
@@ -1589,39 +2097,49 @@
       "volume_mm3": 0.002,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "bottom_microphone_flex_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "bottom_microphone_flex_to_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "top_microphone_flex_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "top_microphone_flex_to_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "earpiece_receiver_lead_flex_from_terminal",
@@ -1629,7 +2147,9 @@
       "volume_mm3": 0.002,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "earpiece_receiver_lead_flex_to_terminal",
@@ -1637,103 +2157,129 @@
       "volume_mm3": 0.002,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "haptic_flex_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "haptic_flex_to_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "sim_esim_signal_flex_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "sim_esim_signal_flex_to_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "nfc_loop_antenna_flex_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "nfc_loop_antenna_flex_to_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "compute_som_sodimm_carrier_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "compute_som_sodimm_carrier_to_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "cellular_main_rf_feed_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "cellular_main_rf_feed_to_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "cellular_diversity_rf_feed_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "cellular_diversity_rf_feed_to_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "cellular_antenna_aperture_tuner_from_terminal",
@@ -1741,7 +2287,9 @@
       "volume_mm3": 0.002,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "cellular_antenna_aperture_tuner_to_terminal",
@@ -1749,71 +2297,89 @@
       "volume_mm3": 0.002,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": true
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "cellular_gnss_rf_feed_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "cellular_gnss_rf_feed_to_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "wifi_bt_rf0_feed_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "wifi_bt_rf0_feed_to_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "wifi_bt_rf1_feed_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "wifi_bt_rf1_feed_to_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 1.2,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "split_interconnect_side_flex_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 3.0,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     },
     {
       "name": "split_interconnect_side_flex_to_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
-      "density_g_per_cm3": 3.0,
+      "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
-      "excluded_placeholder": false
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
     }
   ]
 }

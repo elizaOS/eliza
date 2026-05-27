@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import sys
@@ -42,6 +43,17 @@ def load_json(path: Path) -> dict[str, Any]:
     return data
 
 
+def artifact(path: Path) -> dict[str, Any]:
+    item: dict[str, Any] = {"path": rel(path), "exists": path.is_file()}
+    if path.is_file():
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        item.update({"bytes": path.stat().st_size, "sha256": digest.hexdigest()})
+    return item
+
+
 def build_summary(cocotb_path: Path) -> dict[str, Any]:
     runtime_cls = load_runtime_class()
     contract = load_json(CONTRACT)
@@ -51,10 +63,16 @@ def build_summary(cocotb_path: Path) -> dict[str, Any]:
     covered_opcode_ids = sorted(cocotb.get("covered_opcodes", []))
     runtime = runtime_cls(lambda _addr: 0, lambda _addr, _value: None)
 
-    return {
+    summary = {
         "schema": "eliza.npu_local_coverage_summary.v1",
+        "status": "unchecked",
         "source": rel(cocotb_path),
         "coverage_kind": "local_rtl_runtime_only",
+        "artifacts": {
+            "cocotb_coverage": artifact(cocotb_path),
+            "runtime": artifact(RUNTIME),
+            "runtime_contract": artifact(CONTRACT),
+        },
         "claim_boundary": {
             "nnapi_acceleration": False,
             "dma_backed_tensor_execution": False,
@@ -81,6 +99,10 @@ def build_summary(cocotb_path: Path) -> dict[str, Any]:
         },
         "gemm_shapes": cocotb.get("gemm_shapes", []),
     }
+    errors = validate_summary(summary)
+    summary["status"] = "pass" if not errors else "fail"
+    summary["validation_errors"] = errors
+    return summary
 
 
 def validate_summary(summary: dict[str, Any]) -> list[str]:
@@ -172,6 +194,8 @@ def main(argv: list[str]) -> int:
 
     summary = build_summary(cocotb_path)
     errors = validate_summary(summary)
+    if summary.get("status") != ("pass" if not errors else "fail"):
+        errors.append("status does not match validation result")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if errors:

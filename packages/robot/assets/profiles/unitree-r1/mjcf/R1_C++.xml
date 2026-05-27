@@ -87,11 +87,11 @@
                   <inertial pos="0.0296647 0 -0.0326975" quat="0 0.737468 0 0.675382" mass="0.481688" diaginertia="0.00126935 0.00121244 0.000230475"/>
                   <joint name="left_ankle_roll_joint" pos="0 0 0" axis="1 0 0" range="-0.2618 0.2618" actuatorfrcrange="-50 50"/>
                   <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.79216 0.81961 0.93333 1" mesh="left_ankle_roll_link"/>
-                  <geom size="0.09 0.025 0.0075" pos="0.04 0 -0.035" type="box" rgba="0.79216 0.81961 0.93333 1"/>
-                  <geom size="0.01" pos="-0.04 0.025 -0.045" rgba="0.79216 0.81961 0.93333 1"/>
-                  <geom size="0.01" pos="-0.04 -0.025 -0.045" rgba="0.79216 0.81961 0.93333 1"/>
-                  <geom size="0.01" pos="0.115 0.025 -0.045" rgba="0.79216 0.81961 0.93333 1"/>
-                  <geom size="0.01" pos="0.115 -0.025 -0.045" rgba="0.79216 0.81961 0.93333 1"/>
+                  <geom name="left_foot_sole" size="0.09 0.025 0.0075" pos="0.04 0 -0.035" type="box" rgba="0.79216 0.81961 0.93333 1"/>
+                  <geom name="left_foot_rear_outer" size="0.01" pos="-0.04 0.025 -0.045" rgba="0.79216 0.81961 0.93333 1"/>
+                  <geom name="left_foot_rear_inner" size="0.01" pos="-0.04 -0.025 -0.045" rgba="0.79216 0.81961 0.93333 1"/>
+                  <geom name="left_foot_front_outer" size="0.01" pos="0.115 0.025 -0.045" rgba="0.79216 0.81961 0.93333 1"/>
+                  <geom name="left_foot_front_inner" size="0.01" pos="0.115 -0.025 -0.045" rgba="0.79216 0.81961 0.93333 1"/>
                   <geom pos="0.021 0.014 -0.0094" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="1 0 0 1" mesh="left_ankle_constraint_A_link"/>
                   <geom pos="0.021 -0.014 -0.0094" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0 0 1 1" mesh="left_ankle_constraint_B_link"/>
                 </body>
@@ -130,11 +130,11 @@
                   <inertial pos="0.0296647 0 -0.0326975" quat="0 0.737468 0 0.675382" mass="0.481688" diaginertia="0.00126935 0.00121244 0.000230475"/>
                   <joint name="right_ankle_roll_joint" pos="0 0 0" axis="1 0 0" range="-0.261799 0.261799" actuatorfrcrange="-50 50"/>
                   <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.79216 0.81961 0.93333 1" mesh="right_ankle_roll_link"/>
-                  <geom size="0.09 0.025 0.0075" pos="0.04 0 -0.035" type="box" rgba="0.79216 0.81961 0.93333 1"/>
-                  <geom size="0.01" pos="-0.04 0.025 -0.045" rgba="0.79216 0.81961 0.93333 1"/>
-                  <geom size="0.01" pos="-0.04 -0.025 -0.045" rgba="0.79216 0.81961 0.93333 1"/>
-                  <geom size="0.01" pos="0.115 0.025 -0.045" rgba="0.79216 0.81961 0.93333 1"/>
-                  <geom size="0.01" pos="0.115 -0.025 -0.045" rgba="0.79216 0.81961 0.93333 1"/>
+                  <geom name="right_foot_sole" size="0.09 0.025 0.0075" pos="0.04 0 -0.035" type="box" rgba="0.79216 0.81961 0.93333 1"/>
+                  <geom name="right_foot_rear_outer" size="0.01" pos="-0.04 0.025 -0.045" rgba="0.79216 0.81961 0.93333 1"/>
+                  <geom name="right_foot_rear_inner" size="0.01" pos="-0.04 -0.025 -0.045" rgba="0.79216 0.81961 0.93333 1"/>
+                  <geom name="right_foot_front_outer" size="0.01" pos="0.115 0.025 -0.045" rgba="0.79216 0.81961 0.93333 1"/>
+                  <geom name="right_foot_front_inner" size="0.01" pos="0.115 -0.025 -0.045" rgba="0.79216 0.81961 0.93333 1"/>
                   <geom pos="0.021 -0.014 -0.0094" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="1 0 0 1" mesh="right_ankle_constraint_A_link"/>
                   <geom pos="0.021 0.014 -0.0094" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0 0 1 1" mesh="right_ankle_constraint_B_link"/>
                 </body>

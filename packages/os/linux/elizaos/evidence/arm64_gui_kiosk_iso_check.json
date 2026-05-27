@@ -60,9 +60,9 @@
   },
   "claim_boundary": "static ISO squashfs payload check for graphical kiosk dependencies; not a pixel-rendered GUI runtime screenshot or physical display claim",
   "iso": {
-    "bytes": 1519083520,
-    "path": "out/elizaos-linux-arm64-default-20260524T055007Z.iso",
-    "sha256": "8b8d22c93b0fc05735794f3778bfbb2584b97f0dd3e269c6e6ed3dc22e022845"
+    "bytes": 1519091712,
+    "path": "out/elizaos-linux-arm64-default-20260524T075932Z.iso",
+    "sha256": "74f4480782aeeb42dbc2c2eedbd60490c2bf1e79622a2b50961420f45e11e09c"
   },
   "missing": [],
   "schema": "eliza.os.linux.gui_kiosk_iso_check.v1",

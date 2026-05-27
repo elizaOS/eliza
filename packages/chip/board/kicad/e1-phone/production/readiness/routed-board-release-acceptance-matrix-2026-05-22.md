@@ -17,13 +17,13 @@ Fail-closed acceptance matrix generated from routed-board source inventories. Th
 | `missing_required_output_path_count` | `0` |
 | `candidate_present_blocked_required_output_path_count` | `37` |
 | `truly_missing_required_output_path_count` | `0` |
-| `candidate_step_size_bytes` | `32959460` |
+| `candidate_step_size_bytes` | `32970696` |
 | `candidate_step_component_model_count` | `89` |
 | `candidate_step_pinout_bound_model_count` | `22` |
-| `candidate_step_cad_connection_count` | `21` |
-| `candidate_step_cad_connection_terminal_marker_count` | `42` |
-| `candidate_step_cad_connection_terminal_pair_count` | `21` |
-| `validation_evidence_category_count` | `5` |
+| `candidate_step_cad_connection_count` | `24` |
+| `candidate_step_cad_connection_terminal_marker_count` | `48` |
+| `candidate_step_cad_connection_terminal_pair_count` | `24` |
+| `validation_evidence_category_count` | `6` |
 | `missing_validation_evidence_category_count` | `0` |
 | `release_state` | `blocked_fail_closed` |
 | `acceptance_allowed` | `False` |
@@ -34,25 +34,25 @@ Fail-closed acceptance matrix generated from routed-board source inventories. Th
 | --- | ---: |
 | Status | `blocked_local_candidate_outputs_not_release` |
 | Release credit | `False` |
-| STEP bytes | `32959460` |
+| STEP bytes | `32970696` |
 | Component envelopes | `89` |
 | Pad/contact visuals | `1452` |
 | Route segment visuals | `306` |
 | Via visuals | `24` |
-| CAD connections passing | `21` |
-| CAD endpoint terminal markers | `42` |
-| CAD terminal pairs passing | `21` |
-| CAD connection STEP parts | `63` |
-| CAD connection STEP part sets passing | `21` |
-| CAD represented nets | `94` |
-| CAD connection records | `21` |
-| CAD represented net list entries | `94` |
+| CAD connections passing | `24` |
+| CAD endpoint terminal markers | `48` |
+| CAD terminal pairs passing | `24` |
+| CAD connection STEP parts | `72` |
+| CAD connection STEP part sets passing | `24` |
+| CAD represented nets | `112` |
+| CAD connection records | `24` |
+| CAD represented net list entries | `112` |
 | CAD represented nets match routed nets | `True` |
-| CAD visual route span mm | `374.0` |
-| CAD controlled-impedance connections | `13` |
-| CAD controlled-impedance requirements defined | `21` |
-| CAD bend-radius requirements defined | `21` |
-| CAD supplier-release-required connections | `21` |
+| CAD visual route span mm | `397.8` |
+| CAD controlled-impedance connections | `14` |
+| CAD controlled-impedance requirements defined | `24` |
+| CAD bend-radius requirements defined | `24` |
+| CAD supplier-release-required connections | `24` |
 | Component model rows | `89` |
 | Component pad visuals | `1452` |
 | Electrical pads represented | `1441` |
@@ -77,6 +77,10 @@ Fail-closed acceptance matrix generated from routed-board source inventories. Th
 | Directory terminal contracts match visuals | `True` |
 | Directory non-signal contracts match visuals | `True` |
 | Directory NPTH contracts match footprints | `True` |
+| Component 3D binding rows | `89` |
+| Component 3D binding local STEP files | `89` |
+| Component 3D binding supplier intake statuses | `{'not_applicable_board_level_support_pattern': 42, 'present_local_surrogate_step_not_supplier_approved': 47}` |
+| Component 3D binding release credit | `False` |
 | Supplier-approved model rows | `0` |
 
 Local routed-output candidate has routed development tracks, visible component envelopes, electrical terminal contracts, non-signal pad contracts, and CAD connection markers, but still lacks supplier-approved STEP/B-rep models, production DRC/ERC/SI/PI/RF, fabricator/assembler approval, and first-article evidence.
@@ -102,6 +106,7 @@ Local routed-output candidate has routed development tracks, visible component e
 | `power_integrity` | `True` | 0 | high_current_loops_current_density_decoupling_return_path_and_thermal_limits_closed |
 | `rf_validation` | `True` | 0 | matching_conducted_access_coexistence_gnss_desense_and_sar_prescan_ready |
 | `enclosure_validation` | `True` | 0 | routed_step_with_supplier_models_passes_clearance_against_display_battery_usb_buttons_cameras_antennas_acoustics_and_split_interconnect |
+| `component_3d_binding_gap_matrix` | `True` | 0 | every_board_footprint_has_fail_closed_component_3d_binding_supplier_step_intake_status_local_step_locator_and_release_credit_false |
 
 ## Fail-Closed Claims
 

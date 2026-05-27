@@ -241,6 +241,28 @@
       "timeout_seconds": 60
     },
     {
+      "name": "e1x_wafer_mesh_defect_sim",
+      "suite": "Eliza E1X wafer-mesh architecture simulator",
+      "version": "local/e1x-wafer-mesh-v1",
+      "command": [
+        "python3",
+        "scripts/generate_e1x_wafer_mesh_evidence.py"
+      ],
+      "requires": ["python3"],
+      "input_dataset": "deterministic core/link defect map plus mesh GEMM/stencil/sparse-attention workloads",
+      "primary_metric": "modeled E1X minimum observed INT8 TOPS after repair",
+      "units": "TOPS",
+      "parser": "simulator_metrics_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "target_cycles",
+        "simulated_frequency_hz",
+        "ipc",
+        "benchmark_success_allowed"
+      ],
+      "timeout_seconds": 60
+    },
+    {
       "name": "tflite_cpu",
       "suite": "TensorFlow Lite benchmark_model",
       "version": "upstream/local",
@@ -344,7 +366,7 @@
           "blocked_reason": "missing_e1_npu_nnapi_accelerator",
           "pipeline_visible": true,
           "release_blocking": true,
-          "resolution": "Run this benchmark only on an Android/Linux target exposing a real e1-npu NNAPI accelerator or delegate; create the proof JSON and transcripts from the hardware validation job, not by hand.",
+          "resolution": "Run scripts/android/capture_e1_npu_nnapi_evidence.sh on an Android/Linux target exposing a real e1-npu NNAPI accelerator or delegate. Set E1_NPU_WRITE_PROOF_JSON=1 plus measured counter env vars so the hardware validation job creates the proof JSON and transcripts together, not by hand.",
           "proof": {
             "schema": "eliza.e1_npu_nnapi_capability.v1",
             "accelerator_name": "e1-npu",

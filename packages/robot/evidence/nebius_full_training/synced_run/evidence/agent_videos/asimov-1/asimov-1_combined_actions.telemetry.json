@@ -1,62 +1,130 @@
 {
   "profile": "asimov-1",
   "label": "combined_actions",
-  "policy_source": "checkpoint:checkpoints/asimov_1_alberta_full",
+  "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
   "preserve_state_between_commands": false,
   "commands": [
     {
       "profile": "asimov-1",
       "label": "stand up",
       "task_id": "stand_up",
-      "policy_source": "checkpoint:checkpoints/asimov_1_alberta_full",
-      "steps_requested": 40,
+      "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
+      "steps_requested": 80,
+      "steps_executed": 80,
+      "terminated": false,
+      "truncated": true,
+      "first_done_step": 80,
+      "done_reason": "truncated",
+      "fall_threshold": 0.378,
+      "torso_z": {
+        "min": 0.5757729635163551,
+        "max": 0.6647926798509988,
+        "final": 0.5764769407261046,
+        "mean": 0.6104016975187807
+      },
+      "upright_proj": {
+        "min": 0.7856759405633874,
+        "max": 0.9999758424327979,
+        "final": 0.7856759405633874,
+        "mean": 0.9006858493054164
+      },
+      "reward": {
+        "min": 3.57522848536582,
+        "max": 5.466103604258012,
+        "final": 3.57522848536582,
+        "mean": 4.712244029678297
+      },
+      "delta_x_m": {
+        "min": -0.10597928379973214,
+        "max": 0.05172449828805933,
+        "final": 0.05172449828805933,
+        "mean": -0.06259934404824018
+      },
+      "delta_y_m": {
+        "min": -0.15699420004132353,
+        "max": 0.0003391853091874635,
+        "final": -0.15699420004132353,
+        "mean": -0.061556478713613805
+      },
+      "delta_yaw_rad": {
+        "min": -0.6393397027892984,
+        "max": 0.006852998208377428,
+        "final": -0.6393397027892984,
+        "mean": -0.2862427011285698
+      },
+      "action_norm": {
+        "min": 2.7824621200561523,
+        "max": 3.2246928215026855,
+        "final": 3.212592124938965,
+        "mean": 3.191383904218674
+      },
+      "nonzero_action_steps": 80,
+      "attempted_action": true,
+      "goal_success": false,
+      "goal_failed": false,
+      "goal_reason": "",
+      "rollout_ok": true,
+      "checks": {
+        "no_termination": true,
+        "torso_above_fall_threshold": true,
+        "upright_positive": true,
+        "attempted_action": true,
+        "goal_success": false
+      }
+    },
+    {
+      "profile": "asimov-1",
+      "label": "walk forward",
+      "task_id": "walk_forward",
+      "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
+      "steps_requested": 80,
       "steps_executed": 40,
       "terminated": true,
-      "truncated": true,
+      "truncated": false,
       "first_done_step": 40,
       "done_reason": "terminated",
       "fall_threshold": 0.378,
       "torso_z": {
-        "min": 0.37381563155685255,
-        "max": 0.6315840099307426,
-        "final": 0.37381563155685255,
-        "mean": 0.5723490570350542
+        "min": 0.36653029061892345,
+        "max": 0.6318427938039592,
+        "final": 0.36653029061892345,
+        "mean": 0.5723778366429565
       },
       "upright_proj": {
-        "min": 0.5910690313102859,
-        "max": 0.999998384288069,
-        "final": 0.5910690313102859,
-        "mean": 0.9225456901984371
+        "min": 0.5866641222529728,
+        "max": 0.9999297897567547,
+        "final": 0.5866641222529728,
+        "mean": 0.9223180677506004
       },
       "reward": {
-        "min": -7.482526528798875,
-        "max": 3.4148427390547407,
-        "final": -7.482526528798875,
-        "mean": 2.9277782028130046
+        "min": -8.097931896787749,
+        "max": 3.735426813114801,
+        "final": -8.097931896787749,
+        "mean": 3.12714247651988
       },
       "delta_x_m": {
-        "min": null,
-        "max": null,
-        "final": null,
-        "mean": null
+        "min": -0.5679627335693459,
+        "max": -0.00357233171709087,
+        "final": -0.5679627335693459,
+        "mean": -0.21170846903907758
       },
       "delta_y_m": {
-        "min": null,
-        "max": null,
-        "final": null,
-        "mean": null
+        "min": -0.004682631225845117,
+        "max": 0.04164642283795571,
+        "final": 0.02976952664199108,
+        "mean": 0.021544663194286433
       },
       "delta_yaw_rad": {
-        "min": null,
-        "max": null,
-        "final": null,
-        "mean": null
+        "min": -0.04473306224983208,
+        "max": 0.05344726104789619,
+        "final": -0.04473306224983208,
+        "mean": 0.013509517246326024
       },
       "action_norm": {
-        "min": 3.146033525466919,
-        "max": 3.3063364028930664,
-        "final": 3.1846561431884766,
-        "mean": 3.2053021013736727
+        "min": 3.057800054550171,
+        "max": 3.2348248958587646,
+        "final": 3.1697723865509033,
+        "mean": 3.200134593248367
       },
       "nonzero_action_steps": 40,
       "attempted_action": true,
@@ -74,57 +142,193 @@
     },
     {
       "profile": "asimov-1",
-      "label": "walk forward",
-      "task_id": "walk_forward",
-      "policy_source": "checkpoint:checkpoints/asimov_1_alberta_full",
-      "steps_requested": 40,
+      "label": "walk backward",
+      "task_id": "walk_backward",
+      "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
+      "steps_requested": 80,
       "steps_executed": 40,
       "terminated": true,
-      "truncated": true,
+      "truncated": false,
       "first_done_step": 40,
       "done_reason": "terminated",
       "fall_threshold": 0.378,
       "torso_z": {
-        "min": 0.3738106430427468,
-        "max": 0.6315822707223933,
-        "final": 0.3738106430427468,
-        "mean": 0.5723513729430852
+        "min": 0.366449692022043,
+        "max": 0.6318425806072878,
+        "final": 0.366449692022043,
+        "mean": 0.5723662997673664
       },
       "upright_proj": {
-        "min": 0.5911163271315334,
-        "max": 0.9999983228024675,
-        "final": 0.5911163271315334,
-        "mean": 0.9225498654082565
+        "min": 0.5868838474753656,
+        "max": 0.9999297933020269,
+        "final": 0.5868838474753656,
+        "mean": 0.9223299365306747
       },
       "reward": {
-        "min": -7.496835579658297,
-        "max": 3.377287540717252,
-        "final": -7.496835579658297,
-        "mean": 2.9012124247855353
+        "min": -7.3492200509556085,
+        "max": 4.367094271335415,
+        "final": -7.3492200509556085,
+        "mean": 3.574608439235722
       },
       "delta_x_m": {
-        "min": null,
-        "max": null,
-        "final": null,
-        "mean": null
+        "min": -0.5680829222359715,
+        "max": -0.0035722545745259975,
+        "final": -0.5680829222359715,
+        "mean": -0.21172131097357952
       },
       "delta_y_m": {
-        "min": null,
-        "max": null,
-        "final": null,
-        "mean": null
+        "min": -0.0047248775365643135,
+        "max": 0.04165697629902399,
+        "final": 0.029705545760774277,
+        "mean": 0.02153582734879484
       },
       "delta_yaw_rad": {
-        "min": null,
-        "max": null,
-        "final": null,
-        "mean": null
+        "min": -0.046240869911690054,
+        "max": 0.05375515026956826,
+        "final": -0.046240869911690054,
+        "mean": 0.013762082230234143
       },
       "action_norm": {
-        "min": 3.1463751792907715,
-        "max": 3.3059046268463135,
-        "final": 3.180175304412842,
-        "mean": 3.2053697884082792
+        "min": 3.057379961013794,
+        "max": 3.234574317932129,
+        "final": 3.1660635471343994,
+        "mean": 3.199538916349411
+      },
+      "nonzero_action_steps": 40,
+      "attempted_action": true,
+      "goal_success": false,
+      "goal_failed": false,
+      "goal_reason": "",
+      "rollout_ok": false,
+      "checks": {
+        "no_termination": false,
+        "torso_above_fall_threshold": false,
+        "upright_positive": true,
+        "attempted_action": true,
+        "goal_success": false
+      }
+    },
+    {
+      "profile": "asimov-1",
+      "label": "sidestep left",
+      "task_id": "sidestep_left",
+      "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
+      "steps_requested": 80,
+      "steps_executed": 40,
+      "terminated": true,
+      "truncated": false,
+      "first_done_step": 40,
+      "done_reason": "terminated",
+      "fall_threshold": 0.378,
+      "torso_z": {
+        "min": 0.36649090046539984,
+        "max": 0.6318436326574093,
+        "final": 0.36649090046539984,
+        "mean": 0.5723743053996474
+      },
+      "upright_proj": {
+        "min": 0.586721069147119,
+        "max": 0.9999297912808564,
+        "final": 0.586721069147119,
+        "mean": 0.9223158582357742
+      },
+      "reward": {
+        "min": -8.93583253217728,
+        "max": 11.425548651403389,
+        "final": -8.93583253217728,
+        "mean": 3.919446201089232
+      },
+      "delta_x_m": {
+        "min": -0.567987434774274,
+        "max": -0.003572300130462387,
+        "final": -0.567987434774274,
+        "mean": -0.2117117240889904
+      },
+      "delta_y_m": {
+        "min": -0.004710696334294098,
+        "max": 0.041653433430540864,
+        "final": 0.02975586866107179,
+        "mean": 0.02153661563826964
+      },
+      "delta_yaw_rad": {
+        "min": -0.04432133532208626,
+        "max": 0.05367851557482984,
+        "final": -0.04432133532208626,
+        "mean": 0.013693143503479294
+      },
+      "action_norm": {
+        "min": 3.057847023010254,
+        "max": 3.234683036804199,
+        "final": 3.1661384105682373,
+        "mean": 3.1996802747249604
+      },
+      "nonzero_action_steps": 40,
+      "attempted_action": true,
+      "goal_success": false,
+      "goal_failed": false,
+      "goal_reason": "",
+      "rollout_ok": false,
+      "checks": {
+        "no_termination": false,
+        "torso_above_fall_threshold": false,
+        "upright_positive": true,
+        "attempted_action": true,
+        "goal_success": false
+      }
+    },
+    {
+      "profile": "asimov-1",
+      "label": "sidestep right",
+      "task_id": "sidestep_right",
+      "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
+      "steps_requested": 80,
+      "steps_executed": 40,
+      "terminated": true,
+      "truncated": false,
+      "first_done_step": 40,
+      "done_reason": "terminated",
+      "fall_threshold": 0.378,
+      "torso_z": {
+        "min": 0.36646927901001275,
+        "max": 0.6318417019519126,
+        "final": 0.36646927901001275,
+        "mean": 0.5723690155508115
+      },
+      "upright_proj": {
+        "min": 0.5868109839217381,
+        "max": 0.9999297921365348,
+        "final": 0.5868109839217381,
+        "mean": 0.9223336745264639
+      },
+      "reward": {
+        "min": -9.085027502250599,
+        "max": 11.089058610010957,
+        "final": -9.085027502250599,
+        "mean": 3.697932083687636
+      },
+      "delta_x_m": {
+        "min": -0.5680397677323039,
+        "max": -0.003572278464845723,
+        "final": -0.5680397677323039,
+        "mean": -0.21171780139418975
+      },
+      "delta_y_m": {
+        "min": -0.004701516591692541,
+        "max": 0.04165867691935139,
+        "final": 0.02968729041436057,
+        "mean": 0.021544917128711177
+      },
+      "delta_yaw_rad": {
+        "min": -0.045601951374598916,
+        "max": 0.05361708421210966,
+        "final": -0.045601951374598916,
+        "mean": 0.013689769033066351
+      },
+      "action_norm": {
+        "min": 3.0572714805603027,
+        "max": 3.234689712524414,
+        "final": 3.177234649658203,
+        "mean": 3.200051265954971
       },
       "nonzero_action_steps": 40,
       "attempted_action": true,
@@ -144,55 +348,55 @@
       "profile": "asimov-1",
       "label": "turn left",
       "task_id": "turn_left",
-      "policy_source": "checkpoint:checkpoints/asimov_1_alberta_full",
-      "steps_requested": 40,
+      "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
+      "steps_requested": 80,
       "steps_executed": 40,
       "terminated": true,
-      "truncated": true,
+      "truncated": false,
       "first_done_step": 40,
       "done_reason": "terminated",
       "fall_threshold": 0.378,
       "torso_z": {
-        "min": 0.37384812997836353,
-        "max": 0.6315863584501746,
-        "final": 0.37384812997836353,
-        "mean": 0.5723505187653892
+        "min": 0.3664569497121515,
+        "max": 0.6318462104824359,
+        "final": 0.3664569497121515,
+        "mean": 0.5724031556845349
       },
       "upright_proj": {
-        "min": 0.5908589894602274,
-        "max": 0.9999978601890452,
-        "final": 0.5908589894602274,
-        "mean": 0.9225334958171303
+        "min": 0.5874706935528542,
+        "max": 0.9999297785332584,
+        "final": 0.5874706935528542,
+        "mean": 0.92238002748175
       },
       "reward": {
-        "min": -7.604881883617281,
-        "max": 3.3976799438995076,
-        "final": -7.604881883617281,
-        "mean": 2.8132431743666038
+        "min": -8.98533992544245,
+        "max": 8.86600746128309,
+        "final": -8.98533992544245,
+        "mean": 3.680130866787856
       },
       "delta_x_m": {
-        "min": null,
-        "max": null,
-        "final": null,
-        "mean": null
+        "min": -0.5678129493494833,
+        "max": -0.003572614810998132,
+        "final": -0.5678129493494833,
+        "mean": -0.21168594015120673
       },
       "delta_y_m": {
-        "min": null,
-        "max": null,
-        "final": null,
-        "mean": null
+        "min": -0.004686124955453529,
+        "max": 0.041308450831891,
+        "final": 0.02937385805241581,
+        "mean": 0.02138913441630897
       },
       "delta_yaw_rad": {
-        "min": null,
-        "max": null,
-        "final": null,
-        "mean": null
+        "min": -0.045624827525492816,
+        "max": 0.05350405793009913,
+        "final": -0.045624827525492816,
+        "mean": 0.013339831472886598
       },
       "action_norm": {
-        "min": 3.151228189468384,
-        "max": 3.3066225051879883,
-        "final": 3.1748242378234863,
-        "mean": 3.2061908304691316
+        "min": 3.061312437057495,
+        "max": 3.2363102436065674,
+        "final": 3.1689910888671875,
+        "mean": 3.2011523485183715
       },
       "nonzero_action_steps": 40,
       "attempted_action": true,
@@ -212,55 +416,55 @@
       "profile": "asimov-1",
       "label": "turn right",
       "task_id": "turn_right",
-      "policy_source": "checkpoint:checkpoints/asimov_1_alberta_full",
-      "steps_requested": 40,
+      "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
+      "steps_requested": 80,
       "steps_executed": 40,
       "terminated": true,
-      "truncated": true,
+      "truncated": false,
       "first_done_step": 40,
       "done_reason": "terminated",
       "fall_threshold": 0.378,
       "torso_z": {
-        "min": 0.37382417956578207,
-        "max": 0.6315814330373691,
-        "final": 0.37382417956578207,
-        "mean": 0.5723297052749566
+        "min": 0.3664665480617597,
+        "max": 0.6318370498321982,
+        "final": 0.3664665480617597,
+        "mean": 0.5723567986444229
       },
       "upright_proj": {
-        "min": 0.590781659427664,
-        "max": 0.99999904976996,
-        "final": 0.590781659427664,
-        "mean": 0.9224713445248607
+        "min": 0.5871388374913595,
+        "max": 0.9999298060669977,
+        "final": 0.5871388374913595,
+        "mean": 0.9222746751819801
       },
       "reward": {
-        "min": -7.28396723217411,
-        "max": 3.3820402900657944,
-        "final": -7.28396723217411,
-        "mean": 2.8419506702042407
+        "min": -3.0387147762983844,
+        "max": 9.195208474212569,
+        "final": -3.0387147762983844,
+        "mean": 4.620083064722164
       },
       "delta_x_m": {
-        "min": null,
-        "max": null,
-        "final": null,
-        "mean": null
+        "min": -0.5683652219665765,
+        "max": -0.003571935335595874,
+        "final": -0.5683652219665765,
+        "mean": -0.21177544666970632
       },
       "delta_y_m": {
-        "min": null,
-        "max": null,
-        "final": null,
-        "mean": null
+        "min": -0.004750988804970961,
+        "max": 0.041911643954840434,
+        "final": 0.030396670115144905,
+        "mean": 0.021655402342320086
       },
       "delta_yaw_rad": {
-        "min": null,
-        "max": null,
-        "final": null,
-        "mean": null
+        "min": -0.04193662870129352,
+        "max": 0.05392965435065199,
+        "final": -0.04193662870129352,
+        "mean": 0.014258809819972434
       },
       "action_norm": {
-        "min": 3.1407926082611084,
-        "max": 3.3059322834014893,
-        "final": 3.181253433227539,
-        "mean": 3.204195636510849
+        "min": 3.053210496902466,
+        "max": 3.233006477355957,
+        "final": 3.147244930267334,
+        "mean": 3.1967367947101595
       },
       "nonzero_action_steps": 40,
       "attempted_action": true,
@@ -277,8 +481,8 @@
       }
     }
   ],
-  "steps_requested": 160,
-  "steps_executed": 160,
+  "steps_requested": 560,
+  "steps_executed": 320,
   "rollout_ok": false,
   "any_goal_success": false
 }

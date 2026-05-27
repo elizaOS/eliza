@@ -622,7 +622,11 @@ def main() -> int:
     else:
         print(output, end="")
     if args.strict and report["summary"]["blocker_count"]:
-        return 1
+        print(
+            "STATUS: BLOCKED E1 SoC PD input contract "
+            f"blockers={report['summary']['blocker_count']}"
+        )
+        return 2
     return 0
 
 

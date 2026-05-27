@@ -1,10 +1,10 @@
 // tage_table.sv — single tagged TAGE table.
 //
 // Each entry has a tag, a TAGE_CTR_W-bit signed-magnitude saturating
-// direction counter (split into msb=sign and lower=magnitude), and a
-// TAGE_USEFUL_W-bit useful field. The table is indexed by a folded XOR of
-// PC and the global history register, with a parallel tag hash. This is the
-// Seznec/TAGE-SC-L primitive at simulator scale.
+// direction counter (split into msb=sign and lower=magnitude), a
+// TAGE_USEFUL_W-bit useful field, and payload parity. The table is indexed by
+// a folded XOR of PC and the global history register, with a parallel tag hash.
+// This is the Seznec/TAGE-SC-L primitive at simulator scale.
 //
 // Useful-bit periodic reset is handled here: the entire table's useful field
 // is decremented by one when the reset strobe is asserted. The PMU exposes
@@ -68,6 +68,7 @@ module tage_table
         logic [TAGE_TAG_W-1:0]      tag;
         logic [TAGE_CTR_W-1:0]      ctr;
         logic [TAGE_USEFUL_W-1:0]   useful;
+        logic                       parity;
     } tage_entry_t;
 
     tage_entry_t storage_q [ENTRIES];
@@ -114,12 +115,32 @@ module tage_table
                    TABLE_ID[TAGE_TAG_W-1:0];
     endfunction
 
+    /* verilator lint_off UNUSEDSIGNAL */
+    function automatic logic tage_payload_parity(input tage_entry_t entry);
+        tage_payload_parity = ^{
+            entry.valid,
+            entry.tag,
+            entry.ctr,
+            entry.useful
+        };
+    endfunction
+    /* verilator lint_on UNUSEDSIGNAL */
+
+    function automatic tage_entry_t tage_entry_with_parity(input tage_entry_t entry);
+        tage_entry_t fixed;
+        fixed = entry;
+        fixed.parity = tage_payload_parity(entry);
+        return fixed;
+    endfunction
+
     logic [IDX_W-1:0]      lkp_i;
     logic [TAGE_TAG_W-1:0] lkp_t;
+    logic                  lkp_parity_ok;
     always_comb begin
         lkp_i      = index_hash(lkp_pc, lkp_hist);
         lkp_t      = tag_hash(lkp_pc, lkp_hist);
-        lkp_hit    = storage_q[lkp_i].valid && (storage_q[lkp_i].tag == lkp_t);
+        lkp_parity_ok = storage_q[lkp_i].parity == tage_payload_parity(storage_q[lkp_i]);
+        lkp_hit    = storage_q[lkp_i].valid && lkp_parity_ok && (storage_q[lkp_i].tag == lkp_t);
         lkp_ctr    = storage_q[lkp_i].ctr;
         lkp_useful = storage_q[lkp_i].useful;
         // The MSB of the centered counter encodes direction. Counter
@@ -132,11 +153,13 @@ module tage_table
     /* verilator lint_off UNUSEDSIGNAL */
     logic                  upd_hit;
     /* verilator lint_on UNUSEDSIGNAL */
+    logic                  upd_parity_ok;
 
     always_comb begin
         upd_i = index_hash(upd_pc, upd_hist);
         upd_t = tag_hash(upd_pc, upd_hist);
-        upd_hit = storage_q[upd_i].valid && (storage_q[upd_i].tag == upd_t);
+        upd_parity_ok = storage_q[upd_i].parity == tage_payload_parity(storage_q[upd_i]);
+        upd_hit = storage_q[upd_i].valid && upd_parity_ok && (storage_q[upd_i].tag == upd_t);
         upd_hit_o = upd_hit;
         upd_ctr_o = storage_q[upd_i].ctr;
         upd_useful_o = storage_q[upd_i].useful;
@@ -155,10 +178,15 @@ module tage_table
                     storage_d[e].useful[TAGE_USEFUL_W-1] = 1'b0;
                 if (useful_reset_lsb && storage_d[e].useful != '0)
                     storage_d[e].useful[0] = 1'b0;
+                storage_d[e] = tage_entry_with_parity(storage_d[e]);
             end
         end
 
         if (upd_valid) begin
+            if (storage_q[upd_i].valid && !upd_parity_ok) begin
+                storage_d[upd_i].valid = 1'b0;
+                storage_d[upd_i] = tage_entry_with_parity(storage_d[upd_i]);
+            end
             if (upd_hit) begin
                 // Update the direction counter toward the actual outcome.
                 if (upd_taken && storage_q[upd_i].ctr != {TAGE_CTR_W{1'b1}})
@@ -173,19 +201,21 @@ module tage_table
                     storage_d[upd_i].useful = storage_q[upd_i].useful + 1'b1;
                 else if (upd_useful_dec && storage_q[upd_i].useful != '0)
                     storage_d[upd_i].useful = storage_q[upd_i].useful - 1'b1;
+                storage_d[upd_i] = tage_entry_with_parity(storage_d[upd_i]);
             end else if (upd_alloc) begin
                 // Allocation policy is owned by the TAGE top, which only
                 // raises `upd_alloc` when this table is the chosen one and
                 // a victim (useful==0) was identified by the read path.
                 if (storage_q[upd_i].useful == '0 || !storage_q[upd_i].valid) begin
-                    storage_d[upd_i] = '{
+                    storage_d[upd_i] = tage_entry_with_parity('{
                         valid: 1'b1,
                         tag:   upd_t,
                         ctr:   upd_taken
                             ? {1'b1, {(TAGE_CTR_W-1){1'b0}}}
                             : {1'b0, {(TAGE_CTR_W-1){1'b1}}},
-                        useful:'0
-                    };
+                        useful:'0,
+                        parity:1'b0
+                    });
                     pmu_alloc_d = 1'b1;
                 end
             end
@@ -198,7 +228,8 @@ module tage_table
                 valid:  1'b0,
                 tag:    '0,
                 ctr:    {1'b0, {(TAGE_CTR_W-1){1'b1}}},
-                useful: '0
+                useful: '0,
+                parity: 1'b0
             }};
             pmu_alloc <= 1'b0;
         end else begin

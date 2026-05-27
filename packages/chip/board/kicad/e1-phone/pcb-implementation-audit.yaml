@@ -274,7 +274,7 @@ required_release_outputs:
 release_blockers:
   - all E1Phone:* footprints are non-release placeholders excluded from BOM and position
     files
-  - no routed copper segments or filled zones are present in the KiCad PCB
+  - production concept source has no release-approved routed copper segments or filled zones
   - supplier connector/module land patterns and STEP models have not replaced placeholders
   - DRC, ERC, SI/PI, RF, fabrication, assembly, and routed enclosure clearance evidence
     are missing

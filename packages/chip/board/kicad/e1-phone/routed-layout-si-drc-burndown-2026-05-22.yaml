@@ -323,6 +323,13 @@ validation_evidence_required:
       - mechanical/e1-phone/review/routed-board-clearance.json
     acceptance_rule: routed_step_with_supplier_models_passes_clearance_against_display_battery_usb_buttons_cameras_antennas_acoustics_and_split_interconnect
     present: false
+  component_3d_binding_gap_matrix:
+    required_artifacts:
+      - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+      - board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv
+      - board/kicad/e1-phone/production/step/component-models/release-manifest.yaml
+    acceptance_rule: every_board_footprint_has_fail_closed_component_3d_binding_supplier_step_intake_status_local_step_locator_and_release_credit_false
+    present: false
 
 order_of_operations:
   - order: 0

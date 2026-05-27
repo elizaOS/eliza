@@ -142,6 +142,9 @@ Status: generated part index and contact sheet for every assembly part.
 - `dram_package_marker`: role `PCB component marker`, span [9.5, 8.0, 0.22] mm, material visual marker for LPDDR memory package near SoC
 - `storage_package_marker`: role `PCB component marker`, span [11.5, 9.0, 0.22] mm, material visual marker for eMMC/UFS storage package
 - `pmic_package_marker`: role `PCB component marker`, span [7.0, 7.0, 0.22] mm, material visual marker for PMIC package under power shield
+- `usb_pd_controller_package_marker`: role `PCB component marker`, span [9.0, 9.0, 0.22] mm, material visual marker for TPS65987 USB-PD controller package and exposed pads
+- `charger_package_marker`: role `PCB component marker`, span [4.0, 4.0, 0.2] mm, material visual marker for MAX77860 charger WLP package
+- `battery_connector_package_marker`: role `PCB connector marker`, span [6.0, 3.0, 0.18] mm, material visual marker for 4-pin battery pack connector or welded FPC landing
 - `audio_codec_package_marker`: role `PCB component marker`, span [7.0, 7.0, 0.22] mm, material visual marker for 48-pin audio codec package in bottom audio region
 - `rf_transceiver_package_marker`: role `PCB component marker`, span [7.5, 7.5, 0.22] mm, material visual marker for RF transceiver/front-end package under radio shield
 - `gnss_lna_package_marker`: role `PCB component marker`, span [3.0, 2.5, 0.2] mm, material visual marker for GNSS/RF low-noise amplifier placement
@@ -172,6 +175,9 @@ Status: generated part index and contact sheet for every assembly part.
 - `side_key_flex_tail`: role `flex/cable`, span [1.0, 28.0, 0.12] mm, material power/volume side-key flex tail along the right side wall
 - `battery_connector_lead_flex`: role `flex/cable`, span [8.0, 1.2, 0.12] mm, material battery pack positive/negative/NTC/ID lead flex landing on bottom island
 - `usb_c_power_data_escape_tail`: role `flex/cable`, span [18.0, 1.0, 0.12] mm, material USB-C VBUS/CC/USB2 escape tail marker on the bottom island
+- `usb_pd_controller_escape_trace_marker`: role `PCB trace marker`, span [9.0, 1.0, 0.12] mm, material board-level USB-C VBUS/CC/USB2 route marker from receptacle to TPS65987
+- `pd_charger_control_trace_marker`: role `PCB trace marker`, span [10.0, 1.0, 0.12] mm, material board-level PD controller to charger VBUS/SYS/I2C/IRQ route marker
+- `charger_battery_power_sense_trace_marker`: role `PCB trace marker`, span [4.0, 4.8, 0.12] mm, material board-level charger to battery connector VBAT/SYS/NTC/ID route marker
 - `bottom_speaker_lead_pair`: role `flex/cable`, span [10.0, 1.0, 0.12] mm, material bottom speaker differential lead pair marker
 - `bottom_microphone_flex_leads`: role `flex/cable`, span [8.0, 1.0, 0.12] mm, material bottom microphone bias/data flex lead marker
 - `top_microphone_flex_tail`: role `flex/cable`, span [0.8, 18.0, 0.12] mm, material top microphone PDM flex tail marker from top microphone port region to top PCB island
@@ -199,6 +205,12 @@ Status: generated part index and contact sheet for every assembly part.
 - `battery_lead_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for battery_lead_flex on main_pcb; local CAD connection evidence only
 - `usb_c_escape_tail_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for usb_c_escape_tail on usb_c_receptacle; local CAD connection evidence only
 - `usb_c_escape_tail_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for usb_c_escape_tail on main_pcb; local CAD connection evidence only
+- `usb_c_to_pd_controller_escape_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for usb_c_to_pd_controller_escape on usb_c_receptacle; local CAD connection evidence only
+- `usb_c_to_pd_controller_escape_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for usb_c_to_pd_controller_escape on usb_pd_controller_package_marker; local CAD connection evidence only
+- `pd_controller_to_charger_control_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for pd_controller_to_charger_control on usb_pd_controller_package_marker; local CAD connection evidence only
+- `pd_controller_to_charger_control_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for pd_controller_to_charger_control on charger_package_marker; local CAD connection evidence only
+- `charger_to_battery_power_sense_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for charger_to_battery_power_sense on charger_package_marker; local CAD connection evidence only
+- `charger_to_battery_power_sense_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for charger_to_battery_power_sense on battery_connector_package_marker; local CAD connection evidence only
 - `bottom_speaker_lead_pair_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for bottom_speaker_lead_pair on main_pcb; local CAD connection evidence only
 - `bottom_speaker_lead_pair_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for bottom_speaker_lead_pair on bottom_speaker_module; local CAD connection evidence only
 - `bottom_microphone_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for bottom_microphone_flex on main_pcb; local CAD connection evidence only

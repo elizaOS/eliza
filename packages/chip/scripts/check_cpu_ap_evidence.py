@@ -36,6 +36,75 @@ TRANSCRIPT_MODE_BY_KEY = {
 }
 
 
+def evidence_marker(text: str, name: str) -> str | None:
+    match = re.search(rf"^eliza-evidence: {re.escape(name)}=(.+)$", text, re.M)
+    return match.group(1).strip() if match else None
+
+
+def parse_evidence_utc(value: str | None) -> dt.datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=dt.UTC)
+    return parsed.astimezone(dt.UTC)
+
+
+def transcript_intake_order_problem(
+    *,
+    prerequisite_text: str,
+    prerequisite_path: str,
+    dependent_text: str,
+    dependent_path: str,
+    dependency_label: str,
+) -> str | None:
+    prerequisite_utc = parse_evidence_utc(evidence_marker(prerequisite_text, "intake_utc"))
+    dependent_utc = parse_evidence_utc(evidence_marker(dependent_text, "intake_utc"))
+    if prerequisite_utc is None:
+        return (
+            f"{prerequisite_path} is missing a valid eliza-evidence: intake_utc marker; "
+            f"cannot prove {dependency_label} freshness"
+        )
+    if dependent_utc is None:
+        return (
+            f"{dependent_path} is missing a valid eliza-evidence: intake_utc marker; "
+            f"cannot prove it was captured after {dependency_label}"
+        )
+    if dependent_utc < prerequisite_utc:
+        return (
+            f"{dependent_path} was intaken at {dependent_utc.isoformat().replace('+00:00', 'Z')} "
+            f"before {dependency_label} {prerequisite_path} was intaken at "
+            f"{prerequisite_utc.isoformat().replace('+00:00', 'Z')}; regenerate the dependent "
+            "transcript from the current generated-AP run"
+        )
+    return None
+
+
+def dependent_transcript_freshness_problems(evidence_manifest: dict) -> list[str]:
+    specs = transcript_specs(evidence_manifest)
+    linux_spec = specs.get("linux_boot_log", {})
+    ap_spec = specs.get("ap_benchmark_log", {})
+    linux_path = linux_spec.get("path")
+    ap_path = ap_spec.get("path")
+    if not isinstance(linux_path, str) or not isinstance(ap_path, str):
+        return []
+    linux_file = ROOT / linux_path
+    ap_file = ROOT / ap_path
+    if not linux_file.is_file() or not ap_file.is_file():
+        return []
+    problem = transcript_intake_order_problem(
+        prerequisite_text=linux_file.read_text(encoding="utf-8", errors="ignore"),
+        prerequisite_path=linux_path,
+        dependent_text=ap_file.read_text(encoding="utf-8", errors="ignore"),
+        dependent_path=ap_path,
+        dependency_label="linux-boot",
+    )
+    return [problem] if problem else []
+
+
 def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8", errors="ignore")
 
@@ -245,6 +314,7 @@ def evidence_problems() -> tuple[list[str], list[str]]:
         text = path.read_text(encoding="utf-8", errors="ignore")
         problems.extend(text_problems(text, spec, rel_path, raw=False))
         problems.extend(transcript_metadata_problems(text, rel_path))
+    problems.extend(dependent_transcript_freshness_problems(evidence_manifest))
     return missing, problems
 
 

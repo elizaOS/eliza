@@ -1275,6 +1275,8 @@ module e1_riscv_iommu
     //     flush) — they advance CQH and are accepted.
     //   * IOFENCE.C completes the fence: it pulses cmd_complete_irq and
     //     (optionally) signals completion to memory.
+    //   * Invalid opcodes fail closed by leaving CQH parked on the bad
+    //     descriptor so software can observe and recover the queue.
     // The CQ engine only runs when the translation FSM is idle so the two
     // share the downstream port without contention.
     // ==================================================================
@@ -1364,9 +1366,12 @@ module e1_riscv_iommu
     assign mmio_wready  = mmio_aw_reg && !mmio_bvalid;
     assign mmio_arready = !mmio_ar_reg;
 
-    // Advance CQH when a command has been executed.
+    // Advance CQH only when a supported command has been executed.
     logic cq_advance;
-    assign cq_advance = (cq_state == CQ_EXEC);
+    assign cq_advance = (cq_state == CQ_EXEC) &&
+                        ((cq_cmd[6:0] == CMD_OP_IOTINVAL) ||
+                         (cq_cmd[6:0] == CMD_OP_IODIR) ||
+                         (cq_cmd[6:0] == CMD_OP_IOFENCE));
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin

@@ -472,6 +472,11 @@ CONFIGS: dict[str, dict] = {
     "tage_use_alt_on_na": _geo(TAGE_USE_ALT_ON_NA=1),
     "tage_alt_on_na_disabled": _geo(TAGE_ALT_ON_NA_ENTRIES=0),
     "tage_alt_on_na_conf": _geo(TAGE_ALT_ON_NA_ENTRIES=1024),
+    "tage_no_path_history": _geo(TAGE_PATH_HISTORY_BITS=0),
+    "tage_path_hist32": _geo(TAGE_PATH_HISTORY_BITS=32),
+    "tage_path_hist64": _geo(TAGE_PATH_HISTORY_BITS=64),
+    "tage_path_token4": _geo(TAGE_PATH_HISTORY_BITS=64, TAGE_PATH_HISTORY_TOKEN_BITS=4),
+    "tage_path_token8": _geo(TAGE_PATH_HISTORY_BITS=64, TAGE_PATH_HISTORY_TOKEN_BITS=8),
     # ---- ITTAGE target-history ablations ----
     "ittage_no_target_hist": _geo(ITTAGE_TARGET_HISTORY_BITS=0),
     "ittage_tag9_no_path": _geo(

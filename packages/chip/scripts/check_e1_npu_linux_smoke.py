@@ -26,7 +26,7 @@ CAPTURE_COMMANDS = {
     "buildroot": "make BR2_EXTERNAL=$PWD/sw/buildroot eliza_e1_defconfig && make BR2_EXTERNAL=$PWD/sw/buildroot",
     "kernel_import": "sw/linux/scripts/import-linux-bsp.sh /path/to/linux",
     "target_smoke": "ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu",
-    "capture_wrapper": "E1_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu' sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot ml-smoke",
+    "capture_wrapper": "E1_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu' sw/linux/scripts/capture-linux-bsp-evidence.sh /path/to/linux ml-smoke",
 }
 
 

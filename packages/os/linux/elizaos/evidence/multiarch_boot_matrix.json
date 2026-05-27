@@ -1,6 +1,6 @@
 {
   "schema": "eliza.os.linux.multiarch_boot_matrix.v1",
-  "updated_at": "2026-05-24T05:22:00Z",
+  "updated_at": "2026-05-24T08:42:00Z",
   "claim_boundary": "current_repository_evidence_matrix_not_physical_silicon_claim",
   "debian_riscv64_port_contract": {
     "architecture": "riscv64",
@@ -73,24 +73,34 @@
     },
     {
       "arch": "arm64",
-      "status": "blocked-current-iso-boot",
-      "iso": "out/elizaos-linux-arm64-default-20260524T043628Z.iso",
-      "sha256": "9a6f6ef0c555855a035daeeae8e0816020659f5b6f676295c800e86c5a1ea934",
-      "evidence": null,
+      "status": "candidate",
+      "iso": "out/elizaos-linux-arm64-default-20260524T075932Z.iso",
+      "sha256": "74f4480782aeeb42dbc2c2eedbd60490c2bf1e79622a2b50961420f45e11e09c",
+      "evidence": "evidence/arm64_qemu_virt_boot.json",
       "proves": [
-        "Debian arm64 live ISO builds with linux-image-arm64 and GRUB EFI packages",
+        "Debian live ISO root filesystem boots under QEMU",
+        "Debian arm64 live ISO boots under qemu-system-aarch64 -M virt through AAVMF/GRUB EFI",
+        "ISO contains Debian arm64 GRUB EFI boot artifacts",
+        "kernel serial transcript includes Linux aarch64 version",
+        "first boot completed",
+        "guest-side curl reached http://127.0.0.1:31337/api/health",
+        "real packaged eliza agent service reported ready",
+        "terminal TUI smoke reported ready",
         "ISO static GUI/kiosk payload check passed"
       ],
       "gaps": [
-        "arm64 QEMU boot evidence still needs to be collected",
-        "guest-side agent health and terminal TUI readiness still need arm64 runtime evidence"
+        "not E1 chip/AP target evidence",
+        "not physical silicon evidence"
       ],
       "runtime_artifacts": {
         "bun": "artifacts/arm64/bun",
         "bun_sha256": "67892bb6734ef352f90a964f0a2a680d5f6e6d15bdb5510e56b8065ac4d599ae",
         "bun_source_url": "https://github.com/oven-sh/bun/releases/download/bun-v1.3.13/bun-linux-aarch64.zip",
         "bun_source_zip_sha256": "70bae41b3908b0a120e1e58c5c8af30e74afae3b8d11b0d3fdd8e787ddfb4b22",
-        "agent_bundle": "artifacts/arm64/elizaos-app"
+        "agent_bundle": "artifacts/arm64/elizaos-app",
+        "agent_bundle_nodejs_fallback": "config/includes.chroot/usr/lib/elizaos/run-agent.sh",
+        "terminal_tui_nodejs_fallback": "config/includes.chroot/usr/lib/elizaos/run-terminal-tui-smoke.sh",
+        "qemu_boot_transcript": "evidence/arm64_qemu_virt_boot.transcript.log"
       }
     }
   ]

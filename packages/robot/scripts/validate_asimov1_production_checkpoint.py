@@ -76,12 +76,19 @@ def _load_json(path: Path, default: Any) -> Any:
 
 
 def _sha256_file(path: Path) -> str | None:
-    if not path.is_file():
+    try:
+        is_file = path.is_file()
+    except OSError:
+        return None
+    if not is_file:
         return None
     h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            h.update(chunk)
+    try:
+        with path.open("rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                h.update(chunk)
+    except OSError:
+        return None
     return h.hexdigest()
 
 
@@ -189,19 +196,51 @@ def _asset_provenance_matches(
     manifest_path = Path(str(manifest.get(path_key, "")))
     job_path = Path(str(training_job.get(path_key, "")))
     config_path = Path(str(config.get(path_key, "")))
-    if not manifest_path.is_file() or not job_path.is_file() or not config_path.is_file():
-        return False
-    if manifest_path.resolve() != expected_path.resolve():
-        return False
-    if job_path.resolve() != manifest_path.resolve() or config_path.resolve() != manifest_path.resolve():
-        return False
+    paths = (manifest_path, job_path, config_path)
     actual_hash = _sha256_file(manifest_path)
+    if actual_hash is None and all(
+        _asset_suffix(path) == _asset_suffix(expected_path) for path in paths
+    ):
+        actual_hash = _sha256_file(expected_path)
+        current_asset = actual_hash is not None
+    else:
+        try:
+            current_asset = (
+                manifest_path.is_file()
+                and job_path.is_file()
+                and config_path.is_file()
+                and manifest_path.resolve() == expected_path.resolve()
+                and job_path.resolve() == manifest_path.resolve()
+                and config_path.resolve() == manifest_path.resolve()
+            )
+        except OSError:
+            current_asset = False
+    if not current_asset:
+        return False
     return (
         actual_hash is not None
         and manifest.get(hash_key) == actual_hash
         and training_job.get(hash_key) == actual_hash
         and config.get(hash_key) == actual_hash
     )
+
+
+def _current_asset_path_and_hash(path: Path, expected_path: Path) -> tuple[bool, str | None]:
+    actual_hash = _sha256_file(path)
+    if actual_hash is None and _asset_suffix(path) == _asset_suffix(expected_path):
+        actual_hash = _sha256_file(expected_path)
+        return actual_hash is not None, actual_hash
+    try:
+        return path.is_file() and path.resolve() == expected_path.resolve(), actual_hash
+    except OSError:
+        return False, actual_hash
+
+
+def _asset_suffix(path: Path) -> tuple[str, ...]:
+    parts = path.parts
+    if "assets" in parts:
+        return parts[parts.index("assets") :]
+    return parts[-1:]
 
 
 def _manifest_asset_provenance_matches(
@@ -217,7 +256,16 @@ def _manifest_asset_provenance_matches(
         manifest_resolved = manifest_path.resolve()
         expected_resolved = expected_path.resolve()
     except OSError:
-        return False
+        manifest_is_file = False
+        manifest_resolved = manifest_path
+        expected_resolved = expected_path.resolve()
+    if not manifest_is_file:
+        actual_hash = _sha256_file(expected_path)
+        return (
+            actual_hash is not None
+            and manifest.get(hash_key) == actual_hash
+            and _asset_suffix(manifest_path) == _asset_suffix(expected_path)
+        )
     if not manifest_is_file or manifest_resolved != expected_resolved:
         return False
     actual_hash = _sha256_file(manifest_path)
@@ -228,7 +276,7 @@ def _validate_inference(checkpoint: Path, prompts: list[str]) -> dict[str, Any]:
     from eliza_robot.rl.text_conditioned.policy import TextConditionedPolicy
 
     start = time.time()
-    policy = TextConditionedPolicy(checkpoint)
+    policy = TextConditionedPolicy(checkpoint, strict_manifest=True)
     proprio = np.zeros(ASIMOV1_ACTOR_OBSERVATION_DIM, dtype=np.float32)
     results = []
     for prompt in prompts:
@@ -266,6 +314,7 @@ def _validate_asimov1_alberta_checkpoint(
         min_steps=min_steps,
         require_domain_rand=True,
         require_inference=require_inference or require_inference_check,
+        require_phase_promotion=True,
     )
     checks = dict(report["checks"])
     checks.update(
@@ -341,19 +390,23 @@ def validate_asimov1_production_checkpoint(
         )
     mjcf_path = Path(str(training_job.get("mjcf_xml", "")))
     asset_manifest_path = Path(str(training_job.get("asset_manifest", "")))
+    mjcf_current, mjcf_hash = _current_asset_path_and_hash(
+        mjcf_path, ASIMOV1_GENERATED_MJCF
+    )
+    asset_manifest_current, asset_manifest_hash = _current_asset_path_and_hash(
+        asset_manifest_path, ASIMOV1_GENERATED_MANIFEST
+    )
     active_tasks = set(manifest.get("active_tasks", []))
     max_steps = _metric_steps(metrics)
     checks = {
         "checkpoint_dir": checkpoint.is_dir(),
         "policy_artifact": policy_path.is_file() and policy_path.stat().st_size > 0,
         "training_job": (checkpoint / "training_job.json").is_file(),
-        "mjcf_current_asset": mjcf_path.resolve() == ASIMOV1_GENERATED_MJCF.resolve(),
-        "mjcf_asset_hash": mjcf_path.is_file()
-        and training_job.get("mjcf_xml_sha256") == _sha256_file(mjcf_path),
-        "asset_manifest_current": asset_manifest_path.resolve()
-        == ASIMOV1_GENERATED_MANIFEST.resolve(),
-        "asset_manifest_hash": asset_manifest_path.is_file()
-        and training_job.get("asset_manifest_sha256") == _sha256_file(asset_manifest_path),
+        "mjcf_current_asset": mjcf_current,
+        "mjcf_asset_hash": training_job.get("mjcf_xml_sha256") == mjcf_hash,
+        "asset_manifest_current": asset_manifest_current,
+        "asset_manifest_hash": training_job.get("asset_manifest_sha256")
+        == asset_manifest_hash,
         "manifest_mjcf_asset_provenance": _asset_provenance_matches(
             manifest,
             training_job,

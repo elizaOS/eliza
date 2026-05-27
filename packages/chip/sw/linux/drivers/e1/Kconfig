@@ -9,7 +9,6 @@ if ELIZA_E1_BSP
 
 config ELIZA_E1_NPU
 	tristate "Eliza e1 NPU contract driver"
-	depends on MISC_DEVICES
 	help
 	  Exposes the eliza,e1-npu MMIO node through /dev/e1-npu for
 	  smoke tests. The register base is E1_NPU_BASE in the platform

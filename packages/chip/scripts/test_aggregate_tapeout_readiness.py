@@ -312,6 +312,206 @@ class BuildReportTests(unittest.TestCase):
             else:
                 agg.PRODUCT_RELEASE_STATUS_PATH.write_text(original, encoding="utf-8")
 
+    def test_product_gate_uses_external_dependency_when_no_repo_generation_can_close(self) -> None:
+        agg.PRODUCT_RELEASE_STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        original = (
+            agg.PRODUCT_RELEASE_STATUS_PATH.read_text(encoding="utf-8")
+            if agg.PRODUCT_RELEASE_STATUS_PATH.exists()
+            else None
+        )
+        try:
+            agg.PRODUCT_RELEASE_STATUS_PATH.write_text(
+                json.dumps(
+                    {
+                        "blocker_dependency_counts": {
+                            "actionable_external_dependency": 66,
+                            "live_device_validation": 10,
+                            "repo_artifact_generation": 159,
+                        },
+                        "repo_artifact_generation_groups": [
+                            {
+                                "family": "manufacturing_release_artifacts",
+                                "count": 99,
+                                "repo_generation_category_counts": {
+                                    "blocked_by_external_evidence": 9,
+                                    "blocked_by_live_hardware": 3,
+                                    "blocked_by_release_approval": 87,
+                                    "repo_generatable_now": 0,
+                                },
+                            },
+                            {
+                                "family": "phone_routed_output_artifacts",
+                                "count": 8,
+                                "repo_generation_category_counts": {
+                                    "blocked_by_external_evidence": 2,
+                                    "blocked_by_live_hardware": 0,
+                                    "blocked_by_release_approval": 6,
+                                    "repo_generatable_now": 0,
+                                },
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = agg.build_report(
+                [
+                    agg.GateResult(
+                        name="product-release-status-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED product release check",
+                        subsystem="platform",
+                        tier="pd",
+                        script="scripts/product_check.py",
+                        args=("--release",),
+                    )
+                ]
+            )
+            self.assertEqual(
+                report["blocker_dependency_counts"]["actionable_external_dependency"],
+                1,
+            )
+            self.assertEqual(report["blocker_dependency_counts"]["repo_artifact_generation"], 0)
+            self.assertEqual(
+                report["blocker_groups"]["actionable_external_dependency"][0]["name"],
+                "product-release-status-check",
+            )
+        finally:
+            if original is None:
+                agg.PRODUCT_RELEASE_STATUS_PATH.unlink(missing_ok=True)
+            else:
+                agg.PRODUCT_RELEASE_STATUS_PATH.write_text(original, encoding="utf-8")
+
+    def test_routed_gate_uses_external_dependency_when_generation_cannot_close_release(
+        self,
+    ) -> None:
+        agg.E1_PHONE_ROUTED_OUTPUT_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        original = (
+            agg.E1_PHONE_ROUTED_OUTPUT_REPORT_PATH.read_text(encoding="utf-8")
+            if agg.E1_PHONE_ROUTED_OUTPUT_REPORT_PATH.exists()
+            else None
+        )
+        try:
+            agg.E1_PHONE_ROUTED_OUTPUT_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "summary": {
+                            "external_release_evidence_required_count": 49,
+                            "missing_outputs": 0,
+                            "repo_generation_closes_release_blocker_count": 0,
+                            "true_missing_generated_output_count": 0,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = agg.build_report(
+                [
+                    agg.GateResult(
+                        name="e1-phone-routed-output-content-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED routed outputs are local candidates",
+                        subsystem="platform",
+                        tier="pd",
+                        script="scripts/check_e1_phone_routed_output_content.py",
+                    )
+                ]
+            )
+            self.assertEqual(
+                report["blocker_dependency_counts"]["actionable_external_dependency"],
+                1,
+            )
+            self.assertEqual(report["blocker_dependency_counts"]["repo_artifact_generation"], 0)
+        finally:
+            if original is None:
+                agg.E1_PHONE_ROUTED_OUTPUT_REPORT_PATH.unlink(missing_ok=True)
+            else:
+                agg.E1_PHONE_ROUTED_OUTPUT_REPORT_PATH.write_text(original, encoding="utf-8")
+
+    def test_phone_gate_actions_use_structured_externalized_candidate_reports(self) -> None:
+        paths = (
+            agg.E1_PHONE_ROUTED_OUTPUT_REPORT_PATH,
+            agg.E1_PHONE_FACTORY_OUTPUT_REPORT_PATH,
+        )
+        originals = {
+            path: path.read_text(encoding="utf-8") if path.exists() else None
+            for path in paths
+        }
+        try:
+            agg.E1_PHONE_ROUTED_OUTPUT_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+            agg.E1_PHONE_ROUTED_OUTPUT_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "summary": {
+                            "candidate_present_but_blocked_count": 37,
+                            "external_release_evidence_required_count": 52,
+                            "true_missing_generated_output_count": 0,
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.E1_PHONE_FACTORY_OUTPUT_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "summary": {
+                            "candidate_present_but_blocked_count": 44,
+                            "external_release_evidence_required_count": 56,
+                            "true_missing_factory_output_count": 0,
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = agg.build_report(
+                [
+                    agg.GateResult(
+                        name="e1-phone-routed-output-content-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED routed outputs are local candidates",
+                        subsystem="platform",
+                        tier="pd",
+                        script="scripts/check_e1_phone_routed_output_content.py",
+                    ),
+                    agg.GateResult(
+                        name="e1-phone-factory-output-content-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED factory outputs are local candidates",
+                        subsystem="platform",
+                        tier="pd",
+                        script="scripts/check_e1_phone_factory_output_content.py",
+                    ),
+                ]
+            )
+            details = {
+                row["name"]: row["next_action"]
+                for phase in report["blocker_phase_plan"]
+                for row in phase["blocked_gate_details"]
+            }
+            self.assertIn(
+                "Replace 37 present candidate/non-release routed output rows",
+                details["e1-phone-routed-output-content-check"],
+            )
+            self.assertIn(
+                "52 rows still require external approval",
+                details["e1-phone-routed-output-content-check"],
+            )
+            self.assertIn(
+                "Replace 44 present candidate/non-release factory output rows",
+                details["e1-phone-factory-output-content-check"],
+            )
+            self.assertIn(
+                "56 rows still require external approval",
+                details["e1-phone-factory-output-content-check"],
+            )
+        finally:
+            for path, original in originals.items():
+                if original is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    path.write_text(original, encoding="utf-8")
+
     def test_blocked_phone_gates_are_grouped_into_release_phases(self) -> None:
         report = agg.build_report(
             [
@@ -385,6 +585,757 @@ class BuildReportTests(unittest.TestCase):
         self.assertIn(
             "python3 scripts/aggregate_tapeout_readiness.py --scope phone --strict",
             runtime["acceptance_commands"],
+        )
+        next_action = report["next_release_action"]
+        self.assertEqual(next_action["phase"], "phone_fabrication_enclosure_release")
+        self.assertFalse(next_action["release_credit"])
+        self.assertEqual(next_action["blocked_gate_count"], 1)
+        self.assertEqual(
+            next_action["blocker_dependency_counts"]["actionable_external_dependency"],
+            1,
+        )
+        self.assertEqual(
+            next_action["primary_commands"],
+            ["python3 scripts/check_e1_phone_fabrication_release.py"],
+        )
+        self.assertEqual(
+            next_action["claim_boundary"],
+            "operator_release_action_only_not_release_evidence",
+        )
+
+    def test_aggregate_next_release_action_embeds_product_rollup_action(self) -> None:
+        agg.PRODUCT_RELEASE_STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        original = (
+            agg.PRODUCT_RELEASE_STATUS_PATH.read_text(encoding="utf-8")
+            if agg.PRODUCT_RELEASE_STATUS_PATH.exists()
+            else None
+        )
+        try:
+            agg.PRODUCT_RELEASE_STATUS_PATH.write_text(
+                json.dumps(
+                    {
+                        "blocker_dependency_counts": {
+                            "actionable_external_dependency": 1,
+                            "live_device_validation": 0,
+                            "repo_artifact_generation": 0,
+                        },
+                        "next_release_action": {
+                            "phase": "chip_pd_signoff",
+                            "release_credit": False,
+                            "primary_commands": ["python3 scripts/check_pd_signoff.py"],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = agg.build_report(
+                [
+                    agg.GateResult(
+                        name="product-release-status-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED product release check",
+                        subsystem="platform",
+                        tier="pd",
+                        script="scripts/product_check.py",
+                        args=("--release",),
+                    )
+                ]
+            )
+            next_action = report["next_release_action"]
+            self.assertEqual(next_action["phase"], "product_release_rollup")
+            self.assertEqual(
+                next_action["product_next_release_action"]["phase"],
+                "chip_pd_signoff",
+            )
+            self.assertEqual(
+                next_action["product_next_release_action"]["primary_commands"],
+                ["python3 scripts/check_pd_signoff.py"],
+            )
+        finally:
+            if original is None:
+                agg.PRODUCT_RELEASE_STATUS_PATH.unlink(missing_ok=True)
+            else:
+                agg.PRODUCT_RELEASE_STATUS_PATH.write_text(original, encoding="utf-8")
+
+    def test_aggregate_next_release_action_embeds_runtime_capture_action(self) -> None:
+        agg.PHONE_RUNTIME_READINESS_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        original = (
+            agg.PHONE_RUNTIME_READINESS_REPORT_PATH.read_text(encoding="utf-8")
+            if agg.PHONE_RUNTIME_READINESS_REPORT_PATH.exists()
+            else None
+        )
+        try:
+            agg.PHONE_RUNTIME_READINESS_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "next_runtime_capture_action": {
+                            "capture_area": "phone_media_pipeline",
+                            "release_credit": False,
+                            "capture_commands": ["scripts/capture_phone_media.sh"],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = agg.build_report(
+                [
+                    agg.GateResult(
+                        name="phone-runtime-readiness-contract-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED phone.runtime_readiness_contract",
+                        subsystem="platform",
+                        tier="silicon",
+                        script="scripts/check_phone_runtime_readiness_contract.py",
+                    )
+                ]
+            )
+            next_action = report["next_release_action"]
+            self.assertEqual(next_action["phase"], "phone_end_to_end_runtime_release")
+            self.assertEqual(
+                next_action["next_runtime_capture_action"]["capture_area"],
+                "phone_media_pipeline",
+            )
+            self.assertFalse(next_action["next_runtime_capture_action"]["release_credit"])
+            self.assertEqual(
+                report["next_runtime_capture_action"]["capture_area"],
+                "phone_media_pipeline",
+            )
+            runtime_phase = report["blocker_phase_plan"][0]
+            self.assertEqual(
+                runtime_phase["next_runtime_capture_action"]["capture_area"],
+                "phone_media_pipeline",
+            )
+            self.assertEqual(
+                runtime_phase["blocked_gate_details"][0]["next_runtime_capture_action"][
+                    "capture_commands"
+                ],
+                ["scripts/capture_phone_media.sh"],
+            )
+        finally:
+            if original is None:
+                agg.PHONE_RUNTIME_READINESS_REPORT_PATH.unlink(missing_ok=True)
+            else:
+                agg.PHONE_RUNTIME_READINESS_REPORT_PATH.write_text(
+                    original,
+                    encoding="utf-8",
+                )
+
+    def test_aggregate_top_level_runtime_action_survives_earlier_blocked_phase(self) -> None:
+        agg.PHONE_RUNTIME_READINESS_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        original = (
+            agg.PHONE_RUNTIME_READINESS_REPORT_PATH.read_text(encoding="utf-8")
+            if agg.PHONE_RUNTIME_READINESS_REPORT_PATH.exists()
+            else None
+        )
+        try:
+            agg.PHONE_RUNTIME_READINESS_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "next_runtime_capture_action": {
+                            "capture_area": "phone_media_pipeline",
+                            "release_credit": False,
+                            "next_artifacts": ["docs/evidence/android/rear_camera.json"],
+                            "next_commands": ["scripts/capture_phone_media.sh"],
+                            "validation_commands": [
+                                "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py"
+                            ],
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = agg.build_report(
+                [
+                    agg.GateResult(
+                        name="e1-phone-fabrication-release-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED fabrication gate",
+                        subsystem="platform",
+                        tier="pd",
+                        script="scripts/check_e1_phone_fabrication_release.py",
+                    ),
+                    agg.GateResult(
+                        name="phone-runtime-readiness-contract-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED phone.runtime_readiness_contract",
+                        subsystem="platform",
+                        tier="silicon",
+                        script="scripts/check_phone_runtime_readiness_contract.py",
+                    ),
+                ]
+            )
+            self.assertEqual(
+                report["next_release_action"]["phase"],
+                "phone_fabrication_enclosure_release",
+            )
+            self.assertEqual(
+                report["next_runtime_capture_action"]["capture_area"],
+                "phone_media_pipeline",
+            )
+            self.assertEqual(
+                report["next_runtime_capture_action"]["next_artifacts"],
+                ["docs/evidence/android/rear_camera.json"],
+            )
+            self.assertEqual(
+                report["next_runtime_capture_action"]["validation_commands"],
+                ["python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py"],
+            )
+        finally:
+            if original is None:
+                agg.PHONE_RUNTIME_READINESS_REPORT_PATH.unlink(missing_ok=True)
+            else:
+                agg.PHONE_RUNTIME_READINESS_REPORT_PATH.write_text(
+                    original,
+                    encoding="utf-8",
+                )
+
+    def test_blocked_chip_gates_are_grouped_into_chip_release_phases(self) -> None:
+        report = agg.build_report(
+            [
+                agg.GateResult(
+                    name="pd-signoff-check",
+                    status="BLOCKED",
+                    evidence="STATUS: BLOCKED PD signoff requires approved release evidence",
+                    subsystem="pd",
+                    tier="pd",
+                    script="scripts/check_pd_signoff.py",
+                ),
+                agg.GateResult(
+                    name="package-cross-probe-release-check",
+                    status="BLOCKED",
+                    evidence="STATUS: BLOCKED package cross-probe release evidence",
+                    subsystem="platform",
+                    tier="pd",
+                    script="scripts/check_package_cross_probe.py",
+                    args=("--release",),
+                ),
+                agg.GateResult(
+                    name="fpga-release-check",
+                    status="BLOCKED",
+                    evidence="STATUS: BLOCKED FPGA release needs board timing evidence",
+                    subsystem="platform",
+                    tier="silicon",
+                    script="scripts/check_fpga_release.py",
+                    args=("--release",),
+                ),
+            ]
+        )
+        phase_map = {row["phase"]: row for row in report["blocker_phase_plan"]}
+        self.assertIn("chip_pd_signoff", phase_map)
+        self.assertIn("chip_package_board_release", phase_map)
+        self.assertIn("chip_platform_bsp_runtime_release", phase_map)
+        self.assertEqual(report["next_release_action"]["phase"], "chip_pd_signoff")
+        self.assertEqual(
+            phase_map["chip_pd_signoff"]["blocked_gates"],
+            ["pd-signoff-check"],
+        )
+        self.assertIn(
+            "python3 scripts/check_pd_signoff.py",
+            phase_map["chip_pd_signoff"]["validation_commands"],
+        )
+        self.assertIn(
+            "python3 scripts/aggregate_tapeout_readiness.py --scope chip --strict",
+            phase_map["chip_pd_signoff"]["acceptance_commands"],
+        )
+
+    def test_chip_release_gates_use_nested_repo_generation_taxonomy(self) -> None:
+        paths = (
+            agg.PD_SIGNOFF_REPORT_PATH,
+            agg.FPGA_RELEASE_REPORT_PATH,
+            agg.ANDROID_RELEASE_READINESS_REPORT_PATH,
+            agg.PDK_ACCESS_GATE_REPORT_PATH,
+            agg.PDN_WORKLOAD_SIGNOFF_REPORT_PATH,
+            agg.IO_CELL_CONTRACT_REPORT_PATH,
+            agg.PACKAGE_CROSS_PROBE_REPORT_PATH,
+            agg.KICAD_ARTIFACTS_REPORT_PATH,
+            agg.ANDROID_SIMULATED_PERIPHERAL_REPORT_PATH,
+            agg.ANDROID_SYSTEM_BRIDGE_REPORT_PATH,
+            agg.LINUX_BOOT_ARTIFACTS_REPORT_PATH,
+            agg.OS_RV64_CHIP_BOOT_CONTRACT_REPORT_PATH,
+        )
+        originals = {
+            path: path.read_text(encoding="utf-8") if path.exists() else None
+            for path in paths
+        }
+        try:
+            agg.PD_SIGNOFF_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+            agg.PD_SIGNOFF_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "repo_artifact_generation_plan": {
+                            "blocked_generation_count": 4,
+                            "repo_generatable_now_count": 0,
+                            "can_close_from_current_repo_count": 0,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.FPGA_RELEASE_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "summary": {
+                            "blocked_repo_generation_count": 19,
+                            "repo_generatable_now_count": 0,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.ANDROID_RELEASE_READINESS_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "blocker_dependency_counts": {
+                            "repo_artifact_generation": 2,
+                            "live_device_validation": 2,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.PDK_ACCESS_GATE_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "blockers": [
+                            {
+                                "message": "Commercial signoff EDA seat not held",
+                                "next_step": "Execute foundry and wafer agreements.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.PDN_WORKLOAD_SIGNOFF_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "blockers": [
+                            {
+                                "message": "No commercial Voltus / RedHawk-SC seat procured",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.IO_CELL_CONTRACT_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "findings": [
+                            {
+                                "message": "awaiting foundry deliverables",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.PACKAGE_CROSS_PROBE_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "summary": {
+                            "blocker_classes": {
+                                "missing_vendor_evidence": 23,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.KICAD_ARTIFACTS_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "summary": {
+                            "blocker_classes": {
+                                "external_approval_blocker": 1,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.ANDROID_SIMULATED_PERIPHERAL_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "blockers": [
+                            {
+                                "message": "Boot the Android target with ADB available",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.ANDROID_SYSTEM_BRIDGE_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "findings": [
+                            {
+                                "blocker_dependency": "live_device_validation",
+                                "message": "runtime evidence does not record status=PASS",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.LINUX_BOOT_ARTIFACTS_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "blockers": [
+                            {
+                                "message": "ELIZA_LINUX_TREE is unset external Linux kernel checkout",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.OS_RV64_CHIP_BOOT_CONTRACT_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "blockers": [
+                            {
+                                "message": "Capture a generated AP/chip-emulator serial transcript",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = agg.build_report(
+                [
+                    agg.GateResult(
+                        name="pd-soc-input-contract-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED E1 SoC PD input contract blockers=15",
+                        subsystem="pd",
+                        tier="pd",
+                        script="scripts/check_e1_soc_pd_input_contract.py",
+                    ),
+                    agg.GateResult(
+                        name="pdk-access-gate",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED PDK access gate",
+                        subsystem="process",
+                        tier="pd",
+                        script="scripts/check_pdk_access_gate.py",
+                    ),
+                    agg.GateResult(
+                        name="pd-signoff-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED PD signoff requires approved release evidence",
+                        subsystem="pd",
+                        tier="pd",
+                        script="scripts/check_pd_signoff.py",
+                    ),
+                    agg.GateResult(
+                        name="fpga-release-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED FPGA release needs board timing evidence",
+                        subsystem="platform",
+                        tier="silicon",
+                        script="scripts/check_fpga_release.py",
+                        args=("--release",),
+                    ),
+                    agg.GateResult(
+                        name="pdn-workload-signoff",
+                        status="BLOCKED",
+                        evidence="PDN signoff gate is BLOCKED",
+                        subsystem="pd",
+                        tier="pd",
+                        script="scripts/check_pdn_workload_signoff.py",
+                    ),
+                    agg.GateResult(
+                        name="io-cell-contract-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED io_cell_contract",
+                        subsystem="pd",
+                        tier="pd",
+                        script="scripts/check_io_cell_contract.py",
+                    ),
+                    agg.GateResult(
+                        name="package-cross-probe-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED package/vendor padframe cross-probe",
+                        subsystem="platform",
+                        tier="spec",
+                        script="scripts/check_package_cross_probe.py",
+                    ),
+                    agg.GateResult(
+                        name="kicad-artifact-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED KiCad release evidence is incomplete",
+                        subsystem="platform",
+                        tier="spec",
+                        script="scripts/check_kicad_artifacts.py",
+                    ),
+                    agg.GateResult(
+                        name="android-release-readiness-contract-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED android.release_readiness_contract",
+                        subsystem="bsp",
+                        tier="spec",
+                        script="scripts/check_android_release_readiness_contract.py",
+                    ),
+                    agg.GateResult(
+                        name="android-simulated-peripheral-evidence-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED android.simulated_peripheral_evidence",
+                        subsystem="bsp",
+                        tier="spec",
+                        script="scripts/check_android_simulated_peripheral_evidence.py",
+                    ),
+                    agg.GateResult(
+                        name="android-system-bridge-contract-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED android.system_bridge_contract",
+                        subsystem="bsp",
+                        tier="spec",
+                        script="scripts/check_android_system_bridge_contract.py",
+                    ),
+                    agg.GateResult(
+                        name="linux-boot-artifacts-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED linux.boot_artifacts",
+                        subsystem="bsp",
+                        tier="spec",
+                        script="scripts/check_linux_boot_artifacts.py",
+                    ),
+                    agg.GateResult(
+                        name="os-rv64-chip-boot-contract-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED os_rv64.chip_boot_contract",
+                        subsystem="bsp",
+                        tier="spec",
+                        script="scripts/check_os_rv64_chip_boot_contract.py",
+                    ),
+                ]
+            )
+            self.assertEqual(
+                report["blocker_dependency_counts"]["actionable_external_dependency"],
+                9,
+            )
+            self.assertEqual(report["blocker_dependency_counts"]["repo_artifact_generation"], 1)
+            self.assertEqual(report["blocker_dependency_counts"]["live_device_validation"], 3)
+            by_name = {
+                row["name"]: row["blocker_dependency"]
+                for phase in report["blocker_phase_plan"]
+                for row in phase["blocked_gate_details"]
+            }
+            self.assertEqual(by_name["pdk-access-gate"], "actionable_external_dependency")
+            self.assertEqual(by_name["pd-signoff-check"], "actionable_external_dependency")
+            self.assertEqual(by_name["fpga-release-check"], "actionable_external_dependency")
+            self.assertEqual(
+                by_name["pdn-workload-signoff"],
+                "actionable_external_dependency",
+            )
+            self.assertEqual(
+                by_name["io-cell-contract-check"],
+                "actionable_external_dependency",
+            )
+            self.assertEqual(
+                by_name["pd-soc-input-contract-check"],
+                "actionable_external_dependency",
+            )
+            self.assertEqual(
+                by_name["package-cross-probe-check"],
+                "actionable_external_dependency",
+            )
+            self.assertEqual(
+                by_name["kicad-artifact-check"],
+                "actionable_external_dependency",
+            )
+            self.assertEqual(
+                by_name["android-release-readiness-contract-check"],
+                "repo_artifact_generation",
+            )
+            self.assertEqual(
+                by_name["android-simulated-peripheral-evidence-check"],
+                "live_device_validation",
+            )
+            self.assertEqual(
+                by_name["android-system-bridge-contract-check"],
+                "live_device_validation",
+            )
+            self.assertEqual(
+                by_name["linux-boot-artifacts-check"],
+                "actionable_external_dependency",
+            )
+            self.assertEqual(
+                by_name["os-rv64-chip-boot-contract-check"],
+                "live_device_validation",
+            )
+        finally:
+            for path, original in originals.items():
+                if original is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    path.write_text(original, encoding="utf-8")
+
+    def test_external_boot_reports_do_not_fall_back_to_repo_generation(self) -> None:
+        paths = (
+            agg.BOOT_SECURITY_CHAIN_CONTRACT_REPORT_PATH,
+            agg.LINUX_FIRMWARE_BOOT_CHAIN_CONTRACT_REPORT_PATH,
+            agg.AOSP_LINUX_HANDOFF_CONTRACT_REPORT_PATH,
+        )
+        originals = {
+            path: path.read_text(encoding="utf-8") if path.exists() else None
+            for path in paths
+        }
+        try:
+            agg.BOOT_SECURITY_CHAIN_CONTRACT_REPORT_PATH.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+            agg.BOOT_SECURITY_CHAIN_CONTRACT_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "findings": [
+                            {
+                                "message": "secure boot docs are still pre-silicon",
+                                "next_step": "Collect provisioning records and boot transcripts.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.LINUX_FIRMWARE_BOOT_CHAIN_CONTRACT_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "findings": [
+                            {
+                                "message": "OpenSBI fw_dynamic handoff transcript missing markers",
+                                "next_step": "Capture from a real external OpenSBI tree.",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.AOSP_LINUX_HANDOFF_CONTRACT_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "status": "blocked",
+                        "findings": [
+                            {
+                                "message": "AOSP qemu execution track is not ready",
+                                "evidence": "AOSP_QEMU_SMOKE_COMMAND is not set",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = agg.build_report(
+                [
+                    agg.GateResult(
+                        name="boot-security-chain-contract-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED boot.security_chain_contract",
+                        subsystem="cpu",
+                        tier="silicon",
+                        script="scripts/check_boot_security_chain_contract.py",
+                    ),
+                    agg.GateResult(
+                        name="linux-firmware-boot-chain-contract-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED linux.firmware_boot_chain_contract",
+                        subsystem="bsp",
+                        tier="silicon",
+                        script="scripts/check_linux_firmware_boot_chain_contract.py",
+                    ),
+                    agg.GateResult(
+                        name="aosp-linux-handoff-contract-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED aosp.linux_handoff_contract",
+                        subsystem="bsp",
+                        tier="silicon",
+                        script="scripts/check_aosp_linux_handoff_contract.py",
+                    ),
+                ]
+            )
+            by_name = {row["name"]: row["blocker_dependency"] for row in report["gates"]}
+            self.assertEqual(
+                by_name["boot-security-chain-contract-check"],
+                "actionable_external_dependency",
+            )
+            self.assertEqual(
+                by_name["linux-firmware-boot-chain-contract-check"],
+                "actionable_external_dependency",
+            )
+            self.assertEqual(
+                by_name["aosp-linux-handoff-contract-check"],
+                "live_device_validation",
+            )
+            self.assertEqual(report["blocker_dependency_counts"]["repo_artifact_generation"], 0)
+        finally:
+            for path, original in originals.items():
+                if original is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    path.write_text(original, encoding="utf-8")
+
+    def test_chipyard_generated_linux_missing_ap_evidence_is_live_validation(
+        self,
+    ) -> None:
+        report = agg.build_report(
+            [
+                agg.GateResult(
+                    name="chipyard-generated-linux-contract-check",
+                    status="BLOCKED",
+                    evidence=(
+                        "STATUS: BLOCKED missing executable AP evidence transcript "
+                        "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log"
+                    ),
+                    subsystem="cpu",
+                    tier="silicon",
+                    script="scripts/check_chipyard_generated_linux_contract.py",
+                    args=("--require-boot-evidence",),
+                )
+            ]
+        )
+        self.assertEqual(report["gates"][0]["blocker_dependency"], "live_device_validation")
+
+    def test_cpu_ap_and_aosp_simulator_completion_are_live_validation(self) -> None:
+        report = agg.build_report(
+            [
+                agg.GateResult(
+                    name="cpu-ap-completion-gate",
+                    status="BLOCKED",
+                    evidence="STATUS: BLOCKED missing CPU/AP evidence logs",
+                    subsystem="cpu",
+                    tier="rtl",
+                    script="scripts/check_cpu_ap_completion_gate.py",
+                ),
+                agg.GateResult(
+                    name="aosp-simulator-completion-check",
+                    status="BLOCKED",
+                    evidence="AOSP simulator completion gate BLOCKED: missing PASS status marker",
+                    subsystem="bsp",
+                    tier="silicon",
+                    script="scripts/check_aosp_simulator_completion_gate.py",
+                ),
+            ]
+        )
+        self.assertEqual(
+            [row["blocker_dependency"] for row in report["gates"]],
+            ["live_device_validation", "live_device_validation"],
         )
 
 
@@ -1656,6 +2607,7 @@ class E1PhoneBoardPackageGateTests(unittest.TestCase):
         spec = next(gate for gate in agg.GATES if gate.name == "e1-phone-board-package-check")
         result = agg.run_gate(spec)
         self.assertEqual(result.status, "BLOCKED")
+        self.assertIn("STATUS: BLOCKED E1 phone board package validation", result.evidence)
         self.assertTrue(
             "blocked" in result.evidence.lower()
             or "missing source" in result.evidence.lower()
@@ -3297,6 +4249,50 @@ class E1PhoneFirstArticleContentGateTests(unittest.TestCase):
 
 
 class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
+    def test_handoff_packet_template_intake_fields_are_reported_explicitly(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            evidence = Path(tmpdir) / "drawing-pack.yaml"
+            evidence.write_text(
+                "\n".join(
+                    [
+                        "schema: eliza.e1_phone_production_enclosure_handoff_packet.v1",
+                        "packet_id: enclosure_drawing_pack",
+                        "status: blocked_missing_supplier_drawing_pack",
+                        "release_credit: false",
+                        "required_fields_unpopulated:",
+                        "  - supplier",
+                        "  - approval_signature",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            packet = {
+                "id": "enclosure_drawing_pack",
+                "expected_path": str(evidence),
+                "owner": "mechanical_release",
+                "required_action": "collect supplier drawing pack",
+                "validation_command": (
+                    "python3 scripts/check_e1_phone_enclosure_mechanical_content.py"
+                ),
+                "release_credit": False,
+                "required_fields": ["supplier", "approval_signature"],
+            }
+
+            failures = enclosure_content.handoff_packet_failures(packet)
+            action = enclosure_content.handoff_packet_action(packet)
+
+        self.assertIn(
+            f"enclosure_drawing_pack:template_intake_not_executed:{evidence}",
+            failures,
+        )
+        self.assertIn(
+            "enclosure_drawing_pack:required_field_unpopulated:approval_signature",
+            failures,
+        )
+        self.assertEqual(action["missing_required_fields"], ["supplier", "approval_signature"])
+        self.assertTrue(action["template_intake_not_executed"])
+
     def test_enclosure_gap_map_is_fail_closed_diagnostic_only(self) -> None:
         report = enclosure_gap_map.build_report(
             ROOT / "board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml",
@@ -3544,10 +4540,10 @@ class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
             report["summary"]["full_cad_boolean_release_blocker_category"],
             "routed_supplier_boolean_rerun_missing",
         )
-        self.assertTrue(report["summary"]["step_validation_release_blocked"])
+        self.assertFalse(report["summary"]["step_validation_release_blocked"])
         self.assertEqual(
             report["summary"]["step_validation_release_blocker_category"],
-            "local_step_validation_tooling_unavailable",
+            "none",
         )
         self.assertEqual(
             report["summary"]["clearance_result_blocker_categories"],
@@ -3587,9 +4583,10 @@ class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
         )
         self.assertTrue(handoff_actions[0]["present"])
         self.assertFalse(handoff_actions[0]["release_credit"])
+        self.assertTrue(handoff_actions[0]["template_intake_not_executed"])
         self.assertIn("approval_signature", handoff_actions[0]["missing_required_fields"])
         self.assertIn(
-            "enclosure_drawing_pack:missing_field:approval_signature",
+            "enclosure_drawing_pack:required_field_unpopulated:approval_signature",
             report["summary"]["invalid_handoff_packet_evidence"],
         )
         self.assertEqual(
@@ -3597,7 +4594,7 @@ class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
             "python3 scripts/check_e1_phone_enclosure_mechanical_content.py",
         )
         self.assertIn(
-            "production_enclosure_handoff_outputs_missing",
+            "production_enclosure_handoff_deliverables_not_executed",
             {finding["code"] for finding in report["findings"]},
         )
         self.assertIn(

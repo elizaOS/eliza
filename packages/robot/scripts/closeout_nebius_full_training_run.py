@@ -5,9 +5,10 @@
 This is the single repeatable command for the production run:
 
 1. sync + monitor the object-storage prefix,
-2. guarded finalization,
-3. artifact-driven Alberta/PPO/SOTA report generation,
-4. compact closeout status.
+2. artifact-driven Alberta/PPO/SOTA report generation,
+3. artifact inventory,
+4. guarded finalization,
+5. compact closeout status.
 
 Exit codes match the monitor semantics: ``0`` complete, ``1`` still running,
 ``2`` failed/invalid/sync error.
@@ -127,7 +128,6 @@ def closeout_nebius_full_training_run(
         run_deep_validators=run_deep_validators,
         skip_sync=skip_sync,
     )
-    finalization = finalize_nebius_full_training_run(dest)
     training_report = generate_nebius_training_report(dest)
     training_json = dest / "training_comparison_report.json"
     training_md = dest / "training_comparison_report.md"
@@ -136,6 +136,13 @@ def closeout_nebius_full_training_run(
     inventory = inventory_nebius_training_artifacts(dest)
     inventory_json = dest / "artifact_inventory.json"
     inventory_md = dest / "artifact_inventory.md"
+    _write_json(inventory_json, inventory)
+    write_inventory_markdown(inventory, inventory_md)
+    finalization = finalize_nebius_full_training_run(dest)
+    training_report = generate_nebius_training_report(dest)
+    _write_json(training_json, training_report)
+    write_training_report_markdown(training_report, training_md)
+    inventory = inventory_nebius_training_artifacts(dest)
     _write_json(inventory_json, inventory)
     write_inventory_markdown(inventory, inventory_md)
     objective_audit = audit_alberta_objective_completion(

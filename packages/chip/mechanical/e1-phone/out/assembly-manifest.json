@@ -2565,6 +2565,63 @@
     ]
   },
   {
+    "name": "usb_pd_controller_package_marker",
+    "role": "PCB component marker",
+    "material": "visual marker for TPS65987 USB-PD controller package and exposed pads",
+    "obj": "mechanical/e1-phone/out/usb_pd_controller_package_marker.obj",
+    "stl": "mechanical/e1-phone/out/usb_pd_controller_package_marker.stl",
+    "bounds_mm": [
+      [
+        2.5,
+        -59.3,
+        -0.18
+      ],
+      [
+        11.5,
+        -50.3,
+        0.04
+      ]
+    ]
+  },
+  {
+    "name": "charger_package_marker",
+    "role": "PCB component marker",
+    "material": "visual marker for MAX77860 charger WLP package",
+    "obj": "mechanical/e1-phone/out/charger_package_marker.obj",
+    "stl": "mechanical/e1-phone/out/charger_package_marker.stl",
+    "bounds_mm": [
+      [
+        -6.0,
+        -56.8,
+        -0.18
+      ],
+      [
+        -2.0,
+        -52.8,
+        0.02
+      ]
+    ]
+  },
+  {
+    "name": "battery_connector_package_marker",
+    "role": "PCB connector marker",
+    "material": "visual marker for 4-pin battery pack connector or welded FPC landing",
+    "obj": "mechanical/e1-phone/out/battery_connector_package_marker.obj",
+    "stl": "mechanical/e1-phone/out/battery_connector_package_marker.stl",
+    "bounds_mm": [
+      [
+        -9.0,
+        -51.9,
+        -0.17
+      ],
+      [
+        -3.0,
+        -48.9,
+        0.01
+      ]
+    ]
+  },
+  {
     "name": "audio_codec_package_marker",
     "role": "PCB component marker",
     "material": "visual marker for 48-pin audio codec package in bottom audio region",
@@ -3135,6 +3192,63 @@
     ]
   },
   {
+    "name": "usb_pd_controller_escape_trace_marker",
+    "role": "PCB trace marker",
+    "material": "board-level USB-C VBUS/CC/USB2 route marker from receptacle to TPS65987",
+    "obj": "mechanical/e1-phone/out/usb_pd_controller_escape_trace_marker.obj",
+    "stl": "mechanical/e1-phone/out/usb_pd_controller_escape_trace_marker.stl",
+    "bounds_mm": [
+      [
+        -0.7,
+        -59.5,
+        -1.51
+      ],
+      [
+        8.3,
+        -58.5,
+        -1.39
+      ]
+    ]
+  },
+  {
+    "name": "pd_charger_control_trace_marker",
+    "role": "PCB trace marker",
+    "material": "board-level PD controller to charger VBUS/SYS/I2C/IRQ route marker",
+    "obj": "mechanical/e1-phone/out/pd_charger_control_trace_marker.obj",
+    "stl": "mechanical/e1-phone/out/pd_charger_control_trace_marker.stl",
+    "bounds_mm": [
+      [
+        -3.5,
+        -55.3,
+        -1.51
+      ],
+      [
+        6.5,
+        -54.3,
+        -1.39
+      ]
+    ]
+  },
+  {
+    "name": "charger_battery_power_sense_trace_marker",
+    "role": "PCB trace marker",
+    "material": "board-level charger to battery connector VBAT/SYS/NTC/ID route marker",
+    "obj": "mechanical/e1-phone/out/charger_battery_power_sense_trace_marker.obj",
+    "stl": "mechanical/e1-phone/out/charger_battery_power_sense_trace_marker.stl",
+    "bounds_mm": [
+      [
+        -7.0,
+        -55.8,
+        -1.26
+      ],
+      [
+        -3.0,
+        -51.0,
+        -1.14
+      ]
+    ]
+  },
+  {
     "name": "bottom_speaker_lead_pair",
     "role": "flex/cable",
     "material": "bottom speaker differential lead pair marker",
@@ -3429,12 +3543,12 @@
       [
         23.61,
         55.462,
-        6.19
+        5.54
       ],
       [
         24.06,
         55.682,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3448,12 +3562,12 @@
       [
         -0.775,
         -6.46,
-        6.19
+        5.54
       ],
       [
         -0.325,
         -6.24,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3467,12 +3581,12 @@
       [
         -29.225,
         -64.11,
-        6.19
+        5.54
       ],
       [
         -28.775,
         -63.89,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3486,12 +3600,12 @@
       [
         21.582,
         58.301,
-        6.19
+        5.54
       ],
       [
         22.032,
         58.521,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3505,12 +3619,12 @@
       [
         -17.625,
         -64.11,
-        6.19
+        5.54
       ],
       [
         -17.175,
         -63.89,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3524,12 +3638,12 @@
       [
         -18.925,
         68.657,
-        6.19
+        5.54
       ],
       [
         -18.475,
         68.877,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3543,12 +3657,12 @@
       [
         -6.025,
         -64.11,
-        6.19
+        5.54
       ],
       [
         -5.575,
         -63.89,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3562,12 +3676,12 @@
       [
         40.332,
         19.783,
-        6.19
+        5.54
       ],
       [
         40.782,
         20.003,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3581,12 +3695,12 @@
       [
         -0.775,
         -7.96,
-        6.19
+        5.54
       ],
       [
         -0.325,
         -7.74,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3600,12 +3714,12 @@
       [
         5.575,
         -64.11,
-        6.19
+        5.54
       ],
       [
         6.025,
         -63.89,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3619,12 +3733,12 @@
       [
         -0.775,
         -73.66,
-        6.19
+        5.54
       ],
       [
         -0.325,
         -73.44,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3638,12 +3752,126 @@
       [
         17.175,
         -64.11,
-        6.19
+        5.54
       ],
       [
         17.625,
         -63.89,
-        6.21
+        5.56
+      ]
+    ]
+  },
+  {
+    "name": "usb_c_to_pd_controller_escape_from_terminal",
+    "role": "connection terminal",
+    "material": "from terminal marker for usb_c_to_pd_controller_escape on usb_c_receptacle; local CAD connection evidence only",
+    "obj": "mechanical/e1-phone/out/usb_c_to_pd_controller_escape_from_terminal.obj",
+    "stl": "mechanical/e1-phone/out/usb_c_to_pd_controller_escape_from_terminal.stl",
+    "bounds_mm": [
+      [
+        -0.225,
+        -73.66,
+        5.54
+      ],
+      [
+        0.225,
+        -73.44,
+        5.56
+      ]
+    ]
+  },
+  {
+    "name": "usb_c_to_pd_controller_escape_to_terminal",
+    "role": "connection terminal",
+    "material": "to terminal marker for usb_c_to_pd_controller_escape on usb_pd_controller_package_marker; local CAD connection evidence only",
+    "obj": "mechanical/e1-phone/out/usb_c_to_pd_controller_escape_to_terminal.obj",
+    "stl": "mechanical/e1-phone/out/usb_c_to_pd_controller_escape_to_terminal.stl",
+    "bounds_mm": [
+      [
+        6.337,
+        -55.823,
+        5.54
+      ],
+      [
+        6.787,
+        -55.603,
+        5.56
+      ]
+    ]
+  },
+  {
+    "name": "pd_controller_to_charger_control_from_terminal",
+    "role": "connection terminal",
+    "material": "from terminal marker for pd_controller_to_charger_control on usb_pd_controller_package_marker; local CAD connection evidence only",
+    "obj": "mechanical/e1-phone/out/pd_controller_to_charger_control_from_terminal.obj",
+    "stl": "mechanical/e1-phone/out/pd_controller_to_charger_control_from_terminal.stl",
+    "bounds_mm": [
+      [
+        6.883,
+        -55.753,
+        5.54
+      ],
+      [
+        7.333,
+        -55.533,
+        5.56
+      ]
+    ]
+  },
+  {
+    "name": "pd_controller_to_charger_control_to_terminal",
+    "role": "connection terminal",
+    "material": "to terminal marker for pd_controller_to_charger_control on charger_package_marker; local CAD connection evidence only",
+    "obj": "mechanical/e1-phone/out/pd_controller_to_charger_control_to_terminal.obj",
+    "stl": "mechanical/e1-phone/out/pd_controller_to_charger_control_to_terminal.stl",
+    "bounds_mm": [
+      [
+        -4.835,
+        -55.718,
+        5.54
+      ],
+      [
+        -4.385,
+        -55.498,
+        5.56
+      ]
+    ]
+  },
+  {
+    "name": "charger_to_battery_power_sense_from_terminal",
+    "role": "connection terminal",
+    "material": "from terminal marker for charger_to_battery_power_sense on charger_package_marker; local CAD connection evidence only",
+    "obj": "mechanical/e1-phone/out/charger_to_battery_power_sense_from_terminal.obj",
+    "stl": "mechanical/e1-phone/out/charger_to_battery_power_sense_from_terminal.stl",
+    "bounds_mm": [
+      [
+        -4.287,
+        -55.758,
+        5.54
+      ],
+      [
+        -3.837,
+        -55.538,
+        5.56
+      ]
+    ]
+  },
+  {
+    "name": "charger_to_battery_power_sense_to_terminal",
+    "role": "connection terminal",
+    "material": "to terminal marker for charger_to_battery_power_sense on battery_connector_package_marker; local CAD connection evidence only",
+    "obj": "mechanical/e1-phone/out/charger_to_battery_power_sense_to_terminal.obj",
+    "stl": "mechanical/e1-phone/out/charger_to_battery_power_sense_to_terminal.stl",
+    "bounds_mm": [
+      [
+        -6.872,
+        -51.289,
+        5.54
+      ],
+      [
+        -6.422,
+        -51.069,
+        5.56
       ]
     ]
   },
@@ -3657,12 +3885,12 @@
       [
         28.775,
         -64.11,
-        6.19
+        5.54
       ],
       [
         29.225,
         -63.89,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3676,12 +3904,12 @@
       [
         17.983,
         -64.88,
-        6.19
+        5.54
       ],
       [
         18.433,
         -64.66,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3695,12 +3923,12 @@
       [
         -29.225,
         63.89,
-        6.19
+        5.54
       ],
       [
         -28.775,
         64.11,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3714,12 +3942,12 @@
       [
         -18.973,
         -69.393,
-        6.19
+        5.54
       ],
       [
         -18.523,
         -69.173,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3733,12 +3961,12 @@
       [
         -17.625,
         63.89,
-        6.19
+        5.54
       ],
       [
         -17.175,
         64.11,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3752,12 +3980,12 @@
       [
         18.523,
         69.173,
-        6.19
+        5.54
       ],
       [
         18.973,
         69.393,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3771,12 +3999,12 @@
       [
         -6.025,
         63.89,
-        6.19
+        5.54
       ],
       [
         -5.575,
         64.11,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3790,12 +4018,12 @@
       [
         0.325,
         69.54,
-        6.19
+        5.54
       ],
       [
         0.775,
         69.76,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3809,12 +4037,12 @@
       [
         5.575,
         63.89,
-        6.19
+        5.54
       ],
       [
         6.025,
         64.11,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3828,12 +4056,12 @@
       [
         35.381,
         -45.117,
-        6.19
+        5.54
       ],
       [
         35.831,
         -44.897,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3847,12 +4075,12 @@
       [
         17.175,
         63.89,
-        6.19
+        5.54
       ],
       [
         17.625,
         64.11,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3866,12 +4094,12 @@
       [
         32.044,
         -19.007,
-        6.19
+        5.54
       ],
       [
         32.494,
         -18.787,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3885,12 +4113,12 @@
       [
         -26.366,
         30.893,
-        6.19
+        5.54
       ],
       [
         -25.916,
         31.113,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3904,12 +4132,12 @@
       [
         -30.127,
         58.898,
-        6.19
+        5.54
       ],
       [
         -29.677,
         59.118,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3923,12 +4151,12 @@
       [
         28.775,
         63.89,
-        6.19
+        5.54
       ],
       [
         29.225,
         64.11,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3942,12 +4170,12 @@
       [
         0.325,
         45.74,
-        6.19
+        5.54
       ],
       [
         0.775,
         45.96,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3961,12 +4189,12 @@
       [
         -15.482,
         45.873,
-        6.19
+        5.54
       ],
       [
         -15.032,
         46.093,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3980,12 +4208,12 @@
       [
         0.325,
         72.14,
-        6.19
+        5.54
       ],
       [
         0.775,
         72.36,
-        6.21
+        5.56
       ]
     ]
   },
@@ -3999,12 +4227,12 @@
       [
         -16.002,
         45.694,
-        6.19
+        5.54
       ],
       [
         -15.552,
         45.914,
-        6.21
+        5.56
       ]
     ]
   },
@@ -4018,12 +4246,12 @@
       [
         -0.775,
         -72.36,
-        6.19
+        5.54
       ],
       [
         -0.325,
         -72.14,
-        6.21
+        5.56
       ]
     ]
   },
@@ -4037,12 +4265,12 @@
       [
         -16.522,
         45.515,
-        6.19
+        5.54
       ],
       [
         -16.072,
         45.735,
-        6.21
+        5.56
       ]
     ]
   },
@@ -4056,12 +4284,12 @@
       [
         -0.225,
         -72.36,
-        6.19
+        5.54
       ],
       [
         0.225,
         -72.14,
-        6.21
+        5.56
       ]
     ]
   },
@@ -4075,12 +4303,12 @@
       [
         -15.482,
         45.873,
-        6.19
+        5.54
       ],
       [
         -15.032,
         46.093,
-        6.21
+        5.56
       ]
     ]
   },
@@ -4094,12 +4322,12 @@
       [
         -30.097,
         63.394,
-        6.19
+        5.54
       ],
       [
         -29.647,
         63.614,
-        6.21
+        5.56
       ]
     ]
   },
@@ -4113,12 +4341,12 @@
       [
         20.637,
         42.421,
-        6.19
+        5.54
       ],
       [
         21.087,
         42.641,
-        6.21
+        5.56
       ]
     ]
   },
@@ -4132,12 +4360,12 @@
       [
         21.642,
         43.412,
-        6.19
+        5.54
       ],
       [
         22.092,
         43.632,
-        6.21
+        5.56
       ]
     ]
   },
@@ -4151,12 +4379,12 @@
       [
         20.14,
         42.657,
-        6.19
+        5.54
       ],
       [
         20.59,
         42.877,
-        6.21
+        5.56
       ]
     ]
   },
@@ -4170,12 +4398,12 @@
       [
         21.148,
         43.654,
-        6.19
+        5.54
       ],
       [
         21.598,
         43.874,
-        6.21
+        5.56
       ]
     ]
   },
@@ -4189,12 +4417,12 @@
       [
         22.68,
         37.845,
-        6.19
+        5.54
       ],
       [
         23.13,
         38.065,
-        6.21
+        5.56
       ]
     ]
   },
@@ -4208,12 +4436,12 @@
       [
         21.596,
         -53.607,
-        6.19
+        5.54
       ],
       [
         22.046,
         -53.387,
-        6.21
+        5.56
       ]
     ]
   }

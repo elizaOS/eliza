@@ -50,6 +50,7 @@ def _write_alberta_checkpoint(
     tasks = tasks or ["stand_up"]
     manifest = {
         "regime": "alberta_streaming",
+        "phase_promotion_schema": "alberta-phase-promotion-v1",
         "curriculum_version": load_curriculum().version,
         "pca_dim": 32,
         "active_tasks": tasks,
@@ -102,9 +103,43 @@ def _write_alberta_checkpoint(
                 "train_episodes": 1,
                 "train_mean_return": -1.0,
                 "eval_mean_return": -0.5,
+                "eval_success_rate": 1.0,
+                "promotion_passed": True,
             }
             for phase, task in enumerate(tasks)
         ],
+    }
+    cumulative = 0
+    phases = []
+    steps_per_task = total_steps // len(tasks)
+    for phase, task in enumerate(tasks):
+        cumulative += steps_per_task
+        phases.append(
+            {
+                "phase": phase,
+                "task": task,
+                "attempt": 1,
+                "steps_trained": steps_per_task,
+                "cumulative_steps": cumulative,
+                "eval_episodes": 3,
+                "eval_mean_return": -0.5,
+                "eval_success_rate": 1.0,
+                "eval_failures": 0,
+                "promotion_passed": True,
+                "promotion_reason": "success_rate_gte_threshold",
+            }
+        )
+    manifest["phase_promotion"] = {
+        "gate": "curriculum_goal_checker",
+        "status": "completed",
+        "success_threshold": 1.0,
+        "eval_episodes": 3,
+        "eval_interval_steps": steps_per_task,
+        "max_phase_attempts": 1,
+        "promoted_phase_count": len(tasks),
+        "requested_phase_count": len(tasks),
+        "failed_phase": None,
+        "phases": phases,
     }
     (path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
@@ -134,6 +169,38 @@ def test_alberta_checkpoint_validator_rejects_undertrained_checkpoint(tmp_path: 
     assert report["ok"] is False
     assert report["checks"]["total_steps"] is False
     assert report["checks"]["requested_total_steps"] is False
+
+
+def test_alberta_checkpoint_validator_can_require_phase_promotion(tmp_path: Path) -> None:
+    _write_alberta_checkpoint(tmp_path)
+
+    report = validate_alberta_robot_checkpoint(
+        tmp_path,
+        min_steps=10,
+        require_phase_promotion=True,
+    )
+
+    assert report["ok"] is True
+    assert report["checks"]["phase_promotion"] is True
+
+
+def test_alberta_checkpoint_validator_rejects_failed_phase_promotion(tmp_path: Path) -> None:
+    _write_alberta_checkpoint(tmp_path)
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    manifest["phase_promotion"]["status"] = "failed"
+    manifest["phase_promotion"]["failed_phase"] = 0
+    manifest["phase_promotion"]["phases"][0]["promotion_passed"] = False
+    manifest["phase_promotion"]["phases"][0]["eval_success_rate"] = 0.0
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    report = validate_alberta_robot_checkpoint(
+        tmp_path,
+        min_steps=10,
+        require_phase_promotion=True,
+    )
+
+    assert report["ok"] is False
+    assert report["checks"]["phase_promotion"] is False
 
 
 def test_alberta_checkpoint_validator_rejects_missing_required_task(

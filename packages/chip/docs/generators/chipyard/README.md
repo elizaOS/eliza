@@ -206,7 +206,13 @@ The wrapper writes raw command output under
 
 If a command is unset, exits nonzero, or lacks required OpenSBI/Linux/trap/cache
 or benchmark markers, the capture remains blocked or fails and the accepted
-evidence path is not written.
+evidence path is not written. The ISA/cache/MMU export is additionally gated by
+the accepted Linux boot transcript: `build/evidence/cpu_ap/eliza_e1_linux_boot.log`
+must pass intake and include `riscv_hwprobe: syscall rc=0`; a live diagnostic
+smoke log alone does not unlock `ELIZA_ISA_CACHE_MMU_CMD`. The bare-metal
+ISA/cache/MMU probe also audits the current generated DTS for the Rocket
+I-cache, D-cache, L2 cache, TLB, and `mmu-type = "riscv,sv39"` markers before
+archiving final evidence.
 
 Generated Verilog must not be hand-edited. It should be copied or symlinked into
 the eventual RTL wrapper location only through documented import steps so RTL

@@ -1,0 +1,2641 @@
+{
+  "ok": false,
+  "evidence_dir": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/agent_videos",
+  "out_dir": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit",
+  "thresholds": {
+    "samples": 5,
+    "min_frames": 5,
+    "min_nonblank_ratio": 0.05,
+    "min_mean_frame_delta": 0.01,
+    "min_visual_progress": 0.0001,
+    "require_telemetry": true
+  },
+  "manual_annotations": {
+    "path": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/manual_frame_review.json",
+    "loaded": false,
+    "count": 0
+  },
+  "video_count": 25,
+  "videos": [
+    {
+      "profile": "asimov-1",
+      "action": "combined_actions",
+      "video": "asimov-1/asimov-1_combined_actions.mp4",
+      "bytes": 1134208,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/asimov-1_asimov-1_combined_actions_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 160,
+        "steps_requested": 160,
+        "terminated": null,
+        "truncated": null,
+        "first_done_step": null,
+        "fall_threshold": null,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "command_count": 4,
+        "failed_commands": [
+          {
+            "label": "walk forward",
+            "task_id": "walk_forward",
+            "steps_executed": 40,
+            "terminated": true,
+            "first_done_step": 40,
+            "torso_z": {
+              "min": 0.3738106430427468,
+              "max": 0.6315822707223933,
+              "final": 0.3738106430427468,
+              "mean": 0.5723513729430852
+            },
+            "upright_proj": {
+              "min": 0.5911163271315334,
+              "max": 0.9999983228024675,
+              "final": 0.5911163271315334,
+              "mean": 0.9225498654082565
+            },
+            "delta_x_m": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "delta_yaw_rad": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "action_progress_ok": false
+          },
+          {
+            "label": "turn left",
+            "task_id": "turn_left",
+            "steps_executed": 40,
+            "terminated": true,
+            "first_done_step": 40,
+            "torso_z": {
+              "min": 0.37384812997836353,
+              "max": 0.6315863584501746,
+              "final": 0.37384812997836353,
+              "mean": 0.5723505187653892
+            },
+            "upright_proj": {
+              "min": 0.5908589894602274,
+              "max": 0.9999978601890452,
+              "final": 0.5908589894602274,
+              "mean": 0.9225334958171303
+            },
+            "delta_x_m": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "delta_yaw_rad": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "action_progress_ok": false
+          },
+          {
+            "label": "turn right",
+            "task_id": "turn_right",
+            "steps_executed": 40,
+            "terminated": true,
+            "first_done_step": 40,
+            "torso_z": {
+              "min": 0.37382417956578207,
+              "max": 0.6315814330373691,
+              "final": 0.37382417956578207,
+              "mean": 0.5723297052749566
+            },
+            "upright_proj": {
+              "min": 0.590781659427664,
+              "max": 0.99999904976996,
+              "final": 0.590781659427664,
+              "mean": 0.9224713445248607
+            },
+            "delta_x_m": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "delta_yaw_rad": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "action_progress_ok": false
+          }
+        ]
+      },
+      "open": true,
+      "frame_count": 160,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9360937500000001,
+      "mean_luma": 111.82311263020833,
+      "mean_frame_delta": 1.5041788667440414,
+      "normalized_frame_delta": 0.005898740653898202,
+      "foreground_centroid_path": 0.00044336882818892247,
+      "mean_foreground_mask_delta": 0.00022135416666666668,
+      "visual_progress": 0.005898740653898202,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.00589874",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "asimov-1",
+      "action": "stand_up",
+      "video": "asimov-1/asimov-1_stand_up.mp4",
+      "bytes": 348504,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/asimov-1_asimov-1_stand_up_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": true,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.378,
+        "action_progress_ok": null,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.37381563155685255,
+          "max": 0.6315840099307426,
+          "final": 0.37381563155685255,
+          "mean": 0.5723490570350542
+        },
+        "upright_proj": {
+          "min": 0.5910690313102859,
+          "max": 0.999998384288069,
+          "final": 0.5910690313102859,
+          "mean": 0.9225456901984371
+        },
+        "reward": {
+          "min": -7.482526528798875,
+          "max": 3.4148427390547407,
+          "final": -7.482526528798875,
+          "mean": 2.9277782028130046
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9354166666666666,
+      "mean_luma": 111.63421874999999,
+      "mean_frame_delta": 3.428865611553192,
+      "normalized_frame_delta": 0.013446531810012518,
+      "foreground_centroid_path": 0.0,
+      "mean_foreground_mask_delta": 0.0,
+      "visual_progress": 0.013446531810012518,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show nonblank robot motion for `stand up` with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
+    },
+    {
+      "profile": "asimov-1",
+      "action": "turn_left",
+      "video": "asimov-1/asimov-1_turn_left.mp4",
+      "bytes": 340159,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/asimov-1_asimov-1_turn_left_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": true,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.378,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.37384812997836353,
+          "max": 0.6315863584501746,
+          "final": 0.37384812997836353,
+          "mean": 0.5723505187653892
+        },
+        "upright_proj": {
+          "min": 0.5908589894602274,
+          "max": 0.9999978601890452,
+          "final": 0.5908589894602274,
+          "mean": 0.9225334958171303
+        },
+        "reward": {
+          "min": -7.604881883617281,
+          "max": 3.3976799438995076,
+          "final": -7.604881883617281,
+          "mean": 2.8132431743666038
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9355625,
+      "mean_luma": 111.44216731770834,
+      "mean_frame_delta": 3.0567569732666016,
+      "normalized_frame_delta": 0.01198728224810432,
+      "foreground_centroid_path": 0.0002005161520180252,
+      "mean_foreground_mask_delta": 9.114583333333334e-05,
+      "visual_progress": 0.01198728224810432,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.0119873",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "asimov-1",
+      "action": "turn_right",
+      "video": "asimov-1/asimov-1_turn_right.mp4",
+      "bytes": 340317,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/asimov-1_asimov-1_turn_right_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": true,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.378,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.37382417956578207,
+          "max": 0.6315814330373691,
+          "final": 0.37382417956578207,
+          "mean": 0.5723297052749566
+        },
+        "upright_proj": {
+          "min": 0.590781659427664,
+          "max": 0.99999904976996,
+          "final": 0.590781659427664,
+          "mean": 0.9224713445248607
+        },
+        "reward": {
+          "min": -7.28396723217411,
+          "max": 3.3820402900657944,
+          "final": -7.28396723217411,
+          "mean": 2.8419506702042407
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9355625,
+      "mean_luma": 111.44383984375,
+      "mean_frame_delta": 3.0600163340568542,
+      "normalized_frame_delta": 0.012000064055124918,
+      "foreground_centroid_path": 0.0002005161520180252,
+      "mean_foreground_mask_delta": 9.114583333333334e-05,
+      "visual_progress": 0.012000064055124918,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.0120001",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "asimov-1",
+      "action": "walk_forward",
+      "video": "asimov-1/asimov-1_walk_forward.mp4",
+      "bytes": 341035,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/asimov-1_asimov-1_walk_forward_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": true,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.378,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.3738106430427468,
+          "max": 0.6315822707223933,
+          "final": 0.3738106430427468,
+          "mean": 0.5723513729430852
+        },
+        "upright_proj": {
+          "min": 0.5911163271315334,
+          "max": 0.9999983228024675,
+          "final": 0.5911163271315334,
+          "mean": 0.9225498654082565
+        },
+        "reward": {
+          "min": -7.496835579658297,
+          "max": 3.377287540717252,
+          "final": -7.496835579658297,
+          "mean": 2.9012124247855353
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9354166666666666,
+      "mean_luma": 111.44173046875001,
+      "mean_frame_delta": 3.0562109649181366,
+      "normalized_frame_delta": 0.011985141038894653,
+      "foreground_centroid_path": 0.0,
+      "mean_foreground_mask_delta": 0.0,
+      "visual_progress": 0.011985141038894653,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.0119851",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "hiwonder-ainex",
+      "action": "combined_actions",
+      "video": "hiwonder-ainex/hiwonder-ainex_combined_actions.mp4",
+      "bytes": 646287,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/hiwonder-ainex_hiwonder-ainex_combined_actions_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 160,
+        "steps_requested": 160,
+        "terminated": null,
+        "truncated": null,
+        "first_done_step": null,
+        "fall_threshold": null,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "command_count": 4,
+        "failed_commands": [
+          {
+            "label": "walk forward",
+            "task_id": "walk_forward",
+            "steps_executed": 40,
+            "terminated": false,
+            "first_done_step": 40,
+            "torso_z": {
+              "min": 0.23771576065127176,
+              "max": 0.27784002688252235,
+              "final": 0.2450441564084145,
+              "mean": 0.24636147879653425
+            },
+            "upright_proj": {
+              "min": 0.9951947173647016,
+              "max": 0.9999997743343031,
+              "final": 0.9979305988128735,
+              "mean": 0.9981196826796215
+            },
+            "delta_x_m": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "delta_yaw_rad": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "action_progress_ok": false
+          },
+          {
+            "label": "turn left",
+            "task_id": "turn_left",
+            "steps_executed": 40,
+            "terminated": false,
+            "first_done_step": 40,
+            "torso_z": {
+              "min": 0.23660363977855792,
+              "max": 0.2778354385883302,
+              "final": 0.24257010983804653,
+              "mean": 0.2444434998940154
+            },
+            "upright_proj": {
+              "min": 0.9917134917811754,
+              "max": 0.9999997798599115,
+              "final": 0.9929311894448255,
+              "mean": 0.9974727063202862
+            },
+            "delta_x_m": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "delta_yaw_rad": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "action_progress_ok": false
+          },
+          {
+            "label": "turn right",
+            "task_id": "turn_right",
+            "steps_executed": 40,
+            "terminated": false,
+            "first_done_step": 40,
+            "torso_z": {
+              "min": 0.23763801277353214,
+              "max": 0.27784450110363446,
+              "final": 0.24264570412334183,
+              "mean": 0.24453950198602473
+            },
+            "upright_proj": {
+              "min": 0.9952612581266324,
+              "max": 0.9999997340320804,
+              "final": 0.9969941575764427,
+              "mean": 0.9987599497074635
+            },
+            "delta_x_m": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "delta_yaw_rad": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "action_progress_ok": false
+          }
+        ]
+      },
+      "open": true,
+      "frame_count": 160,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9999973958333334,
+      "mean_luma": 56.23459700520833,
+      "mean_frame_delta": 1.673846036195755,
+      "normalized_frame_delta": 0.006564102102728451,
+      "foreground_centroid_path": 7.558084508972696e-07,
+      "mean_foreground_mask_delta": 5.696614583333334e-06,
+      "visual_progress": 0.006564102102728451,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.0065641",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "hiwonder-ainex",
+      "action": "stand_up",
+      "video": "hiwonder-ainex/hiwonder-ainex_stand_up.mp4",
+      "bytes": 164953,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/hiwonder-ainex_hiwonder-ainex_stand_up_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.15,
+        "action_progress_ok": null,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.23654185848454226,
+          "max": 0.27784002688252235,
+          "final": 0.24250494834147782,
+          "mean": 0.24424901563880982
+        },
+        "upright_proj": {
+          "min": 0.998227843858532,
+          "max": 0.9999997743343031,
+          "final": 0.998227843858532,
+          "mean": 0.9991173624880727
+        },
+        "reward": {
+          "min": 3.4595529715625526,
+          "max": 3.4998829357522814,
+          "final": 3.4936106715337174,
+          "mean": 3.493988445331503
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9999993489583334,
+      "mean_luma": 56.30036197916667,
+      "mean_frame_delta": 0.8039591424167156,
+      "normalized_frame_delta": 0.0031527809506537866,
+      "foreground_centroid_path": 8.345374344548994e-07,
+      "mean_foreground_mask_delta": 1.6276041666666668e-06,
+      "visual_progress": 0.0031527809506537866,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show nonblank robot motion for `stand up` with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
+    },
+    {
+      "profile": "hiwonder-ainex",
+      "action": "turn_left",
+      "video": "hiwonder-ainex/hiwonder-ainex_turn_left.mp4",
+      "bytes": 201997,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/hiwonder-ainex_hiwonder-ainex_turn_left_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.15,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.23660363977855792,
+          "max": 0.2778354385883302,
+          "final": 0.24257010983804653,
+          "mean": 0.2444434998940154
+        },
+        "upright_proj": {
+          "min": 0.9917134917811754,
+          "max": 0.9999997798599115,
+          "final": 0.9929311894448255,
+          "mean": 0.9974727063202862
+        },
+        "reward": {
+          "min": 3.2246940204376666,
+          "max": 3.355492640725101,
+          "final": 3.3108815068226582,
+          "mean": 3.3043128174204126
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.99998828125,
+      "mean_luma": 56.199791015624996,
+      "mean_frame_delta": 1.1462060511112213,
+      "normalized_frame_delta": 0.00449492569063224,
+      "foreground_centroid_path": 1.3177945251996112e-06,
+      "mean_foreground_mask_delta": 2.604166666666667e-05,
+      "visual_progress": 0.00449492569063224,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.00449493",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "hiwonder-ainex",
+      "action": "turn_right",
+      "video": "hiwonder-ainex/hiwonder-ainex_turn_right.mp4",
+      "bytes": 190451,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/hiwonder-ainex_hiwonder-ainex_turn_right_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.15,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.23763801277353214,
+          "max": 0.27784450110363446,
+          "final": 0.24264570412334183,
+          "mean": 0.24453950198602473
+        },
+        "upright_proj": {
+          "min": 0.9952612581266324,
+          "max": 0.9999997340320804,
+          "final": 0.9969941575764427,
+          "mean": 0.9987599497074635
+        },
+        "reward": {
+          "min": 3.2842717645842914,
+          "max": 3.3767449365431634,
+          "final": 3.3302596408521663,
+          "mean": 3.339111937823547
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9999967447916667,
+      "mean_luma": 56.269919921875,
+      "mean_frame_delta": 0.9993359595537186,
+      "normalized_frame_delta": 0.0039189645472694845,
+      "foreground_centroid_path": 1.8844221322874376e-06,
+      "mean_foreground_mask_delta": 8.138020833333333e-06,
+      "visual_progress": 0.0039189645472694845,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.00391896",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "hiwonder-ainex",
+      "action": "walk_forward",
+      "video": "hiwonder-ainex/hiwonder-ainex_walk_forward.mp4",
+      "bytes": 218059,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/hiwonder-ainex_hiwonder-ainex_walk_forward_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.15,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.23771576065127176,
+          "max": 0.27784002688252235,
+          "final": 0.2450441564084145,
+          "mean": 0.24636147879653425
+        },
+        "upright_proj": {
+          "min": 0.9951947173647016,
+          "max": 0.9999997743343031,
+          "final": 0.9979305988128735,
+          "mean": 0.9981196826796215
+        },
+        "reward": {
+          "min": 3.457049894381718,
+          "max": 3.49750715261124,
+          "final": 3.457049894381718,
+          "mean": 3.4862537385012957
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9999980468749999,
+      "mean_luma": 56.24780794270832,
+      "mean_frame_delta": 1.4955908060073853,
+      "normalized_frame_delta": 0.005865061984342688,
+      "foreground_centroid_path": 6.397309410521862e-07,
+      "mean_foreground_mask_delta": 4.8828125e-06,
+      "visual_progress": 0.005865061984342688,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.00586506",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "unitree-g1",
+      "action": "combined_actions",
+      "video": "unitree-g1/unitree-g1_combined_actions.mp4",
+      "bytes": 1001805,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/unitree-g1_unitree-g1_combined_actions_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 160,
+        "steps_requested": 160,
+        "terminated": null,
+        "truncated": null,
+        "first_done_step": null,
+        "fall_threshold": null,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "command_count": 4,
+        "failed_commands": [
+          {
+            "label": "walk forward",
+            "task_id": "walk_forward",
+            "steps_executed": 40,
+            "terminated": false,
+            "first_done_step": 40,
+            "torso_z": {
+              "min": 0.7899316977176414,
+              "max": 0.801904128286932,
+              "final": 0.8004648702813412,
+              "mean": 0.7948526693868354
+            },
+            "upright_proj": {
+              "min": 0.9933805373947818,
+              "max": 0.9999999983542934,
+              "final": 0.9955025350205532,
+              "mean": 0.9980487063449056
+            },
+            "delta_x_m": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "delta_yaw_rad": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "action_progress_ok": false
+          },
+          {
+            "label": "turn left",
+            "task_id": "turn_left",
+            "steps_executed": 40,
+            "terminated": false,
+            "first_done_step": 40,
+            "torso_z": {
+              "min": 0.7911624301907523,
+              "max": 0.7961400371097604,
+              "final": 0.7935060308685106,
+              "mean": 0.7931874628298826
+            },
+            "upright_proj": {
+              "min": 0.9999443730868465,
+              "max": 0.9999997551660539,
+              "final": 0.9999642159824795,
+              "mean": 0.999982448537267
+            },
+            "delta_x_m": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "delta_yaw_rad": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "action_progress_ok": false
+          },
+          {
+            "label": "turn right",
+            "task_id": "turn_right",
+            "steps_executed": 40,
+            "terminated": false,
+            "first_done_step": 40,
+            "torso_z": {
+              "min": 0.791345734166974,
+              "max": 0.7961468424577013,
+              "final": 0.7938451277842211,
+              "mean": 0.7933283584399067
+            },
+            "upright_proj": {
+              "min": 0.9997060764696566,
+              "max": 0.9999998352936491,
+              "final": 0.9997599562870199,
+              "mean": 0.9999167769698041
+            },
+            "delta_x_m": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "delta_yaw_rad": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "action_progress_ok": false
+          }
+        ]
+      },
+      "open": true,
+      "frame_count": 160,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9999342447916666,
+      "mean_luma": 62.776986328125,
+      "mean_frame_delta": 3.467973582446575,
+      "normalized_frame_delta": 0.013599896401751275,
+      "foreground_centroid_path": 3.927203831252015e-05,
+      "mean_foreground_mask_delta": 0.00011474609375000001,
+      "visual_progress": 0.013599896401751275,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.0135999",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "unitree-g1",
+      "action": "stand_up",
+      "video": "unitree-g1/unitree-g1_stand_up.mp4",
+      "bytes": 128966,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/unitree-g1_unitree-g1_stand_up_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.474,
+        "action_progress_ok": null,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.7905181150490029,
+          "max": 0.7916153471328852,
+          "final": 0.7916143541494356,
+          "mean": 0.7915652164290525
+        },
+        "upright_proj": {
+          "min": 0.9999992327208259,
+          "max": 0.9999999983542934,
+          "final": 0.9999992327208259,
+          "mean": 0.9999997018337616
+        },
+        "reward": {
+          "min": 3.499988735635503,
+          "max": 3.49999730461684,
+          "final": 3.499989184075051,
+          "mean": 3.4999894587094835
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9999472656249999,
+      "mean_luma": 62.813951171875,
+      "mean_frame_delta": 0.16401367262005806,
+      "normalized_frame_delta": 0.0006431908730198355,
+      "foreground_centroid_path": 8.840760930433521e-06,
+      "mean_foreground_mask_delta": 1.953125e-05,
+      "visual_progress": 0.0006431908730198355,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show nonblank robot motion for `stand up` with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
+    },
+    {
+      "profile": "unitree-g1",
+      "action": "turn_left",
+      "video": "unitree-g1/unitree-g1_turn_left.mp4",
+      "bytes": 334958,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/unitree-g1_unitree-g1_turn_left_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.474,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.7911624301907523,
+          "max": 0.7961400371097604,
+          "final": 0.7935060308685106,
+          "mean": 0.7931874628298826
+        },
+        "upright_proj": {
+          "min": 0.9999443730868465,
+          "max": 0.9999997551660539,
+          "final": 0.9999642159824795,
+          "mean": 0.999982448537267
+        },
+        "reward": {
+          "min": 3.16623943006268,
+          "max": 3.4979755595365356,
+          "final": 3.4696392462118215,
+          "mean": 3.306514241179781
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9999394531250001,
+      "mean_luma": 62.88607096354167,
+      "mean_frame_delta": 2.244767278432846,
+      "normalized_frame_delta": 0.00880300893503077,
+      "foreground_centroid_path": 2.6279741379907264e-05,
+      "mean_foreground_mask_delta": 9.440104166666668e-05,
+      "visual_progress": 0.00880300893503077,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.00880301",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "unitree-g1",
+      "action": "turn_right",
+      "video": "unitree-g1/unitree-g1_turn_right.mp4",
+      "bytes": 334380,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/unitree-g1_unitree-g1_turn_right_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.474,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.791345734166974,
+          "max": 0.7961468424577013,
+          "final": 0.7938451277842211,
+          "mean": 0.7933283584399067
+        },
+        "upright_proj": {
+          "min": 0.9997060764696566,
+          "max": 0.9999998352936491,
+          "final": 0.9997599562870199,
+          "mean": 0.9999167769698041
+        },
+        "reward": {
+          "min": 3.166270859247532,
+          "max": 3.499754884418214,
+          "final": 3.1676441753314117,
+          "mean": 3.2761301114155588
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.999935546875,
+      "mean_luma": 62.90114453125,
+      "mean_frame_delta": 2.3646159172058105,
+      "normalized_frame_delta": 0.00927300359688553,
+      "foreground_centroid_path": 1.9215492933373195e-05,
+      "mean_foreground_mask_delta": 9.358723958333333e-05,
+      "visual_progress": 0.00927300359688553,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.009273",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "unitree-g1",
+      "action": "walk_forward",
+      "video": "unitree-g1/unitree-g1_walk_forward.mp4",
+      "bytes": 381460,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/unitree-g1_unitree-g1_walk_forward_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.474,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.7899316977176414,
+          "max": 0.801904128286932,
+          "final": 0.8004648702813412,
+          "mean": 0.7948526693868354
+        },
+        "upright_proj": {
+          "min": 0.9933805373947818,
+          "max": 0.9999999983542934,
+          "final": 0.9955025350205532,
+          "mean": 0.9980487063449056
+        },
+        "reward": {
+          "min": 3.0115774148230288,
+          "max": 3.493600729768014,
+          "final": 3.0636335965312416,
+          "mean": 3.1413449195407375
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9998906249999999,
+      "mean_luma": 62.42118880208333,
+      "mean_frame_delta": 4.388872027397156,
+      "normalized_frame_delta": 0.017211262852537865,
+      "foreground_centroid_path": 0.00020546458357225086,
+      "mean_foreground_mask_delta": 0.00022867838541666663,
+      "visual_progress": 0.017211262852537865,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.0172113",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "unitree-h1",
+      "action": "combined_actions",
+      "video": "unitree-h1/unitree-h1_combined_actions.mp4",
+      "bytes": 1417076,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/unitree-h1_unitree-h1_combined_actions_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 160,
+        "steps_requested": 160,
+        "terminated": null,
+        "truncated": null,
+        "first_done_step": null,
+        "fall_threshold": null,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "command_count": 4,
+        "failed_commands": [
+          {
+            "label": "walk forward",
+            "task_id": "walk_forward",
+            "steps_executed": 40,
+            "terminated": false,
+            "first_done_step": 40,
+            "torso_z": {
+              "min": 0.7788143275696411,
+              "max": 0.9784249456160091,
+              "final": 0.7788143275696411,
+              "mean": 0.8949236905541806
+            },
+            "upright_proj": {
+              "min": 0.7522485253027652,
+              "max": 0.9999998584025279,
+              "final": 0.7522485253027652,
+              "mean": 0.9380233665009288
+            },
+            "delta_x_m": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "delta_yaw_rad": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "action_progress_ok": false
+          },
+          {
+            "label": "turn left",
+            "task_id": "turn_left",
+            "steps_executed": 40,
+            "terminated": false,
+            "first_done_step": 40,
+            "torso_z": {
+              "min": 0.7981986171774424,
+              "max": 0.9786237324281216,
+              "final": 0.7981986171774424,
+              "mean": 0.9048210571126196
+            },
+            "upright_proj": {
+              "min": 0.8015061939351682,
+              "max": 0.9999999857342315,
+              "final": 0.8015061939351682,
+              "mean": 0.9532428266699731
+            },
+            "delta_x_m": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "delta_yaw_rad": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "action_progress_ok": false
+          },
+          {
+            "label": "turn right",
+            "task_id": "turn_right",
+            "steps_executed": 40,
+            "terminated": false,
+            "first_done_step": 40,
+            "torso_z": {
+              "min": 0.8124320666547917,
+              "max": 0.9786003631742803,
+              "final": 0.8124320666547917,
+              "mean": 0.9069016817693015
+            },
+            "upright_proj": {
+              "min": 0.7896573478790833,
+              "max": 0.9999982124749993,
+              "final": 0.7896573478790833,
+              "mean": 0.9447255402948462
+            },
+            "delta_x_m": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "delta_yaw_rad": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "action_progress_ok": false
+          }
+        ]
+      },
+      "open": true,
+      "frame_count": 160,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9996282552083333,
+      "mean_luma": 75.03733072916667,
+      "mean_frame_delta": 2.5606575310230255,
+      "normalized_frame_delta": 0.010041794239305983,
+      "foreground_centroid_path": 0.00014304596118027587,
+      "mean_foreground_mask_delta": 0.0007771809895833333,
+      "visual_progress": 0.010041794239305983,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.0100418",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "unitree-h1",
+      "action": "stand_up",
+      "video": "unitree-h1/unitree-h1_stand_up.mp4",
+      "bytes": 376393,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/unitree-h1_unitree-h1_stand_up_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.612,
+        "action_progress_ok": null,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.8052169276838833,
+          "max": 0.9784249456160091,
+          "final": 0.8052169276838833,
+          "mean": 0.9056785151778856
+        },
+        "upright_proj": {
+          "min": 0.7932236825403667,
+          "max": 0.9999998584025279,
+          "final": 0.7932236825403667,
+          "mean": 0.9486516601302915
+        },
+        "reward": {
+          "min": 2.926445594962589,
+          "max": 3.4931055718029387,
+          "final": 2.926445594962589,
+          "mean": 3.300865782971581
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.99976171875,
+      "mean_luma": 74.72527604166666,
+      "mean_frame_delta": 2.413488805294037,
+      "normalized_frame_delta": 0.009464661981545242,
+      "foreground_centroid_path": 3.8468250775419065e-05,
+      "mean_foreground_mask_delta": 0.0004484049479166667,
+      "visual_progress": 0.009464661981545242,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show nonblank robot motion for `stand up` with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
+    },
+    {
+      "profile": "unitree-h1",
+      "action": "turn_left",
+      "video": "unitree-h1/unitree-h1_turn_left.mp4",
+      "bytes": 382225,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/unitree-h1_unitree-h1_turn_left_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.612,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.7981986171774424,
+          "max": 0.9786237324281216,
+          "final": 0.7981986171774424,
+          "mean": 0.9048210571126196
+        },
+        "upright_proj": {
+          "min": 0.8015061939351682,
+          "max": 0.9999999857342315,
+          "final": 0.8015061939351682,
+          "mean": 0.9532428266699731
+        },
+        "reward": {
+          "min": 2.6985256574805447,
+          "max": 3.38064191556432,
+          "final": 2.7181983649067334,
+          "mean": 3.1077273842776054
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9997239583333334,
+      "mean_luma": 74.72309440104168,
+      "mean_frame_delta": 2.437630206346512,
+      "normalized_frame_delta": 0.00955933414253534,
+      "foreground_centroid_path": 5.307734378464079e-05,
+      "mean_foreground_mask_delta": 0.00050537109375,
+      "visual_progress": 0.00955933414253534,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.00955933",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "unitree-h1",
+      "action": "turn_right",
+      "video": "unitree-h1/unitree-h1_turn_right.mp4",
+      "bytes": 379190,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/unitree-h1_unitree-h1_turn_right_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.612,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.8124320666547917,
+          "max": 0.9786003631742803,
+          "final": 0.8124320666547917,
+          "mean": 0.9069016817693015
+        },
+        "upright_proj": {
+          "min": 0.7896573478790833,
+          "max": 0.9999982124749993,
+          "final": 0.7896573478790833,
+          "mean": 0.9447255402948462
+        },
+        "reward": {
+          "min": 2.7044596218398715,
+          "max": 3.384785777991791,
+          "final": 2.7044596218398715,
+          "mean": 3.151459055719394
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9997936197916667,
+      "mean_luma": 74.71508463541667,
+      "mean_frame_delta": 2.417823910713196,
+      "normalized_frame_delta": 0.009481662394953709,
+      "foreground_centroid_path": 4.7006769519795816e-05,
+      "mean_foreground_mask_delta": 0.0003971354166666666,
+      "visual_progress": 0.009481662394953709,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.00948166",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "unitree-h1",
+      "action": "walk_forward",
+      "video": "unitree-h1/unitree-h1_walk_forward.mp4",
+      "bytes": 383955,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/unitree-h1_unitree-h1_walk_forward_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.612,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.7788143275696411,
+          "max": 0.9784249456160091,
+          "final": 0.7788143275696411,
+          "mean": 0.8949236905541806
+        },
+        "upright_proj": {
+          "min": 0.7522485253027652,
+          "max": 0.9999998584025279,
+          "final": 0.7522485253027652,
+          "mean": 0.9380233665009288
+        },
+        "reward": {
+          "min": 2.7523538212728003,
+          "max": 3.4861769905081403,
+          "final": 2.8470770461722767,
+          "mean": 3.1879425294211896
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9997434895833333,
+      "mean_luma": 74.79862239583333,
+      "mean_frame_delta": 2.554226815700531,
+      "normalized_frame_delta": 0.01001657574784522,
+      "foreground_centroid_path": 9.316426518613812e-05,
+      "mean_foreground_mask_delta": 0.0004638671875,
+      "visual_progress": 0.01001657574784522,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.0100166",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "unitree-r1",
+      "action": "combined_actions",
+      "video": "unitree-r1/unitree-r1_combined_actions.mp4",
+      "bytes": 1029188,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/unitree-r1_unitree-r1_combined_actions_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 160,
+        "steps_requested": 160,
+        "terminated": null,
+        "truncated": null,
+        "first_done_step": null,
+        "fall_threshold": null,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "command_count": 4,
+        "failed_commands": [
+          {
+            "label": "walk forward",
+            "task_id": "walk_forward",
+            "steps_executed": 40,
+            "terminated": false,
+            "first_done_step": 40,
+            "torso_z": {
+              "min": 0.7404616458497735,
+              "max": 0.7429697387686558,
+              "final": 0.7405073473715309,
+              "mean": 0.7417239112607048
+            },
+            "upright_proj": {
+              "min": 0.9768749240677896,
+              "max": 0.9999999626795327,
+              "final": 0.9768749240677896,
+              "mean": 0.9970801722304199
+            },
+            "delta_x_m": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "delta_yaw_rad": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "action_progress_ok": false
+          },
+          {
+            "label": "turn left",
+            "task_id": "turn_left",
+            "steps_executed": 40,
+            "terminated": false,
+            "first_done_step": 40,
+            "torso_z": {
+              "min": 0.7098661969751928,
+              "max": 0.7433338451398809,
+              "final": 0.7098661969751928,
+              "mean": 0.7377276792230605
+            },
+            "upright_proj": {
+              "min": 0.8897784794101303,
+              "max": 0.9999921707698953,
+              "final": 0.8897784794101303,
+              "mean": 0.9750802347746295
+            },
+            "delta_x_m": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "delta_yaw_rad": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "action_progress_ok": false
+          },
+          {
+            "label": "turn right",
+            "task_id": "turn_right",
+            "steps_executed": 40,
+            "terminated": false,
+            "first_done_step": 40,
+            "torso_z": {
+              "min": 0.7292386574942277,
+              "max": 0.7429462147763688,
+              "final": 0.7292386574942277,
+              "mean": 0.7397948385272073
+            },
+            "upright_proj": {
+              "min": 0.9320329780031629,
+              "max": 0.9999988682150419,
+              "final": 0.9320329780031629,
+              "mean": 0.9828619061613765
+            },
+            "delta_x_m": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "delta_yaw_rad": {
+              "min": null,
+              "max": null,
+              "final": null,
+              "mean": null
+            },
+            "action_progress_ok": false
+          }
+        ]
+      },
+      "open": true,
+      "frame_count": 160,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9299212239583333,
+      "mean_luma": 57.53916861979167,
+      "mean_frame_delta": 4.005950570106506,
+      "normalized_frame_delta": 0.015709610078849044,
+      "foreground_centroid_path": 1.596131073841096e-06,
+      "mean_foreground_mask_delta": 1.6276041666666668e-06,
+      "visual_progress": 0.015709610078849044,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.0157096",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "unitree-r1",
+      "action": "stand_up",
+      "video": "unitree-r1/unitree-r1_stand_up.mp4",
+      "bytes": 273896,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/unitree-r1_unitree-r1_stand_up_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.444,
+        "action_progress_ok": null,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.7393067532804892,
+          "max": 0.7419965443537505,
+          "final": 0.7393067532804892,
+          "mean": 0.7412388717448447
+        },
+        "upright_proj": {
+          "min": 0.9903888938142437,
+          "max": 0.9999999626795327,
+          "final": 0.9903888938142437,
+          "mean": 0.9971690391406707
+        },
+        "reward": {
+          "min": 3.488926960877624,
+          "max": 3.499849897456488,
+          "final": 3.4897137897545147,
+          "mean": 3.4925402893372963
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9299212239583333,
+      "mean_luma": 57.919873046875,
+      "mean_frame_delta": 1.550154596567154,
+      "normalized_frame_delta": 0.006079037633596682,
+      "foreground_centroid_path": 1.7197122751871727e-06,
+      "mean_foreground_mask_delta": 1.6276041666666668e-06,
+      "visual_progress": 0.006079037633596682,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show nonblank robot motion for `stand up` with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
+    },
+    {
+      "profile": "unitree-r1",
+      "action": "turn_left",
+      "video": "unitree-r1/unitree-r1_turn_left.mp4",
+      "bytes": 323916,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/unitree-r1_unitree-r1_turn_left_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.444,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.7098661969751928,
+          "max": 0.7433338451398809,
+          "final": 0.7098661969751928,
+          "mean": 0.7377276792230605
+        },
+        "upright_proj": {
+          "min": 0.8897784794101303,
+          "max": 0.9999921707698953,
+          "final": 0.8897784794101303,
+          "mean": 0.9750802347746295
+        },
+        "reward": {
+          "min": 2.9601843665212324,
+          "max": 3.4983523407491735,
+          "final": 2.9601843665212324,
+          "mean": 3.2570596137427357
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9299212239583333,
+      "mean_luma": 57.65637695312499,
+      "mean_frame_delta": 2.9200887382030487,
+      "normalized_frame_delta": 0.011451328385109994,
+      "foreground_centroid_path": 9.73727268060274e-07,
+      "mean_foreground_mask_delta": 8.138020833333334e-07,
+      "visual_progress": 0.011451328385109994,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.0114513",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "unitree-r1",
+      "action": "turn_right",
+      "video": "unitree-r1/unitree-r1_turn_right.mp4",
+      "bytes": 320459,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/unitree-r1_unitree-r1_turn_right_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.444,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.7292386574942277,
+          "max": 0.7429462147763688,
+          "final": 0.7292386574942277,
+          "mean": 0.7397948385272073
+        },
+        "upright_proj": {
+          "min": 0.9320329780031629,
+          "max": 0.9999988682150419,
+          "final": 0.9320329780031629,
+          "mean": 0.9828619061613765
+        },
+        "reward": {
+          "min": 3.071066578164177,
+          "max": 3.4615077752631462,
+          "final": 3.071066578164177,
+          "mean": 3.1810079772489948
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9299212239583333,
+      "mean_luma": 57.72372135416666,
+      "mean_frame_delta": 2.5328157544136047,
+      "normalized_frame_delta": 0.009932610801621979,
+      "foreground_centroid_path": 1.6615167454819903e-06,
+      "mean_foreground_mask_delta": 1.6276041666666668e-06,
+      "visual_progress": 0.009932610801621979,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.00993261",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "unitree-r1",
+      "action": "walk_forward",
+      "video": "unitree-r1/unitree-r1_walk_forward.mp4",
+      "bytes": 310123,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/unitree-r1_unitree-r1_walk_forward_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.444,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.7404616458497735,
+          "max": 0.7429697387686558,
+          "final": 0.7405073473715309,
+          "mean": 0.7417239112607048
+        },
+        "upright_proj": {
+          "min": 0.9768749240677896,
+          "max": 0.9999999626795327,
+          "final": 0.9768749240677896,
+          "mean": 0.9970801722304199
+        },
+        "reward": {
+          "min": 3.1537583925490584,
+          "max": 3.4952095822809333,
+          "final": 3.1537583925490584,
+          "mean": 3.294180088881839
+        },
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_y_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 640,
+      "height": 480,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9299212239583333,
+      "mean_luma": 57.938943359375,
+      "mean_frame_delta": 2.221843272447586,
+      "normalized_frame_delta": 0.008713110872343475,
+      "foreground_centroid_path": 8.370339908747243e-07,
+      "mean_foreground_mask_delta": 8.138020833333334e-07,
+      "visual_progress": 0.008713110872343475,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_action_progress. visual_progress=0.00871311",
+      "failed_checks": [
+        "telemetry_action_progress"
+      ]
+    }
+  ],
+  "min_visual_progress": 0.0006431908730198355,
+  "mean_visual_progress": 0.009171747360743727,
+  "min_mean_frame_delta": 0.16401367262005806,
+  "mean_mean_frame_delta": 2.338795576989651,
+  "min_normalized_frame_delta": 0.0006431908730198355,
+  "mean_normalized_frame_delta": 0.009171747360743727,
+  "min_foreground_centroid_path": 0.0,
+  "mean_foreground_centroid_path": 6.121827018548257e-05,
+  "min_mean_foreground_mask_delta": 0.0,
+  "mean_mean_foreground_mask_delta": 0.00014397786458333336,
+  "min_nonblank_ratio": 0.9299212239583333,
+  "mean_nonblank_ratio": 0.9730374479166667,
+  "profiles": [
+    "asimov-1",
+    "hiwonder-ainex",
+    "unitree-g1",
+    "unitree-h1",
+    "unitree-r1"
+  ],
+  "actions": [
+    "combined_actions",
+    "stand_up",
+    "turn_left",
+    "turn_right",
+    "walk_forward"
+  ],
+  "all_videos_reviewed_good": false,
+  "telemetry": {
+    "required": true,
+    "present_count": 25,
+    "ok_count": 25,
+    "failed_count": 0
+  },
+  "profile_action_matrix": {
+    "asimov-1": [
+      "combined_actions",
+      "stand_up",
+      "turn_left",
+      "turn_right",
+      "walk_forward"
+    ],
+    "hiwonder-ainex": [
+      "combined_actions",
+      "stand_up",
+      "turn_left",
+      "turn_right",
+      "walk_forward"
+    ],
+    "unitree-g1": [
+      "combined_actions",
+      "stand_up",
+      "turn_left",
+      "turn_right",
+      "walk_forward"
+    ],
+    "unitree-h1": [
+      "combined_actions",
+      "stand_up",
+      "turn_left",
+      "turn_right",
+      "walk_forward"
+    ],
+    "unitree-r1": [
+      "combined_actions",
+      "stand_up",
+      "turn_left",
+      "turn_right",
+      "walk_forward"
+    ]
+  }
+}

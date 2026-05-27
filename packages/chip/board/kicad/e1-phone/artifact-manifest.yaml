@@ -140,10 +140,14 @@ current_artifacts:
     - board/kicad/e1-phone/production/readiness/release-evidence-validation-dry-run-2026-05-22.yaml
     - board/kicad/e1-phone/production/readiness/fabrication-enclosure-e2e-release-gate-2026-05-22.yaml
     - board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+    - board/kicad/e1-phone/production/readiness/enclosure-readiness-gap-map-2026-05-22.yaml
+    - board/kicad/e1-phone/production/readiness/release-approval-signature-blocker-matrix-2026-05-23.yaml
     - board/kicad/e1-phone/factory-production-acceptance-checklist.yaml
     - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
     - board/kicad/e1-phone/production/test/bench-first-article-template-manifest-2026-05-22.yaml
     - board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml
+    - board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-executed-log-contract-2026-05-22.yaml
+    - board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-missing-evidence-2026-05-22.yaml
     - board/kicad/e1-phone/production/test/first-article-traveler.template.yaml
     - board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
     - board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml
@@ -155,9 +159,11 @@ current_artifacts:
     - board/kicad/e1-phone/routed-release-plan.yaml
     - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
     - board/kicad/e1-phone/routed-board-step-export-contract.yaml
+    - board/kicad/e1-phone/kicad-cad-end-to-end-stub-audit-2026-05-22.yaml
     - board/kicad/e1-phone/routed-clearance-release-execution.yaml
     - board/kicad/e1-phone/enclosure-physical-fit-first-article-execution.yaml
     - board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+    - board/kicad/e1-phone/production/stackup/release-manifest.yaml
     - mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml
     - mechanical/e1-phone/review/mechanical-intake-template-manifest-2026-05-22.yaml
     - board/kicad/e1-phone/routed-layout-readiness-binding.yaml

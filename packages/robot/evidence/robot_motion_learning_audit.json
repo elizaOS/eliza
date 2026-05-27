@@ -1,0 +1,470 @@
+{
+  "schema": "robot-motion-learning-audit-v1",
+  "ok": false,
+  "run_root": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
+  "robot_video_physical_review": {
+    "ok": false,
+    "video_count": 25,
+    "profiles": [
+      "asimov-1",
+      "hiwonder-ainex",
+      "unitree-g1",
+      "unitree-h1",
+      "unitree-r1"
+    ],
+    "failed_video_count": 20,
+    "failed_videos": [
+      {
+        "profile": "asimov-1",
+        "action": "combined_actions",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": null,
+        "delta_yaw_rad": null
+      },
+      {
+        "profile": "asimov-1",
+        "action": "turn_left",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      {
+        "profile": "asimov-1",
+        "action": "turn_right",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      {
+        "profile": "asimov-1",
+        "action": "walk_forward",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      {
+        "profile": "hiwonder-ainex",
+        "action": "combined_actions",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": null,
+        "delta_yaw_rad": null
+      },
+      {
+        "profile": "hiwonder-ainex",
+        "action": "turn_left",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      {
+        "profile": "hiwonder-ainex",
+        "action": "turn_right",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      {
+        "profile": "hiwonder-ainex",
+        "action": "walk_forward",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      {
+        "profile": "unitree-g1",
+        "action": "combined_actions",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": null,
+        "delta_yaw_rad": null
+      },
+      {
+        "profile": "unitree-g1",
+        "action": "turn_left",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      {
+        "profile": "unitree-g1",
+        "action": "turn_right",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      {
+        "profile": "unitree-g1",
+        "action": "walk_forward",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      {
+        "profile": "unitree-h1",
+        "action": "combined_actions",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": null,
+        "delta_yaw_rad": null
+      },
+      {
+        "profile": "unitree-h1",
+        "action": "turn_left",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      {
+        "profile": "unitree-h1",
+        "action": "turn_right",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      {
+        "profile": "unitree-h1",
+        "action": "walk_forward",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      {
+        "profile": "unitree-r1",
+        "action": "combined_actions",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": null,
+        "delta_yaw_rad": null
+      },
+      {
+        "profile": "unitree-r1",
+        "action": "turn_left",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      {
+        "profile": "unitree-r1",
+        "action": "turn_right",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      },
+      {
+        "profile": "unitree-r1",
+        "action": "walk_forward",
+        "failed_checks": [
+          "telemetry_action_progress"
+        ],
+        "telemetry_ok": true,
+        "action_progress_ok": false,
+        "delta_x_m": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        },
+        "delta_yaw_rad": {
+          "min": null,
+          "max": null,
+          "final": null,
+          "mean": null
+        }
+      }
+    ],
+    "report": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/video_review_physical_audit/video_review.json"
+  },
+  "obstacle_course_existing_evidence": {
+    "ok": false,
+    "failed_checks": [
+      "motion_matrix_shapes",
+      "obstacle_motion_summary",
+      "obstacle_forward_progress",
+      "obstacle_passes_obstacle",
+      "obstacle_collision_rate"
+    ],
+    "motion": {},
+    "deltas": {
+      "alberta_acc_minus_ppo": -2.0374369344015757,
+      "alberta_forgetting_minus_ppo": -2.7992106749268646
+    }
+  },
+  "fresh_obstacle_smoke": {
+    "ok": true,
+    "failed_checks": [],
+    "motion": {
+      "alberta": {
+        "seeds": 1,
+        "final_success_rate_mean": 0.8888888888888888,
+        "final_collision_rate_mean": 0.1111111111111111,
+        "final_passed_obstacle_rate_mean": 0.8888888888888888,
+        "final_forward_progress_m_mean": 2.123314102490743,
+        "final_min_obstacle_clearance_m_min": -0.0015737402439117698
+      },
+      "ppo": {
+        "seeds": 1,
+        "final_success_rate_mean": 0.0,
+        "final_collision_rate_mean": 0.0,
+        "final_passed_obstacle_rate_mean": 0.0,
+        "final_forward_progress_m_mean": 0.7107810775438944,
+        "final_min_obstacle_clearance_m_min": 0.038279713392257664
+      }
+    },
+    "deltas": {
+      "alberta_acc_minus_ppo": 5.537305498324333,
+      "alberta_forgetting_minus_ppo": -0.12770276740727676
+    },
+    "benchmark": "/home/shaw/milady/eliza/packages/robot/evidence/obstacle_motion_audit_smoke/continual_benchmark.json",
+    "summary": {
+      "alberta": {
+        "acc": {
+          "mean": 7.25651042096408,
+          "std": 0.0
+        },
+        "bwt": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "forgetting": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "fwt": {
+          "mean": 0.0,
+          "std": 0.0
+        }
+      },
+      "ppo": {
+        "acc": {
+          "mean": 1.719204922639747,
+          "std": 0.0
+        },
+        "bwt": {
+          "mean": 0.08803645159466217,
+          "std": 0.0
+        },
+        "forgetting": {
+          "mean": 0.12770276740727676,
+          "std": 0.0
+        },
+        "fwt": {
+          "mean": 0.19625703248044388,
+          "std": 0.0
+        }
+      }
+    }
+  }
+}

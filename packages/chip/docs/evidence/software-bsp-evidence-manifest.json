@@ -157,6 +157,8 @@
             "OpenSBI",
             "fw_dynamic",
             "Next Address",
+            "Domain0 Next Arg1",
+            "0x0000000080b00000",
             "eliza-evidence: ended_utc=",
             "eliza-evidence: status=PASS"
           ],

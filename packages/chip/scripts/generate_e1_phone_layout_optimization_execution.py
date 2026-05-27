@@ -15,11 +15,18 @@ OUT = ROOT / "board/kicad/e1-phone/layout-optimization-execution.yaml"
 SCORECARD = ROOT / "board/kicad/e1-phone/board-optimization-scorecard.yaml"
 LIVE_UTILIZATION = ROOT / "board/kicad/e1-phone/live-utilization-audit.yaml"
 COMPONENT_ENVELOPE = ROOT / "board/kicad/e1-phone/component-envelope-fit-audit.yaml"
+RADIO_ENVELOPE = ROOT / "board/kicad/e1-phone/radio-module-envelope-orderability-gate.yaml"
+CELLULAR_TOP_ISLAND = ROOT / "board/kicad/e1-phone/cellular-top-island-repack-feasibility.yaml"
 PLACEMENT_REPACK = ROOT / "board/kicad/e1-phone/placement-repack-candidate.yaml"
 ROUTE_FEASIBILITY = ROOT / "board/kicad/e1-phone/route-feasibility-density.yaml"
+TRIAL_ROUTE_INPUT = ROOT / "board/kicad/e1-phone/trial-route-input-matrix.yaml"
 ROUTING_ACCEPTANCE = ROOT / "board/kicad/e1-phone/routing-acceptance-checklist.yaml"
 ROUTED_RELEASE = ROOT / "board/kicad/e1-phone/routed-release-plan.yaml"
 DISPLAY_FIT = ROOT / "board/kicad/e1-phone/display-fit.yaml"
+DISPLAY_ENVELOPE = ROOT / "board/kicad/e1-phone/display-envelope-downselect.yaml"
+CAMERA_DOWNSELECT = ROOT / "board/kicad/e1-phone/camera-module-fit-downselect.yaml"
+RADIO_SELECTION = ROOT / "board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml"
+USB_SIDEKEY_SELECTION = ROOT / "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml"
 RF_CLOSURE = ROOT / "board/kicad/e1-phone/rf-connectivity-closure.yaml"
 POWER_THERMAL = ROOT / "board/kicad/e1-phone/power-thermal-budget.yaml"
 ENCLOSURE_FIT = ROOT / "board/kicad/e1-phone/enclosure-fit-execution-package.yaml"
@@ -43,11 +50,18 @@ def main() -> int:
     scorecard = load_yaml(SCORECARD)
     live = load_yaml(LIVE_UTILIZATION)
     envelopes = load_yaml(COMPONENT_ENVELOPE)
+    radio_envelope = load_yaml(RADIO_ENVELOPE)
+    cellular_top_island = load_yaml(CELLULAR_TOP_ISLAND)
     repack = load_yaml(PLACEMENT_REPACK)
     feasibility = load_yaml(ROUTE_FEASIBILITY)
+    trial_route_input = load_yaml(TRIAL_ROUTE_INPUT)
     routing_acceptance = load_yaml(ROUTING_ACCEPTANCE)
     routed_release = load_yaml(ROUTED_RELEASE)
     display_fit = load_yaml(DISPLAY_FIT)
+    display_envelope = load_yaml(DISPLAY_ENVELOPE)
+    camera_downselect = load_yaml(CAMERA_DOWNSELECT)
+    radio_selection = load_yaml(RADIO_SELECTION)
+    usb_sidekey_selection = load_yaml(USB_SIDEKEY_SELECTION)
     rf = load_yaml(RF_CLOSURE)
     power = load_yaml(POWER_THERMAL)
     enclosure_fit = load_yaml(ENCLOSURE_FIT)
@@ -93,8 +107,15 @@ def main() -> int:
                 SCORECARD,
                 LIVE_UTILIZATION,
                 COMPONENT_ENVELOPE,
+                RADIO_ENVELOPE,
+                CELLULAR_TOP_ISLAND,
+                DISPLAY_ENVELOPE,
+                CAMERA_DOWNSELECT,
+                RADIO_SELECTION,
+                USB_SIDEKEY_SELECTION,
                 PLACEMENT_REPACK,
                 ROUTE_FEASIBILITY,
+                TRIAL_ROUTE_INPUT,
                 ROUTING_ACCEPTANCE,
                 ROUTED_RELEASE,
                 DISPLAY_FIT,
@@ -107,6 +128,12 @@ def main() -> int:
             "board_optimization_scorecard": scorecard["status"],
             "live_utilization_audit": live["status"],
             "component_envelope_fit_audit": envelopes["status"],
+            "radio_module_envelope_orderability_gate": radio_envelope["status"],
+            "cellular_top_island_repack_feasibility": cellular_top_island["status"],
+            "display_envelope_downselect": display_envelope["status"],
+            "camera_module_fit_downselect": camera_downselect["status"],
+            "radio_module_selection_wiring_decision": radio_selection["status"],
+            "usb_sidekey_selection_wiring_decision": usb_sidekey_selection["status"],
             "placement_repack_candidate": repack["status"],
             "route_feasibility_density": feasibility["status"],
             "routing_acceptance": routing_acceptance["status"],
@@ -156,12 +183,52 @@ def main() -> int:
             "factory_test_access": score["factory_test_access"],
         },
         "component_fit_policy": {
+            "cellular_primary_lga_module": known_envelopes["cellular_primary_lga_module"],
             "wifi_bluetooth_module": known_envelopes["wifi_bluetooth_module"],
             "display_module": known_envelopes["display_module"],
             "battery_pack": known_envelopes["battery_pack"],
             "side_button_primary_switch": known_envelopes["side_button_primary_switch"],
             "front_camera_alternate_junde": known_envelopes["front_camera_alternate_junde"],
             "front_and_rear_camera_primary": known_envelopes["front_and_rear_camera_primary"],
+        },
+        "hardware_decision_traceability": {
+            "display_size_anchor": {
+                "source": rel(DISPLAY_ENVELOPE),
+                "selected_part": display_envelope["selected_screen_decision"]["part"],
+                "status": display_envelope["status"],
+                "layout_dependency": True,
+            },
+            "camera_module_fit": {
+                "source": rel(CAMERA_DOWNSELECT),
+                "rejected_public_alternate": "front_alternate_alibaba_junde_imx219",
+                "status": camera_downselect["status"],
+                "layout_dependency": True,
+            },
+            "radio_module_selection": {
+                "source": rel(RADIO_SELECTION),
+                "primary_cellular_reference": (
+                    "Quectel_"
+                    + radio_selection["selected_wireless_stack"]["cellular_performance_reference"][
+                        "family"
+                    ]
+                    + "_5G_RedCap"
+                ),
+                "wifi_bluetooth_primary": "Murata_LBEE5XV2EA_802_Type_2EA",
+                "status": radio_selection["status"],
+                "layout_dependency": True,
+            },
+            "usb_sidekey_selection": {
+                "source": rel(USB_SIDEKEY_SELECTION),
+                "usb_evt0_connector": "GCT_USB4105",
+                "pd_controller": usb_sidekey_selection["selected_hardware_stack"][
+                    "usb_pd_controller"
+                ]["part"],
+                "charger": usb_sidekey_selection["selected_hardware_stack"][
+                    "charger_power_path"
+                ]["part"],
+                "status": usb_sidekey_selection["status"],
+                "layout_dependency": True,
+            },
         },
         "placement_repack_policy": {
             "candidate_regions_mm": repack["candidate_regions_mm"],

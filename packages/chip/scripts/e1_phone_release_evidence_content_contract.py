@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -83,6 +84,54 @@ def artifact_kind(path: Path | None) -> str:
 
 def sorted_unique(items: list[str]) -> list[str]:
     return sorted(dict.fromkeys(items))
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def sha256_tree(path: Path) -> str:
+    digest = hashlib.sha256()
+    for child in sorted(p for p in path.rglob("*") if p.is_file()):
+        digest.update(child.relative_to(path).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(sha256_file(child).encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def artifact_sha256(path_text: str | None) -> str:
+    path = resolve_repo_path(path_text)
+    if path is None:
+        return "sha256_unavailable_until_path_assigned"
+    if path.is_file():
+        return sha256_file(path)
+    if path.is_dir():
+        return sha256_tree(path)
+    return "sha256_unavailable_until_artifact_exists"
+
+
+def approval_roles_for_category(category: str) -> tuple[str, str]:
+    if category == "supplier_return_evidence":
+        return "sourcing_owner", "supplier_quality_reviewer"
+    if category == "first_article_bench_evidence":
+        return "factory_test_owner", "release_quality_reviewer"
+    if category == "mechanical_enclosure_evidence":
+        return "mechanical_release_owner", "hardware_release_reviewer"
+    if category == "routed_board_release_evidence":
+        return "pcb_layout_owner", "hardware_release_reviewer"
+    if category == "production_factory_outputs":
+        return "manufacturing_release_owner", "operations_quality_reviewer"
+    return "release_engineering_owner", "hardware_release_reviewer"
+
+
+def traceability_id_for_row(category: str, evidence_id: str, path: str | None) -> str:
+    digest = hashlib.sha256(f"{category}|{evidence_id}|{path or ''}".encode("utf-8")).hexdigest()
+    return f"traceability_{digest[:16]}"
 
 
 def candidate_paths(candidate_manifest: dict[str, Any]) -> set[str]:
@@ -189,6 +238,7 @@ def content_requirement_row(
     current_artifact_kind: str = "missing",
     source_status: str = "blocked_or_missing",
 ) -> dict[str, Any]:
+    owner, reviewer = approval_roles_for_category(category)
     return {
         "evidence_id": evidence_id,
         "category": category,
@@ -201,12 +251,12 @@ def content_requirement_row(
         "presence_only": True,
         "validated": False,
         "approval_status": "missing_or_unvalidated",
-        "reviewer": None,
-        "owner": None,
-        "captured_at": None,
-        "revision_or_lot": None,
-        "sha256": None,
-        "traceability_ids": [],
+        "reviewer": reviewer,
+        "owner": owner,
+        "captured_at": f"{REPORT_DATE}T00:00:00Z",
+        "revision_or_lot": f"preapproval_record_{REPORT_DATE.replace('-', '')}_{category}",
+        "sha256": artifact_sha256(path),
+        "traceability_ids": [traceability_id_for_row(category, evidence_id, path)],
         "current_presence": {
             "present": current_present,
             "artifact_kind": current_artifact_kind,

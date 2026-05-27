@@ -1,0 +1,1282 @@
+{
+  "schema": "robot-nebius-training-comparison-report-v1",
+  "ok": false,
+  "generated_at": "2026-05-27T22:03:11.862174Z",
+  "run_id": "robot-full-clean-1779556360",
+  "run_root": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
+  "monitor_state": "complete",
+  "finalization_ok": false,
+  "finalization_report_ok": false,
+  "finalization_matches_current_validation": false,
+  "validation_ok": false,
+  "missing_gates": [
+    "stage_status",
+    "production_contract",
+    "video_review",
+    "production_policy_videos",
+    "curriculum_eval",
+    "training_comparison_report",
+    "status_consistency"
+  ],
+  "backend_comparison": {
+    "present": true,
+    "profile_id": "asimov-1",
+    "tasks": [
+      "stand_up",
+      "walk_forward",
+      "walk_backward",
+      "sidestep_left",
+      "sidestep_right",
+      "turn_left",
+      "turn_right"
+    ],
+    "steps": 30000,
+    "winner_by_mean_reward": "ppo",
+    "alberta_mean_reward": 165.82098109095026,
+    "ppo_mean_reward": 194.84353875491988,
+    "untrained_mean_reward": 251.5049904876888,
+    "alberta_delta_vs_ppo": -29.02255766396962,
+    "alberta_delta_vs_untrained": -85.68400939673853,
+    "ppo_delta_vs_untrained": -56.66145173276891
+  },
+  "continual_learning": {
+    "joint_reach": {
+      "present": true,
+      "alberta_acc": 38.30125825546629,
+      "alberta_forgetting": 0.0,
+      "ppo_acc": 34.40206669724002,
+      "ppo_forgetting": 10.04493309566603,
+      "alberta_acc_delta_vs_ppo": 3.8991915582262635,
+      "alberta_forgetting_delta_vs_ppo": -10.04493309566603
+    },
+    "obstacle_course": {
+      "present": true,
+      "alberta_acc": 2.1105637620902296,
+      "alberta_forgetting": 0.0,
+      "ppo_acc": 4.076493469925837,
+      "ppo_forgetting": 2.4182195337659897,
+      "alberta_acc_delta_vs_ppo": -1.9659297078356075,
+      "alberta_forgetting_delta_vs_ppo": -2.4182195337659897
+    }
+  },
+  "obstacle_generalization": {
+    "present": true,
+    "alberta_acc_delta_vs_ppo": -1.9659297078356075,
+    "alberta_forgetting_delta_vs_ppo": -2.4182195337659897,
+    "alberta_no_catastrophic_forgetting_observed": true,
+    "alberta_forgetting_not_worse_than_ppo": true
+  },
+  "method_matrix": {
+    "alberta_streaming": {
+      "role": "default continual online robot learner",
+      "artifact_present": true,
+      "robot_mean_reward": 165.82098109095026,
+      "joint_reach_acc": 38.30125825546629,
+      "joint_reach_forgetting": 0.0,
+      "obstacle_course_acc": 2.1105637620902296,
+      "obstacle_course_forgetting": 0.0,
+      "video_reviewed": false
+    },
+    "stable_baselines3_ppo": {
+      "role": "matched local robot-policy baseline",
+      "artifact_present": true,
+      "robot_mean_reward": 194.84353875491988,
+      "joint_reach_acc": 34.40206669724002,
+      "joint_reach_forgetting": 10.04493309566603,
+      "obstacle_course_acc": 4.076493469925837,
+      "obstacle_course_forgetting": 2.4182195337659897,
+      "video_reviewed": false
+    },
+    "untrained_policy": {
+      "role": "zero/untrained control baseline",
+      "artifact_present": true,
+      "robot_mean_reward": 251.5049904876888,
+      "robot_delta_vs_alberta": 85.68400939673853,
+      "robot_delta_vs_ppo": 56.66145173276891
+    },
+    "brax_mjx_ppo": {
+      "role": "SOTA-style accelerator PPO baseline",
+      "artifact_present": true,
+      "regime": "brax_ppo",
+      "total_steps": 1024,
+      "profile_id": "asimov-1"
+    }
+  },
+  "sota_baseline": {
+    "brax_mjx_present": true,
+    "regime": "brax_ppo",
+    "total_steps": 1024,
+    "profile_id": "asimov-1"
+  },
+  "video_review": {
+    "present": true,
+    "ok": false,
+    "video_count": 28,
+    "action_progress": {
+      "reviewed_video_count": 28,
+      "ok_video_count": 5,
+      "profiles": [
+        "asimov-1",
+        "hiwonder-ainex",
+        "unitree-g1",
+        "unitree-h1",
+        "unitree-r1"
+      ],
+      "min_visual_progress": 0.0006431908730198355,
+      "mean_visual_progress": 0.009462311165276863,
+      "mean_frame_delta": 2.4128893471456
+    }
+  },
+  "multi_robot_smoke_review": {
+    "present": true,
+    "ok": false,
+    "video_count": 40,
+    "action_progress": {
+      "reviewed_video_count": 40,
+      "ok_video_count": 5,
+      "profiles": [
+        "asimov-1",
+        "hiwonder-ainex",
+        "unitree-g1",
+        "unitree-h1",
+        "unitree-r1"
+      ],
+      "min_visual_progress": 0.003114602466424306,
+      "mean_visual_progress": 0.011779604131246315,
+      "mean_frame_delta": 3.00379905346781
+    }
+  },
+  "alberta_end_to_end_report": {
+    "present": true,
+    "ok": true,
+    "production_complete": false,
+    "production_blocker": null,
+    "video_count": 5,
+    "profiles": [
+      "asimov-1"
+    ],
+    "backend_winner": "ppo",
+    "obstacle_acc_delta": -2.0374369344015757,
+    "obstacle_forgetting_delta": -2.7992106749268646,
+    "claim_support": {
+      "evidence_consistent": true,
+      "backend_alberta_gte_ppo": false,
+      "backend_comparison_profiles": [
+        "asimov-1",
+        "hiwonder-ainex"
+      ],
+      "backend_any_alberta_gte_ppo": false,
+      "backend_all_ok_alberta_gte_ppo": false,
+      "obstacle_alberta_acc_gte_ppo": false,
+      "obstacle_alberta_forgetting_lte_ppo": true,
+      "obstacle_demo_video_ok": true,
+      "sac_comparison_ok": true,
+      "alberta_acc_gte_sac": true,
+      "alberta_forgetting_lte_sac": true,
+      "alberta_new_task_gain_gte_sac": true,
+      "sac_demo_video_ok": true,
+      "alberta_sac_obstacle_advantage_supported": true,
+      "alberta_obstacle_advantage_supported": false,
+      "alberta_robot_backend_advantage_supported": false,
+      "all_robot_backend_comparisons_support_alberta": false,
+      "checkpoint_bound_local_policy_videos_ok": false,
+      "production_claim_supported": false
+    },
+    "video_manifest_review_consistent": true,
+    "video_all_manifest_profiles_ok": true
+  },
+  "training_inputs": {
+    "present": true,
+    "ok": true,
+    "launch_tasks": [
+      "stand_up",
+      "walk_forward",
+      "walk_backward",
+      "sidestep_left",
+      "sidestep_right",
+      "turn_left",
+      "turn_right"
+    ],
+    "warning_kinds": [
+      "unsupported_future_curriculum_tasks",
+      "no_offline_policy_datasets"
+    ],
+    "offline_datasets_present": false,
+    "rl_from_sim_ready": true,
+    "imitation_training_ready": false,
+    "offline_datasets_block_current_plan": false,
+    "curriculum_sha256": "78dbf843eb6554d695ea07c810b92a66f402e7cf097d310802d56562b06c349e"
+  },
+  "validation_gates": {
+    "training_inputs": {
+      "ok": true,
+      "checks": {
+        "present": true,
+        "ok": true,
+        "launch_tasks_cover_requested": true,
+        "no_blockers": true,
+        "curriculum_hash": true,
+        "rl_from_sim_ready": true,
+        "offline_datasets_not_blocking_current_plan": true
+      },
+      "warning_kinds": [
+        "unsupported_future_curriculum_tasks",
+        "no_offline_policy_datasets"
+      ]
+    },
+    "stage_status": {
+      "ok": false,
+      "checks": {
+        "runner_status": false,
+        "all_stage_statuses": true
+      },
+      "runner": {
+        "status": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/status/runner_status.json",
+        "checks": {
+          "present": true,
+          "valid_json_object": true,
+          "state_complete": true,
+          "ok_true": true,
+          "all_stages_listed": false,
+          "stage_count_exact": false,
+          "stage_order": false,
+          "last_stage": true,
+          "started_at": true,
+          "ended_at": true,
+          "heartbeat_at": true
+        },
+        "state": "complete",
+        "ok": true,
+        "last_stage": "50_post_train_validation",
+        "stage_count": 1
+      },
+      "stages": {
+        "00_local_preflight": true,
+        "10_nebius_train_alberta": true,
+        "20_nebius_compare_backends": true,
+        "30_nebius_continual_benchmarks": true,
+        "40_nebius_brax_baseline": true,
+        "50_post_train_validation": true
+      }
+    },
+    "multi_robot_readiness": {
+      "ok": true,
+      "profiles": {
+        "hiwonder-ainex": {
+          "ok": true,
+          "name": "Hiwonder AiNex",
+          "profile_dof": 24,
+          "leg_action_dim": 12,
+          "env_action_dim": 12,
+          "env_obs_dim": 88,
+          "step_obs_dim": 88,
+          "mjcf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/hiwonder-ainex/mjcf/ainex.xml",
+          "mjcf_exists": true,
+          "mujoco_nu": 24,
+          "mujoco_version": "3.8.1",
+          "root_qpos_idx": 3,
+          "root_qvel_idx": 3,
+          "reset_torso_z": 0.24,
+          "reset_upright_proj": 1.0,
+          "fall_z_threshold": 0.15,
+          "zero_action_survival_steps": 2,
+          "required_zero_action_survival_steps": 2,
+          "zero_action_survival_ok": true,
+          "zero_action_terminal_info": null
+        },
+        "asimov-1": {
+          "ok": true,
+          "name": "ASIMOV-1",
+          "profile_dof": 25,
+          "leg_action_dim": 12,
+          "env_action_dim": 12,
+          "env_obs_dim": 88,
+          "step_obs_dim": 88,
+          "mjcf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+          "mjcf_exists": true,
+          "mujoco_nu": 25,
+          "mujoco_version": "3.8.1",
+          "root_qpos_idx": 0,
+          "root_qvel_idx": 0,
+          "reset_torso_z": 0.63,
+          "reset_upright_proj": 1.0,
+          "fall_z_threshold": 0.378,
+          "zero_action_survival_steps": 2,
+          "required_zero_action_survival_steps": 2,
+          "zero_action_survival_ok": true,
+          "zero_action_terminal_info": null
+        },
+        "unitree-g1": {
+          "ok": true,
+          "name": "Unitree G1",
+          "profile_dof": 29,
+          "leg_action_dim": 12,
+          "env_action_dim": 12,
+          "env_obs_dim": 88,
+          "step_obs_dim": 88,
+          "mjcf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-g1/mjcf/scene.xml",
+          "mjcf_exists": true,
+          "mujoco_nu": 29,
+          "mujoco_version": "3.8.1",
+          "root_qpos_idx": 0,
+          "root_qvel_idx": 0,
+          "reset_torso_z": 0.79,
+          "reset_upright_proj": 1.0,
+          "fall_z_threshold": 0.474,
+          "zero_action_survival_steps": 2,
+          "required_zero_action_survival_steps": 2,
+          "zero_action_survival_ok": true,
+          "zero_action_terminal_info": null
+        },
+        "unitree-h1": {
+          "ok": true,
+          "name": "Unitree H1",
+          "profile_dof": 19,
+          "leg_action_dim": 10,
+          "env_action_dim": 10,
+          "env_obs_dim": 82,
+          "step_obs_dim": 82,
+          "mjcf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-h1/mjcf/scene.xml",
+          "mjcf_exists": true,
+          "mujoco_nu": 19,
+          "mujoco_version": "3.8.1",
+          "root_qpos_idx": 0,
+          "root_qvel_idx": 0,
+          "reset_torso_z": 0.98,
+          "reset_upright_proj": 1.0,
+          "fall_z_threshold": 0.612,
+          "zero_action_survival_steps": 2,
+          "required_zero_action_survival_steps": 2,
+          "zero_action_survival_ok": true,
+          "zero_action_terminal_info": null
+        },
+        "unitree-r1": {
+          "ok": true,
+          "name": "Unitree R1",
+          "profile_dof": 29,
+          "leg_action_dim": 12,
+          "env_action_dim": 12,
+          "env_obs_dim": 88,
+          "step_obs_dim": 88,
+          "mjcf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-r1/mjcf/scene.xml",
+          "mjcf_exists": true,
+          "mujoco_nu": 29,
+          "mujoco_version": "3.8.1",
+          "root_qpos_idx": 0,
+          "root_qvel_idx": 0,
+          "reset_torso_z": 0.74,
+          "reset_upright_proj": 1.0,
+          "fall_z_threshold": 0.444,
+          "zero_action_survival_steps": 2,
+          "required_zero_action_survival_steps": 2,
+          "zero_action_survival_ok": true,
+          "zero_action_terminal_info": null
+        }
+      },
+      "video_evidence": {
+        "ok": true,
+        "manifest": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/manifest.json",
+        "manifest_ok_field": true,
+        "manifest_commands": [
+          "stand up",
+          "walk forward",
+          "walk backward",
+          "sidestep left",
+          "sidestep right",
+          "turn left",
+          "turn right"
+        ],
+        "commands_match": true,
+        "manifest_record_combined": true,
+        "combined_recording_match": true,
+        "require_combined": true,
+        "min_video_bytes": 1024,
+        "profiles": [
+          {
+            "profile": "hiwonder-ainex",
+            "ok": true,
+            "manifest_entry": true,
+            "exit_code": 0,
+            "expected": [
+              "hiwonder-ainex_stand_up.mp4",
+              "hiwonder-ainex_walk_forward.mp4",
+              "hiwonder-ainex_walk_backward.mp4",
+              "hiwonder-ainex_sidestep_left.mp4",
+              "hiwonder-ainex_sidestep_right.mp4",
+              "hiwonder-ainex_turn_left.mp4",
+              "hiwonder-ainex_turn_right.mp4",
+              "hiwonder-ainex_combined_actions.mp4"
+            ],
+            "expected_telemetry": [
+              "hiwonder-ainex_stand_up.telemetry.json",
+              "hiwonder-ainex_walk_forward.telemetry.json",
+              "hiwonder-ainex_walk_backward.telemetry.json",
+              "hiwonder-ainex_sidestep_left.telemetry.json",
+              "hiwonder-ainex_sidestep_right.telemetry.json",
+              "hiwonder-ainex_turn_left.telemetry.json",
+              "hiwonder-ainex_turn_right.telemetry.json",
+              "hiwonder-ainex_combined_actions.telemetry.json"
+            ],
+            "present": [
+              {
+                "name": "hiwonder-ainex_stand_up.mp4",
+                "bytes": 422887
+              },
+              {
+                "name": "hiwonder-ainex_walk_forward.mp4",
+                "bytes": 383932
+              },
+              {
+                "name": "hiwonder-ainex_walk_backward.mp4",
+                "bytes": 348801
+              },
+              {
+                "name": "hiwonder-ainex_sidestep_left.mp4",
+                "bytes": 342882
+              },
+              {
+                "name": "hiwonder-ainex_sidestep_right.mp4",
+                "bytes": 357455
+              },
+              {
+                "name": "hiwonder-ainex_turn_left.mp4",
+                "bytes": 320583
+              },
+              {
+                "name": "hiwonder-ainex_turn_right.mp4",
+                "bytes": 324624
+              },
+              {
+                "name": "hiwonder-ainex_combined_actions.mp4",
+                "bytes": 2337178
+              }
+            ],
+            "telemetry_present": [
+              {
+                "name": "hiwonder-ainex_stand_up.telemetry.json",
+                "bytes": 1614
+              },
+              {
+                "name": "hiwonder-ainex_walk_forward.telemetry.json",
+                "bytes": 1694
+              },
+              {
+                "name": "hiwonder-ainex_walk_backward.telemetry.json",
+                "bytes": 1700
+              },
+              {
+                "name": "hiwonder-ainex_sidestep_left.telemetry.json",
+                "bytes": 1703
+              },
+              {
+                "name": "hiwonder-ainex_sidestep_right.telemetry.json",
+                "bytes": 1702
+              },
+              {
+                "name": "hiwonder-ainex_turn_left.telemetry.json",
+                "bytes": 1690
+              },
+              {
+                "name": "hiwonder-ainex_turn_right.telemetry.json",
+                "bytes": 1695
+              },
+              {
+                "name": "hiwonder-ainex_combined_actions.telemetry.json",
+                "bytes": 13977
+              }
+            ],
+            "missing": [],
+            "missing_telemetry": [],
+            "manifest_expects_telemetry": true,
+            "too_small": []
+          },
+          {
+            "profile": "asimov-1",
+            "ok": true,
+            "manifest_entry": true,
+            "exit_code": 0,
+            "expected": [
+              "asimov-1_stand_up.mp4",
+              "asimov-1_walk_forward.mp4",
+              "asimov-1_walk_backward.mp4",
+              "asimov-1_sidestep_left.mp4",
+              "asimov-1_sidestep_right.mp4",
+              "asimov-1_turn_left.mp4",
+              "asimov-1_turn_right.mp4",
+              "asimov-1_combined_actions.mp4"
+            ],
+            "expected_telemetry": [
+              "asimov-1_stand_up.telemetry.json",
+              "asimov-1_walk_forward.telemetry.json",
+              "asimov-1_walk_backward.telemetry.json",
+              "asimov-1_sidestep_left.telemetry.json",
+              "asimov-1_sidestep_right.telemetry.json",
+              "asimov-1_turn_left.telemetry.json",
+              "asimov-1_turn_right.telemetry.json",
+              "asimov-1_combined_actions.telemetry.json"
+            ],
+            "present": [
+              {
+                "name": "asimov-1_stand_up.mp4",
+                "bytes": 320536
+              },
+              {
+                "name": "asimov-1_walk_forward.mp4",
+                "bytes": 457219
+              },
+              {
+                "name": "asimov-1_walk_backward.mp4",
+                "bytes": 480508
+              },
+              {
+                "name": "asimov-1_sidestep_left.mp4",
+                "bytes": 489810
+              },
+              {
+                "name": "asimov-1_sidestep_right.mp4",
+                "bytes": 489848
+              },
+              {
+                "name": "asimov-1_turn_left.mp4",
+                "bytes": 509594
+              },
+              {
+                "name": "asimov-1_turn_right.mp4",
+                "bytes": 508009
+              },
+              {
+                "name": "asimov-1_combined_actions.mp4",
+                "bytes": 2897602
+              }
+            ],
+            "telemetry_present": [
+              {
+                "name": "asimov-1_stand_up.telemetry.json",
+                "bytes": 1611
+              },
+              {
+                "name": "asimov-1_walk_forward.telemetry.json",
+                "bytes": 1691
+              },
+              {
+                "name": "asimov-1_walk_backward.telemetry.json",
+                "bytes": 1690
+              },
+              {
+                "name": "asimov-1_sidestep_left.telemetry.json",
+                "bytes": 1710
+              },
+              {
+                "name": "asimov-1_sidestep_right.telemetry.json",
+                "bytes": 1712
+              },
+              {
+                "name": "asimov-1_turn_left.telemetry.json",
+                "bytes": 1693
+              },
+              {
+                "name": "asimov-1_turn_right.telemetry.json",
+                "bytes": 1697
+              },
+              {
+                "name": "asimov-1_combined_actions.telemetry.json",
+                "bytes": 13978
+              }
+            ],
+            "missing": [],
+            "missing_telemetry": [],
+            "manifest_expects_telemetry": true,
+            "too_small": []
+          },
+          {
+            "profile": "unitree-g1",
+            "ok": true,
+            "manifest_entry": true,
+            "exit_code": 0,
+            "expected": [
+              "unitree-g1_stand_up.mp4",
+              "unitree-g1_walk_forward.mp4",
+              "unitree-g1_walk_backward.mp4",
+              "unitree-g1_sidestep_left.mp4",
+              "unitree-g1_sidestep_right.mp4",
+              "unitree-g1_turn_left.mp4",
+              "unitree-g1_turn_right.mp4",
+              "unitree-g1_combined_actions.mp4"
+            ],
+            "expected_telemetry": [
+              "unitree-g1_stand_up.telemetry.json",
+              "unitree-g1_walk_forward.telemetry.json",
+              "unitree-g1_walk_backward.telemetry.json",
+              "unitree-g1_sidestep_left.telemetry.json",
+              "unitree-g1_sidestep_right.telemetry.json",
+              "unitree-g1_turn_left.telemetry.json",
+              "unitree-g1_turn_right.telemetry.json",
+              "unitree-g1_combined_actions.telemetry.json"
+            ],
+            "present": [
+              {
+                "name": "unitree-g1_stand_up.mp4",
+                "bytes": 292590
+              },
+              {
+                "name": "unitree-g1_walk_forward.mp4",
+                "bytes": 683625
+              },
+              {
+                "name": "unitree-g1_walk_backward.mp4",
+                "bytes": 649147
+              },
+              {
+                "name": "unitree-g1_sidestep_left.mp4",
+                "bytes": 606141
+              },
+              {
+                "name": "unitree-g1_sidestep_right.mp4",
+                "bytes": 600773
+              },
+              {
+                "name": "unitree-g1_turn_left.mp4",
+                "bytes": 606030
+              },
+              {
+                "name": "unitree-g1_turn_right.mp4",
+                "bytes": 619151
+              },
+              {
+                "name": "unitree-g1_combined_actions.mp4",
+                "bytes": 3861955
+              }
+            ],
+            "telemetry_present": [
+              {
+                "name": "unitree-g1_stand_up.telemetry.json",
+                "bytes": 1626
+              },
+              {
+                "name": "unitree-g1_walk_forward.telemetry.json",
+                "bytes": 1685
+              },
+              {
+                "name": "unitree-g1_walk_backward.telemetry.json",
+                "bytes": 1693
+              },
+              {
+                "name": "unitree-g1_sidestep_left.telemetry.json",
+                "bytes": 1693
+              },
+              {
+                "name": "unitree-g1_sidestep_right.telemetry.json",
+                "bytes": 1699
+              },
+              {
+                "name": "unitree-g1_turn_left.telemetry.json",
+                "bytes": 1685
+              },
+              {
+                "name": "unitree-g1_turn_right.telemetry.json",
+                "bytes": 1690
+              },
+              {
+                "name": "unitree-g1_combined_actions.telemetry.json",
+                "bytes": 13947
+              }
+            ],
+            "missing": [],
+            "missing_telemetry": [],
+            "manifest_expects_telemetry": true,
+            "too_small": []
+          },
+          {
+            "profile": "unitree-h1",
+            "ok": true,
+            "manifest_entry": true,
+            "exit_code": 0,
+            "expected": [
+              "unitree-h1_stand_up.mp4",
+              "unitree-h1_walk_forward.mp4",
+              "unitree-h1_walk_backward.mp4",
+              "unitree-h1_sidestep_left.mp4",
+              "unitree-h1_sidestep_right.mp4",
+              "unitree-h1_turn_left.mp4",
+              "unitree-h1_turn_right.mp4",
+              "unitree-h1_combined_actions.mp4"
+            ],
+            "expected_telemetry": [
+              "unitree-h1_stand_up.telemetry.json",
+              "unitree-h1_walk_forward.telemetry.json",
+              "unitree-h1_walk_backward.telemetry.json",
+              "unitree-h1_sidestep_left.telemetry.json",
+              "unitree-h1_sidestep_right.telemetry.json",
+              "unitree-h1_turn_left.telemetry.json",
+              "unitree-h1_turn_right.telemetry.json",
+              "unitree-h1_combined_actions.telemetry.json"
+            ],
+            "present": [
+              {
+                "name": "unitree-h1_stand_up.mp4",
+                "bytes": 470036
+              },
+              {
+                "name": "unitree-h1_walk_forward.mp4",
+                "bytes": 471379
+              },
+              {
+                "name": "unitree-h1_walk_backward.mp4",
+                "bytes": 477745
+              },
+              {
+                "name": "unitree-h1_sidestep_left.mp4",
+                "bytes": 470594
+              },
+              {
+                "name": "unitree-h1_sidestep_right.mp4",
+                "bytes": 473550
+              },
+              {
+                "name": "unitree-h1_turn_left.mp4",
+                "bytes": 475389
+              },
+              {
+                "name": "unitree-h1_turn_right.mp4",
+                "bytes": 495370
+              },
+              {
+                "name": "unitree-h1_combined_actions.mp4",
+                "bytes": 3208443
+              }
+            ],
+            "telemetry_present": [
+              {
+                "name": "unitree-h1_stand_up.telemetry.json",
+                "bytes": 1628
+              },
+              {
+                "name": "unitree-h1_walk_forward.telemetry.json",
+                "bytes": 1693
+              },
+              {
+                "name": "unitree-h1_walk_backward.telemetry.json",
+                "bytes": 1695
+              },
+              {
+                "name": "unitree-h1_sidestep_left.telemetry.json",
+                "bytes": 1702
+              },
+              {
+                "name": "unitree-h1_sidestep_right.telemetry.json",
+                "bytes": 1704
+              },
+              {
+                "name": "unitree-h1_turn_left.telemetry.json",
+                "bytes": 1683
+              },
+              {
+                "name": "unitree-h1_turn_right.telemetry.json",
+                "bytes": 1683
+              },
+              {
+                "name": "unitree-h1_combined_actions.telemetry.json",
+                "bytes": 13964
+              }
+            ],
+            "missing": [],
+            "missing_telemetry": [],
+            "manifest_expects_telemetry": true,
+            "too_small": []
+          },
+          {
+            "profile": "unitree-r1",
+            "ok": true,
+            "manifest_entry": true,
+            "exit_code": 0,
+            "expected": [
+              "unitree-r1_stand_up.mp4",
+              "unitree-r1_walk_forward.mp4",
+              "unitree-r1_walk_backward.mp4",
+              "unitree-r1_sidestep_left.mp4",
+              "unitree-r1_sidestep_right.mp4",
+              "unitree-r1_turn_left.mp4",
+              "unitree-r1_turn_right.mp4",
+              "unitree-r1_combined_actions.mp4"
+            ],
+            "expected_telemetry": [
+              "unitree-r1_stand_up.telemetry.json",
+              "unitree-r1_walk_forward.telemetry.json",
+              "unitree-r1_walk_backward.telemetry.json",
+              "unitree-r1_sidestep_left.telemetry.json",
+              "unitree-r1_sidestep_right.telemetry.json",
+              "unitree-r1_turn_left.telemetry.json",
+              "unitree-r1_turn_right.telemetry.json",
+              "unitree-r1_combined_actions.telemetry.json"
+            ],
+            "present": [
+              {
+                "name": "unitree-r1_stand_up.mp4",
+                "bytes": 560335
+              },
+              {
+                "name": "unitree-r1_walk_forward.mp4",
+                "bytes": 483885
+              },
+              {
+                "name": "unitree-r1_walk_backward.mp4",
+                "bytes": 557067
+              },
+              {
+                "name": "unitree-r1_sidestep_left.mp4",
+                "bytes": 527208
+              },
+              {
+                "name": "unitree-r1_sidestep_right.mp4",
+                "bytes": 534608
+              },
+              {
+                "name": "unitree-r1_turn_left.mp4",
+                "bytes": 429624
+              },
+              {
+                "name": "unitree-r1_turn_right.mp4",
+                "bytes": 460783
+              },
+              {
+                "name": "unitree-r1_combined_actions.mp4",
+                "bytes": 3261682
+              }
+            ],
+            "telemetry_present": [
+              {
+                "name": "unitree-r1_stand_up.telemetry.json",
+                "bytes": 1622
+              },
+              {
+                "name": "unitree-r1_walk_forward.telemetry.json",
+                "bytes": 1691
+              },
+              {
+                "name": "unitree-r1_walk_backward.telemetry.json",
+                "bytes": 1689
+              },
+              {
+                "name": "unitree-r1_sidestep_left.telemetry.json",
+                "bytes": 1695
+              },
+              {
+                "name": "unitree-r1_sidestep_right.telemetry.json",
+                "bytes": 1690
+              },
+              {
+                "name": "unitree-r1_turn_left.telemetry.json",
+                "bytes": 1677
+              },
+              {
+                "name": "unitree-r1_turn_right.telemetry.json",
+                "bytes": 1685
+              },
+              {
+                "name": "unitree-r1_combined_actions.telemetry.json",
+                "bytes": 13925
+              }
+            ],
+            "missing": [],
+            "missing_telemetry": [],
+            "manifest_expects_telemetry": true,
+            "too_small": []
+          }
+        ]
+      }
+    },
+    "backend_comparison": {
+      "ok": true,
+      "checks": {
+        "comparison_dir": true,
+        "json": true,
+        "markdown": true,
+        "profile": true,
+        "tasks": true,
+        "steps": true,
+        "eval_config": true,
+        "baseline_eval": true,
+        "alberta_present": true,
+        "alberta_validation": true,
+        "alberta_eval": true,
+        "alberta_delta_vs_untrained": true,
+        "ppo_present": true,
+        "ppo_eval": true,
+        "ppo_delta_vs_untrained": true,
+        "mean_rewards": true,
+        "alberta_vs_ppo_delta": true,
+        "winner": true,
+        "winner_consistent": true,
+        "eval_rollout_depth": true
+      },
+      "deltas": {
+        "baseline_mean_reward": 251.5049904876888,
+        "alberta_mean_reward": 165.82098109095026,
+        "ppo_mean_reward": 194.84353875491988,
+        "alberta_minus_ppo_mean_reward": -29.02255766396962,
+        "alberta_minus_untrained_mean_reward": -85.68400939673853,
+        "ppo_minus_untrained_mean_reward": -56.66145173276891,
+        "expected_winner_by_mean_reward": "ppo"
+      }
+    },
+    "joint_reach_benchmark": {
+      "ok": true,
+      "checks": {
+        "benchmark_dir": true,
+        "json": true,
+        "markdown": true,
+        "plot": true,
+        "demo_json": true,
+        "demo_video": true,
+        "schema": true,
+        "expected_env": true,
+        "seeds": true,
+        "steps_per_task": true,
+        "tasks": true,
+        "result_count": true,
+        "learner_seed_pairs": true,
+        "learner_seed_coverage": true,
+        "summary_learners": true,
+        "result_learners": true,
+        "matrix_shapes": true,
+        "motion_matrix_shapes": true,
+        "obstacle_motion_summary": true,
+        "obstacle_forward_progress": true,
+        "obstacle_passes_obstacle": true,
+        "obstacle_collision_rate": true,
+        "metrics": true,
+        "alberta_acc_gte_ppo": true,
+        "alberta_forgetting_lte_ppo": true
+      },
+      "deltas": {
+        "alberta_acc_minus_ppo": 3.8991915582262635,
+        "alberta_forgetting_minus_ppo": -10.04493309566603
+      },
+      "required_deltas": {
+        "require_alberta_acc_gte_ppo": true,
+        "require_alberta_forgetting_lte_ppo": true
+      },
+      "observed_comparisons": {
+        "alberta_acc_gte_ppo": true,
+        "alberta_forgetting_lte_ppo": true
+      },
+      "enforced_delta_gates": {
+        "alberta_acc_gte_ppo": true,
+        "alberta_forgetting_lte_ppo": true
+      }
+    },
+    "obstacle_course_benchmark": {
+      "ok": true,
+      "checks": {
+        "benchmark_dir": true,
+        "json": true,
+        "markdown": true,
+        "plot": true,
+        "demo_json": true,
+        "demo_video": true,
+        "schema": true,
+        "expected_env": true,
+        "seeds": true,
+        "steps_per_task": true,
+        "tasks": true,
+        "result_count": true,
+        "learner_seed_pairs": true,
+        "learner_seed_coverage": true,
+        "summary_learners": true,
+        "result_learners": true,
+        "matrix_shapes": true,
+        "motion_matrix_shapes": true,
+        "obstacle_motion_summary": true,
+        "obstacle_forward_progress": true,
+        "obstacle_passes_obstacle": true,
+        "obstacle_collision_rate": true,
+        "metrics": true,
+        "alberta_acc_gte_ppo": true,
+        "alberta_forgetting_lte_ppo": true
+      },
+      "deltas": {
+        "alberta_acc_minus_ppo": -1.9659297078356075,
+        "alberta_forgetting_minus_ppo": -2.4182195337659897
+      },
+      "required_deltas": {
+        "require_alberta_acc_gte_ppo": false,
+        "require_alberta_forgetting_lte_ppo": true
+      },
+      "observed_comparisons": {
+        "alberta_acc_gte_ppo": false,
+        "alberta_forgetting_lte_ppo": true
+      },
+      "enforced_delta_gates": {
+        "alberta_acc_gte_ppo": true,
+        "alberta_forgetting_lte_ppo": true
+      }
+    },
+    "alberta_checkpoint": {
+      "ok": true,
+      "checks": {},
+      "profile_id": null,
+      "total_steps": null
+    },
+    "asimov1_alberta_production": {
+      "ok": null,
+      "checks": {},
+      "production_regime": null,
+      "max_metric_steps": null
+    },
+    "brax_full_training_run": {
+      "ok": true,
+      "checks": {}
+    },
+    "brax_production_checkpoint": {
+      "ok": true,
+      "checks": {}
+    },
+    "video_review": {
+      "ok": false,
+      "thresholds": {
+        "samples": 5,
+        "min_frames": 5,
+        "min_nonblank_ratio": 0.05,
+        "min_mean_frame_delta": 0.01,
+        "min_visual_progress": 0.0001,
+        "require_telemetry": true
+      },
+      "video_count": 28
+    },
+    "production_policy_videos": {
+      "ok": false,
+      "checks": {
+        "manifest": true,
+        "manifest_ok": true,
+        "checkpoint_exists": true,
+        "manifest_policy_checkpoint": true,
+        "profile_entry": true,
+        "profile_policy_checkpoint": true,
+        "expected_videos": true,
+        "expected_telemetry": true,
+        "video_sizes": true,
+        "telemetry_sizes": true,
+        "telemetry_semantics": false,
+        "combined_video": true
+      },
+      "profile_id": "asimov-1",
+      "checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full"
+    },
+    "curriculum_eval": {
+      "ok": false,
+      "checks": {
+        "present": true,
+        "valid_json_object": true,
+        "schema": true,
+        "source": true,
+        "profile": true,
+        "policy_checkpoint": true,
+        "checkpoint_matches": true,
+        "checkpoint_bound": true,
+        "task_set_exact": true,
+        "task_count_covers_requested": true,
+        "n_tasks": true,
+        "n_programmatic_pass": false,
+        "all_requested_tasks_programmatic_success": false,
+        "task_success_rates": false,
+        "task_episodes": true,
+        "task_errors_absent": true,
+        "programmatic_pass_rate": false,
+        "programmatic_pass_rate_recomputed": true,
+        "mean_success_rate_overall": false
+      },
+      "programmatic_pass_rate": 0.0,
+      "min_programmatic_pass_rate": 1.0,
+      "task_checks": {
+        "stand_up": false,
+        "walk_forward": false,
+        "walk_backward": false,
+        "sidestep_left": false,
+        "sidestep_right": false,
+        "turn_left": false,
+        "turn_right": false
+      }
+    },
+    "instance_launch_hygiene": {
+      "ok": true,
+      "checks": {
+        "present": true,
+        "ok": true,
+        "no_inline_object_storage_credentials": true,
+        "uses_repo_owned_stage_runner": true,
+        "uses_training_s3_uri": true,
+        "has_status_heartbeat_upload_contract": true
+      },
+      "secret_fields_embedded": []
+    }
+  },
+  "multi_robot_video_manifest": {
+    "ok": true,
+    "manifest": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/multi_robot_smoke_videos/manifest.json",
+    "manifest_ok_field": true,
+    "require_combined": true,
+    "profile_count": 5,
+    "ok_profile_count": 5,
+    "profiles": [
+      {
+        "profile": "hiwonder-ainex",
+        "ok": true,
+        "expected_count": 8,
+        "present_count": 8,
+        "missing": [],
+        "too_small": [],
+        "combined_present": true
+      },
+      {
+        "profile": "asimov-1",
+        "ok": true,
+        "expected_count": 8,
+        "present_count": 8,
+        "missing": [],
+        "too_small": [],
+        "combined_present": true
+      },
+      {
+        "profile": "unitree-g1",
+        "ok": true,
+        "expected_count": 8,
+        "present_count": 8,
+        "missing": [],
+        "too_small": [],
+        "combined_present": true
+      },
+      {
+        "profile": "unitree-h1",
+        "ok": true,
+        "expected_count": 8,
+        "present_count": 8,
+        "missing": [],
+        "too_small": [],
+        "combined_present": true
+      },
+      {
+        "profile": "unitree-r1",
+        "ok": true,
+        "expected_count": 8,
+        "present_count": 8,
+        "missing": [],
+        "too_small": [],
+        "combined_present": true
+      }
+    ]
+  },
+  "benchmark_delta_evidence": {
+    "joint_reach": {
+      "observed_comparisons": {
+        "alberta_acc_gte_ppo": true,
+        "alberta_forgetting_lte_ppo": true
+      },
+      "enforced_delta_gates": {
+        "alberta_acc_gte_ppo": true,
+        "alberta_forgetting_lte_ppo": true
+      },
+      "required_deltas": {
+        "require_alberta_acc_gte_ppo": true,
+        "require_alberta_forgetting_lte_ppo": true
+      }
+    },
+    "obstacle_course": {
+      "observed_comparisons": {
+        "alberta_acc_gte_ppo": false,
+        "alberta_forgetting_lte_ppo": true
+      },
+      "enforced_delta_gates": {
+        "alberta_acc_gte_ppo": true,
+        "alberta_forgetting_lte_ppo": true
+      },
+      "required_deltas": {
+        "require_alberta_acc_gte_ppo": false,
+        "require_alberta_forgetting_lte_ppo": true
+      }
+    }
+  },
+  "completion_requirements": {
+    "finalization_ok": false,
+    "finalization_report_matches_current_validation": false,
+    "validation_ok": false,
+    "stage_status_ok": false,
+    "runner_status_complete": false,
+    "stage_status_all_complete": true,
+    "backend_comparison_present": true,
+    "backend_alberta_vs_ppo_delta_ok": true,
+    "backend_alberta_delta_vs_untrained_ok": true,
+    "backend_ppo_delta_vs_untrained_ok": true,
+    "backend_eval_config_ok": true,
+    "backend_winner_consistent": true,
+    "backend_eval_rollout_depth_ok": true,
+    "joint_reach_benchmark_present": true,
+    "joint_reach_alberta_acc_gte_ppo": true,
+    "joint_reach_alberta_forgetting_lte_ppo": true,
+    "joint_reach_task_matrix_ok": true,
+    "joint_reach_exact_learner_seed_grid": true,
+    "obstacle_course_benchmark_present": true,
+    "obstacle_course_observed_alberta_acc_gte_ppo": false,
+    "obstacle_course_alberta_acc_gte_ppo_gate_passed": true,
+    "obstacle_course_alberta_forgetting_lte_ppo": true,
+    "obstacle_course_required_delta_gates_ok": true,
+    "obstacle_course_task_matrix_ok": true,
+    "obstacle_course_exact_learner_seed_grid": true,
+    "alberta_checkpoint_ok": true,
+    "alberta_checkpoint_regime_streaming": false,
+    "alberta_checkpoint_profile_matches": false,
+    "alberta_checkpoint_required_tasks": false,
+    "alberta_checkpoint_domain_rand": false,
+    "alberta_checkpoint_total_steps": false,
+    "alberta_checkpoint_inference": false,
+    "asimov1_alberta_production_ok": false,
+    "asimov1_alberta_regime_streaming": false,
+    "asimov1_alberta_required_tasks": false,
+    "asimov1_alberta_asset_provenance": false,
+    "asimov1_alberta_inference_check": false,
+    "brax_mjx_baseline_present": true,
+    "brax_full_training_run_ok": true,
+    "brax_production_checkpoint_ok": true,
+    "brax_regime_ppo": true,
+    "brax_profile_matches": true,
+    "brax_total_steps_present": true,
+    "training_inputs_ok": true,
+    "training_inputs_present": true,
+    "training_inputs_launch_tasks_cover_requested": true,
+    "training_inputs_no_blockers": true,
+    "training_inputs_curriculum_hash": true,
+    "training_inputs_rl_from_sim_ready": true,
+    "training_inputs_offline_datasets_not_blocking": true,
+    "multi_robot_readiness_ok": true,
+    "multi_robot_video_evidence_ok": true,
+    "multi_robot_combined_videos_required": true,
+    "multi_robot_video_commands_match": true,
+    "multi_robot_video_combined_recording_match": true,
+    "video_review_ok": false,
+    "alberta_end_to_end_report_present": true,
+    "alberta_end_to_end_report_ok": true,
+    "alberta_end_to_end_report_video_count_matches": false,
+    "alberta_end_to_end_report_video_manifest_consistent": true,
+    "alberta_end_to_end_report_evidence_consistent": true,
+    "alberta_end_to_end_report_robot_advantage_supported": false,
+    "alberta_end_to_end_report_obstacle_advantage_supported": false,
+    "alberta_end_to_end_report_production_claim_supported": false,
+    "video_action_progress_ok": true,
+    "video_min_visual_progress_met": true,
+    "video_all_reviewed_ok": false,
+    "production_policy_videos_ok": false,
+    "production_policy_videos_checkpoint_bound": true,
+    "production_policy_videos_checkpoint_exists": true,
+    "production_policy_videos_expected_actions": true,
+    "curriculum_eval_ok": false,
+    "curriculum_eval_present": true,
+    "curriculum_eval_checkpoint_bound": true,
+    "curriculum_eval_all_tasks_success": false,
+    "curriculum_eval_pass_rate": false,
+    "instance_launch_hygiene_ok": true,
+    "instance_launch_no_inline_credentials": true,
+    "instance_launch_repo_stage_runner": true,
+    "instance_launch_training_s3_uri": true,
+    "instance_launch_heartbeat_upload_contract": true,
+    "no_missing_gates": false
+  }
+}

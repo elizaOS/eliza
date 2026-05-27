@@ -118,6 +118,7 @@ module ftq (
                     ras_restore_valid: 1'b0,
                     ras_restore_addr: '0,
                     ghist_snapshot: '0,
+                    tage_path_hist_snapshot: '0,
                     ittage_hist_snapshot: '0,
                     ittage_target_hist_snapshot: '0,
                     ittage_path_hist_snapshot: '0,

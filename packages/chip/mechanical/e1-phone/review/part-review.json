@@ -1,17 +1,17 @@
 {
   "claim_boundary": "Automated part-by-part CAD review index; thumbnails are top-view bounding-box and exploded-context projection proxies, not human industrial-design signoff.",
   "status": "pass",
-  "part_count": 222,
+  "part_count": 234,
   "contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
   "contact_sheet_check": {
     "size": [
       1560,
-      7804
+      8224
     ],
     "mean_rgb": [
-      215.097,
-      202.357,
-      186.082
+      214.986,
+      202.037,
+      184.621
     ],
     "channel_spans": [
       255,
@@ -24,12 +24,12 @@
   "exploded_contact_sheet_check": {
     "size": [
       1560,
-      7804
+      8224
     ],
     "mean_rgb": [
-      27.396,
-      29.661,
-      34.735
+      27.419,
+      29.69,
+      34.771
     ],
     "channel_spans": [
       250,
@@ -65,7 +65,8 @@
         1.2
       ],
       "volume_mm3": 14302.89,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_back_shell.obj",
       "stl": "mechanical/e1-phone/out/orange_back_shell.stl"
     },
@@ -91,7 +92,8 @@
         11.05
       ],
       "volume_mm3": 5653.086,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_side_frame.obj",
       "stl": "mechanical/e1-phone/out/orange_side_frame.stl"
     },
@@ -117,7 +119,8 @@
         0.7
       ],
       "volume_mm3": 8152.377,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/screen_cover_glass.obj",
       "stl": "mechanical/e1-phone/out/screen_cover_glass.stl"
     },
@@ -143,7 +146,8 @@
         3.39
       ],
       "volume_mm3": 30993.592,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/display_lcm.obj",
       "stl": "mechanical/e1-phone/out/display_lcm.stl"
     },
@@ -169,7 +173,8 @@
         0.8
       ],
       "volume_mm3": 2252.8,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/main_pcb.obj",
       "stl": "mechanical/e1-phone/out/main_pcb.stl"
     },
@@ -195,7 +200,8 @@
         5.6
       ],
       "volume_mm3": 31180.8,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/battery_pouch.obj",
       "stl": "mechanical/e1-phone/out/battery_pouch.stl"
     },
@@ -221,7 +227,8 @@
         0.18
       ],
       "volume_mm3": 864.0,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/battery_back_void_foam_pad.obj",
       "stl": "mechanical/e1-phone/out/battery_back_void_foam_pad.stl"
     },
@@ -247,7 +254,8 @@
         3.25
       ],
       "volume_mm3": 226.629,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/usb_c_receptacle.obj",
       "stl": "mechanical/e1-phone/out/usb_c_receptacle.stl"
     },
@@ -273,7 +281,8 @@
         3.6
       ],
       "volume_mm3": 12.852,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/usb_c_external_aperture.obj",
       "stl": "mechanical/e1-phone/out/usb_c_external_aperture.stl"
     },
@@ -299,7 +308,8 @@
         0.35
       ],
       "volume_mm3": 1.795,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/usb_c_perimeter_gasket_top.obj",
       "stl": "mechanical/e1-phone/out/usb_c_perimeter_gasket_top.stl"
     },
@@ -325,7 +335,8 @@
         0.35
       ],
       "volume_mm3": 1.795,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/usb_c_perimeter_gasket_bottom.obj",
       "stl": "mechanical/e1-phone/out/usb_c_perimeter_gasket_bottom.stl"
     },
@@ -351,7 +362,8 @@
         4.3
       ],
       "volume_mm3": 0.677,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/usb_c_perimeter_gasket_left.obj",
       "stl": "mechanical/e1-phone/out/usb_c_perimeter_gasket_left.stl"
     },
@@ -377,7 +389,8 @@
         4.3
       ],
       "volume_mm3": 0.677,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/usb_c_perimeter_gasket_right.obj",
       "stl": "mechanical/e1-phone/out/usb_c_perimeter_gasket_right.stl"
     },
@@ -403,7 +416,8 @@
         0.45
       ],
       "volume_mm3": 2.673,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/usb_c_molded_drip_break_lip.obj",
       "stl": "mechanical/e1-phone/out/usb_c_molded_drip_break_lip.stl"
     },
@@ -429,7 +443,8 @@
         0.28
       ],
       "volume_mm3": 7.885,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/usb_c_internal_drain_shelf.obj",
       "stl": "mechanical/e1-phone/out/usb_c_internal_drain_shelf.stl"
     },
@@ -455,7 +470,8 @@
         3.5
       ],
       "volume_mm3": 577.5,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/bottom_speaker_module.obj",
       "stl": "mechanical/e1-phone/out/bottom_speaker_module.stl"
     },
@@ -481,7 +497,8 @@
         2.5
       ],
       "volume_mm3": 180.0,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/earpiece_receiver.obj",
       "stl": "mechanical/e1-phone/out/earpiece_receiver.stl"
     },
@@ -507,7 +524,8 @@
         1.0
       ],
       "volume_mm3": 9.275,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/bottom_mic.obj",
       "stl": "mechanical/e1-phone/out/bottom_mic.stl"
     },
@@ -533,7 +551,8 @@
         1.0
       ],
       "volume_mm3": 9.275,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/top_mic.obj",
       "stl": "mechanical/e1-phone/out/top_mic.stl"
     },
@@ -559,7 +578,8 @@
         5.1
       ],
       "volume_mm3": 510.0,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/rear_camera_module.obj",
       "stl": "mechanical/e1-phone/out/rear_camera_module.stl"
     },
@@ -585,7 +605,8 @@
         0.08
       ],
       "volume_mm3": 8.989,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/rear_camera_shell_aperture.obj",
       "stl": "mechanical/e1-phone/out/rear_camera_shell_aperture.stl"
     },
@@ -611,7 +632,8 @@
         0.14
       ],
       "volume_mm3": 1.764,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_rear_camera_bezel_top.obj",
       "stl": "mechanical/e1-phone/out/orange_rear_camera_bezel_top.stl"
     },
@@ -637,7 +659,8 @@
         0.14
       ],
       "volume_mm3": 1.764,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_rear_camera_bezel_bottom.obj",
       "stl": "mechanical/e1-phone/out/orange_rear_camera_bezel_bottom.stl"
     },
@@ -663,7 +686,8 @@
         0.14
       ],
       "volume_mm3": 1.484,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_rear_camera_bezel_left.obj",
       "stl": "mechanical/e1-phone/out/orange_rear_camera_bezel_left.stl"
     },
@@ -689,7 +713,8 @@
         0.14
       ],
       "volume_mm3": 1.484,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_rear_camera_bezel_right.obj",
       "stl": "mechanical/e1-phone/out/orange_rear_camera_bezel_right.stl"
     },
@@ -715,7 +740,8 @@
         0.08
       ],
       "volume_mm3": 0.387,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/rear_flash_shell_aperture.obj",
       "stl": "mechanical/e1-phone/out/rear_flash_shell_aperture.stl"
     },
@@ -741,7 +767,8 @@
         0.12
       ],
       "volume_mm3": 0.167,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_rear_flash_bezel_top.obj",
       "stl": "mechanical/e1-phone/out/orange_rear_flash_bezel_top.stl"
     },
@@ -767,7 +794,8 @@
         0.12
       ],
       "volume_mm3": 0.167,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_rear_flash_bezel_bottom.obj",
       "stl": "mechanical/e1-phone/out/orange_rear_flash_bezel_bottom.stl"
     },
@@ -793,7 +821,8 @@
         0.12
       ],
       "volume_mm3": 0.119,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_rear_flash_bezel_left.obj",
       "stl": "mechanical/e1-phone/out/orange_rear_flash_bezel_left.stl"
     },
@@ -819,7 +848,8 @@
         0.12
       ],
       "volume_mm3": 0.119,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_rear_flash_bezel_right.obj",
       "stl": "mechanical/e1-phone/out/orange_rear_flash_bezel_right.stl"
     },
@@ -845,7 +875,8 @@
         0.55
       ],
       "volume_mm3": 19.917,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/rear_camera_lens_window.obj",
       "stl": "mechanical/e1-phone/out/rear_camera_lens_window.stl"
     },
@@ -871,7 +902,8 @@
         1.6
       ],
       "volume_mm3": 62.941,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/rear_camera_optical_sight_tunnel.obj",
       "stl": "mechanical/e1-phone/out/rear_camera_optical_sight_tunnel.stl"
     },
@@ -897,7 +929,8 @@
         0.7
       ],
       "volume_mm3": 0.7,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/rear_flash_led.obj",
       "stl": "mechanical/e1-phone/out/rear_flash_led.stl"
     },
@@ -923,7 +956,8 @@
         0.55
       ],
       "volume_mm3": 1.093,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/rear_flash_led_window.obj",
       "stl": "mechanical/e1-phone/out/rear_flash_led_window.stl"
     },
@@ -949,7 +983,8 @@
         3.2
       ],
       "volume_mm3": 135.2,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/front_camera_module.obj",
       "stl": "mechanical/e1-phone/out/front_camera_module.stl"
     },
@@ -975,7 +1010,8 @@
         0.08
       ],
       "volume_mm3": 0.724,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/front_camera_under_glass.obj",
       "stl": "mechanical/e1-phone/out/front_camera_under_glass.stl"
     },
@@ -1001,7 +1037,8 @@
         0.16
       ],
       "volume_mm3": 0.727,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/rear_camera_cover_adhesive_top.obj",
       "stl": "mechanical/e1-phone/out/rear_camera_cover_adhesive_top.stl"
     },
@@ -1027,7 +1064,8 @@
         0.16
       ],
       "volume_mm3": 0.727,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/rear_camera_cover_adhesive_bottom.obj",
       "stl": "mechanical/e1-phone/out/rear_camera_cover_adhesive_bottom.stl"
     },
@@ -1053,7 +1091,8 @@
         0.16
       ],
       "volume_mm3": 0.662,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/rear_camera_cover_adhesive_left.obj",
       "stl": "mechanical/e1-phone/out/rear_camera_cover_adhesive_left.stl"
     },
@@ -1079,7 +1118,8 @@
         0.16
       ],
       "volume_mm3": 0.662,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/rear_camera_cover_adhesive_right.obj",
       "stl": "mechanical/e1-phone/out/rear_camera_cover_adhesive_right.stl"
     },
@@ -1105,7 +1145,8 @@
         0.55
       ],
       "volume_mm3": 1.598,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/rear_camera_light_baffle_top.obj",
       "stl": "mechanical/e1-phone/out/rear_camera_light_baffle_top.stl"
     },
@@ -1131,7 +1172,8 @@
         0.55
       ],
       "volume_mm3": 1.598,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/rear_camera_light_baffle_bottom.obj",
       "stl": "mechanical/e1-phone/out/rear_camera_light_baffle_bottom.stl"
     },
@@ -1157,7 +1199,8 @@
         0.08
       ],
       "volume_mm3": 2.0,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/front_camera_black_mask_window.obj",
       "stl": "mechanical/e1-phone/out/front_camera_black_mask_window.stl"
     },
@@ -1183,7 +1226,8 @@
         0.16
       ],
       "volume_mm3": 0.18,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/rear_flash_window_adhesive_top.obj",
       "stl": "mechanical/e1-phone/out/rear_flash_window_adhesive_top.stl"
     },
@@ -1209,7 +1253,8 @@
         0.16
       ],
       "volume_mm3": 0.18,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/rear_flash_window_adhesive_bottom.obj",
       "stl": "mechanical/e1-phone/out/rear_flash_window_adhesive_bottom.stl"
     },
@@ -1235,7 +1280,8 @@
         0.16
       ],
       "volume_mm3": 0.115,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/rear_flash_window_adhesive_left.obj",
       "stl": "mechanical/e1-phone/out/rear_flash_window_adhesive_left.stl"
     },
@@ -1261,7 +1307,8 @@
         0.16
       ],
       "volume_mm3": 0.115,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/rear_flash_window_adhesive_right.obj",
       "stl": "mechanical/e1-phone/out/rear_flash_window_adhesive_right.stl"
     },
@@ -1287,7 +1334,8 @@
         0.08
       ],
       "volume_mm3": 0.134,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_top.obj",
       "stl": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_top.stl"
     },
@@ -1313,7 +1361,8 @@
         0.08
       ],
       "volume_mm3": 0.134,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_bottom.obj",
       "stl": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_bottom.stl"
     },
@@ -1339,7 +1388,8 @@
         0.08
       ],
       "volume_mm3": 0.109,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_left.obj",
       "stl": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_left.stl"
     },
@@ -1365,7 +1415,8 @@
         0.08
       ],
       "volume_mm3": 0.109,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_right.obj",
       "stl": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_right.stl"
     },
@@ -1391,7 +1442,8 @@
         2.1
       ],
       "volume_mm3": 10.458,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/rear_flash_camera_septum.obj",
       "stl": "mechanical/e1-phone/out/rear_flash_camera_septum.stl"
     },
@@ -1417,7 +1469,8 @@
         1.1
       ],
       "volume_mm3": 26.4,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/power_button_cap.obj",
       "stl": "mechanical/e1-phone/out/power_button_cap.stl"
     },
@@ -1443,7 +1496,8 @@
         1.1
       ],
       "volume_mm3": 46.2,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/volume_button_cap.obj",
       "stl": "mechanical/e1-phone/out/volume_button_cap.stl"
     },
@@ -1469,7 +1523,8 @@
         0.25
       ],
       "volume_mm3": 4.0,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/handset_acoustic_slot.obj",
       "stl": "mechanical/e1-phone/out/handset_acoustic_slot.stl"
     },
@@ -1495,7 +1550,8 @@
         0.4
       ],
       "volume_mm3": 0.84,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/handset_acoustic_mesh.obj",
       "stl": "mechanical/e1-phone/out/handset_acoustic_mesh.stl"
     },
@@ -1521,7 +1577,8 @@
         4.0
       ],
       "volume_mm3": 1.68,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/bottom_speaker_grille_slot_1.obj",
       "stl": "mechanical/e1-phone/out/bottom_speaker_grille_slot_1.stl"
     },
@@ -1547,7 +1604,8 @@
         4.0
       ],
       "volume_mm3": 1.68,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/bottom_speaker_grille_slot_2.obj",
       "stl": "mechanical/e1-phone/out/bottom_speaker_grille_slot_2.stl"
     },
@@ -1573,7 +1631,8 @@
         4.0
       ],
       "volume_mm3": 1.68,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/bottom_speaker_grille_slot_3.obj",
       "stl": "mechanical/e1-phone/out/bottom_speaker_grille_slot_3.stl"
     },
@@ -1599,7 +1658,8 @@
         4.0
       ],
       "volume_mm3": 1.68,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/bottom_speaker_grille_slot_4.obj",
       "stl": "mechanical/e1-phone/out/bottom_speaker_grille_slot_4.stl"
     },
@@ -1625,7 +1685,8 @@
         4.0
       ],
       "volume_mm3": 1.68,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/bottom_speaker_grille_slot_5.obj",
       "stl": "mechanical/e1-phone/out/bottom_speaker_grille_slot_5.stl"
     },
@@ -1651,7 +1712,8 @@
         4.8
       ],
       "volume_mm3": 9.216,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/bottom_speaker_dust_mesh.obj",
       "stl": "mechanical/e1-phone/out/bottom_speaker_dust_mesh.stl"
     },
@@ -1677,7 +1739,8 @@
         0.9
       ],
       "volume_mm3": 34.56,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/split_interconnect_top_connector.obj",
       "stl": "mechanical/e1-phone/out/split_interconnect_top_connector.stl"
     },
@@ -1703,7 +1766,8 @@
         0.9
       ],
       "volume_mm3": 34.56,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/split_interconnect_bottom_connector.obj",
       "stl": "mechanical/e1-phone/out/split_interconnect_bottom_connector.stl"
     },
@@ -1729,7 +1793,8 @@
         0.18
       ],
       "volume_mm3": 38.016,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/split_interconnect_side_flex.obj",
       "stl": "mechanical/e1-phone/out/split_interconnect_side_flex.stl"
     },
@@ -1755,7 +1820,8 @@
         0.18
       ],
       "volume_mm3": 4.5,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/split_interconnect_top_flex_tail.obj",
       "stl": "mechanical/e1-phone/out/split_interconnect_top_flex_tail.stl"
     },
@@ -1781,7 +1847,8 @@
         0.18
       ],
       "volume_mm3": 4.5,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/split_interconnect_bottom_flex_tail.obj",
       "stl": "mechanical/e1-phone/out/split_interconnect_bottom_flex_tail.stl"
     },
@@ -1807,7 +1874,8 @@
         0.886
       ],
       "volume_mm3": 0.249,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/bottom_microphone_port_1.obj",
       "stl": "mechanical/e1-phone/out/bottom_microphone_port_1.stl"
     },
@@ -1833,7 +1901,8 @@
         1.4
       ],
       "volume_mm3": 0.235,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/bottom_microphone_mesh_1.obj",
       "stl": "mechanical/e1-phone/out/bottom_microphone_mesh_1.stl"
     },
@@ -1859,7 +1928,8 @@
         0.886
       ],
       "volume_mm3": 0.249,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/bottom_microphone_port_2.obj",
       "stl": "mechanical/e1-phone/out/bottom_microphone_port_2.stl"
     },
@@ -1885,7 +1955,8 @@
         1.4
       ],
       "volume_mm3": 0.235,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/bottom_microphone_mesh_2.obj",
       "stl": "mechanical/e1-phone/out/bottom_microphone_mesh_2.stl"
     },
@@ -1911,7 +1982,8 @@
         0.886
       ],
       "volume_mm3": 0.249,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/top_microphone_port.obj",
       "stl": "mechanical/e1-phone/out/top_microphone_port.stl"
     },
@@ -1937,7 +2009,8 @@
         1.4
       ],
       "volume_mm3": 0.235,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/top_microphone_mesh.obj",
       "stl": "mechanical/e1-phone/out/top_microphone_mesh.stl"
     },
@@ -1963,7 +2036,8 @@
         1.55
       ],
       "volume_mm3": 10.075,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/power_button_elastomer_gasket.obj",
       "stl": "mechanical/e1-phone/out/power_button_elastomer_gasket.stl"
     },
@@ -1989,7 +2063,8 @@
         1.85
       ],
       "volume_mm3": 0.814,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/power_button_labyrinth_upper_rail.obj",
       "stl": "mechanical/e1-phone/out/power_button_labyrinth_upper_rail.stl"
     },
@@ -2015,7 +2090,8 @@
         1.85
       ],
       "volume_mm3": 0.814,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/power_button_labyrinth_lower_rail.obj",
       "stl": "mechanical/e1-phone/out/power_button_labyrinth_lower_rail.stl"
     },
@@ -2041,7 +2117,8 @@
         1.55
       ],
       "volume_mm3": 17.05,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/volume_button_elastomer_gasket.obj",
       "stl": "mechanical/e1-phone/out/volume_button_elastomer_gasket.stl"
     },
@@ -2067,7 +2144,8 @@
         1.85
       ],
       "volume_mm3": 0.814,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/volume_button_labyrinth_upper_rail.obj",
       "stl": "mechanical/e1-phone/out/volume_button_labyrinth_upper_rail.stl"
     },
@@ -2093,7 +2171,8 @@
         1.85
       ],
       "volume_mm3": 0.814,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/volume_button_labyrinth_lower_rail.obj",
       "stl": "mechanical/e1-phone/out/volume_button_labyrinth_lower_rail.stl"
     },
@@ -2119,7 +2198,8 @@
         0.18
       ],
       "volume_mm3": 11.34,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/screen_adhesive_top.obj",
       "stl": "mechanical/e1-phone/out/screen_adhesive_top.stl"
     },
@@ -2145,7 +2225,8 @@
         0.18
       ],
       "volume_mm3": 11.34,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/screen_adhesive_bottom.obj",
       "stl": "mechanical/e1-phone/out/screen_adhesive_bottom.stl"
     },
@@ -2171,7 +2252,8 @@
         0.18
       ],
       "volume_mm3": 24.781,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/screen_adhesive_left.obj",
       "stl": "mechanical/e1-phone/out/screen_adhesive_left.stl"
     },
@@ -2197,7 +2279,8 @@
         0.18
       ],
       "volume_mm3": 24.781,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/screen_adhesive_right.obj",
       "stl": "mechanical/e1-phone/out/screen_adhesive_right.stl"
     },
@@ -2223,7 +2306,8 @@
         2.8
       ],
       "volume_mm3": 38.544,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_screw_boss_1.obj",
       "stl": "mechanical/e1-phone/out/orange_screw_boss_1.stl"
     },
@@ -2249,7 +2333,8 @@
         2.8
       ],
       "volume_mm3": 38.544,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_screw_boss_2.obj",
       "stl": "mechanical/e1-phone/out/orange_screw_boss_2.stl"
     },
@@ -2275,7 +2360,8 @@
         2.8
       ],
       "volume_mm3": 38.544,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_screw_boss_3.obj",
       "stl": "mechanical/e1-phone/out/orange_screw_boss_3.stl"
     },
@@ -2301,7 +2387,8 @@
         2.8
       ],
       "volume_mm3": 38.544,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_screw_boss_4.obj",
       "stl": "mechanical/e1-phone/out/orange_screw_boss_4.stl"
     },
@@ -2327,7 +2414,8 @@
         2.8
       ],
       "volume_mm3": 38.544,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_screw_boss_5.obj",
       "stl": "mechanical/e1-phone/out/orange_screw_boss_5.stl"
     },
@@ -2353,7 +2441,8 @@
         2.8
       ],
       "volume_mm3": 38.544,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_screw_boss_6.obj",
       "stl": "mechanical/e1-phone/out/orange_screw_boss_6.stl"
     },
@@ -2379,7 +2468,8 @@
         2.8
       ],
       "volume_mm3": 38.544,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_screw_boss_7.obj",
       "stl": "mechanical/e1-phone/out/orange_screw_boss_7.stl"
     },
@@ -2405,7 +2495,8 @@
         2.8
       ],
       "volume_mm3": 38.544,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_screw_boss_8.obj",
       "stl": "mechanical/e1-phone/out/orange_screw_boss_8.stl"
     },
@@ -2431,7 +2522,8 @@
         2.8
       ],
       "volume_mm3": 38.544,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_screw_boss_9.obj",
       "stl": "mechanical/e1-phone/out/orange_screw_boss_9.stl"
     },
@@ -2457,7 +2549,8 @@
         2.8
       ],
       "volume_mm3": 38.544,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_screw_boss_10.obj",
       "stl": "mechanical/e1-phone/out/orange_screw_boss_10.stl"
     },
@@ -2483,7 +2576,8 @@
         1.4
       ],
       "volume_mm3": 9.1,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_snap_hook_1.obj",
       "stl": "mechanical/e1-phone/out/orange_snap_hook_1.stl"
     },
@@ -2509,7 +2603,8 @@
         1.4
       ],
       "volume_mm3": 9.1,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_snap_hook_2.obj",
       "stl": "mechanical/e1-phone/out/orange_snap_hook_2.stl"
     },
@@ -2535,7 +2630,8 @@
         1.4
       ],
       "volume_mm3": 9.1,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_snap_hook_3.obj",
       "stl": "mechanical/e1-phone/out/orange_snap_hook_3.stl"
     },
@@ -2561,7 +2657,8 @@
         1.4
       ],
       "volume_mm3": 9.1,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_snap_hook_4.obj",
       "stl": "mechanical/e1-phone/out/orange_snap_hook_4.stl"
     },
@@ -2587,7 +2684,8 @@
         1.4
       ],
       "volume_mm3": 9.1,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_snap_hook_5.obj",
       "stl": "mechanical/e1-phone/out/orange_snap_hook_5.stl"
     },
@@ -2613,7 +2711,8 @@
         1.4
       ],
       "volume_mm3": 9.1,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_snap_hook_6.obj",
       "stl": "mechanical/e1-phone/out/orange_snap_hook_6.stl"
     },
@@ -2639,7 +2738,8 @@
         1.4
       ],
       "volume_mm3": 9.1,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_snap_hook_7.obj",
       "stl": "mechanical/e1-phone/out/orange_snap_hook_7.stl"
     },
@@ -2665,7 +2765,8 @@
         1.4
       ],
       "volume_mm3": 9.1,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_snap_hook_8.obj",
       "stl": "mechanical/e1-phone/out/orange_snap_hook_8.stl"
     },
@@ -2691,7 +2792,8 @@
         1.4
       ],
       "volume_mm3": 102.9,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_battery_left_rib.obj",
       "stl": "mechanical/e1-phone/out/orange_battery_left_rib.stl"
     },
@@ -2717,7 +2819,8 @@
         1.4
       ],
       "volume_mm3": 102.9,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_battery_right_rib.obj",
       "stl": "mechanical/e1-phone/out/orange_battery_right_rib.stl"
     },
@@ -2743,7 +2846,8 @@
         2.0
       ],
       "volume_mm3": 72.0,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_usb_reinforcement_saddle.obj",
       "stl": "mechanical/e1-phone/out/orange_usb_reinforcement_saddle.stl"
     },
@@ -2769,7 +2873,8 @@
         1.15
       ],
       "volume_mm3": 69.92,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/display_fpc_connector.obj",
       "stl": "mechanical/e1-phone/out/display_fpc_connector.stl"
     },
@@ -2795,7 +2900,8 @@
         0.3
       ],
       "volume_mm3": 66.0,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/display_fpc_bend_keepout.obj",
       "stl": "mechanical/e1-phone/out/display_fpc_bend_keepout.stl"
     },
@@ -2821,7 +2927,8 @@
         2.2
       ],
       "volume_mm3": 514.8,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/bottom_speaker_acoustic_chamber.obj",
       "stl": "mechanical/e1-phone/out/bottom_speaker_acoustic_chamber.stl"
     },
@@ -2847,7 +2954,8 @@
         0.55
       ],
       "volume_mm3": 15.95,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/earpiece_gasket.obj",
       "stl": "mechanical/e1-phone/out/earpiece_gasket.stl"
     },
@@ -2873,7 +2981,8 @@
         2.4
       ],
       "volume_mm3": 15.12,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_corner_rib_1.obj",
       "stl": "mechanical/e1-phone/out/orange_corner_rib_1.stl"
     },
@@ -2899,7 +3008,8 @@
         2.4
       ],
       "volume_mm3": 15.12,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_corner_rib_1_leg.obj",
       "stl": "mechanical/e1-phone/out/orange_corner_rib_1_leg.stl"
     },
@@ -2925,7 +3035,8 @@
         2.4
       ],
       "volume_mm3": 15.12,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_corner_rib_2.obj",
       "stl": "mechanical/e1-phone/out/orange_corner_rib_2.stl"
     },
@@ -2951,7 +3062,8 @@
         2.4
       ],
       "volume_mm3": 15.12,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_corner_rib_2_leg.obj",
       "stl": "mechanical/e1-phone/out/orange_corner_rib_2_leg.stl"
     },
@@ -2977,7 +3089,8 @@
         2.4
       ],
       "volume_mm3": 15.12,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_corner_rib_3.obj",
       "stl": "mechanical/e1-phone/out/orange_corner_rib_3.stl"
     },
@@ -3003,7 +3116,8 @@
         2.4
       ],
       "volume_mm3": 15.12,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_corner_rib_3_leg.obj",
       "stl": "mechanical/e1-phone/out/orange_corner_rib_3_leg.stl"
     },
@@ -3029,7 +3143,8 @@
         2.4
       ],
       "volume_mm3": 15.12,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_corner_rib_4.obj",
       "stl": "mechanical/e1-phone/out/orange_corner_rib_4.stl"
     },
@@ -3055,7 +3170,8 @@
         2.4
       ],
       "volume_mm3": 15.12,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/orange_corner_rib_4_leg.obj",
       "stl": "mechanical/e1-phone/out/orange_corner_rib_4_leg.stl"
     },
@@ -3081,7 +3197,8 @@
         0.25
       ],
       "volume_mm3": 15.525,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/glass_perimeter_cushion_top.obj",
       "stl": "mechanical/e1-phone/out/glass_perimeter_cushion_top.stl"
     },
@@ -3107,7 +3224,8 @@
         0.25
       ],
       "volume_mm3": 15.525,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/glass_perimeter_cushion_bottom.obj",
       "stl": "mechanical/e1-phone/out/glass_perimeter_cushion_bottom.stl"
     },
@@ -3133,7 +3251,8 @@
         0.25
       ],
       "volume_mm3": 34.193,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/glass_perimeter_cushion_left.obj",
       "stl": "mechanical/e1-phone/out/glass_perimeter_cushion_left.stl"
     },
@@ -3159,7 +3278,8 @@
         0.25
       ],
       "volume_mm3": 34.193,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/glass_perimeter_cushion_right.obj",
       "stl": "mechanical/e1-phone/out/glass_perimeter_cushion_right.stl"
     },
@@ -3185,7 +3305,8 @@
         2.0
       ],
       "volume_mm3": 744.0,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/cellular_top_antenna_keepout.obj",
       "stl": "mechanical/e1-phone/out/cellular_top_antenna_keepout.stl"
     },
@@ -3211,7 +3332,8 @@
         2.0
       ],
       "volume_mm3": 744.0,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/cellular_bottom_antenna_keepout.obj",
       "stl": "mechanical/e1-phone/out/cellular_bottom_antenna_keepout.stl"
     },
@@ -3237,7 +3359,8 @@
         2.0
       ],
       "volume_mm3": 340.0,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/wifi_bt_side_antenna_keepout.obj",
       "stl": "mechanical/e1-phone/out/wifi_bt_side_antenna_keepout.stl"
     },
@@ -3263,7 +3386,8 @@
         0.5
       ],
       "volume_mm3": 2.0,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/antenna_aperture_tuner.obj",
       "stl": "mechanical/e1-phone/out/antenna_aperture_tuner.stl"
     },
@@ -3289,7 +3413,8 @@
         1.2
       ],
       "volume_mm3": 345.6,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/soc_shield_can.obj",
       "stl": "mechanical/e1-phone/out/soc_shield_can.stl"
     },
@@ -3315,7 +3440,8 @@
         1.1
       ],
       "volume_mm3": 121.0,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/pmic_shield_can.obj",
       "stl": "mechanical/e1-phone/out/pmic_shield_can.stl"
     },
@@ -3341,7 +3467,8 @@
         1.2
       ],
       "volume_mm3": 432.0,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/radio_shield_can.obj",
       "stl": "mechanical/e1-phone/out/radio_shield_can.stl"
     },
@@ -3367,7 +3494,8 @@
         2.4
       ],
       "volume_mm3": 2227.2,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/cellular_lga_module_keepout.obj",
       "stl": "mechanical/e1-phone/out/cellular_lga_module_keepout.stl"
     },
@@ -3393,7 +3521,8 @@
         1.2
       ],
       "volume_mm3": 141.0,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/wifi_bt_module_keepout.obj",
       "stl": "mechanical/e1-phone/out/wifi_bt_module_keepout.stl"
     },
@@ -3419,7 +3548,8 @@
         0.3
       ],
       "volume_mm3": 50.7,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/compute_som_sodimm_connector.obj",
       "stl": "mechanical/e1-phone/out/compute_som_sodimm_connector.stl"
     },
@@ -3445,7 +3575,8 @@
         1.2
       ],
       "volume_mm3": 2448.0,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/compute_som_daughterboard_keepout.obj",
       "stl": "mechanical/e1-phone/out/compute_som_daughterboard_keepout.stl"
     },
@@ -3471,7 +3602,8 @@
         0.24
       ],
       "volume_mm3": 40.56,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/soc_package_marker.obj",
       "stl": "mechanical/e1-phone/out/soc_package_marker.stl"
     },
@@ -3497,7 +3629,8 @@
         0.22
       ],
       "volume_mm3": 16.72,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/dram_package_marker.obj",
       "stl": "mechanical/e1-phone/out/dram_package_marker.stl"
     },
@@ -3523,7 +3656,8 @@
         0.22
       ],
       "volume_mm3": 22.77,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/storage_package_marker.obj",
       "stl": "mechanical/e1-phone/out/storage_package_marker.stl"
     },
@@ -3549,9 +3683,91 @@
         0.22
       ],
       "volume_mm3": 10.78,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/pmic_package_marker.obj",
       "stl": "mechanical/e1-phone/out/pmic_package_marker.stl"
+    },
+    {
+      "name": "usb_pd_controller_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for TPS65987 USB-PD controller package and exposed pads",
+      "bounds_mm": [
+        [
+          2.5,
+          -59.3,
+          -0.18
+        ],
+        [
+          11.5,
+          -50.3,
+          0.04
+        ]
+      ],
+      "span_mm": [
+        9.0,
+        9.0,
+        0.22
+      ],
+      "volume_mm3": 17.82,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/usb_pd_controller_package_marker.obj",
+      "stl": "mechanical/e1-phone/out/usb_pd_controller_package_marker.stl"
+    },
+    {
+      "name": "charger_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for MAX77860 charger WLP package",
+      "bounds_mm": [
+        [
+          -6.0,
+          -56.8,
+          -0.18
+        ],
+        [
+          -2.0,
+          -52.8,
+          0.02
+        ]
+      ],
+      "span_mm": [
+        4.0,
+        4.0,
+        0.2
+      ],
+      "volume_mm3": 3.2,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/charger_package_marker.obj",
+      "stl": "mechanical/e1-phone/out/charger_package_marker.stl"
+    },
+    {
+      "name": "battery_connector_package_marker",
+      "role": "PCB connector marker",
+      "material": "visual marker for 4-pin battery pack connector or welded FPC landing",
+      "bounds_mm": [
+        [
+          -9.0,
+          -51.9,
+          -0.17
+        ],
+        [
+          -3.0,
+          -48.9,
+          0.01
+        ]
+      ],
+      "span_mm": [
+        6.0,
+        3.0,
+        0.18
+      ],
+      "volume_mm3": 3.24,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/battery_connector_package_marker.obj",
+      "stl": "mechanical/e1-phone/out/battery_connector_package_marker.stl"
     },
     {
       "name": "audio_codec_package_marker",
@@ -3575,7 +3791,8 @@
         0.22
       ],
       "volume_mm3": 10.78,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/audio_codec_package_marker.obj",
       "stl": "mechanical/e1-phone/out/audio_codec_package_marker.stl"
     },
@@ -3601,7 +3818,8 @@
         0.22
       ],
       "volume_mm3": 12.375,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/rf_transceiver_package_marker.obj",
       "stl": "mechanical/e1-phone/out/rf_transceiver_package_marker.stl"
     },
@@ -3627,7 +3845,8 @@
         0.2
       ],
       "volume_mm3": 1.5,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/gnss_lna_package_marker.obj",
       "stl": "mechanical/e1-phone/out/gnss_lna_package_marker.stl"
     },
@@ -3653,7 +3872,8 @@
         0.22
       ],
       "volume_mm3": 3.52,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/backlight_bias_package_marker.obj",
       "stl": "mechanical/e1-phone/out/backlight_bias_package_marker.stl"
     },
@@ -3679,7 +3899,8 @@
         0.18
       ],
       "volume_mm3": 0.513,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/fuel_gauge_package_marker.obj",
       "stl": "mechanical/e1-phone/out/fuel_gauge_package_marker.stl"
     },
@@ -3705,7 +3926,8 @@
         0.18
       ],
       "volume_mm3": 0.353,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/haptic_driver_package_marker.obj",
       "stl": "mechanical/e1-phone/out/haptic_driver_package_marker.stl"
     },
@@ -3731,7 +3953,8 @@
         0.18
       ],
       "volume_mm3": 0.983,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/usim_levelshift_package_marker.obj",
       "stl": "mechanical/e1-phone/out/usim_levelshift_package_marker.stl"
     },
@@ -3757,7 +3980,8 @@
         0.18
       ],
       "volume_mm3": 0.72,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/esim_package_marker.obj",
       "stl": "mechanical/e1-phone/out/esim_package_marker.stl"
     },
@@ -3783,7 +4007,8 @@
         0.22
       ],
       "volume_mm3": 5.5,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/nfc_controller_package_marker.obj",
       "stl": "mechanical/e1-phone/out/nfc_controller_package_marker.stl"
     },
@@ -3809,7 +4034,8 @@
         0.12
       ],
       "volume_mm3": 0.672,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/nfc_loop_match_marker.obj",
       "stl": "mechanical/e1-phone/out/nfc_loop_match_marker.stl"
     },
@@ -3835,7 +4061,8 @@
         0.2
       ],
       "volume_mm3": 1.8,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/sensor_hub_package_marker.obj",
       "stl": "mechanical/e1-phone/out/sensor_hub_package_marker.stl"
     },
@@ -3861,7 +4088,8 @@
         0.16
       ],
       "volume_mm3": 0.32,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/esd_array_6ch_marker.obj",
       "stl": "mechanical/e1-phone/out/esd_array_6ch_marker.stl"
     },
@@ -3887,7 +4115,8 @@
         0.16
       ],
       "volume_mm3": 0.154,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/tvs_diode_2p_marker.obj",
       "stl": "mechanical/e1-phone/out/tvs_diode_2p_marker.stl"
     },
@@ -3913,7 +4142,8 @@
         0.04
       ],
       "volume_mm3": 0.04,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/testpoint_1mm_marker.obj",
       "stl": "mechanical/e1-phone/out/testpoint_1mm_marker.stl"
     },
@@ -3939,7 +4169,8 @@
         0.03
       ],
       "volume_mm3": 0.03,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/fiducial_1mm_marker.obj",
       "stl": "mechanical/e1-phone/out/fiducial_1mm_marker.stl"
     },
@@ -3965,7 +4196,8 @@
         0.04
       ],
       "volume_mm3": 0.058,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/mounting_hole_1p2_marker.obj",
       "stl": "mechanical/e1-phone/out/mounting_hole_1p2_marker.stl"
     },
@@ -3991,7 +4223,8 @@
         0.16
       ],
       "volume_mm3": 0.08,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/r0402_component_marker.obj",
       "stl": "mechanical/e1-phone/out/r0402_component_marker.stl"
     },
@@ -4017,7 +4250,8 @@
         0.16
       ],
       "volume_mm3": 0.08,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/c0402_component_marker.obj",
       "stl": "mechanical/e1-phone/out/c0402_component_marker.stl"
     },
@@ -4043,7 +4277,8 @@
         0.2
       ],
       "volume_mm3": 0.12,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/l0402_component_marker.obj",
       "stl": "mechanical/e1-phone/out/l0402_component_marker.stl"
     },
@@ -4069,7 +4304,8 @@
         0.18
       ],
       "volume_mm3": 0.475,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/pi_match_0402_marker.obj",
       "stl": "mechanical/e1-phone/out/pi_match_0402_marker.stl"
     },
@@ -4095,7 +4331,8 @@
         0.18
       ],
       "volume_mm3": 0.36,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/rc_array_4ch_marker.obj",
       "stl": "mechanical/e1-phone/out/rc_array_4ch_marker.stl"
     },
@@ -4121,7 +4358,8 @@
         0.22
       ],
       "volume_mm3": 1.126,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/shunt_1206_marker.obj",
       "stl": "mechanical/e1-phone/out/shunt_1206_marker.stl"
     },
@@ -4147,7 +4385,8 @@
         0.35
       ],
       "volume_mm3": 1.575,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/wifi_bt_rf_feed_development_envelope.obj",
       "stl": "mechanical/e1-phone/out/wifi_bt_rf_feed_development_envelope.stl"
     },
@@ -4173,7 +4412,8 @@
         0.35
       ],
       "volume_mm3": 2.363,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/cellular_rf_feed_development_envelope.obj",
       "stl": "mechanical/e1-phone/out/cellular_rf_feed_development_envelope.stl"
     },
@@ -4199,7 +4439,8 @@
         0.12
       ],
       "volume_mm3": 7.2,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/display_fpc_tail.obj",
       "stl": "mechanical/e1-phone/out/display_fpc_tail.stl"
     },
@@ -4225,7 +4466,8 @@
         0.12
       ],
       "volume_mm3": 1.152,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/rear_camera_fpc_tail.obj",
       "stl": "mechanical/e1-phone/out/rear_camera_fpc_tail.stl"
     },
@@ -4251,7 +4493,8 @@
         0.12
       ],
       "volume_mm3": 0.864,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/front_camera_fpc_tail.obj",
       "stl": "mechanical/e1-phone/out/front_camera_fpc_tail.stl"
     },
@@ -4277,7 +4520,8 @@
         0.12
       ],
       "volume_mm3": 3.36,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/side_key_flex_tail.obj",
       "stl": "mechanical/e1-phone/out/side_key_flex_tail.stl"
     },
@@ -4303,7 +4547,8 @@
         0.12
       ],
       "volume_mm3": 1.152,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/battery_connector_lead_flex.obj",
       "stl": "mechanical/e1-phone/out/battery_connector_lead_flex.stl"
     },
@@ -4329,9 +4574,91 @@
         0.12
       ],
       "volume_mm3": 2.16,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/usb_c_power_data_escape_tail.obj",
       "stl": "mechanical/e1-phone/out/usb_c_power_data_escape_tail.stl"
+    },
+    {
+      "name": "usb_pd_controller_escape_trace_marker",
+      "role": "PCB trace marker",
+      "material": "board-level USB-C VBUS/CC/USB2 route marker from receptacle to TPS65987",
+      "bounds_mm": [
+        [
+          -0.7,
+          -59.5,
+          -1.51
+        ],
+        [
+          8.3,
+          -58.5,
+          -1.39
+        ]
+      ],
+      "span_mm": [
+        9.0,
+        1.0,
+        0.12
+      ],
+      "volume_mm3": 1.08,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "obj": "mechanical/e1-phone/out/usb_pd_controller_escape_trace_marker.obj",
+      "stl": "mechanical/e1-phone/out/usb_pd_controller_escape_trace_marker.stl"
+    },
+    {
+      "name": "pd_charger_control_trace_marker",
+      "role": "PCB trace marker",
+      "material": "board-level PD controller to charger VBUS/SYS/I2C/IRQ route marker",
+      "bounds_mm": [
+        [
+          -3.5,
+          -55.3,
+          -1.51
+        ],
+        [
+          6.5,
+          -54.3,
+          -1.39
+        ]
+      ],
+      "span_mm": [
+        10.0,
+        1.0,
+        0.12
+      ],
+      "volume_mm3": 1.2,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "obj": "mechanical/e1-phone/out/pd_charger_control_trace_marker.obj",
+      "stl": "mechanical/e1-phone/out/pd_charger_control_trace_marker.stl"
+    },
+    {
+      "name": "charger_battery_power_sense_trace_marker",
+      "role": "PCB trace marker",
+      "material": "board-level charger to battery connector VBAT/SYS/NTC/ID route marker",
+      "bounds_mm": [
+        [
+          -7.0,
+          -55.8,
+          -1.26
+        ],
+        [
+          -3.0,
+          -51.0,
+          -1.14
+        ]
+      ],
+      "span_mm": [
+        4.0,
+        4.8,
+        0.12
+      ],
+      "volume_mm3": 2.304,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "obj": "mechanical/e1-phone/out/charger_battery_power_sense_trace_marker.obj",
+      "stl": "mechanical/e1-phone/out/charger_battery_power_sense_trace_marker.stl"
     },
     {
       "name": "bottom_speaker_lead_pair",
@@ -4355,7 +4682,8 @@
         0.12
       ],
       "volume_mm3": 1.2,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/bottom_speaker_lead_pair.obj",
       "stl": "mechanical/e1-phone/out/bottom_speaker_lead_pair.stl"
     },
@@ -4381,7 +4709,8 @@
         0.12
       ],
       "volume_mm3": 0.96,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/bottom_microphone_flex_leads.obj",
       "stl": "mechanical/e1-phone/out/bottom_microphone_flex_leads.stl"
     },
@@ -4407,7 +4736,8 @@
         0.12
       ],
       "volume_mm3": 1.728,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/top_microphone_flex_tail.obj",
       "stl": "mechanical/e1-phone/out/top_microphone_flex_tail.stl"
     },
@@ -4433,7 +4763,8 @@
         0.12
       ],
       "volume_mm3": 1.344,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/earpiece_receiver_lead_flex.obj",
       "stl": "mechanical/e1-phone/out/earpiece_receiver_lead_flex.stl"
     },
@@ -4459,7 +4790,8 @@
         0.12
       ],
       "volume_mm3": 1.44,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/haptic_flex_tail.obj",
       "stl": "mechanical/e1-phone/out/haptic_flex_tail.stl"
     },
@@ -4485,7 +4817,8 @@
         0.12
       ],
       "volume_mm3": 1.08,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/sim_esim_signal_flex_marker.obj",
       "stl": "mechanical/e1-phone/out/sim_esim_signal_flex_marker.stl"
     },
@@ -4511,7 +4844,8 @@
         0.12
       ],
       "volume_mm3": 0.72,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/nfc_loop_antenna_flex_marker.obj",
       "stl": "mechanical/e1-phone/out/nfc_loop_antenna_flex_marker.stl"
     },
@@ -4537,7 +4871,8 @@
         0.28
       ],
       "volume_mm3": 1.512,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/cellular_div_rf_feed_development_envelope.obj",
       "stl": "mechanical/e1-phone/out/cellular_div_rf_feed_development_envelope.stl"
     },
@@ -4563,7 +4898,8 @@
         0.28
       ],
       "volume_mm3": 1.26,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/cellular_gnss_rf_feed_development_envelope.obj",
       "stl": "mechanical/e1-phone/out/cellular_gnss_rf_feed_development_envelope.stl"
     },
@@ -4589,7 +4925,8 @@
         0.28
       ],
       "volume_mm3": 1.26,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/wifi_bt_rf1_feed_development_envelope.obj",
       "stl": "mechanical/e1-phone/out/wifi_bt_rf1_feed_development_envelope.stl"
     },
@@ -4615,7 +4952,8 @@
         2.5
       ],
       "volume_mm3": 180.0,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/haptic_lra.obj",
       "stl": "mechanical/e1-phone/out/haptic_lra.stl"
     },
@@ -4641,7 +4979,8 @@
         2.0
       ],
       "volume_mm3": 638.0,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/sim_tray_keepout.obj",
       "stl": "mechanical/e1-phone/out/sim_tray_keepout.stl"
     },
@@ -4667,7 +5006,8 @@
         4.0
       ],
       "volume_mm3": 57.6,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/sim_tray_outline.obj",
       "stl": "mechanical/e1-phone/out/sim_tray_outline.stl"
     },
@@ -4693,7 +5033,8 @@
         0.55
       ],
       "volume_mm3": 46.552,
-      "mass_placeholder": false,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/rear_camera_cover_glass.obj",
       "stl": "mechanical/e1-phone/out/rear_camera_cover_glass.stl"
     },
@@ -4719,7 +5060,8 @@
         0.25
       ],
       "volume_mm3": 72.0,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/service_label_recess.obj",
       "stl": "mechanical/e1-phone/out/service_label_recess.stl"
     },
@@ -4731,12 +5073,12 @@
         [
           23.61,
           55.462,
-          6.19
+          5.54
         ],
         [
           24.06,
           55.682,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -4745,7 +5087,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/display_touch_fpc_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/display_touch_fpc_from_terminal.stl"
     },
@@ -4757,12 +5100,12 @@
         [
           -0.775,
           -6.46,
-          6.19
+          5.54
         ],
         [
           -0.325,
           -6.24,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -4771,7 +5114,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/display_touch_fpc_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/display_touch_fpc_to_terminal.stl"
     },
@@ -4783,12 +5127,12 @@
         [
           -29.225,
           -64.11,
-          6.19
+          5.54
         ],
         [
           -28.775,
           -63.89,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -4797,7 +5141,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/rear_camera_csi_fpc_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/rear_camera_csi_fpc_from_terminal.stl"
     },
@@ -4809,12 +5154,12 @@
         [
           21.582,
           58.301,
-          6.19
+          5.54
         ],
         [
           22.032,
           58.521,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -4823,7 +5168,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/rear_camera_csi_fpc_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/rear_camera_csi_fpc_to_terminal.stl"
     },
@@ -4835,12 +5181,12 @@
         [
           -17.625,
           -64.11,
-          6.19
+          5.54
         ],
         [
           -17.175,
           -63.89,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -4849,7 +5195,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/front_camera_csi_fpc_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/front_camera_csi_fpc_from_terminal.stl"
     },
@@ -4861,12 +5208,12 @@
         [
           -18.925,
           68.657,
-          6.19
+          5.54
         ],
         [
           -18.475,
           68.877,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -4875,7 +5222,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/front_camera_csi_fpc_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/front_camera_csi_fpc_to_terminal.stl"
     },
@@ -4887,12 +5235,12 @@
         [
           -6.025,
           -64.11,
-          6.19
+          5.54
         ],
         [
           -5.575,
           -63.89,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -4901,7 +5249,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/side_key_flex_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/side_key_flex_from_terminal.stl"
     },
@@ -4913,12 +5262,12 @@
         [
           40.332,
           19.783,
-          6.19
+          5.54
         ],
         [
           40.782,
           20.003,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -4927,7 +5276,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/side_key_flex_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/side_key_flex_to_terminal.stl"
     },
@@ -4939,12 +5289,12 @@
         [
           -0.775,
           -7.96,
-          6.19
+          5.54
         ],
         [
           -0.325,
           -7.74,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -4953,7 +5303,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/battery_lead_flex_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/battery_lead_flex_from_terminal.stl"
     },
@@ -4965,12 +5316,12 @@
         [
           5.575,
           -64.11,
-          6.19
+          5.54
         ],
         [
           6.025,
           -63.89,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -4979,7 +5330,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/battery_lead_flex_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/battery_lead_flex_to_terminal.stl"
     },
@@ -4991,12 +5343,12 @@
         [
           -0.775,
           -73.66,
-          6.19
+          5.54
         ],
         [
           -0.325,
           -73.44,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5005,7 +5357,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/usb_c_escape_tail_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/usb_c_escape_tail_from_terminal.stl"
     },
@@ -5017,12 +5370,12 @@
         [
           17.175,
           -64.11,
-          6.19
+          5.54
         ],
         [
           17.625,
           -63.89,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5031,9 +5384,172 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/usb_c_escape_tail_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/usb_c_escape_tail_to_terminal.stl"
+    },
+    {
+      "name": "usb_c_to_pd_controller_escape_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for usb_c_to_pd_controller_escape on usb_c_receptacle; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -0.225,
+          -73.66,
+          5.54
+        ],
+        [
+          0.225,
+          -73.44,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/usb_c_to_pd_controller_escape_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/usb_c_to_pd_controller_escape_from_terminal.stl"
+    },
+    {
+      "name": "usb_c_to_pd_controller_escape_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for usb_c_to_pd_controller_escape on usb_pd_controller_package_marker; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          6.337,
+          -55.823,
+          5.54
+        ],
+        [
+          6.787,
+          -55.603,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/usb_c_to_pd_controller_escape_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/usb_c_to_pd_controller_escape_to_terminal.stl"
+    },
+    {
+      "name": "pd_controller_to_charger_control_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for pd_controller_to_charger_control on usb_pd_controller_package_marker; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          6.883,
+          -55.753,
+          5.54
+        ],
+        [
+          7.333,
+          -55.533,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/pd_controller_to_charger_control_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/pd_controller_to_charger_control_from_terminal.stl"
+    },
+    {
+      "name": "pd_controller_to_charger_control_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for pd_controller_to_charger_control on charger_package_marker; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -4.835,
+          -55.718,
+          5.54
+        ],
+        [
+          -4.385,
+          -55.498,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/pd_controller_to_charger_control_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/pd_controller_to_charger_control_to_terminal.stl"
+    },
+    {
+      "name": "charger_to_battery_power_sense_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for charger_to_battery_power_sense on charger_package_marker; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -4.287,
+          -55.758,
+          5.54
+        ],
+        [
+          -3.837,
+          -55.538,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/charger_to_battery_power_sense_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/charger_to_battery_power_sense_from_terminal.stl"
+    },
+    {
+      "name": "charger_to_battery_power_sense_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for charger_to_battery_power_sense on battery_connector_package_marker; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -6.872,
+          -51.289,
+          5.54
+        ],
+        [
+          -6.422,
+          -51.069,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/charger_to_battery_power_sense_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/charger_to_battery_power_sense_to_terminal.stl"
     },
     {
       "name": "bottom_speaker_lead_pair_from_terminal",
@@ -5043,12 +5559,12 @@
         [
           28.775,
           -64.11,
-          6.19
+          5.54
         ],
         [
           29.225,
           -63.89,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5057,7 +5573,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/bottom_speaker_lead_pair_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/bottom_speaker_lead_pair_from_terminal.stl"
     },
@@ -5069,12 +5586,12 @@
         [
           17.983,
           -64.88,
-          6.19
+          5.54
         ],
         [
           18.433,
           -64.66,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5083,7 +5600,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/bottom_speaker_lead_pair_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/bottom_speaker_lead_pair_to_terminal.stl"
     },
@@ -5095,12 +5613,12 @@
         [
           -29.225,
           63.89,
-          6.19
+          5.54
         ],
         [
           -28.775,
           64.11,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5109,7 +5627,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/bottom_microphone_flex_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/bottom_microphone_flex_from_terminal.stl"
     },
@@ -5121,12 +5640,12 @@
         [
           -18.973,
           -69.393,
-          6.19
+          5.54
         ],
         [
           -18.523,
           -69.173,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5135,7 +5654,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/bottom_microphone_flex_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/bottom_microphone_flex_to_terminal.stl"
     },
@@ -5147,12 +5667,12 @@
         [
           -17.625,
           63.89,
-          6.19
+          5.54
         ],
         [
           -17.175,
           64.11,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5161,7 +5681,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/top_microphone_flex_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/top_microphone_flex_from_terminal.stl"
     },
@@ -5173,12 +5694,12 @@
         [
           18.523,
           69.173,
-          6.19
+          5.54
         ],
         [
           18.973,
           69.393,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5187,7 +5708,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/top_microphone_flex_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/top_microphone_flex_to_terminal.stl"
     },
@@ -5199,12 +5721,12 @@
         [
           -6.025,
           63.89,
-          6.19
+          5.54
         ],
         [
           -5.575,
           64.11,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5213,7 +5735,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/earpiece_receiver_lead_flex_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/earpiece_receiver_lead_flex_from_terminal.stl"
     },
@@ -5225,12 +5748,12 @@
         [
           0.325,
           69.54,
-          6.19
+          5.54
         ],
         [
           0.775,
           69.76,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5239,7 +5762,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/earpiece_receiver_lead_flex_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/earpiece_receiver_lead_flex_to_terminal.stl"
     },
@@ -5251,12 +5775,12 @@
         [
           5.575,
           63.89,
-          6.19
+          5.54
         ],
         [
           6.025,
           64.11,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5265,7 +5789,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/haptic_flex_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/haptic_flex_from_terminal.stl"
     },
@@ -5277,12 +5802,12 @@
         [
           35.381,
           -45.117,
-          6.19
+          5.54
         ],
         [
           35.831,
           -44.897,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5291,7 +5816,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/haptic_flex_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/haptic_flex_to_terminal.stl"
     },
@@ -5303,12 +5829,12 @@
         [
           17.175,
           63.89,
-          6.19
+          5.54
         ],
         [
           17.625,
           64.11,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5317,7 +5843,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/sim_esim_signal_flex_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/sim_esim_signal_flex_from_terminal.stl"
     },
@@ -5329,12 +5856,12 @@
         [
           32.044,
           -19.007,
-          6.19
+          5.54
         ],
         [
           32.494,
           -18.787,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5343,7 +5870,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/sim_esim_signal_flex_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/sim_esim_signal_flex_to_terminal.stl"
     },
@@ -5355,12 +5883,12 @@
         [
           -26.366,
           30.893,
-          6.19
+          5.54
         ],
         [
           -25.916,
           31.113,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5369,7 +5897,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/nfc_loop_antenna_flex_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/nfc_loop_antenna_flex_from_terminal.stl"
     },
@@ -5381,12 +5910,12 @@
         [
           -30.127,
           58.898,
-          6.19
+          5.54
         ],
         [
           -29.677,
           59.118,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5395,7 +5924,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/nfc_loop_antenna_flex_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/nfc_loop_antenna_flex_to_terminal.stl"
     },
@@ -5407,12 +5937,12 @@
         [
           28.775,
           63.89,
-          6.19
+          5.54
         ],
         [
           29.225,
           64.11,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5421,7 +5951,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/compute_som_sodimm_carrier_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/compute_som_sodimm_carrier_from_terminal.stl"
     },
@@ -5433,12 +5964,12 @@
         [
           0.325,
           45.74,
-          6.19
+          5.54
         ],
         [
           0.775,
           45.96,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5447,7 +5978,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/compute_som_sodimm_carrier_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/compute_som_sodimm_carrier_to_terminal.stl"
     },
@@ -5459,12 +5991,12 @@
         [
           -15.482,
           45.873,
-          6.19
+          5.54
         ],
         [
           -15.032,
           46.093,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5473,7 +6005,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/cellular_main_rf_feed_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/cellular_main_rf_feed_from_terminal.stl"
     },
@@ -5485,12 +6018,12 @@
         [
           0.325,
           72.14,
-          6.19
+          5.54
         ],
         [
           0.775,
           72.36,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5499,7 +6032,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/cellular_main_rf_feed_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/cellular_main_rf_feed_to_terminal.stl"
     },
@@ -5511,12 +6045,12 @@
         [
           -16.002,
           45.694,
-          6.19
+          5.54
         ],
         [
           -15.552,
           45.914,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5525,7 +6059,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/cellular_diversity_rf_feed_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/cellular_diversity_rf_feed_from_terminal.stl"
     },
@@ -5537,12 +6072,12 @@
         [
           -0.775,
           -72.36,
-          6.19
+          5.54
         ],
         [
           -0.325,
           -72.14,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5551,7 +6086,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/cellular_diversity_rf_feed_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/cellular_diversity_rf_feed_to_terminal.stl"
     },
@@ -5563,12 +6099,12 @@
         [
           -16.522,
           45.515,
-          6.19
+          5.54
         ],
         [
           -16.072,
           45.735,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5577,7 +6113,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/cellular_antenna_aperture_tuner_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/cellular_antenna_aperture_tuner_from_terminal.stl"
     },
@@ -5589,12 +6126,12 @@
         [
           -0.225,
           -72.36,
-          6.19
+          5.54
         ],
         [
           0.225,
           -72.14,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5603,7 +6140,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": true,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/cellular_antenna_aperture_tuner_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/cellular_antenna_aperture_tuner_to_terminal.stl"
     },
@@ -5615,12 +6153,12 @@
         [
           -15.482,
           45.873,
-          6.19
+          5.54
         ],
         [
           -15.032,
           46.093,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5629,7 +6167,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/cellular_gnss_rf_feed_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/cellular_gnss_rf_feed_from_terminal.stl"
     },
@@ -5641,12 +6180,12 @@
         [
           -30.097,
           63.394,
-          6.19
+          5.54
         ],
         [
           -29.647,
           63.614,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5655,7 +6194,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/cellular_gnss_rf_feed_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/cellular_gnss_rf_feed_to_terminal.stl"
     },
@@ -5667,12 +6207,12 @@
         [
           20.637,
           42.421,
-          6.19
+          5.54
         ],
         [
           21.087,
           42.641,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5681,7 +6221,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/wifi_bt_rf0_feed_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/wifi_bt_rf0_feed_from_terminal.stl"
     },
@@ -5693,12 +6234,12 @@
         [
           21.642,
           43.412,
-          6.19
+          5.54
         ],
         [
           22.092,
           43.632,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5707,7 +6248,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/wifi_bt_rf0_feed_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/wifi_bt_rf0_feed_to_terminal.stl"
     },
@@ -5719,12 +6261,12 @@
         [
           20.14,
           42.657,
-          6.19
+          5.54
         ],
         [
           20.59,
           42.877,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5733,7 +6275,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/wifi_bt_rf1_feed_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/wifi_bt_rf1_feed_from_terminal.stl"
     },
@@ -5745,12 +6288,12 @@
         [
           21.148,
           43.654,
-          6.19
+          5.54
         ],
         [
           21.598,
           43.874,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5759,7 +6302,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/wifi_bt_rf1_feed_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/wifi_bt_rf1_feed_to_terminal.stl"
     },
@@ -5771,12 +6315,12 @@
         [
           22.68,
           37.845,
-          6.19
+          5.54
         ],
         [
           23.13,
           38.065,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5785,7 +6329,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/split_interconnect_side_flex_from_terminal.obj",
       "stl": "mechanical/e1-phone/out/split_interconnect_side_flex_from_terminal.stl"
     },
@@ -5797,12 +6342,12 @@
         [
           21.596,
           -53.607,
-          6.19
+          5.54
         ],
         [
           22.046,
           -53.387,
-          6.21
+          5.56
         ]
       ],
       "span_mm": [
@@ -5811,7 +6356,8 @@
         0.02
       ],
       "volume_mm3": 0.002,
-      "mass_placeholder": false,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
       "obj": "mechanical/e1-phone/out/split_interconnect_side_flex_to_terminal.obj",
       "stl": "mechanical/e1-phone/out/split_interconnect_side_flex_to_terminal.stl"
     }

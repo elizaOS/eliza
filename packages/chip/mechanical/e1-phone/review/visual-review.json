@@ -7,7 +7,7 @@
     "mean_rgb": [
       248.486,
       243.395,
-      241.139
+      241.14
     ],
     "channel_spans": [
       255,
@@ -16,8 +16,8 @@
     ],
     "nonwhite_pixel_ratio": 0.05589,
     "occupied_bbox_ratio": 0.25163,
-    "edge_pixel_ratio": 0.0049,
-    "quantized_unique_color_count": 121,
+    "edge_pixel_ratio": 0.00488,
+    "quantized_unique_color_count": 118,
     "content_checks": {
       "resolution": true,
       "channel_span": true,
@@ -26,8 +26,8 @@
       "edge_detail": true,
       "color_variation": true
     },
-    "orange_pixel_ratio_of_nonwhite": 0.49514,
-    "dark_pixel_ratio_of_nonwhite": 0.48783,
+    "orange_pixel_ratio_of_nonwhite": 0.49502,
+    "dark_pixel_ratio_of_nonwhite": 0.48769,
     "pass": true
   },
   "full_back_iso.png": {
@@ -48,7 +48,7 @@
     "nonwhite_pixel_ratio": 0.05905,
     "occupied_bbox_ratio": 0.25085,
     "edge_pixel_ratio": 0.00528,
-    "quantized_unique_color_count": 120,
+    "quantized_unique_color_count": 125,
     "content_checks": {
       "resolution": true,
       "channel_span": true,
@@ -57,7 +57,7 @@
       "edge_detail": true,
       "color_variation": true
     },
-    "orange_pixel_ratio_of_nonwhite": 0.96879,
+    "orange_pixel_ratio_of_nonwhite": 0.96871,
     "dark_pixel_ratio_of_nonwhite": 0.01669,
     "pass": true
   },
@@ -98,19 +98,19 @@
       1650
     ],
     "mean_rgb": [
-      254.494,
-      249.245,
-      246.907
+      254.491,
+      249.264,
+      246.936
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.03283,
+    "nonwhite_pixel_ratio": 0.03311,
     "occupied_bbox_ratio": 0.23451,
-    "edge_pixel_ratio": 0.00509,
-    "quantized_unique_color_count": 105,
+    "edge_pixel_ratio": 0.00477,
+    "quantized_unique_color_count": 93,
     "content_checks": {
       "resolution": true,
       "channel_span": true,
@@ -119,8 +119,8 @@
       "edge_detail": true,
       "color_variation": true
     },
-    "orange_pixel_ratio_of_nonwhite": 0.93375,
-    "dark_pixel_ratio_of_nonwhite": 0.04685,
+    "orange_pixel_ratio_of_nonwhite": 0.92388,
+    "dark_pixel_ratio_of_nonwhite": 0.04649,
     "pass": true
   },
   "full_bottom_port.png": {
@@ -129,19 +129,19 @@
       1650
     ],
     "mean_rgb": [
-      253.776,
-      250.577,
-      249.153
+      253.765,
+      250.525,
+      249.082
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.02409,
-    "occupied_bbox_ratio": 0.2398,
-    "edge_pixel_ratio": 0.00355,
-    "quantized_unique_color_count": 81,
+    "nonwhite_pixel_ratio": 0.02453,
+    "occupied_bbox_ratio": 0.2418,
+    "edge_pixel_ratio": 0.00405,
+    "quantized_unique_color_count": 87,
     "content_checks": {
       "resolution": true,
       "channel_span": true,
@@ -150,8 +150,8 @@
       "edge_detail": true,
       "color_variation": true
     },
-    "orange_pixel_ratio_of_nonwhite": 0.76394,
-    "dark_pixel_ratio_of_nonwhite": 0.19793,
+    "orange_pixel_ratio_of_nonwhite": 0.76678,
+    "dark_pixel_ratio_of_nonwhite": 0.19533,
     "pass": true
   },
   "full_top_down.png": {
@@ -160,9 +160,9 @@
       1650
     ],
     "mean_rgb": [
-      228.644,
-      227.957,
-      227.594
+      228.642,
+      227.955,
+      227.592
     ],
     "channel_spans": [
       255,
@@ -170,9 +170,9 @@
       255
     ],
     "nonwhite_pixel_ratio": 0.11012,
-    "occupied_bbox_ratio": 0.17674,
-    "edge_pixel_ratio": 0.00447,
-    "quantized_unique_color_count": 121,
+    "occupied_bbox_ratio": 0.17657,
+    "edge_pixel_ratio": 0.0045,
+    "quantized_unique_color_count": 119,
     "content_checks": {
       "resolution": true,
       "channel_span": true,
@@ -181,8 +181,8 @@
       "edge_detail": true,
       "color_variation": true
     },
-    "orange_pixel_ratio_of_nonwhite": 0.03038,
-    "dark_pixel_ratio_of_nonwhite": 0.96141,
+    "orange_pixel_ratio_of_nonwhite": 0.03056,
+    "dark_pixel_ratio_of_nonwhite": 0.9614,
     "pass": true
   },
   "exploded_iso.png": {
@@ -222,9 +222,9 @@
       1650
     ],
     "mean_rgb": [
-      236.662,
-      238.626,
-      237.688
+      236.658,
+      238.623,
+      237.685
     ],
     "channel_spans": [
       255,
@@ -233,7 +233,7 @@
     ],
     "nonwhite_pixel_ratio": 0.08534,
     "occupied_bbox_ratio": 0.18828,
-    "edge_pixel_ratio": 0.00526,
+    "edge_pixel_ratio": 0.0053,
     "quantized_unique_color_count": 229,
     "content_checks": {
       "resolution": true,
@@ -286,7 +286,7 @@
     "mean_rgb": [
       253.18,
       249.61,
-      247.603
+      247.604
     ],
     "channel_spans": [
       255,
@@ -294,9 +294,9 @@
       255
     ],
     "nonwhite_pixel_ratio": 0.04622,
-    "occupied_bbox_ratio": 0.26127,
+    "occupied_bbox_ratio": 0.26096,
     "edge_pixel_ratio": 0.00916,
-    "quantized_unique_color_count": 222,
+    "quantized_unique_color_count": 225,
     "content_checks": {
       "resolution": true,
       "channel_span": true,
@@ -305,8 +305,8 @@
       "edge_detail": true,
       "color_variation": true
     },
-    "orange_pixel_ratio_of_nonwhite": 0.21634,
-    "dark_pixel_ratio_of_nonwhite": 0.02411,
+    "orange_pixel_ratio_of_nonwhite": 0.2167,
+    "dark_pixel_ratio_of_nonwhite": 0.02408,
     "pass": true
   },
   "component-review-optical.png": {

@@ -35,13 +35,14 @@ export LD_LIBRARY_PATH="$PWD/external/riscv64-linux-gnu/usr/lib/x86_64-linux-gnu
 # fw_jump (no payload) — proves the platform builds + links PIE:
 make -C external/opensbi/opensbi PLATFORM=eliza \
     CROSS_COMPILE=riscv64-linux-gnu- FW_PAYLOAD=n FW_JUMP=y \
-    FW_JUMP_ADDR=0x80200000 FW_JUMP_FDT_ADDR=0x82200000 \
+    FW_JUMP_ADDR=0x80200000 FW_JUMP_FDT_ADDR=0x80b00000 \
     PLATFORM_RISCV_ISA=rv64gc
 # -> build/platform/eliza/firmware/fw_jump.{elf,bin}  (banner: eliza-e1-cpu-variant)
 
 # fw_payload with the Linux kernel embedded:
 make -C external/opensbi/opensbi PLATFORM=eliza \
     CROSS_COMPILE=riscv64-linux-gnu- PLATFORM_RISCV_ISA=rv64gc \
+    FW_PAYLOAD_FDT_ADDR=0x80b00000 \
     FW_PAYLOAD_PATH=$(pwd)/external/linux/arch/riscv/boot/Image
 # -> build/platform/eliza/firmware/fw_payload.elf
 ```

@@ -114,7 +114,7 @@ def _alberta_controller_config(cfg: BenchmarkConfig, env: JointReachEnv, seed: i
     )
 
 
-def run_learner(learner, cfg: BenchmarkConfig) -> tuple[np.ndarray, np.ndarray]:
+def run_learner(learner, cfg: BenchmarkConfig) -> tuple[np.ndarray, np.ndarray, list[dict], list[list[dict]]]:
     """Train ``learner`` task-by-task, returning ``(R, baseline)``.
 
     ``R[i, j]`` = mean eval return on task ``j`` after training phase ``i``.
@@ -122,12 +122,26 @@ def run_learner(learner, cfg: BenchmarkConfig) -> tuple[np.ndarray, np.ndarray]:
     """
     T = cfg.n_tasks
     baseline = np.array([learner.eval_task(j, cfg.eval_episodes) for j in range(T)], dtype=np.float64)
+    baseline_motion = [
+        learner.eval_task_motion(j, cfg.eval_episodes)
+        if cfg.env_kind == "obstacle_course" and hasattr(learner, "eval_task_motion")
+        else {}
+        for j in range(T)
+    ]
     R = np.zeros((T, T), dtype=np.float64)
+    motion_matrix: list[list[dict]] = []
     for i in range(T):
         learner.train_phase(i, cfg.steps_per_task)
+        motion_row: list[dict] = []
         for j in range(T):
             R[i, j] = learner.eval_task(j, cfg.eval_episodes)
-    return R, baseline
+            motion_row.append(
+                learner.eval_task_motion(j, cfg.eval_episodes)
+                if cfg.env_kind == "obstacle_course" and hasattr(learner, "eval_task_motion")
+                else {}
+            )
+        motion_matrix.append(motion_row)
+    return R, baseline, baseline_motion, motion_matrix
 
 
 @dataclass
@@ -137,6 +151,8 @@ class LearnerResult:
     baseline: list[float]
     metrics: dict
     seed: int
+    motion_baseline: list[dict] | None = None
+    motion_matrix: list[list[dict]] | None = None
 
 
 def run_benchmark(cfg: BenchmarkConfig, out_dir: Path) -> dict:
@@ -163,12 +179,20 @@ def run_benchmark(cfg: BenchmarkConfig, out_dir: Path) -> dict:
                 learner = SACSequentialLearner(env, seed=seed)
             else:  # guarded above
                 raise AssertionError(name)
-            R, baseline = run_learner(learner, cfg)
+            R, baseline, motion_baseline, motion_matrix = run_learner(learner, cfg)
             metrics = compute_continual_metrics(R, baseline)
             per_seed[name].append(metrics)
             metrics_for_seed[name] = metrics
             results.append(
-                LearnerResult(name, R.tolist(), baseline.tolist(), metrics.to_dict(), seed)
+                LearnerResult(
+                    name,
+                    R.tolist(),
+                    baseline.tolist(),
+                    metrics.to_dict(),
+                    seed,
+                    motion_baseline=motion_baseline if cfg.env_kind == "obstacle_course" else None,
+                    motion_matrix=motion_matrix if cfg.env_kind == "obstacle_course" else None,
+                )
             )
 
         parts = [
@@ -179,10 +203,12 @@ def run_benchmark(cfg: BenchmarkConfig, out_dir: Path) -> dict:
 
     summary = _summarize(per_seed)
     adaptation = _adaptation_summary(results)
+    motion = _motion_summary(results) if cfg.env_kind == "obstacle_course" else {}
     bundle = {
         "config": _config_dict(cfg),
         "summary": summary,
         "adaptation": adaptation,
+        "motion": motion,
         "results": [asdict(r) for r in results],
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
@@ -242,6 +268,23 @@ def _write_report(cfg: BenchmarkConfig, summary: dict, results, out_dir: Path) -
                 f"{float(item['tasks_with_positive_gain']):.1f}/{float(item['task_count']):.1f} | "
                 f"{float(item['first_task_retention_delta']):.2f} | "
                 f"{float(item['mean_final_minus_best']):.2f} |"
+            )
+    motion = _motion_summary(results) if cfg.env_kind == "obstacle_course" else {}
+    if motion:
+        lines += [
+            "",
+            "## Physical obstacle-course rollout checks",
+            "",
+            "| learner | final success rate | final collision rate | final passed-obstacle rate | final forward progress m | min obstacle clearance m |",
+            "|---|---:|---:|---:|---:|---:|",
+        ]
+        for learner, item in motion.items():
+            lines.append(
+                f"| `{learner}` | {float(item['final_success_rate_mean']):.2f} | "
+                f"{float(item['final_collision_rate_mean']):.2f} | "
+                f"{float(item['final_passed_obstacle_rate_mean']):.2f} | "
+                f"{float(item['final_forward_progress_m_mean']):.2f} | "
+                f"{float(item['final_min_obstacle_clearance_m_min']):.2f} |"
             )
     lines += [
         "",
@@ -318,6 +361,57 @@ def _adaptation_summary(results: list[LearnerResult]) -> dict[str, dict[str, flo
         }
         summary[learner]["seeds"] = len(rows)
     return summary
+
+
+def _motion_summary(results: list[LearnerResult]) -> dict[str, dict[str, float | int]]:
+    by_learner: dict[str, list[dict[str, float]]] = {}
+    for result in results:
+        if not result.motion_matrix:
+            continue
+        final_row = result.motion_matrix[-1]
+        if not final_row:
+            continue
+        by_learner.setdefault(result.name, []).append(
+            {
+                "final_success_rate_mean": float(
+                    np.mean([float(item.get("success_rate", 0.0)) for item in final_row])
+                ),
+                "final_collision_rate_mean": float(
+                    np.mean([float(item.get("collision_rate", 0.0)) for item in final_row])
+                ),
+                "final_passed_obstacle_rate_mean": float(
+                    np.mean([float(item.get("passed_obstacle_rate", 0.0)) for item in final_row])
+                ),
+                "final_forward_progress_m_mean": float(
+                    np.mean([float(item.get("mean_forward_progress_m", 0.0)) for item in final_row])
+                ),
+                "final_min_obstacle_clearance_m_min": float(
+                    np.min([float(item.get("min_obstacle_clearance_m", 0.0)) for item in final_row])
+                ),
+            }
+        )
+    return {
+        learner: {
+            "seeds": len(rows),
+            "final_success_rate_mean": float(
+                np.mean([row["final_success_rate_mean"] for row in rows])
+            ),
+            "final_collision_rate_mean": float(
+                np.mean([row["final_collision_rate_mean"] for row in rows])
+            ),
+            "final_passed_obstacle_rate_mean": float(
+                np.mean([row["final_passed_obstacle_rate_mean"] for row in rows])
+            ),
+            "final_forward_progress_m_mean": float(
+                np.mean([row["final_forward_progress_m_mean"] for row in rows])
+            ),
+            "final_min_obstacle_clearance_m_min": float(
+                np.min([row["final_min_obstacle_clearance_m_min"] for row in rows])
+            ),
+        }
+        for learner, rows in by_learner.items()
+        if rows
+    }
 
 
 def _plot(per_seed, results, out_dir: Path) -> None:

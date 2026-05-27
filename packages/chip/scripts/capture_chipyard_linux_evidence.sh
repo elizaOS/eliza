@@ -7,7 +7,7 @@ generated_manifest="${ELIZA_GENERATED_MANIFEST:-build/chipyard/eliza_rocket/Eliz
 mode="${1:-all}"
 
 usage() {
-	printf 'usage: %s [preflight|wire|wire-preflight|plan|all|opensbi-boot|linux-boot|trap-timer-irq|isa-cache-mmu|ap-benchmarks]\n' "$0"
+	printf 'usage: %s [preflight|wire|wire-preflight|plan|all|remaining-after-linux-boot|opensbi-boot|linux-boot|trap-timer-irq|isa-cache-mmu|ap-benchmarks]\n' "$0"
 	printf '\n'
 	printf 'Set one command env var per capture. Each command must run the generated AP simulator/test and print the real transcript to stdout/stderr:\n'
 	printf '  ELIZA_OPENSBI_BOOT_CMD\n'
@@ -21,6 +21,9 @@ usage() {
 	printf '\n'
 	printf 'Run all capture lanes after setting the command env vars:\n'
 	printf '  %s all\n' "$0"
+	printf '\n'
+	printf 'After linux-boot intake has passed, capture only the dependent remaining lanes:\n'
+	printf '  %s remaining-after-linux-boot\n' "$0"
 	printf '\n'
 	printf 'Check command wiring without running the simulator:\n'
 	printf '  %s preflight\n' "$0"
@@ -365,6 +368,20 @@ wire-preflight)
 all)
 		rc=0
 		for capture_mode in opensbi-boot linux-boot trap-timer-irq isa-cache-mmu ap-benchmarks; do
+			if run_mode "$capture_mode"; then
+				:
+			else
+				status=$?
+				if [ "$status" -gt "$rc" ]; then
+					rc="$status"
+				fi
+			fi
+		done
+		exit "$rc"
+		;;
+remaining-after-linux-boot|post-linux-boot)
+		rc=0
+		for capture_mode in trap-timer-irq isa-cache-mmu ap-benchmarks; do
 			if run_mode "$capture_mode"; then
 				:
 			else

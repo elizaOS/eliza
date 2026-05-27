@@ -10,6 +10,8 @@
 // entry count (64) and is allowed because loop entries are extremely rare
 // relative to direction predictions. Replacement is invalid-first and then
 // weak/old-first so a trained loop is not displaced by one-shot loop noise.
+// Loop entries carry parity over steering state; corrupted entries are
+// treated as misses/replacement victims instead of trusted loop overrides.
 
 `timescale 1ns/1ps
 
@@ -30,7 +32,11 @@ module loop_predictor
     input  logic [VADDR_W-1:0]  upd_pc,
     input  logic [LOOP_PATH_SIG_W-1:0] upd_path_sig,
     input  logic [VADDR_W-1:0]  upd_target,
-    input  logic                upd_taken
+    input  logic                upd_taken,
+
+    input  logic                test_corrupt_parity_valid,
+    input  logic [VADDR_W-1:0]  test_corrupt_parity_pc,
+    input  logic [LOOP_PATH_SIG_W-1:0] test_corrupt_parity_path_sig
 );
 
     localparam int unsigned LOOP_PC_SIG_W = 8;
@@ -45,10 +51,37 @@ module loop_predictor
         logic [LOOP_CONF_W-1:0]     conf;
         logic                       early_exit_seen;
         logic [3:0]                 age;
+        logic                       parity;
     } loop_entry_t;
 
     loop_entry_t storage_q [LOOP_ENTRIES];
     logic [LOOP_IMLI_HIST_W-1:0] imli_hist_q;
+
+    /* verilator lint_off UNUSEDSIGNAL */
+    function automatic logic loop_payload_parity(input loop_entry_t entry);
+        loop_payload_parity = ^{
+            entry.valid,
+            entry.tag,
+            entry.pc_sig,
+            entry.path_sig,
+            entry.iter_cur,
+            entry.iter_max,
+            entry.conf,
+            entry.early_exit_seen
+        };
+    endfunction
+    /* verilator lint_on UNUSEDSIGNAL */
+
+    function automatic loop_entry_t loop_entry_with_parity(input loop_entry_t entry);
+        loop_entry_t fixed;
+        fixed = entry;
+        fixed.parity = loop_payload_parity(entry);
+        loop_entry_with_parity = fixed;
+    endfunction
+
+    function automatic logic loop_entry_parity_ok(input loop_entry_t entry);
+        loop_entry_parity_ok = entry.parity == loop_payload_parity(entry);
+    endfunction
 
     function automatic logic [LOOP_TAG_W-1:0] tag_hash(input logic [VADDR_W-1:0] pc);
         logic [LOOP_TAG_W-1:0] folded;
@@ -111,7 +144,9 @@ module loop_predictor
         hit_found = 1'b0;
         hit_idx   = '0;
         for (int unsigned li = 0; li < LOOP_ENTRIES; li++) begin
-            if (storage_q[li].valid && storage_q[li].tag == lkp_t &&
+            if (storage_q[li].valid &&
+                loop_entry_parity_ok(storage_q[li]) &&
+                storage_q[li].tag == lkp_t &&
                 storage_q[li].pc_sig == lkp_sig &&
                 storage_q[li].path_sig == lkp_effective_path_sig) begin
                 hit_found = 1'b1;
@@ -142,7 +177,9 @@ module loop_predictor
         upd_hit_found = 1'b0;
         upd_hit_idx   = '0;
         for (int unsigned li = 0; li < LOOP_ENTRIES; li++) begin
-            if (storage_q[li].valid && storage_q[li].tag == upd_t &&
+            if (storage_q[li].valid &&
+                loop_entry_parity_ok(storage_q[li]) &&
+                storage_q[li].tag == upd_t &&
                 storage_q[li].pc_sig == upd_sig &&
                 storage_q[li].path_sig == upd_effective_path_sig) begin
                 upd_hit_found = 1'b1;
@@ -155,7 +192,7 @@ module loop_predictor
         repl_idx   = '0;
         repl_score = '0;
         for (int unsigned li = 0; li < LOOP_ENTRIES; li++) begin
-            if (!storage_q[li].valid) begin
+            if (!storage_q[li].valid || !loop_entry_parity_ok(storage_q[li])) begin
                 cand_score = 5'h1f;
             end else if (storage_q[li].conf == '0) begin
                 cand_score = {1'b1, storage_q[li].age};
@@ -182,33 +219,62 @@ module loop_predictor
                     iter_max:'0,
                     conf:'0,
                     early_exit_seen:1'b0,
-                    age:'0
+                    age:'0,
+                    parity:1'b0
                 };
             end
             pmu_hit  <= 1'b0;
             imli_hist_q <= '0;
         end else begin
+            if (test_corrupt_parity_valid) begin
+                automatic logic [LOOP_TAG_W-1:0] corrupt_t;
+                automatic logic [LOOP_PC_SIG_W-1:0] corrupt_sig;
+                automatic logic [LOOP_PATH_SIG_W-1:0] corrupt_path_sig;
+                corrupt_t = tag_hash(test_corrupt_parity_pc);
+                corrupt_sig = pc_signature(test_corrupt_parity_pc);
+                corrupt_path_sig = imli_path_sig(test_corrupt_parity_path_sig, imli_hist_q);
+                for (int unsigned li = 0; li < LOOP_ENTRIES; li++) begin
+                    if (storage_q[li].valid &&
+                        loop_entry_parity_ok(storage_q[li]) &&
+                        storage_q[li].tag == corrupt_t &&
+                        storage_q[li].pc_sig == corrupt_sig &&
+                        storage_q[li].path_sig == corrupt_path_sig) begin
+                        storage_q[li].parity <= ~storage_q[li].parity;
+                    end
+                end
+            end
             pmu_hit <= lkp_hit;
             for (int unsigned li = 0; li < LOOP_ENTRIES; li++) begin
-                if (storage_q[li].valid && storage_q[li].age != '1)
+                if (storage_q[li].valid && !loop_entry_parity_ok(storage_q[li])) begin
+                    automatic loop_entry_t corrupt_entry;
+                    corrupt_entry = storage_q[li];
+                    corrupt_entry.valid = 1'b0;
+                    storage_q[li] <= loop_entry_with_parity(corrupt_entry);
+                end else if (storage_q[li].valid && storage_q[li].age != '1) begin
                     storage_q[li].age <= storage_q[li].age + 1'b1;
+                end
             end
             if (lkp_valid && hit_found)
                 storage_q[hit_idx].age <= '0;
             if (upd_valid) begin
                 if (!upd_backward) begin
                     if (upd_hit_found) begin
+                        automatic loop_entry_t next_entry;
+                        next_entry = storage_q[upd_hit_idx];
                         // Forward conditionals are not loops. If a stale entry
                         // aliases this PC/tag, clear it instead of letting a
                         // hot forward branch learn a bogus trip count.
-                        storage_q[upd_hit_idx].iter_cur <= '0;
-                        storage_q[upd_hit_idx].iter_max <= '0;
-                        storage_q[upd_hit_idx].conf     <= '0;
-                        storage_q[upd_hit_idx].early_exit_seen <= 1'b0;
-                        storage_q[upd_hit_idx].age      <= '0;
+                        next_entry.iter_cur = '0;
+                        next_entry.iter_max = '0;
+                        next_entry.conf     = '0;
+                        next_entry.early_exit_seen = 1'b0;
+                        next_entry.age      = '0;
+                        storage_q[upd_hit_idx] <= loop_entry_with_parity(next_entry);
                     end
                 end else if (upd_hit_found) begin
-                    storage_q[upd_hit_idx].age <= '0;
+                    automatic loop_entry_t next_entry;
+                    next_entry = storage_q[upd_hit_idx];
+                    next_entry.age = '0;
                     if (upd_taken) begin
                         // If the branch keeps taking after the learned exit
                         // count, the old trip count is stale. Drop confidence
@@ -217,12 +283,12 @@ module loop_predictor
                         if ((storage_q[upd_hit_idx].iter_max != '0) &&
                             (storage_q[upd_hit_idx].iter_cur >=
                              storage_q[upd_hit_idx].iter_max)) begin
-                            storage_q[upd_hit_idx].conf <= '0;
-                            storage_q[upd_hit_idx].early_exit_seen <= 1'b0;
+                            next_entry.conf = '0;
+                            next_entry.early_exit_seen = 1'b0;
                         end
                         if (storage_q[upd_hit_idx].iter_cur !=
                             {LOOP_CTR_W{1'b1}})
-                            storage_q[upd_hit_idx].iter_cur <=
+                            next_entry.iter_cur =
                                 storage_q[upd_hit_idx].iter_cur + 1'b1;
                     end else begin
                         // Loop exit: latch the observed max, raise confidence
@@ -231,9 +297,9 @@ module loop_predictor
                             storage_q[upd_hit_idx].iter_cur) begin
                             if (storage_q[upd_hit_idx].conf !=
                                 {LOOP_CONF_W{1'b1}})
-                                storage_q[upd_hit_idx].conf <=
+                                next_entry.conf =
                                     storage_q[upd_hit_idx].conf + 1'b1;
-                            storage_q[upd_hit_idx].early_exit_seen <= 1'b0;
+                            next_entry.early_exit_seen = 1'b0;
                             if (LOOP_IMLI_ENABLE != 0) begin
                                 imli_hist_q <=
                                     {imli_hist_q[LOOP_IMLI_HIST_W-LOOP_IMLI_TOKEN_W-1:0],
@@ -243,9 +309,9 @@ module loop_predictor
                                      (storage_q[upd_hit_idx].iter_cur <
                                       storage_q[upd_hit_idx].iter_max) &&
                                      !storage_q[upd_hit_idx].early_exit_seen) begin
-                            storage_q[upd_hit_idx].early_exit_seen <= 1'b1;
+                            next_entry.early_exit_seen = 1'b1;
                             if (storage_q[upd_hit_idx].conf != '0)
-                                storage_q[upd_hit_idx].conf <=
+                                next_entry.conf =
                                     storage_q[upd_hit_idx].conf - 1'b1;
                             if (LOOP_IMLI_ENABLE != 0) begin
                                 imli_hist_q <=
@@ -253,23 +319,24 @@ module loop_predictor
                                      imli_token(upd_pc, storage_q[upd_hit_idx].iter_cur)};
                             end
                         end else begin
-                            storage_q[upd_hit_idx].iter_max <=
+                            next_entry.iter_max =
                                 storage_q[upd_hit_idx].iter_cur;
-                            storage_q[upd_hit_idx].conf <= '0;
-                            storage_q[upd_hit_idx].early_exit_seen <= 1'b0;
+                            next_entry.conf = '0;
+                            next_entry.early_exit_seen = 1'b0;
                             if (LOOP_IMLI_ENABLE != 0) begin
                                 imli_hist_q <=
                                     {imli_hist_q[LOOP_IMLI_HIST_W-LOOP_IMLI_TOKEN_W-1:0],
                                      imli_token(upd_pc, storage_q[upd_hit_idx].iter_cur)};
                             end
                         end
-                        storage_q[upd_hit_idx].iter_cur <= '0;
+                        next_entry.iter_cur = '0;
                     end
+                    storage_q[upd_hit_idx] <= loop_entry_with_parity(next_entry);
                 end else begin
                     // Allocate only when this looks like a backward
                     // conditional taken branch.
                     if (upd_taken) begin
-                        storage_q[repl_idx] <= '{
+                        storage_q[repl_idx] <= loop_entry_with_parity('{
                             valid:1'b1,
                             tag:  upd_t,
                             pc_sig: upd_sig,
@@ -278,8 +345,9 @@ module loop_predictor
                             iter_max: '0,
                             conf: '0,
                             early_exit_seen: 1'b0,
-                            age: '0
-                        };
+                            age: '0,
+                            parity: 1'b0
+                        });
                     end
                 end
             end

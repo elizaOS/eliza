@@ -268,10 +268,22 @@ def dependency_summary(findings: list[dict]) -> dict[str, int]:
         "actionable_external_dependency": 0,
     }
     for finding in findings:
-        category = str(finding.get("blocker_dependency", "repo_artifact_generation"))
+        category = effective_blocker_dependency(finding)
         if category in summary:
             summary[category] += 1
     return summary
+
+
+def effective_blocker_dependency(finding: dict) -> str:
+    category = str(finding.get("blocker_dependency", "repo_artifact_generation"))
+    if category != "repo_artifact_generation":
+        return category
+    bucket = repo_generation_bucket_for_finding(finding)
+    if bucket == "repo_generatable_now":
+        return "repo_artifact_generation"
+    if bucket == "blocked_by_live_hardware":
+        return "live_device_validation"
+    return "actionable_external_dependency"
 
 
 REPO_ARTIFACT_COMMAND_GUIDANCE = {
@@ -281,6 +293,7 @@ REPO_ARTIFACT_COMMAND_GUIDANCE = {
             "docs/manufacturing/artifact-manifest.yaml",
             "docs/manufacturing/release-manifest.yaml",
             "docs/manufacturing/evidence/",
+            "build/reports/manufacturing_artifacts.json",
         ],
         "generation_commands": [
             "python3 scripts/check_manufacturing_artifacts.py --release",
@@ -293,6 +306,7 @@ REPO_ARTIFACT_COMMAND_GUIDANCE = {
             "board/kicad/e1-demo/artifact-manifest.yaml",
             "board/kicad/e1-demo/",
             "docs/manufacturing/evidence/board/",
+            "build/reports/kicad_artifacts.json",
         ],
         "generation_commands": [
             "python3 scripts/check_kicad_artifacts.py --release",
@@ -319,6 +333,7 @@ REPO_ARTIFACT_COMMAND_GUIDANCE = {
             "board/fpga/artifact-manifest.yaml",
             "board/fpga/e1_demo_fpga.yaml",
             "board/fpga/constraints/e1_demo_ulx3s.lpf",
+            "build/reports/fpga_release.json",
         ],
         "generation_commands": [
             "python3 scripts/check_fpga_release.py --release",
@@ -330,7 +345,7 @@ REPO_ARTIFACT_COMMAND_GUIDANCE = {
         "primary_paths": [
             "pd/signoff/manifest.yaml",
             "pd/openlane/runs/",
-            "build/reports/pd_signoff_status.json",
+            "build/reports/pd_signoff.json",
         ],
         "generation_commands": [
             "python3 scripts/check_pd_signoff.py",
@@ -343,7 +358,7 @@ REPO_ARTIFACT_COMMAND_GUIDANCE = {
         "primary_paths": [
             "pd/openlane/config*.json",
             "pd/openlane/runs/",
-            "build/reports/openlane_run_preflight.json",
+            "build/reports/openlane_run_release_preflight.json",
         ],
         "generation_commands": [
             "python3 scripts/check_openlane_run_preflight.py --release",
@@ -438,6 +453,7 @@ REPO_ARTIFACT_COMMAND_GUIDANCE = {
         "primary_paths": [
             "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
             "board/kicad/e1-phone/production/readiness/",
+            "build/reports/e1_phone_routed_output_content.json",
         ],
         "generation_commands": [
             "python3 scripts/check_e1_phone_routed_output_content.py",
@@ -461,6 +477,7 @@ REPO_ARTIFACT_COMMAND_GUIDANCE = {
         "primary_paths": [
             "board/kicad/e1-phone/production/test/readiness/",
             "board/kicad/e1-phone/production/reports/",
+            "build/reports/e1_phone_first_article_content.json",
         ],
         "generation_commands": [
             "python3 scripts/check_e1_phone_first_article_content.py",
@@ -655,14 +672,17 @@ def nested_report_generation_summary(guidance: dict) -> list[dict[str, object]]:
         summary = report.get("summary")
         row: dict[str, object] = {"report_path": path}
         for key in (
+            "repo_artifact_generation_plan",
             "repo_generation_summary",
             "artifact_state_summary",
             "true_missing_generation_plan",
             "routed_step_generation_plan",
             "missing_release_evidence_generation_plan",
+            "prioritized_runtime_capture_plan",
+            "next_runtime_capture_action",
         ):
             value = report.get(key)
-            if isinstance(value, dict):
+            if isinstance(value, (dict, list)):
                 row[key] = value
         if isinstance(summary, dict):
             generation_keys = {
@@ -674,6 +694,11 @@ def nested_report_generation_summary(guidance: dict) -> list[dict[str, object]]:
                 or "approval" in str(key)
                 or "external" in str(key)
                 or "live" in str(key)
+                or "blocker" in str(key)
+                or "release" in str(key)
+                or "runtime" in str(key)
+                or "capture" in str(key)
+                or "next_" in str(key)
             }
             if generation_keys:
                 row["summary_generation_fields"] = generation_keys
@@ -685,7 +710,7 @@ def nested_report_generation_summary(guidance: dict) -> list[dict[str, object]]:
 def repo_artifact_generation_groups(findings: list[dict]) -> list[dict]:
     groups: dict[str, dict] = {}
     for finding in findings:
-        if finding.get("blocker_dependency") != "repo_artifact_generation":
+        if effective_blocker_dependency(finding) != "repo_artifact_generation":
             continue
         command = str(finding.get("next_command") or "python3 scripts/product_check.py --release")
         guidance = REPO_ARTIFACT_COMMAND_GUIDANCE.get(command, {})
@@ -731,7 +756,7 @@ RELEASE_EXECUTION_PHASES = [
         "primary_paths": [
             "pd/signoff/manifest.yaml",
             "pd/openlane/runs/",
-            "build/reports/pd_signoff_status.json",
+            "build/reports/pd_signoff.json",
             "build/reports/pd_release_evidence.json",
             "build/reports/openlane_run_release_preflight.json",
             "build/reports/antenna_metadata.json",
@@ -818,6 +843,12 @@ RELEASE_EXECUTION_PHASES = [
             "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml",
             "build/reports/e1_phone_board_package.json",
             "build/reports/e1_phone_fabrication_release.json",
+            "build/reports/e1_phone_release_approval_signatures.json",
+            "build/reports/e1_phone_supplier_return_content.json",
+            "build/reports/e1_phone_routed_output_content.json",
+            "build/reports/e1_phone_factory_output_content.json",
+            "build/reports/e1_phone_first_article_content.json",
+            "build/reports/e1_phone_enclosure_mechanical_content.json",
         ],
         "commands": {
             "python3 scripts/check_e1_phone_board_package.py",
@@ -892,6 +923,7 @@ def product_release_execution_plan(
             "sample_findings": [
                 str(finding.get("message")) for finding in matched[:8] if finding.get("message")
             ],
+            "nested_report_generation_summaries": nested_report_generation_summary(phase),
         }
         if phase["phase"] == "manufacturing_package_release" and manufacturing_details:
             row["manufacturing_artifact_details"] = manufacturing_details
@@ -900,8 +932,67 @@ def product_release_execution_plan(
                 state_counts = artifact_state_summary.get("state_counts")
                 if isinstance(state_counts, dict):
                     row["manufacturing_artifact_state_counts"] = state_counts
+                row["nested_report_generation_summaries"] = [
+                    summary
+                    for summary in row["nested_report_generation_summaries"]
+                    if summary.get("report_path") != "build/reports/manufacturing_artifacts.json"
+                ]
+                row["nested_report_generation_summaries"].insert(
+                    0,
+                    {
+                        "report_path": "build/reports/manufacturing_artifacts.json",
+                        "artifact_state_summary": artifact_state_summary,
+                        "summary_generation_fields": manufacturing_details.get("summary", {}),
+                    },
+                )
         rows.append(row)
     return rows
+
+
+def next_release_action(execution_plan: list[dict]) -> dict[str, object] | None:
+    """Return the first non-local release action operators can execute or collect."""
+    for phase in execution_plan:
+        dependency_counts = phase.get("blocker_dependency_counts")
+        if not isinstance(dependency_counts, dict):
+            continue
+        external_count = int(dependency_counts.get("actionable_external_dependency") or 0)
+        live_count = int(dependency_counts.get("live_device_validation") or 0)
+        repo_count = int(dependency_counts.get("repo_artifact_generation") or 0)
+        if external_count <= 0 and live_count <= 0 and repo_count <= 0:
+            continue
+        action: dict[str, object] = {
+            "phase": phase.get("phase"),
+            "goal": phase.get("goal"),
+            "release_credit": False,
+            "blocker_dependency_counts": dependency_counts,
+            "primary_commands": phase.get("primary_commands", []),
+            "primary_paths": phase.get("primary_paths", []),
+            "acceptance_commands": phase.get("acceptance_commands", []),
+            "sample_findings": phase.get("sample_findings", []),
+            "claim_boundary": "operator_release_action_only_not_release_evidence",
+        }
+        for summary in phase.get("nested_report_generation_summaries", []):
+            if not isinstance(summary, dict):
+                continue
+            if isinstance(summary.get("next_runtime_capture_action"), dict):
+                action["next_runtime_capture_action"] = summary["next_runtime_capture_action"]
+                break
+        return action
+    return None
+
+
+def next_runtime_capture_action(execution_plan: list[dict]) -> dict[str, object] | None:
+    """Return live-device runtime capture guidance even when another phase is first."""
+    for phase in execution_plan:
+        if phase.get("phase") != "end_to_end_runtime_release":
+            continue
+        for summary in phase.get("nested_report_generation_summaries", []):
+            if not isinstance(summary, dict):
+                continue
+            action = summary.get("next_runtime_capture_action")
+            if isinstance(action, dict):
+                return action
+    return None
 
 
 def structured_findings(release_blockers: list[str], detail_checks: dict) -> list[dict]:
@@ -946,6 +1037,12 @@ def structured_findings(release_blockers: list[str], detail_checks: dict) -> lis
                 "blocker_dependency": blocker_dependency_category(f"{row.get('source')} {line}"),
             }
         )
+    return findings
+
+
+def annotate_effective_blocker_dependencies(findings: list[dict]) -> list[dict]:
+    for finding in findings:
+        finding["effective_blocker_dependency"] = effective_blocker_dependency(finding)
     return findings
 
 
@@ -1173,9 +1270,13 @@ if release_blockers:
         },
         "release_checks": [dict(check) for check in release_check_outputs],
     }
-    findings = structured_findings(release_blockers, detail_checks)
+    findings = annotate_effective_blocker_dependencies(
+        structured_findings(release_blockers, detail_checks)
+    )
     manufacturing_details = manufacturing_action_details(manufacturing_release_report)
     execution_plan = product_release_execution_plan(findings, manufacturing_details)
+    release_action = next_release_action(execution_plan)
+    runtime_capture_action = next_runtime_capture_action(execution_plan)
     report = {
         "schema": "eliza.product_release_status.v1",
         "status": "blocked",
@@ -1188,6 +1289,8 @@ if release_blockers:
         "blocker_dependency_counts": dependency_summary(findings),
         "repo_artifact_generation_groups": repo_artifact_generation_groups(findings),
         "release_execution_plan": execution_plan,
+        "next_release_action": release_action,
+        "next_runtime_capture_action": runtime_capture_action,
         "manufacturing_artifact_details": manufacturing_details,
         "next_step": "close package/FPGA/KiCad/PD/manufacturing release blockers or keep product claim below fabrication",
     }

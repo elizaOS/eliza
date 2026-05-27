@@ -48,8 +48,19 @@ class CheckpointManifest:
     normalize_observations: bool = True
 
 
-def _load_manifest(ckpt_dir: Path) -> CheckpointManifest:
+def _load_manifest(ckpt_dir: Path, *, strict: bool = False) -> CheckpointManifest:
     raw = json.loads((ckpt_dir / "manifest.json").read_text())
+    if strict:
+        missing = [
+            key
+            for key in ("profile_id", "output_dim", "curriculum_version")
+            if raw.get(key) is None
+        ]
+        if missing:
+            raise ValueError(
+                f"checkpoint manifest {ckpt_dir / 'manifest.json'} is missing "
+                f"required production field(s): {', '.join(missing)}"
+            )
     return CheckpointManifest(
         regime=raw["regime"],
         curriculum_version=int(raw["curriculum_version"]),
@@ -114,9 +125,9 @@ def _fallback_task_match(
 class TextConditionedPolicy:
     """Loads a checkpoint and exposes `act(text, proprio) -> 24-D action`."""
 
-    def __init__(self, ckpt_dir: str | Path) -> None:
+    def __init__(self, ckpt_dir: str | Path, *, strict_manifest: bool = False) -> None:
         self.ckpt_dir = Path(ckpt_dir)
-        self.manifest = _load_manifest(self.ckpt_dir)
+        self.manifest = _load_manifest(self.ckpt_dir, strict=strict_manifest)
         self._embeddings: dict[str, TaskEmbedding] = build_task_embeddings(
             pca_dim=self.manifest.pca_dim
         )

@@ -8,17 +8,24 @@ Learners: `alberta, ppo`.
 
 | metric | Alberta | PPO | better |
 |--------|---------|-----|--------|
-| ACC ↑ | 2.11 ± 0.13 | 4.15 ± 0.53 | **PPO** |
-| BWT ↑ (0 = no forgetting) | 0.00 ± 0.00 | -2.77 ± 1.87 | **Alberta** |
-| FORGETTING ↓ | 0.00 ± 0.00 | 2.80 ± 1.83 | **Alberta** |
-| FWT ↑ | 0.00 ± 0.00 | -0.04 ± 0.24 | **Alberta** |
+| ACC ↑ | 2.11 ± 0.13 | 4.08 ± 0.71 | **PPO** |
+| BWT ↑ (0 = no forgetting) | 0.00 ± 0.00 | -2.37 ± 1.50 | **Alberta** |
+| FORGETTING ↓ | 0.00 ± 0.00 | 2.42 ± 1.47 | **Alberta** |
+| FWT ↑ | 0.00 ± 0.00 | -0.00 ± 0.16 | **Alberta** |
 
 ## New-task adaptation and old-task retention
 
 | learner | mean new-task gain | positive-gain tasks | task-0 retention delta | mean final-minus-best |
 |---|---:|---:|---:|---:|
 | `alberta` | 1.70 | 2.0/4.0 | 0.00 | -1.13 |
-| `ppo` | 5.81 | 4.0/4.0 | -5.00 | -2.10 |
+| `ppo` | 5.44 | 4.0/4.0 | -5.10 | -1.81 |
+
+## Physical obstacle-course rollout checks
+
+| learner | final success rate | final collision rate | final passed-obstacle rate | final forward progress m | min obstacle clearance m |
+|---|---:|---:|---:|---:|---:|
+| `alberta` | 0.50 | 0.00 | 0.50 | -0.48 | 0.10 |
+| `ppo` | 0.08 | 0.17 | 0.42 | 1.46 | -0.02 |
 
 - **ACC** — final average performance across all tasks.
 - **BWT** — backward transfer; negative ⇒ catastrophic forgetting.

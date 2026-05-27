@@ -6,12 +6,22 @@ from pathlib import Path
 from scripts import prepare_end_to_end_full_training as prepare
 from scripts.validate_end_to_end_full_training_preflight import validate_bundle
 
+CURRICULUM_EVAL_TASKS = (
+    "stand_up",
+    "walk_forward",
+    "walk_backward",
+    "sidestep_left",
+    "sidestep_right",
+    "turn_left",
+    "turn_right",
+)
+
 
 def _bundle(tmp_path: Path) -> Path:
     prepare.prepare(
         out_dir=tmp_path,
         profile_id="asimov-1",
-        tasks=("stand_up", "walk_forward"),
+        tasks=CURRICULUM_EVAL_TASKS,
         alberta_steps=100,
         alberta_episode_steps=11,
         alberta_eval_episodes=2,
@@ -35,6 +45,7 @@ def test_validate_full_training_preflight_bundle(tmp_path: Path) -> None:
     assert report["checks"]["local_preflight_script"] is True
     assert report["checks"]["local_preflight_profiles"] is True
     assert report["checks"]["run_all_stages_script"] is True
+    assert report["checks"]["post_training_eval_contract"] is True
     assert report["checks"]["launch_template_exists"] is True
     assert report["checks"]["launch_template_hygiene"] is True
     assert report["launch_hygiene"]["checks"]["uses_training_s3_uri"] is True
@@ -92,3 +103,22 @@ def test_validate_full_training_preflight_rejects_unsafe_launch_template(
     assert report["checks"]["launch_template_hygiene"] is False
     assert report["launch_hygiene"]["checks"]["uses_repo_owned_stage_runner"] is False
     assert report["launch_hygiene"]["checks"]["uses_training_s3_uri"] is False
+
+
+def test_validate_full_training_preflight_rejects_missing_eval_native_output(
+    tmp_path: Path,
+) -> None:
+    bundle = _bundle(tmp_path)
+    script = bundle / "scripts" / "50_post_train_validation.sh"
+    script.write_text(
+        script.read_text().replace(
+            " --out evidence/curriculum_eval/eval_text_policy.json",
+            "",
+        ),
+        encoding="utf-8",
+    )
+
+    report = validate_bundle(bundle)
+
+    assert report["ok"] is False
+    assert report["checks"]["post_training_eval_contract"] is False

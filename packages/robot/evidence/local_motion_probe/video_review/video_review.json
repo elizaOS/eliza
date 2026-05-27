@@ -1,0 +1,482 @@
+{
+  "ok": false,
+  "evidence_dir": "/home/shaw/milady/eliza/packages/robot/evidence/local_motion_probe/agent_videos",
+  "out_dir": "/home/shaw/milady/eliza/packages/robot/evidence/local_motion_probe/video_review",
+  "thresholds": {
+    "samples": 5,
+    "min_frames": 5,
+    "min_nonblank_ratio": 0.05,
+    "min_mean_frame_delta": 0.01,
+    "min_visual_progress": 0.0,
+    "require_telemetry": true
+  },
+  "manual_annotations": {
+    "path": "/home/shaw/milady/eliza/packages/robot/evidence/local_motion_probe/video_review/manual_frame_review.json",
+    "loaded": false,
+    "count": 0
+  },
+  "video_count": 4,
+  "videos": [
+    {
+      "profile": "asimov-1",
+      "action": "combined_actions",
+      "video": "asimov-1/asimov-1_combined_actions.mp4",
+      "bytes": 415055,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/local_motion_probe/video_review/asimov-1_asimov-1_combined_actions_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": false,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": false,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 178,
+        "steps_requested": 240,
+        "terminated": null,
+        "truncated": null,
+        "first_done_step": null,
+        "fall_threshold": null,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "command_count": 3,
+        "failed_commands": [
+          {
+            "label": "stand up",
+            "task_id": "stand_up",
+            "steps_executed": 39,
+            "terminated": true,
+            "first_done_step": 39,
+            "torso_z": {
+              "min": 0.36758224884775953,
+              "max": 0.6380209614268368,
+              "final": 0.36758224884775953,
+              "mean": 0.5504740731281558
+            },
+            "upright_proj": {
+              "min": 0.4797879011151246,
+              "max": 0.9999827486286288,
+              "final": 0.4797879011151246,
+              "mean": 0.8438775941558563
+            },
+            "delta_x_m": {
+              "min": -0.07315133255858414,
+              "max": 0.24788896026417187,
+              "final": 0.24788896026417187,
+              "mean": 0.0301682551010489
+            },
+            "delta_yaw_rad": {
+              "min": -0.3792992370174224,
+              "max": 0.00518645484886082,
+              "final": -0.3792992370174224,
+              "mean": -0.2626159169081584
+            },
+            "action_progress_ok": null
+          },
+          {
+            "label": "walk forward",
+            "task_id": "walk_forward",
+            "steps_executed": 63,
+            "terminated": true,
+            "first_done_step": 63,
+            "torso_z": {
+              "min": 0.35701978775511245,
+              "max": 0.6430203323779368,
+              "final": 0.35701978775511245,
+              "mean": 0.6074726877251411
+            },
+            "upright_proj": {
+              "min": 0.6254250857536717,
+              "max": 0.9999996996886694,
+              "final": 0.6254250857536717,
+              "mean": 0.9244754709168854
+            },
+            "delta_x_m": {
+              "min": -0.5288675001726488,
+              "max": 0.029462115374033624,
+              "final": -0.5288675001726488,
+              "mean": -0.13152089718386897
+            },
+            "delta_yaw_rad": {
+              "min": -0.003863298961422029,
+              "max": 0.05190383329484154,
+              "final": 0.05175651441570757,
+              "mean": 0.007265453638859671
+            },
+            "action_progress_ok": false
+          },
+          {
+            "label": "turn left",
+            "task_id": "turn_left",
+            "steps_executed": 76,
+            "terminated": true,
+            "first_done_step": 76,
+            "torso_z": {
+              "min": 0.3372389935258136,
+              "max": 0.6397667305759683,
+              "final": 0.3372389935258136,
+              "mean": 0.6048484560068378
+            },
+            "upright_proj": {
+              "min": 0.38692543794635015,
+              "max": 0.9999996678156345,
+              "final": 0.38692543794635015,
+              "mean": 0.9197835217179391
+            },
+            "delta_x_m": {
+              "min": -0.6296949629401161,
+              "max": 0.01575421591152481,
+              "final": -0.6296949629401161,
+              "mean": -0.13884369377684355
+            },
+            "delta_yaw_rad": {
+              "min": -0.004741687227304583,
+              "max": 2.6034266565137675e-05,
+              "final": -0.004741687227304583,
+              "mean": -0.0006262332358171941
+            },
+            "action_progress_ok": false
+          }
+        ]
+      },
+      "open": true,
+      "frame_count": 178,
+      "fps": 30.0,
+      "width": 320,
+      "height": 240,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9375,
+      "mean_luma": 111.51466666666666,
+      "mean_frame_delta": 3.407360017299652,
+      "normalized_frame_delta": 0.013362196146273146,
+      "foreground_centroid_path": 0.0,
+      "mean_foreground_mask_delta": 0.0,
+      "visual_progress": 0.013362196146273146,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_rollout_ok, telemetry_action_progress. visual_progress=0.0133622",
+      "failed_checks": [
+        "telemetry_rollout_ok",
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "asimov-1",
+      "action": "stand_up",
+      "video": "asimov-1/asimov-1_stand_up.mp4",
+      "bytes": 115316,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/local_motion_probe/video_review/asimov-1_asimov-1_stand_up_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": false,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 39,
+        "steps_requested": 80,
+        "terminated": true,
+        "truncated": false,
+        "first_done_step": 39,
+        "fall_threshold": 0.378,
+        "action_progress_ok": null,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.36758224884775953,
+          "max": 0.6380209614268368,
+          "final": 0.36758224884775953,
+          "mean": 0.5504740731281558
+        },
+        "upright_proj": {
+          "min": 0.4797879011151246,
+          "max": 0.9999827486286288,
+          "final": 0.4797879011151246,
+          "mean": 0.8438775941558563
+        },
+        "reward": {
+          "min": -8.246360185807632,
+          "max": 5.489886571311313,
+          "final": -8.246360185807632,
+          "mean": 3.4050547574192658
+        },
+        "delta_x_m": {
+          "min": -0.07315133255858414,
+          "max": 0.24788896026417187,
+          "final": 0.24788896026417187,
+          "mean": 0.0301682551010489
+        },
+        "delta_y_m": {
+          "min": -0.17470127079579992,
+          "max": 0.003808502576895134,
+          "final": -0.17470127079579992,
+          "mean": -0.06029991091440022
+        },
+        "delta_yaw_rad": {
+          "min": -0.3792992370174224,
+          "max": 0.00518645484886082,
+          "final": -0.3792992370174224,
+          "mean": -0.2626159169081584
+        }
+      },
+      "open": true,
+      "frame_count": 39,
+      "fps": 30.0,
+      "width": 320,
+      "height": 240,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9375,
+      "mean_luma": 110.94187760416666,
+      "mean_frame_delta": 2.4997916221618652,
+      "normalized_frame_delta": 0.009803104400634765,
+      "foreground_centroid_path": 0.0,
+      "mean_foreground_mask_delta": 0.0,
+      "visual_progress": 0.009803104400634765,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_rollout_ok. visual_progress=0.0098031",
+      "failed_checks": [
+        "telemetry_rollout_ok"
+      ]
+    },
+    {
+      "profile": "asimov-1",
+      "action": "turn_left",
+      "video": "asimov-1/asimov-1_turn_left.mp4",
+      "bytes": 181836,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/local_motion_probe/video_review/asimov-1_asimov-1_turn_left_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": false,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": false,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 76,
+        "steps_requested": 80,
+        "terminated": true,
+        "truncated": false,
+        "first_done_step": 76,
+        "fall_threshold": 0.378,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.3372389935258136,
+          "max": 0.6397667305759683,
+          "final": 0.3372389935258136,
+          "mean": 0.6048484560068378
+        },
+        "upright_proj": {
+          "min": 0.38692543794635015,
+          "max": 0.9999996678156345,
+          "final": 0.38692543794635015,
+          "mean": 0.9197835217179391
+        },
+        "reward": {
+          "min": -9.893900932778639,
+          "max": 3.6007345265291026,
+          "final": -9.893900932778639,
+          "mean": 3.132730441715162
+        },
+        "delta_x_m": {
+          "min": -0.6296949629401161,
+          "max": 0.01575421591152481,
+          "final": -0.6296949629401161,
+          "mean": -0.13884369377684355
+        },
+        "delta_y_m": {
+          "min": -0.0001214616175376159,
+          "max": 7.655922520833325e-07,
+          "final": -2.8095725079111845e-05,
+          "mean": -7.271645658281134e-05
+        },
+        "delta_yaw_rad": {
+          "min": -0.004741687227304583,
+          "max": 2.6034266565137675e-05,
+          "final": -0.004741687227304583,
+          "mean": -0.0006262332358171941
+        }
+      },
+      "open": true,
+      "frame_count": 76,
+      "fps": 30.0,
+      "width": 320,
+      "height": 240,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9375,
+      "mean_luma": 111.65955989583333,
+      "mean_frame_delta": 2.7531348168849945,
+      "normalized_frame_delta": 0.010796607125039194,
+      "foreground_centroid_path": 0.0,
+      "mean_foreground_mask_delta": 0.0,
+      "visual_progress": 0.010796607125039194,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_rollout_ok, telemetry_action_progress. visual_progress=0.0107966",
+      "failed_checks": [
+        "telemetry_rollout_ok",
+        "telemetry_action_progress"
+      ]
+    },
+    {
+      "profile": "asimov-1",
+      "action": "walk_forward",
+      "video": "asimov-1/asimov-1_walk_forward.mp4",
+      "bytes": 164717,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/local_motion_probe/video_review/asimov-1_asimov-1_walk_forward_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": false,
+        "telemetry_action_progress": false
+      },
+      "telemetry": {
+        "present": true,
+        "ok": false,
+        "final_step_fall_tolerance_m": 0.01,
+        "final_step_fall_tolerance_applied": false,
+        "steps_executed": 63,
+        "steps_requested": 80,
+        "terminated": true,
+        "truncated": false,
+        "first_done_step": 63,
+        "fall_threshold": 0.378,
+        "action_progress_ok": false,
+        "min_walk_forward_progress_m": 0.05,
+        "min_turn_yaw_rad": 0.05,
+        "torso_z": {
+          "min": 0.35701978775511245,
+          "max": 0.6430203323779368,
+          "final": 0.35701978775511245,
+          "mean": 0.6074726877251411
+        },
+        "upright_proj": {
+          "min": 0.6254250857536717,
+          "max": 0.9999996996886694,
+          "final": 0.6254250857536717,
+          "mean": 0.9244754709168854
+        },
+        "reward": {
+          "min": -8.00017617394257,
+          "max": 9.419637027413865,
+          "final": -8.00017617394257,
+          "mean": 3.4967516851783316
+        },
+        "delta_x_m": {
+          "min": -0.5288675001726488,
+          "max": 0.029462115374033624,
+          "final": -0.5288675001726488,
+          "mean": -0.13152089718386897
+        },
+        "delta_y_m": {
+          "min": -0.00046837657515807926,
+          "max": 0.0022832959142024306,
+          "final": 0.0007103105994857341,
+          "mean": 0.0007756574986786184
+        },
+        "delta_yaw_rad": {
+          "min": -0.003863298961422029,
+          "max": 0.05190383329484154,
+          "final": 0.05175651441570757,
+          "mean": 0.007265453638859671
+        }
+      },
+      "open": true,
+      "frame_count": 63,
+      "fps": 30.0,
+      "width": 320,
+      "height": 240,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9375,
+      "mean_luma": 111.60109635416666,
+      "mean_frame_delta": 2.738922506570816,
+      "normalized_frame_delta": 0.010740872574787515,
+      "foreground_centroid_path": 0.0,
+      "mean_foreground_mask_delta": 0.0,
+      "visual_progress": 0.010740872574787515,
+      "ok": false,
+      "manual_frame_review": null,
+      "verdict": "needs-work",
+      "review_notes": "Frame review failed checks: telemetry_rollout_ok, telemetry_action_progress. visual_progress=0.0107409",
+      "failed_checks": [
+        "telemetry_rollout_ok",
+        "telemetry_action_progress"
+      ]
+    }
+  ],
+  "min_visual_progress": 0.009803104400634765,
+  "mean_visual_progress": 0.011175695061683656,
+  "min_mean_frame_delta": 2.4997916221618652,
+  "mean_mean_frame_delta": 2.849802240729332,
+  "min_normalized_frame_delta": 0.009803104400634765,
+  "mean_normalized_frame_delta": 0.011175695061683656,
+  "min_foreground_centroid_path": 0.0,
+  "mean_foreground_centroid_path": 0.0,
+  "min_mean_foreground_mask_delta": 0.0,
+  "mean_mean_foreground_mask_delta": 0.0,
+  "min_nonblank_ratio": 0.9375,
+  "mean_nonblank_ratio": 0.9375,
+  "profiles": [
+    "asimov-1"
+  ],
+  "actions": [
+    "combined_actions",
+    "stand_up",
+    "turn_left",
+    "walk_forward"
+  ],
+  "all_videos_reviewed_good": false,
+  "telemetry": {
+    "required": true,
+    "present_count": 4,
+    "ok_count": 0,
+    "failed_count": 4
+  },
+  "profile_action_matrix": {
+    "asimov-1": [
+      "combined_actions",
+      "stand_up",
+      "turn_left",
+      "walk_forward"
+    ]
+  }
+}

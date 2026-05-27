@@ -86,6 +86,34 @@ def make_complete_apk(
 
 
 class AndroidSystemApkPayloadTests(unittest.TestCase):
+    def test_default_apk_prefers_repo_local_eliza_apk(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            local_apk = make_apk(
+                root / "workspace/os/android/vendor/eliza/apps/Eliza/Eliza.apk",
+                ["AndroidManifest.xml"],
+            )
+            outer_apk = make_apk(
+                root / "outer/os/android/vendor/milady/apps/Milady/Milady.apk",
+                ["AndroidManifest.xml"],
+            )
+            app_config = root / "outer/apps/app/app.config.ts"
+            app_config.parent.mkdir(parents=True, exist_ok=True)
+            app_config.write_text(
+                'export default { vendorDir: "milady", appName: "Milady" };\n',
+                encoding="utf-8",
+            )
+            original_workspace = gate.WORKSPACE
+            original_outer = gate.OUTER_WORKSPACE
+            try:
+                gate.WORKSPACE = root / "workspace"
+                gate.OUTER_WORKSPACE = root / "outer"
+                self.assertEqual(gate.resolve_default_apk(), local_apk)
+            finally:
+                gate.WORKSPACE = original_workspace
+                gate.OUTER_WORKSPACE = original_outer
+            self.assertTrue(outer_apk.is_file())
+
     def test_missing_riscv64_payload_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             apk = make_apk(

@@ -858,7 +858,15 @@ def runtime_evidence_collection_inventory(evidence: dict[str, Any]) -> list[dict
                         if isinstance(path, str)
                     }
                 ),
-                "next_commands": [
+                "next_commands": sorted(
+                    {
+                        command
+                        for record in blocked_files
+                        for command in record.get("capture_commands", [])
+                        if isinstance(command, str)
+                    }
+                )
+                + [
                     "python3 packages/chip/scripts/check_android_release_readiness_contract.py",
                     PHONE_RUNTIME_VALIDATION_COMMAND,
                     PHONE_RUNTIME_AGGREGATE_COMMAND,
@@ -928,6 +936,31 @@ def runtime_capture_area_groups(
             }
         )
     return sorted(groups, key=lambda row: row["priority"])
+
+
+def next_runtime_capture_action(
+    capture_area_groups: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Return the first operator action needed to move live runtime evidence."""
+    if not capture_area_groups:
+        return None
+    group = capture_area_groups[0]
+    return {
+        "capture_area": group.get("capture_area"),
+        "priority": group.get("priority"),
+        "runtime_surface": group.get("runtime_surface"),
+        "release_credit": False,
+        "blocked_evidence_file_count": group.get("blocked_evidence_file_count", 0),
+        "blocked_evidence_class_counts": group.get("blocked_evidence_class_counts", {}),
+        "blocked_evidence_category_counts": group.get("blocked_evidence_category_counts", {}),
+        "next_artifacts": group.get("next_artifacts", []),
+        "next_commands": group.get("next_commands", []),
+        "validation_commands": [
+            PHONE_RUNTIME_VALIDATION_COMMAND,
+            PHONE_RUNTIME_AGGREGATE_COMMAND,
+        ],
+        "claim_boundary": "operator_capture_action_only_not_runtime_release_evidence",
+    }
 
 
 def run_check(args: argparse.Namespace) -> dict[str, Any]:
@@ -1004,6 +1037,7 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
     capture_plan = prioritized_runtime_capture_plan()
     collection_inventory = runtime_evidence_collection_inventory(evidence)
     capture_area_groups = runtime_capture_area_groups(collection_inventory)
+    next_capture_action = next_runtime_capture_action(capture_area_groups)
     blocked_runtime_files = [
         file_record
         for scope_record in collection_inventory
@@ -1047,11 +1081,20 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
                 REPO_ARTIFACT_GENERATION
             ],
             "highest_priority_capture_area": highest_priority_capture_area,
+            "next_runtime_capture_area": (
+                next_capture_action.get("capture_area") if next_capture_action else None
+            ),
+            "next_runtime_capture_blocked_file_count": (
+                next_capture_action.get("blocked_evidence_file_count")
+                if next_capture_action
+                else 0
+            ),
         },
         "findings": [asdict(finding) for finding in findings],
         "evidence": evidence,
         "prioritized_runtime_capture_plan": capture_plan,
         "runtime_capture_area_groups": capture_area_groups,
+        "next_runtime_capture_action": next_capture_action,
         "runtime_evidence_collection_inventory": collection_inventory,
     }
 

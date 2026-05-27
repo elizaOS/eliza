@@ -23,13 +23,13 @@ summary:
   missing_required_output_path_count: 0
   candidate_present_blocked_required_output_path_count: 37
   truly_missing_required_output_path_count: 0
-  candidate_step_size_bytes: 32959460
+  candidate_step_size_bytes: 32970696
   candidate_step_component_model_count: 89
   candidate_step_pinout_bound_model_count: 22
-  candidate_step_cad_connection_count: 21
-  candidate_step_cad_connection_terminal_marker_count: 42
-  candidate_step_cad_connection_terminal_pair_count: 21
-  validation_evidence_category_count: 5
+  candidate_step_cad_connection_count: 24
+  candidate_step_cad_connection_terminal_marker_count: 48
+  candidate_step_cad_connection_terminal_pair_count: 24
+  validation_evidence_category_count: 6
   missing_validation_evidence_category_count: 0
   release_state: blocked_fail_closed
   acceptance_allowed: false
@@ -45,46 +45,54 @@ candidate_end_to_end_context:
   candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   component_model_manifest: packages/chip/board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
   component_model_directory: packages/chip/board/kicad/e1-phone/production/step/component-models
+  component_3d_binding_report: packages/chip/board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+  component_3d_binding_matrix: packages/chip/board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv
   status: blocked_local_candidate_outputs_not_release
   release_credit: false
   source_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
   source_step: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
-  source_step_size_bytes: 32959460
-  source_step_sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+  source_step_size_bytes: 32970696
+  source_step_sha256: 9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58
   routed_step_visual_detail:
     footprint_envelope_count: 89
     pad_contact_visual_count: 1452
     route_segment_visual_count: 306
+    route_segment_net_name_count: 151
+    route_segment_trace_bound_count: 306
+    route_segment_trace_unbound_count: 0
+    controlled_impedance_segment_visual_count: 96
     board_segment_count: 306
     board_via_count: 24
+    via_net_name_count: 16
     development_footprint_refs: 89
   cad_connection_coverage:
     status: cad_connection_markers_complete_not_release
     assembly_manifest: mechanical/e1-phone/out/assembly-manifest.json
-    assembly_manifest_part_count: 222
-    assembly_manifest_connection_terminal_marker_count: 42
-    assembly_manifest_connection_solid_step_part_count: 63
+    assembly_manifest_part_count: 234
+    assembly_manifest_connection_terminal_marker_count: 48
+    assembly_manifest_connection_solid_step_part_count: 72
     assembly_manifest_missing_connection_solid_step_part_count: 0
     assembly_manifest_missing_connection_solid_step_part_names: []
-    required_connection_count: 21
-    passing_connection_count: 21
-    required_connection_terminal_marker_count: 42
-    passing_connection_terminal_pair_count: 21
-    required_connection_solid_step_part_count: 63
-    passing_connection_solid_step_part_set_count: 21
-    connection_solid_step_part_bytes_total: 982305
-    represented_net_count_total: 94
-    connection_record_count: 21
-    represented_net_list_total: 94
+    required_connection_count: 24
+    passing_connection_count: 24
+    required_connection_terminal_marker_count: 48
+    passing_connection_terminal_pair_count: 24
+    required_connection_solid_step_part_count: 72
+    passing_connection_solid_step_part_set_count: 24
+    connection_solid_step_part_bytes_total: 1125435
+    represented_net_count_total: 112
+    connection_record_count: 24
+    represented_net_list_total: 112
     all_connection_records_have_represented_nets: true
     all_connection_represented_nets_match_routed_nets: true
-    visual_route_span_total_mm: 374.0
+    visual_route_span_total_mm: 397.8
     physical_medium_counts:
       battery_power_flex: 1
       board_to_board_edge_connector: 1
       flexible_antenna_loop: 1
       flexible_printed_circuit: 10
       insulated_wire_pair: 2
+      pcb_copper_trace_group: 3
       rf_50ohm_feed: 5
       rf_tuner_interconnect: 1
     electrical_class_counts:
@@ -92,6 +100,7 @@ candidate_end_to_end_context:
       audio_power_pair: 1
       audio_receiver_pair: 1
       battery_power_sense: 1
+      battery_power_sense_board_route: 1
       cellular_wifi_rf: 5
       compute_board_to_board_mixed_speed: 1
       digital_microphone: 2
@@ -100,13 +109,15 @@ candidate_end_to_end_context:
       mipi_csi_camera_control: 2
       mipi_dsi_touch_control: 1
       nfc_loop_rf: 1
+      pd_charger_power_control_board_route: 1
       sim_esim_low_speed: 1
       top_bottom_board_mixed_signal: 1
       usb2_pd_vbus: 1
-    controlled_impedance_connection_count: 13
-    controlled_impedance_requirement_defined_count: 21
-    bend_radius_requirement_defined_count: 21
-    supplier_release_required_connection_count: 21
+      usb2_pd_vbus_board_route: 1
+    controlled_impedance_connection_count: 14
+    controlled_impedance_requirement_defined_count: 24
+    bend_radius_requirement_defined_count: 24
+    supplier_release_required_connection_count: 24
     release_credit: false
   kicad_cad_traceability:
     status: local_traceability_complete_not_release
@@ -115,20 +126,21 @@ candidate_end_to_end_context:
     step_footprint_instance_count: 89
     pinout_bound_footprint_count: 21
     all_pinout_bound_footprints_have_terminal_contract: true
-    cad_connection_count: 21
-    cad_connection_represented_net_count_total: 94
-    cad_connection_visual_route_span_total_mm: 374.0
-    cad_connection_terminal_marker_count: 42
-    cad_connection_terminal_pair_count: 21
-    cad_connection_solid_step_part_count: 63
-    cad_connection_solid_step_part_set_count: 21
-    cad_connection_solid_step_part_bytes_total: 982305
+    cad_connection_count: 24
+    cad_connection_represented_net_count_total: 112
+    cad_connection_visual_route_span_total_mm: 397.8
+    cad_connection_terminal_marker_count: 48
+    cad_connection_terminal_pair_count: 24
+    cad_connection_solid_step_part_count: 72
+    cad_connection_solid_step_part_set_count: 24
+    cad_connection_solid_step_part_bytes_total: 1125435
     cad_connection_physical_medium_counts:
       battery_power_flex: 1
       board_to_board_edge_connector: 1
       flexible_antenna_loop: 1
       flexible_printed_circuit: 10
       insulated_wire_pair: 2
+      pcb_copper_trace_group: 3
       rf_50ohm_feed: 5
       rf_tuner_interconnect: 1
     cad_connection_electrical_class_counts:
@@ -136,6 +148,7 @@ candidate_end_to_end_context:
       audio_power_pair: 1
       audio_receiver_pair: 1
       battery_power_sense: 1
+      battery_power_sense_board_route: 1
       cellular_wifi_rf: 5
       compute_board_to_board_mixed_speed: 1
       digital_microphone: 2
@@ -144,13 +157,15 @@ candidate_end_to_end_context:
       mipi_csi_camera_control: 2
       mipi_dsi_touch_control: 1
       nfc_loop_rf: 1
+      pd_charger_power_control_board_route: 1
       sim_esim_low_speed: 1
       top_bottom_board_mixed_signal: 1
       usb2_pd_vbus: 1
-    cad_connection_controlled_impedance_count: 13
-    cad_connection_controlled_impedance_requirement_defined_count: 21
-    cad_connection_bend_radius_requirement_defined_count: 21
-    cad_connection_supplier_release_required_count: 21
+      usb2_pd_vbus_board_route: 1
+    cad_connection_controlled_impedance_count: 14
+    cad_connection_controlled_impedance_requirement_defined_count: 24
+    cad_connection_bend_radius_requirement_defined_count: 24
+    cad_connection_supplier_release_required_count: 24
     incomplete_footprint_count: 0
     incomplete_cad_connection_count: 0
     release_credit: false
@@ -180,6 +195,15 @@ candidate_end_to_end_context:
     models_with_non_signal_pad_contract_count: 6
     npth_mechanical_feature_contract_count: 4
     models_with_npth_mechanical_feature_contract_count: 4
+    local_discrete_step_file_count: 89
+    local_discrete_step_imported_solid_count: 89
+    local_discrete_step_bbox_match_count: 89
+    local_discrete_step_bytes_total: 1385932
+    all_models_have_local_discrete_step_file: true
+    all_local_discrete_step_hashes_match_files: true
+    all_local_discrete_step_sizes_match_files: true
+    all_local_discrete_steps_import_as_solids: true
+    all_local_discrete_step_bboxes_match_envelopes: true
     all_pinout_bound_models_have_terminal_contract: true
     all_pinout_bound_model_contracts_match_pad_visuals: true
     all_support_pattern_models_have_explicit_provenance: true
@@ -200,12 +224,72 @@ candidate_end_to_end_context:
     models_with_npth_mechanical_feature_contract_count: 4
     all_model_records_present: true
     all_model_records_source_routed_step_bound: true
+    all_model_records_have_combined_step_locator: true
+    all_model_records_have_local_discrete_step_file: true
+    all_local_discrete_step_files_import_as_solids: true
+    all_local_discrete_step_bboxes_match_envelopes: true
+    all_model_records_have_expected_supplier_step_file: true
+    local_discrete_step_imported_solid_count: 89
+    local_discrete_step_bbox_match_count: 89
+    local_discrete_step_file_count: 89
+    local_discrete_step_bytes_total: 1385932
+    missing_supplier_discrete_model_count: 89
+    supplier_step_intake_placeholder_count: 0
+    supplier_step_intake_local_surrogate_count: 47
+    supplier_step_intake_missing_count: 0
+    supplier_step_intake_not_applicable_count: 42
+    supplier_step_intake_release_candidate_count: 0
+    supplier_step_intake_lane_counts:
+      audio_speaker_microphone_flexes: 8
+      battery_pack: 2
+      board_support_passives_mechanicals: 42
+      cellular: 8
+      charger_power_path: 1
+      display_touch: 3
+      front_camera: 2
+      pmic: 9
+      rear_camera: 2
+      side_buttons: 3
+      top_bottom_interconnect: 2
+      usb_c_receptacle_evt0: 1
+      usb_pd_controller: 1
+      wifi_bluetooth: 5
     all_records_release_credit_false: true
     all_pinout_bound_records_have_terminal_contract: true
     all_support_pattern_records_have_explicit_provenance: true
     all_terminal_contracts_match_pad_visuals: true
     all_non_signal_pad_contracts_match_pad_visuals: true
     all_npth_mechanical_features_have_contract: true
+    release_allowed: false
+  component_3d_binding_gap_matrix:
+    schema: eliza.e1_phone_component_3d_binding_gap_matrix.v1
+    status: blocked_local_component_binding_gap_matrix_not_supplier_approval
+    row_count: 89
+    csv_matrix: board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv
+    csv_matrix_sha256: b16aec2534b9aa8e39ad8f0ff45062f0118a72e573ac2eebc0ce429275c21e5b
+    csv_matrix_bytes: 50452
+    local_discrete_step_file_count: 89
+    local_discrete_step_import_pass_count: 89
+    local_discrete_step_bbox_match_count: 89
+    supplier_step_intake_status_counts:
+      not_applicable_board_level_support_pattern: 42
+      present_local_surrogate_step_not_supplier_approved: 47
+    supplier_lane_counts:
+      audio_speaker_microphone_flexes: 8
+      battery_pack: 2
+      board_support_passives_mechanicals: 42
+      cellular: 8
+      charger_power_path: 1
+      display_touch: 3
+      front_camera: 2
+      pmic: 9
+      rear_camera: 2
+      side_buttons: 3
+      top_bottom_interconnect: 2
+      usb_c_receptacle_evt0: 1
+      usb_pd_controller: 1
+      wifi_bluetooth: 5
+    release_credit: false
     release_allowed: false
   local_candidate_can_satisfy_release_gate: false
   reason_not_release: Local routed-output candidate has routed development tracks, visible component envelopes,
@@ -766,7 +850,8 @@ required_production_outputs:
   - routed_kicad_pcb
   required_statuses:
   - present_after_supplier_footprints_and_trial_route
-  - current KiCad PCB is a concept placeholder scaffold
+  - routed KiCad PCB exists only as a blocked local candidate; production source remains a concept placeholder
+    scaffold
   candidate_present_blocked: true
   candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
@@ -978,7 +1063,7 @@ required_production_outputs:
   - pcb_drc_report
   required_statuses:
   - clean_or_signed_waivers
-  - PCB has no routed copper, filled zones, or DRC evidence
+  - no release-approved routed copper, filled zones, or DRC evidence
   candidate_present_blocked: false
   candidate_manifest: ''
   candidate_release_credit: null
@@ -1404,12 +1489,12 @@ required_production_outputs:
   source_declared_present: false
   source: routed-release-plan.required_release_output_manifest
   source_id: supplier_component_3d_model_manifest
-  required_status: supplier-approved component 3D model manifest and model-to-footprint binding missing
+  required_status: supplier-approved component 3D model manifest and model-to-footprint approval missing
   owner: mechanical
   source_ids:
   - supplier_component_3d_model_manifest
   required_statuses:
-  - supplier-approved component 3D model manifest and model-to-footprint binding missing
+  - supplier-approved component 3D model manifest and model-to-footprint approval missing
   candidate_present_blocked: true
   candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
@@ -1492,7 +1577,8 @@ candidate_present_blocked_required_outputs:
   - routed_kicad_pcb
   required_statuses:
   - present_after_supplier_footprints_and_trial_route
-  - current KiCad PCB is a concept placeholder scaffold
+  - routed KiCad PCB exists only as a blocked local candidate; production source remains a concept placeholder
+    scaffold
   candidate_present_blocked: true
   candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
@@ -1997,12 +2083,12 @@ candidate_present_blocked_required_outputs:
   source_declared_present: false
   source: routed-release-plan.required_release_output_manifest
   source_id: supplier_component_3d_model_manifest
-  required_status: supplier-approved component 3D model manifest and model-to-footprint binding missing
+  required_status: supplier-approved component 3D model manifest and model-to-footprint approval missing
   owner: mechanical
   source_ids:
   - supplier_component_3d_model_manifest
   required_statuses:
-  - supplier-approved component 3D model manifest and model-to-footprint binding missing
+  - supplier-approved component 3D model manifest and model-to-footprint approval missing
   candidate_present_blocked: true
   candidate_manifest: packages/chip/board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
   candidate_release_credit: false
@@ -2182,6 +2268,27 @@ required_acceptance_evidence:
     source_declared_present: null
   - path: mechanical/e1-phone/review/routed-board-clearance.json
     resolved_path: packages/chip/mechanical/e1-phone/review/routed-board-clearance.json
+    present: true
+    artifact_kind: file
+    source_declared_present: null
+  missing_artifacts: []
+- id: component_3d_binding_gap_matrix
+  acceptance_rule: every_board_footprint_has_fail_closed_component_3d_binding_supplier_step_intake_status_local_step_locator_and_release_credit_false
+  source_declared_present: false
+  present: true
+  required_artifacts:
+  - path: board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    present: true
+    artifact_kind: file
+    source_declared_present: null
+  - path: board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv
+    resolved_path: packages/chip/board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv
+    present: true
+    artifact_kind: file
+    source_declared_present: null
+  - path: board/kicad/e1-phone/production/step/component-models/release-manifest.yaml
+    resolved_path: packages/chip/board/kicad/e1-phone/production/step/component-models/release-manifest.yaml
     present: true
     artifact_kind: file
     source_declared_present: null

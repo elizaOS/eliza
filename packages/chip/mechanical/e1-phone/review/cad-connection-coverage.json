@@ -5,22 +5,27 @@
   "claim_boundary": "CAD envelope connection coverage for flex, cable, and RF-feed markers. This proves explicit local CAD markers and routed-development net names only; it is not supplier FPC drawing, RF layout, impedance, DRC/ERC, or production release evidence.",
   "routed_development_intake": "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml",
   "routed_development_net_count": 151,
-  "required_connection_count": 21,
-  "passing_connection_count": 21,
-  "required_connection_terminal_marker_count": 42,
-  "passing_connection_terminal_pair_count": 21,
-  "required_connection_solid_step_part_count": 63,
-  "passing_connection_solid_step_part_set_count": 21,
-  "connection_solid_step_part_bytes_total": 982305,
-  "represented_net_count_total": 94,
-  "visual_route_span_total_mm": 374.0,
-  "endpoint_pair_distance_total_mm": 1145.578,
+  "required_connection_count": 24,
+  "passing_connection_count": 24,
+  "required_connection_terminal_marker_count": 48,
+  "passing_connection_terminal_pair_count": 24,
+  "required_connection_solid_step_part_count": 72,
+  "passing_connection_solid_step_part_set_count": 24,
+  "connection_solid_step_part_bytes_total": 1125435,
+  "represented_net_count_total": 112,
+  "represented_route_count_total": 113,
+  "represented_route_length_total_mm": 4069.901,
+  "represented_controlled_impedance_route_count_total": 40,
+  "all_represented_nets_have_route_trace": true,
+  "visual_route_span_total_mm": 397.8,
+  "endpoint_pair_distance_total_mm": 1180.692,
   "physical_medium_counts": {
     "battery_power_flex": 1,
     "board_to_board_edge_connector": 1,
     "flexible_antenna_loop": 1,
     "flexible_printed_circuit": 10,
     "insulated_wire_pair": 2,
+    "pcb_copper_trace_group": 3,
     "rf_50ohm_feed": 5,
     "rf_tuner_interconnect": 1
   },
@@ -29,6 +34,7 @@
     "audio_power_pair": 1,
     "audio_receiver_pair": 1,
     "battery_power_sense": 1,
+    "battery_power_sense_board_route": 1,
     "cellular_wifi_rf": 5,
     "compute_board_to_board_mixed_speed": 1,
     "digital_microphone": 2,
@@ -37,14 +43,16 @@
     "mipi_csi_camera_control": 2,
     "mipi_dsi_touch_control": 1,
     "nfc_loop_rf": 1,
+    "pd_charger_power_control_board_route": 1,
     "sim_esim_low_speed": 1,
     "top_bottom_board_mixed_signal": 1,
-    "usb2_pd_vbus": 1
+    "usb2_pd_vbus": 1,
+    "usb2_pd_vbus_board_route": 1
   },
-  "controlled_impedance_connection_count": 13,
-  "controlled_impedance_requirement_defined_count": 21,
-  "bend_radius_requirement_defined_count": 21,
-  "supplier_release_required_connection_count": 21,
+  "controlled_impedance_connection_count": 14,
+  "controlled_impedance_requirement_defined_count": 24,
+  "bend_radius_requirement_defined_count": 24,
+  "supplier_release_required_connection_count": 24,
   "release_credit": false,
   "connections": [
     {
@@ -113,15 +121,348 @@
         "TOUCH_I2C_SDA"
       ],
       "represented_net_count": 14,
+      "represented_route_ids": [
+        "DISPLAY_DSI0_P",
+        "DISPLAY_DSI0_N",
+        "DISPLAY_DSI1_P",
+        "DISPLAY_DSI1_N",
+        "DISPLAY_DSI_CLK_P",
+        "DISPLAY_DSI_CLK_N",
+        "DISPLAY_DSI2_P",
+        "DISPLAY_DSI2_N",
+        "DISPLAY_DSI3_P",
+        "DISPLAY_DSI3_N",
+        "DISPLAY_RESET",
+        "DISPLAY_TE",
+        "TOUCH_I2C_SCL",
+        "TOUCH_I2C_SDA"
+      ],
+      "represented_route_count": 14,
+      "represented_route_records": [
+        {
+          "id": "DISPLAY_DSI0_P",
+          "net": "DSI_D0_P",
+          "canonical_net": "DSI_D0_P",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 16.79,
+          "manhattan_length_mm": 21.0,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "display_touch_mipi_dsi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "DISPLAY_DSI0_N",
+          "net": "DSI_D0_N",
+          "canonical_net": "DSI_D0_N",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 16.79,
+          "manhattan_length_mm": 21.0,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "display_touch_mipi_dsi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "DISPLAY_DSI1_P",
+          "net": "DSI_D1_P",
+          "canonical_net": "DSI_D1_P",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 16.606,
+          "manhattan_length_mm": 20.0,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "display_touch_mipi_dsi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "DISPLAY_DSI1_N",
+          "net": "DSI_D1_N",
+          "canonical_net": "DSI_D1_N",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 16.606,
+          "manhattan_length_mm": 20.0,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "display_touch_mipi_dsi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "DISPLAY_DSI_CLK_P",
+          "net": "DSI_CLK_P",
+          "canonical_net": "DSI_CLK_P",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 16.044,
+          "manhattan_length_mm": 18.5,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "display_touch_mipi_dsi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [
+            "DISPLAY_DSI_BREAKOUT_VIA"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "DISPLAY_DSI_CLK_N",
+          "net": "DSI_CLK_N",
+          "canonical_net": "DSI_CLK_N",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 16.044,
+          "manhattan_length_mm": 18.5,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "display_touch_mipi_dsi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "DISPLAY_DSI2_P",
+          "net": "DSI_D2_P",
+          "canonical_net": "DSI_D2_P",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 16.606,
+          "manhattan_length_mm": 20.0,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "display_touch_mipi_dsi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "DISPLAY_DSI2_N",
+          "net": "DSI_D2_N",
+          "canonical_net": "DSI_D2_N",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 16.606,
+          "manhattan_length_mm": 20.0,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "display_touch_mipi_dsi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "DISPLAY_DSI3_P",
+          "net": "DSI_D3_P",
+          "canonical_net": "DSI_D3_P",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 16.79,
+          "manhattan_length_mm": 21.0,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "display_touch_mipi_dsi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "DISPLAY_DSI3_N",
+          "net": "DSI_D3_N",
+          "canonical_net": "DSI_D3_N",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 16.79,
+          "manhattan_length_mm": 21.0,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "display_touch_mipi_dsi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "DISPLAY_RESET",
+          "net": "DISP_RESET_N",
+          "canonical_net": "DISP_RESET_N",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 23.493,
+          "manhattan_length_mm": 27.6,
+          "route_classes": [
+            "display_camera_control"
+          ],
+          "source_domains": [
+            "display_touch_mipi_dsi"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "DISPLAY_TE",
+          "net": "DISP_TE",
+          "canonical_net": "DISP_TE",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 23.675,
+          "manhattan_length_mm": 28.3,
+          "route_classes": [
+            "display_camera_control"
+          ],
+          "source_domains": [
+            "display_touch_mipi_dsi"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "TOUCH_I2C_SCL",
+          "net": "TOUCH_I2C_SCL",
+          "canonical_net": "TOUCH_I2C_SCL",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 23.877,
+          "manhattan_length_mm": 29.0,
+          "route_classes": [
+            "display_camera_control"
+          ],
+          "source_domains": [
+            "display_touch_mipi_dsi"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "TOUCH_I2C_SDA",
+          "net": "TOUCH_I2C_SDA",
+          "canonical_net": "TOUCH_I2C_SDA",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 24.1,
+          "manhattan_length_mm": 29.7,
+          "route_classes": [
+            "display_camera_control"
+          ],
+          "source_domains": [
+            "display_touch_mipi_dsi"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "display_camera_control",
+        "mipi_dphy_diff"
+      ],
+      "represented_source_domains": [
+        "display_touch_mipi_dsi"
+      ],
+      "represented_route_length_total_mm": 260.817,
+      "represented_controlled_impedance_route_count": 10,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "display_touch_fpc_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/display_touch_fpc_from_terminal.step",
-      "from_terminal_step_bytes": 15599,
+      "from_terminal_step_bytes": 15633,
       "to_terminal_part": "display_touch_fpc_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/display_touch_fpc_to_terminal.step",
-      "to_terminal_step_bytes": 15590,
+      "to_terminal_step_bytes": 15633,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31189,
+      "terminal_step_bytes_total": 31266,
       "solid_step_part_names": [
         "display_fpc_tail",
         "display_touch_fpc_from_terminal",
@@ -129,7 +470,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46698,
+      "solid_step_part_bytes_total": 46775,
       "from_endpoint_center_mm": [
         23.0,
         55.0,
@@ -228,15 +569,329 @@
         "CAM0_I2C_SDA"
       ],
       "represented_net_count": 13,
+      "represented_route_ids": [
+        "CSI0_P",
+        "CSI0_N",
+        "CSI0_CLK_P",
+        "CSI0_CLK_N",
+        "CSI0_D1_P",
+        "CSI0_D1_N",
+        "CSI0_D2_P",
+        "CSI0_D2_N",
+        "CSI0_D3_P",
+        "CSI0_D3_N",
+        "CAM0_MCLK",
+        "CAM0_I2C_SCL",
+        "CAM0_I2C_SDA"
+      ],
+      "represented_route_count": 13,
+      "represented_route_records": [
+        {
+          "id": "CSI0_P",
+          "net": "CAM0_CSI_D0_P",
+          "canonical_net": "CAM0_CSI_D0_P",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 14.145,
+          "manhattan_length_mm": 16.0,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CSI0_N",
+          "net": "CAM0_CSI_D0_N",
+          "canonical_net": "CAM0_CSI_D0_N",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 14.145,
+          "manhattan_length_mm": 16.0,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CSI0_CLK_P",
+          "net": "CAM0_CSI_CLK_P",
+          "canonical_net": "CAM0_CSI_CLK_P",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 17.731,
+          "manhattan_length_mm": 21.4,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [
+            "CAM0_CSI_BREAKOUT_VIA"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CSI0_CLK_N",
+          "net": "CAM0_CSI_CLK_N",
+          "canonical_net": "CAM0_CSI_CLK_N",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 17.731,
+          "manhattan_length_mm": 21.4,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CSI0_D1_P",
+          "net": "CAM0_CSI_D1_P",
+          "canonical_net": "CAM0_CSI_D1_P",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 17.015,
+          "manhattan_length_mm": 21.4,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CSI0_D1_N",
+          "net": "CAM0_CSI_D1_N",
+          "canonical_net": "CAM0_CSI_D1_N",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 17.015,
+          "manhattan_length_mm": 21.4,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CSI0_D2_P",
+          "net": "CAM0_CSI_D2_P",
+          "canonical_net": "CAM0_CSI_D2_P",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 16.449,
+          "manhattan_length_mm": 21.4,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CSI0_D2_N",
+          "net": "CAM0_CSI_D2_N",
+          "canonical_net": "CAM0_CSI_D2_N",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 16.449,
+          "manhattan_length_mm": 21.4,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CSI0_D3_P",
+          "net": "CAM0_CSI_D3_P",
+          "canonical_net": "CAM0_CSI_D3_P",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 16.013,
+          "manhattan_length_mm": 21.4,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CSI0_D3_N",
+          "net": "CAM0_CSI_D3_N",
+          "canonical_net": "CAM0_CSI_D3_N",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 16.013,
+          "manhattan_length_mm": 21.4,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CAM0_MCLK",
+          "net": "CAM0_MCLK",
+          "canonical_net": "CAM0_MCLK",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 15.797,
+          "manhattan_length_mm": 19.8,
+          "route_classes": [
+            "display_camera_control"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CAM0_I2C_SCL",
+          "net": "CAM0_I2C_SCL",
+          "canonical_net": "CAM0_I2C_SCL",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 19.332,
+          "manhattan_length_mm": 26.0,
+          "route_classes": [
+            "display_camera_control"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CAM0_I2C_SDA",
+          "net": "CAM0_I2C_SDA",
+          "canonical_net": "CAM0_I2C_SDA",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 19.157,
+          "manhattan_length_mm": 25.5,
+          "route_classes": [
+            "display_camera_control"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "display_camera_control",
+        "mipi_dphy_diff"
+      ],
+      "represented_source_domains": [
+        "front_rear_camera_mipi_csi"
+      ],
+      "represented_route_length_total_mm": 216.992,
+      "represented_controlled_impedance_route_count": 10,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "rear_camera_csi_fpc_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/rear_camera_csi_fpc_from_terminal.step",
-      "from_terminal_step_bytes": 15572,
+      "from_terminal_step_bytes": 15685,
       "to_terminal_part": "rear_camera_csi_fpc_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/rear_camera_csi_fpc_to_terminal.step",
-      "to_terminal_step_bytes": 15599,
+      "to_terminal_step_bytes": 15659,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31171,
+      "terminal_step_bytes_total": 31344,
       "solid_step_part_names": [
         "rear_camera_fpc_tail",
         "rear_camera_csi_fpc_from_terminal",
@@ -244,7 +899,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46693,
+      "solid_step_part_bytes_total": 46866,
       "from_endpoint_center_mm": [
         0.0,
         0.0,
@@ -334,15 +989,233 @@
         "CAM1_I2C_SDA"
       ],
       "represented_net_count": 9,
+      "represented_route_ids": [
+        "CSI1_CLK_P",
+        "CSI1_CLK_N",
+        "CSI1_D0_P",
+        "CSI1_D0_N",
+        "CSI1_D1_P",
+        "CSI1_D1_N",
+        "CAM1_MCLK",
+        "CAM1_I2C_SCL",
+        "CAM1_I2C_SDA"
+      ],
+      "represented_route_count": 9,
+      "represented_route_records": [
+        {
+          "id": "CSI1_CLK_P",
+          "net": "CAM1_CSI_CLK_P",
+          "canonical_net": "CAM1_CSI_CLK_P",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 15.133,
+          "manhattan_length_mm": 19.4,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [
+            "CAM1_CSI_BREAKOUT_VIA"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CSI1_CLK_N",
+          "net": "CAM1_CSI_CLK_N",
+          "canonical_net": "CAM1_CSI_CLK_N",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 15.133,
+          "manhattan_length_mm": 19.4,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CSI1_D0_P",
+          "net": "CAM1_CSI_D0_P",
+          "canonical_net": "CAM1_CSI_D0_P",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 14.59,
+          "manhattan_length_mm": 19.4,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CSI1_D0_N",
+          "net": "CAM1_CSI_D0_N",
+          "canonical_net": "CAM1_CSI_D0_N",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 14.59,
+          "manhattan_length_mm": 19.4,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CSI1_D1_P",
+          "net": "CAM1_CSI_D1_P",
+          "canonical_net": "CAM1_CSI_D1_P",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 14.179,
+          "manhattan_length_mm": 19.4,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CSI1_D1_N",
+          "net": "CAM1_CSI_D1_N",
+          "canonical_net": "CAM1_CSI_D1_N",
+          "layer": "F.Cu",
+          "width_mm": 0.1,
+          "length_mm": 14.179,
+          "manhattan_length_mm": 19.4,
+          "route_classes": [
+            "mipi_dphy_diff"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "mipi_dphy_diff_impedance_ohm",
+              "value": 100
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CAM1_MCLK",
+          "net": "CAM1_MCLK",
+          "canonical_net": "CAM1_MCLK",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 16.024,
+          "manhattan_length_mm": 20.3,
+          "route_classes": [
+            "display_camera_control"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CAM1_I2C_SCL",
+          "net": "CAM1_I2C_SCL",
+          "canonical_net": "CAM1_I2C_SCL",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 19.003,
+          "manhattan_length_mm": 25.0,
+          "route_classes": [
+            "display_camera_control"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CAM1_I2C_SDA",
+          "net": "CAM1_I2C_SDA",
+          "canonical_net": "CAM1_I2C_SDA",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 18.869,
+          "manhattan_length_mm": 24.5,
+          "route_classes": [
+            "display_camera_control"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "display_camera_control",
+        "mipi_dphy_diff"
+      ],
+      "represented_source_domains": [
+        "front_rear_camera_mipi_csi"
+      ],
+      "represented_route_length_total_mm": 141.7,
+      "represented_controlled_impedance_route_count": 6,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "front_camera_csi_fpc_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/front_camera_csi_fpc_from_terminal.step",
-      "from_terminal_step_bytes": 15572,
+      "from_terminal_step_bytes": 15685,
       "to_terminal_part": "front_camera_csi_fpc_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/front_camera_csi_fpc_to_terminal.step",
-      "to_terminal_step_bytes": 15599,
+      "to_terminal_step_bytes": 15685,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31171,
+      "terminal_step_bytes_total": 31370,
       "solid_step_part_names": [
         "front_camera_fpc_tail",
         "front_camera_csi_fpc_from_terminal",
@@ -350,7 +1223,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46758,
+      "solid_step_part_bytes_total": 46957,
       "from_endpoint_center_mm": [
         0.0,
         0.0,
@@ -424,15 +1297,94 @@
         "VOL_DOWN_N"
       ],
       "represented_net_count": 3,
+      "represented_route_ids": [
+        "AON_WAKE",
+        "VOL_UP",
+        "VOL_DOWN"
+      ],
+      "represented_route_count": 3,
+      "represented_route_records": [
+        {
+          "id": "AON_WAKE",
+          "net": "PWR_KEY_N",
+          "canonical_net": "PWR_KEY_N",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 46.177,
+          "manhattan_length_mm": 50.0,
+          "route_classes": [
+            "high_current_power",
+            "test_access"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "VOL_UP",
+          "net": "VOL_UP_N",
+          "canonical_net": "VOL_UP_N",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 46.174,
+          "manhattan_length_mm": 50.0,
+          "route_classes": [
+            "high_current_power",
+            "test_access"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "VOL_DOWN",
+          "net": "VOL_DOWN_N",
+          "canonical_net": "VOL_DOWN_N",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 46.177,
+          "manhattan_length_mm": 50.0,
+          "route_classes": [
+            "high_current_power",
+            "test_access"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "high_current_power",
+        "test_access"
+      ],
+      "represented_source_domains": [
+        "factory_test_fiducials_and_manufacturing_coupons",
+        "usb_c_power_sidekey_spine"
+      ],
+      "represented_route_length_total_mm": 138.528,
+      "represented_controlled_impedance_route_count": 0,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "side_key_flex_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/side_key_flex_from_terminal.step",
-      "from_terminal_step_bytes": 15572,
+      "from_terminal_step_bytes": 15659,
       "to_terminal_part": "side_key_flex_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/side_key_flex_to_terminal.step",
-      "to_terminal_step_bytes": 15625,
+      "to_terminal_step_bytes": 15659,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31197,
+      "terminal_step_bytes_total": 31318,
       "solid_step_part_names": [
         "side_key_flex_tail",
         "side_key_flex_from_terminal",
@@ -440,7 +1392,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46732,
+      "solid_step_part_bytes_total": 46853,
       "from_endpoint_center_mm": [
         0.0,
         0.0,
@@ -510,15 +1462,117 @@
         "BAT_ID"
       ],
       "represented_net_count": 4,
+      "represented_route_ids": [
+        "BATTERY_VBAT",
+        "BATTERY_SYS",
+        "BAT_NTC",
+        "BAT_ID"
+      ],
+      "represented_route_count": 4,
+      "represented_route_records": [
+        {
+          "id": "BATTERY_VBAT",
+          "net": "VBAT",
+          "canonical_net": "VBAT",
+          "layer": "F.Cu",
+          "width_mm": 0.45,
+          "length_mm": 22.211,
+          "manhattan_length_mm": 25.0,
+          "route_classes": [
+            "high_current_power",
+            "power"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [
+            "VBAT_POWER_VIA_A"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "BATTERY_SYS",
+          "net": "SYS",
+          "canonical_net": "SYS",
+          "layer": "F.Cu",
+          "width_mm": 0.45,
+          "length_mm": 16.18,
+          "manhattan_length_mm": 20.0,
+          "route_classes": [
+            "high_current_power",
+            "power"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "split_interconnect_and_audio_haptics",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [
+            "SYS_POWER_VIA_A"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "BAT_NTC",
+          "net": "BAT_NTC",
+          "canonical_net": "BAT_NTC",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 106.08,
+          "manhattan_length_mm": 120.0,
+          "route_classes": [
+            "high_current_power"
+          ],
+          "source_domains": [
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "BAT_ID",
+          "net": "BAT_ID",
+          "canonical_net": "BAT_ID",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 106.11,
+          "manhattan_length_mm": 120.0,
+          "route_classes": [
+            "high_current_power"
+          ],
+          "source_domains": [
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "high_current_power",
+        "power"
+      ],
+      "represented_source_domains": [
+        "factory_test_fiducials_and_manufacturing_coupons",
+        "split_interconnect_and_audio_haptics",
+        "usb_c_power_sidekey_spine"
+      ],
+      "represented_route_length_total_mm": 250.581,
+      "represented_controlled_impedance_route_count": 0,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "battery_lead_flex_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/battery_lead_flex_from_terminal.step",
-      "from_terminal_step_bytes": 15590,
+      "from_terminal_step_bytes": 15633,
       "to_terminal_part": "battery_lead_flex_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/battery_lead_flex_to_terminal.step",
-      "to_terminal_step_bytes": 15572,
+      "to_terminal_step_bytes": 15633,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31162,
+      "terminal_step_bytes_total": 31266,
       "solid_step_part_names": [
         "battery_connector_lead_flex",
         "battery_lead_flex_from_terminal",
@@ -526,7 +1580,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46740,
+      "solid_step_part_bytes_total": 46844,
       "from_endpoint_center_mm": [
         0.0,
         -7.0,
@@ -599,15 +1653,162 @@
         "USB_DN"
       ],
       "represented_net_count": 5,
+      "represented_route_ids": [
+        "USB_VBUS",
+        "USB_CC1",
+        "USB_CC2",
+        "USB_DP",
+        "USB_DN"
+      ],
+      "represented_route_count": 5,
+      "represented_route_records": [
+        {
+          "id": "USB_VBUS",
+          "net": "VBUS",
+          "canonical_net": "VBUS",
+          "layer": "F.Cu",
+          "width_mm": 0.35,
+          "length_mm": 10.463,
+          "manhattan_length_mm": 12.2,
+          "route_classes": [
+            "high_current_power",
+            "power"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "split_interconnect_and_audio_haptics",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [
+            "VBUS_POWER_VIA_A",
+            "VBUS_POWER_VIA_B"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USB_CC1",
+          "net": "USB_CC1",
+          "canonical_net": "USB_CC1",
+          "layer": "F.Cu",
+          "width_mm": 0.15,
+          "length_mm": 11.323,
+          "manhattan_length_mm": 14.3,
+          "route_classes": [
+            "cc_sbu_control",
+            "test_access"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [
+            "USB_CC1_ESCAPE_VIA"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USB_CC2",
+          "net": "USB_CC2",
+          "canonical_net": "USB_CC2",
+          "layer": "F.Cu",
+          "width_mm": 0.15,
+          "length_mm": 6.188,
+          "manhattan_length_mm": 8.2,
+          "route_classes": [
+            "cc_sbu_control",
+            "test_access"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [
+            "USB_CC2_ESCAPE_VIA"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USB_DP",
+          "net": "USB_DP",
+          "canonical_net": "USB_DP",
+          "layer": "F.Cu",
+          "width_mm": 0.16,
+          "length_mm": 23.075,
+          "manhattan_length_mm": 27.8,
+          "route_classes": [
+            "usb2_diff"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "split_interconnect_and_audio_haptics",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "usb2_diff_impedance_ohm",
+              "value": 90
+            }
+          ],
+          "linked_via_ids": [
+            "USB_DP_ESCAPE_VIA"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USB_DN",
+          "net": "USB_DN",
+          "canonical_net": "USB_DN",
+          "layer": "F.Cu",
+          "width_mm": 0.16,
+          "length_mm": 14.503,
+          "manhattan_length_mm": 18.8,
+          "route_classes": [
+            "usb2_diff"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "split_interconnect_and_audio_haptics",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "usb2_diff_impedance_ohm",
+              "value": 90
+            }
+          ],
+          "linked_via_ids": [
+            "USB_DN_ESCAPE_VIA"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "cc_sbu_control",
+        "high_current_power",
+        "power",
+        "test_access",
+        "usb2_diff"
+      ],
+      "represented_source_domains": [
+        "factory_test_fiducials_and_manufacturing_coupons",
+        "split_interconnect_and_audio_haptics",
+        "usb_c_power_sidekey_spine"
+      ],
+      "represented_route_length_total_mm": 65.552,
+      "represented_controlled_impedance_route_count": 2,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "usb_c_escape_tail_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/usb_c_escape_tail_from_terminal.step",
-      "from_terminal_step_bytes": 15616,
+      "from_terminal_step_bytes": 15659,
       "to_terminal_part": "usb_c_escape_tail_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/usb_c_escape_tail_to_terminal.step",
-      "to_terminal_step_bytes": 15572,
+      "to_terminal_step_bytes": 15659,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31188,
+      "terminal_step_bytes_total": 31318,
       "solid_step_part_names": [
         "usb_c_power_data_escape_tail",
         "usb_c_escape_tail_from_terminal",
@@ -615,7 +1816,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46740,
+      "solid_step_part_bytes_total": 46870,
       "from_endpoint_center_mm": [
         0.0,
         -72.7,
@@ -634,6 +1835,734 @@
         "USB_CC2": true,
         "USB_DP": true,
         "USB_DN": true
+      },
+      "all_nets_in_routed_development_board": true,
+      "controlled_impedance_requirement_defined": true,
+      "bend_radius_requirement_defined": true,
+      "release_credit": false,
+      "pass": true
+    },
+    {
+      "id": "usb_c_to_pd_controller_escape",
+      "cad_part": "usb_pd_controller_escape_trace_marker",
+      "from": "usb_c_receptacle",
+      "to": "usb_pd_controller_package_marker",
+      "connection_type": "board_power_usb_trace",
+      "nets": [
+        "VBUS",
+        "USB_CC1",
+        "USB_CC2",
+        "USB_DP",
+        "USB_DN"
+      ],
+      "physical_medium": "pcb_copper_trace_group",
+      "electrical_class": "usb2_pd_vbus_board_route",
+      "controlled_impedance_required": true,
+      "impedance_requirement": "USB2 differential impedance plus VBUS/CC current and ESD review",
+      "min_bend_radius_mm": 0.0,
+      "supplier_release_required": true,
+      "cad_part_present": true,
+      "cad_step": "mechanical/e1-phone/out/usb_pd_controller_escape_trace_marker.step",
+      "cad_step_bytes": 15574,
+      "cad_part_bbox_mm": {
+        "min": [
+          -0.7,
+          -59.5,
+          -1.51
+        ],
+        "max": [
+          8.3,
+          -58.5,
+          -1.39
+        ],
+        "span": [
+          9.0,
+          1.0,
+          0.12
+        ]
+      },
+      "visual_route_span_mm": 9.0,
+      "represented_nets": [
+        "VBUS",
+        "USB_CC1",
+        "USB_CC2",
+        "USB_DP",
+        "USB_DN"
+      ],
+      "represented_net_count": 5,
+      "represented_route_ids": [
+        "USB_VBUS",
+        "USB_CC1",
+        "USB_CC2",
+        "USB_DP",
+        "USB_DN"
+      ],
+      "represented_route_count": 5,
+      "represented_route_records": [
+        {
+          "id": "USB_VBUS",
+          "net": "VBUS",
+          "canonical_net": "VBUS",
+          "layer": "F.Cu",
+          "width_mm": 0.35,
+          "length_mm": 10.463,
+          "manhattan_length_mm": 12.2,
+          "route_classes": [
+            "high_current_power",
+            "power"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "split_interconnect_and_audio_haptics",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [
+            "VBUS_POWER_VIA_A",
+            "VBUS_POWER_VIA_B"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USB_CC1",
+          "net": "USB_CC1",
+          "canonical_net": "USB_CC1",
+          "layer": "F.Cu",
+          "width_mm": 0.15,
+          "length_mm": 11.323,
+          "manhattan_length_mm": 14.3,
+          "route_classes": [
+            "cc_sbu_control",
+            "test_access"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [
+            "USB_CC1_ESCAPE_VIA"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USB_CC2",
+          "net": "USB_CC2",
+          "canonical_net": "USB_CC2",
+          "layer": "F.Cu",
+          "width_mm": 0.15,
+          "length_mm": 6.188,
+          "manhattan_length_mm": 8.2,
+          "route_classes": [
+            "cc_sbu_control",
+            "test_access"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [
+            "USB_CC2_ESCAPE_VIA"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USB_DP",
+          "net": "USB_DP",
+          "canonical_net": "USB_DP",
+          "layer": "F.Cu",
+          "width_mm": 0.16,
+          "length_mm": 23.075,
+          "manhattan_length_mm": 27.8,
+          "route_classes": [
+            "usb2_diff"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "split_interconnect_and_audio_haptics",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "usb2_diff_impedance_ohm",
+              "value": 90
+            }
+          ],
+          "linked_via_ids": [
+            "USB_DP_ESCAPE_VIA"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USB_DN",
+          "net": "USB_DN",
+          "canonical_net": "USB_DN",
+          "layer": "F.Cu",
+          "width_mm": 0.16,
+          "length_mm": 14.503,
+          "manhattan_length_mm": 18.8,
+          "route_classes": [
+            "usb2_diff"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "split_interconnect_and_audio_haptics",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "usb2_diff_impedance_ohm",
+              "value": 90
+            }
+          ],
+          "linked_via_ids": [
+            "USB_DN_ESCAPE_VIA"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "cc_sbu_control",
+        "high_current_power",
+        "power",
+        "test_access",
+        "usb2_diff"
+      ],
+      "represented_source_domains": [
+        "factory_test_fiducials_and_manufacturing_coupons",
+        "split_interconnect_and_audio_haptics",
+        "usb_c_power_sidekey_spine"
+      ],
+      "represented_route_length_total_mm": 65.552,
+      "represented_controlled_impedance_route_count": 2,
+      "all_represented_nets_have_route_trace": true,
+      "from_terminal_part": "usb_c_to_pd_controller_escape_from_terminal",
+      "from_terminal_step": "mechanical/e1-phone/out/usb_c_to_pd_controller_escape_from_terminal.step",
+      "from_terminal_step_bytes": 15650,
+      "to_terminal_part": "usb_c_to_pd_controller_escape_to_terminal",
+      "to_terminal_step": "mechanical/e1-phone/out/usb_c_to_pd_controller_escape_to_terminal.step",
+      "to_terminal_step_bytes": 15659,
+      "terminal_marker_count": 2,
+      "terminal_markers_present": true,
+      "terminal_step_bytes_total": 31309,
+      "solid_step_part_names": [
+        "usb_pd_controller_escape_trace_marker",
+        "usb_c_to_pd_controller_escape_from_terminal",
+        "usb_c_to_pd_controller_escape_to_terminal"
+      ],
+      "solid_step_parts_present": true,
+      "solid_step_part_count": 3,
+      "solid_step_part_bytes_total": 46883,
+      "from_endpoint_center_mm": [
+        0.0,
+        -72.7,
+        -1.6
+      ],
+      "to_endpoint_center_mm": [
+        7.0,
+        -54.8,
+        -0.07
+      ],
+      "endpoint_center_distance_mm": 19.281,
+      "endpoints_present": true,
+      "routed_net_presence": {
+        "VBUS": true,
+        "USB_CC1": true,
+        "USB_CC2": true,
+        "USB_DP": true,
+        "USB_DN": true
+      },
+      "all_nets_in_routed_development_board": true,
+      "controlled_impedance_requirement_defined": true,
+      "bend_radius_requirement_defined": true,
+      "release_credit": false,
+      "pass": true
+    },
+    {
+      "id": "pd_controller_to_charger_control",
+      "cad_part": "pd_charger_control_trace_marker",
+      "from": "usb_pd_controller_package_marker",
+      "to": "charger_package_marker",
+      "connection_type": "board_power_control_trace",
+      "nets": [
+        "VBUS",
+        "SYS",
+        "USBPD_I2C_SCL",
+        "USBPD_I2C_SDA",
+        "USBPD_IRQ_N",
+        "USBPD_RESET",
+        "CHG_I2C_SCL",
+        "CHG_I2C_SDA",
+        "CHG_IRQ_N"
+      ],
+      "physical_medium": "pcb_copper_trace_group",
+      "electrical_class": "pd_charger_power_control_board_route",
+      "controlled_impedance_required": false,
+      "impedance_requirement": "VBUS/SYS current capacity plus I2C/IRQ routing and sequencing review",
+      "min_bend_radius_mm": 0.0,
+      "supplier_release_required": true,
+      "cad_part_present": true,
+      "cad_step": "mechanical/e1-phone/out/pd_charger_control_trace_marker.step",
+      "cad_step_bytes": 15578,
+      "cad_part_bbox_mm": {
+        "min": [
+          -3.5,
+          -55.3,
+          -1.51
+        ],
+        "max": [
+          6.5,
+          -54.3,
+          -1.39
+        ],
+        "span": [
+          10.0,
+          1.0,
+          0.12
+        ]
+      },
+      "visual_route_span_mm": 10.0,
+      "represented_nets": [
+        "VBUS",
+        "SYS",
+        "USBPD_I2C_SCL",
+        "USBPD_I2C_SDA",
+        "USBPD_IRQ_N",
+        "USBPD_RESET",
+        "CHG_I2C_SCL",
+        "CHG_I2C_SDA",
+        "CHG_IRQ_N"
+      ],
+      "represented_net_count": 9,
+      "represented_route_ids": [
+        "USB_VBUS",
+        "BATTERY_SYS",
+        "USBPD_I2C_SCL",
+        "USBPD_I2C_SDA",
+        "USBPD_IRQ",
+        "USBPD_RESET",
+        "CHG_I2C_SCL",
+        "CHG_I2C_SDA",
+        "CHG_IRQ"
+      ],
+      "represented_route_count": 9,
+      "represented_route_records": [
+        {
+          "id": "USB_VBUS",
+          "net": "VBUS",
+          "canonical_net": "VBUS",
+          "layer": "F.Cu",
+          "width_mm": 0.35,
+          "length_mm": 10.463,
+          "manhattan_length_mm": 12.2,
+          "route_classes": [
+            "high_current_power",
+            "power"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "split_interconnect_and_audio_haptics",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [
+            "VBUS_POWER_VIA_A",
+            "VBUS_POWER_VIA_B"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "BATTERY_SYS",
+          "net": "SYS",
+          "canonical_net": "SYS",
+          "layer": "F.Cu",
+          "width_mm": 0.45,
+          "length_mm": 16.18,
+          "manhattan_length_mm": 20.0,
+          "route_classes": [
+            "high_current_power",
+            "power"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "split_interconnect_and_audio_haptics",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [
+            "SYS_POWER_VIA_A"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USBPD_I2C_SCL",
+          "net": "USBPD_I2C_SCL",
+          "canonical_net": "USBPD_I2C_SCL",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 107.283,
+          "manhattan_length_mm": 122.2,
+          "route_classes": [
+            "cc_sbu_control"
+          ],
+          "source_domains": [
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USBPD_I2C_SDA",
+          "net": "USBPD_I2C_SDA",
+          "canonical_net": "USBPD_I2C_SDA",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 107.283,
+          "manhattan_length_mm": 122.2,
+          "route_classes": [
+            "cc_sbu_control"
+          ],
+          "source_domains": [
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USBPD_IRQ",
+          "net": "USBPD_IRQ_N",
+          "canonical_net": "USBPD_IRQ_N",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 107.283,
+          "manhattan_length_mm": 122.2,
+          "route_classes": [
+            "cc_sbu_control"
+          ],
+          "source_domains": [
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USBPD_RESET",
+          "net": "USBPD_RESET",
+          "canonical_net": "USBPD_RESET",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 107.283,
+          "manhattan_length_mm": 122.2,
+          "route_classes": [
+            "cc_sbu_control"
+          ],
+          "source_domains": [
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CHG_I2C_SCL",
+          "net": "CHG_I2C_SCL",
+          "canonical_net": "CHG_I2C_SCL",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 38.949,
+          "manhattan_length_mm": 45.1,
+          "route_classes": [
+            "high_current_power"
+          ],
+          "source_domains": [
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CHG_I2C_SDA",
+          "net": "CHG_I2C_SDA",
+          "canonical_net": "CHG_I2C_SDA",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 38.561,
+          "manhattan_length_mm": 44.7,
+          "route_classes": [
+            "high_current_power"
+          ],
+          "source_domains": [
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CHG_IRQ",
+          "net": "CHG_IRQ_N",
+          "canonical_net": "CHG_IRQ_N",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 39.337,
+          "manhattan_length_mm": 45.5,
+          "route_classes": [
+            "high_current_power"
+          ],
+          "source_domains": [
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "cc_sbu_control",
+        "high_current_power",
+        "power"
+      ],
+      "represented_source_domains": [
+        "factory_test_fiducials_and_manufacturing_coupons",
+        "split_interconnect_and_audio_haptics",
+        "usb_c_power_sidekey_spine"
+      ],
+      "represented_route_length_total_mm": 572.622,
+      "represented_controlled_impedance_route_count": 0,
+      "all_represented_nets_have_route_trace": true,
+      "from_terminal_part": "pd_controller_to_charger_control_from_terminal",
+      "from_terminal_step": "mechanical/e1-phone/out/pd_controller_to_charger_control_from_terminal.step",
+      "from_terminal_step_bytes": 15659,
+      "to_terminal_part": "pd_controller_to_charger_control_to_terminal",
+      "to_terminal_step": "mechanical/e1-phone/out/pd_controller_to_charger_control_to_terminal.step",
+      "to_terminal_step_bytes": 15685,
+      "terminal_marker_count": 2,
+      "terminal_markers_present": true,
+      "terminal_step_bytes_total": 31344,
+      "solid_step_part_names": [
+        "pd_charger_control_trace_marker",
+        "pd_controller_to_charger_control_from_terminal",
+        "pd_controller_to_charger_control_to_terminal"
+      ],
+      "solid_step_parts_present": true,
+      "solid_step_part_count": 3,
+      "solid_step_part_bytes_total": 46922,
+      "from_endpoint_center_mm": [
+        7.0,
+        -54.8,
+        -0.07
+      ],
+      "to_endpoint_center_mm": [
+        -4.0,
+        -54.8,
+        -0.08
+      ],
+      "endpoint_center_distance_mm": 11.0,
+      "endpoints_present": true,
+      "routed_net_presence": {
+        "VBUS": true,
+        "SYS": true,
+        "USBPD_I2C_SCL": true,
+        "USBPD_I2C_SDA": true,
+        "USBPD_IRQ_N": true,
+        "USBPD_RESET": true,
+        "CHG_I2C_SCL": true,
+        "CHG_I2C_SDA": true,
+        "CHG_IRQ_N": true
+      },
+      "all_nets_in_routed_development_board": true,
+      "controlled_impedance_requirement_defined": true,
+      "bend_radius_requirement_defined": true,
+      "release_credit": false,
+      "pass": true
+    },
+    {
+      "id": "charger_to_battery_power_sense",
+      "cad_part": "charger_battery_power_sense_trace_marker",
+      "from": "charger_package_marker",
+      "to": "battery_connector_package_marker",
+      "connection_type": "board_battery_power_sense_trace",
+      "nets": [
+        "VBAT",
+        "SYS",
+        "BAT_NTC",
+        "BAT_ID"
+      ],
+      "physical_medium": "pcb_copper_trace_group",
+      "electrical_class": "battery_power_sense_board_route",
+      "controlled_impedance_required": false,
+      "impedance_requirement": "VBAT/SYS current capacity plus NTC/ID kelvin-sense review",
+      "min_bend_radius_mm": 0.0,
+      "supplier_release_required": true,
+      "cad_part_present": true,
+      "cad_step": "mechanical/e1-phone/out/charger_battery_power_sense_trace_marker.step",
+      "cad_step_bytes": 15552,
+      "cad_part_bbox_mm": {
+        "min": [
+          -7.0,
+          -55.8,
+          -1.26
+        ],
+        "max": [
+          -3.0,
+          -51.0,
+          -1.14
+        ],
+        "span": [
+          4.0,
+          4.8,
+          0.12
+        ]
+      },
+      "visual_route_span_mm": 4.8,
+      "represented_nets": [
+        "VBAT",
+        "SYS",
+        "BAT_NTC",
+        "BAT_ID"
+      ],
+      "represented_net_count": 4,
+      "represented_route_ids": [
+        "BATTERY_VBAT",
+        "BATTERY_SYS",
+        "BAT_NTC",
+        "BAT_ID"
+      ],
+      "represented_route_count": 4,
+      "represented_route_records": [
+        {
+          "id": "BATTERY_VBAT",
+          "net": "VBAT",
+          "canonical_net": "VBAT",
+          "layer": "F.Cu",
+          "width_mm": 0.45,
+          "length_mm": 22.211,
+          "manhattan_length_mm": 25.0,
+          "route_classes": [
+            "high_current_power",
+            "power"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [
+            "VBAT_POWER_VIA_A"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "BATTERY_SYS",
+          "net": "SYS",
+          "canonical_net": "SYS",
+          "layer": "F.Cu",
+          "width_mm": 0.45,
+          "length_mm": 16.18,
+          "manhattan_length_mm": 20.0,
+          "route_classes": [
+            "high_current_power",
+            "power"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "split_interconnect_and_audio_haptics",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [
+            "SYS_POWER_VIA_A"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "BAT_NTC",
+          "net": "BAT_NTC",
+          "canonical_net": "BAT_NTC",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 106.08,
+          "manhattan_length_mm": 120.0,
+          "route_classes": [
+            "high_current_power"
+          ],
+          "source_domains": [
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "BAT_ID",
+          "net": "BAT_ID",
+          "canonical_net": "BAT_ID",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 106.11,
+          "manhattan_length_mm": 120.0,
+          "route_classes": [
+            "high_current_power"
+          ],
+          "source_domains": [
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "high_current_power",
+        "power"
+      ],
+      "represented_source_domains": [
+        "factory_test_fiducials_and_manufacturing_coupons",
+        "split_interconnect_and_audio_haptics",
+        "usb_c_power_sidekey_spine"
+      ],
+      "represented_route_length_total_mm": 250.581,
+      "represented_controlled_impedance_route_count": 0,
+      "all_represented_nets_have_route_trace": true,
+      "from_terminal_part": "charger_to_battery_power_sense_from_terminal",
+      "from_terminal_step": "mechanical/e1-phone/out/charger_to_battery_power_sense_from_terminal.step",
+      "from_terminal_step_bytes": 15685,
+      "to_terminal_part": "charger_to_battery_power_sense_to_terminal",
+      "to_terminal_step": "mechanical/e1-phone/out/charger_to_battery_power_sense_to_terminal.step",
+      "to_terminal_step_bytes": 15685,
+      "terminal_marker_count": 2,
+      "terminal_markers_present": true,
+      "terminal_step_bytes_total": 31370,
+      "solid_step_part_names": [
+        "charger_battery_power_sense_trace_marker",
+        "charger_to_battery_power_sense_from_terminal",
+        "charger_to_battery_power_sense_to_terminal"
+      ],
+      "solid_step_parts_present": true,
+      "solid_step_part_count": 3,
+      "solid_step_part_bytes_total": 46922,
+      "from_endpoint_center_mm": [
+        -4.0,
+        -54.8,
+        -0.08
+      ],
+      "to_endpoint_center_mm": [
+        -6.0,
+        -50.4,
+        -0.08
+      ],
+      "endpoint_center_distance_mm": 4.833,
+      "endpoints_present": true,
+      "routed_net_presence": {
+        "VBAT": true,
+        "SYS": true,
+        "BAT_NTC": true,
+        "BAT_ID": true
       },
       "all_nets_in_routed_development_board": true,
       "controlled_impedance_requirement_defined": true,
@@ -683,15 +2612,67 @@
         "SPK_N"
       ],
       "represented_net_count": 2,
+      "represented_route_ids": [
+        "SPEAKER_P",
+        "SPEAKER_N"
+      ],
+      "represented_route_count": 2,
+      "represented_route_records": [
+        {
+          "id": "SPEAKER_P",
+          "net": "SPK_P",
+          "canonical_net": "SPK_P",
+          "layer": "F.Cu",
+          "width_mm": 0.16,
+          "length_mm": 12.403,
+          "manhattan_length_mm": 15.0,
+          "route_classes": [
+            "audio_control_aon"
+          ],
+          "source_domains": [
+            "split_interconnect_and_audio_haptics"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "SPEAKER_N",
+          "net": "SPK_N",
+          "canonical_net": "SPK_N",
+          "layer": "F.Cu",
+          "width_mm": 0.16,
+          "length_mm": 12.157,
+          "manhattan_length_mm": 14.5,
+          "route_classes": [
+            "audio_control_aon"
+          ],
+          "source_domains": [
+            "split_interconnect_and_audio_haptics"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "audio_control_aon"
+      ],
+      "represented_source_domains": [
+        "split_interconnect_and_audio_haptics"
+      ],
+      "represented_route_length_total_mm": 24.56,
+      "represented_controlled_impedance_route_count": 0,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "bottom_speaker_lead_pair_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/bottom_speaker_lead_pair_from_terminal.step",
-      "from_terminal_step_bytes": 15572,
+      "from_terminal_step_bytes": 15659,
       "to_terminal_part": "bottom_speaker_lead_pair_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/bottom_speaker_lead_pair_to_terminal.step",
-      "to_terminal_step_bytes": 15625,
+      "to_terminal_step_bytes": 15659,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31197,
+      "terminal_step_bytes_total": 31318,
       "solid_step_part_names": [
         "bottom_speaker_lead_pair",
         "bottom_speaker_lead_pair_from_terminal",
@@ -699,7 +2680,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46749,
+      "solid_step_part_bytes_total": 46870,
       "from_endpoint_center_mm": [
         0.0,
         0.0,
@@ -764,15 +2745,67 @@
         "PDM_DAT"
       ],
       "represented_net_count": 2,
+      "represented_route_ids": [
+        "PDM_CLK",
+        "PDM_DAT"
+      ],
+      "represented_route_count": 2,
+      "represented_route_records": [
+        {
+          "id": "PDM_CLK",
+          "net": "PDM_CLK",
+          "canonical_net": "PDM_CLK",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 106.17,
+          "manhattan_length_mm": 140.5,
+          "route_classes": [
+            "audio_control_aon"
+          ],
+          "source_domains": [
+            "split_interconnect_and_audio_haptics"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "PDM_DAT",
+          "net": "PDM_DAT",
+          "canonical_net": "PDM_DAT",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 106.17,
+          "manhattan_length_mm": 140.5,
+          "route_classes": [
+            "audio_control_aon"
+          ],
+          "source_domains": [
+            "split_interconnect_and_audio_haptics"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "audio_control_aon"
+      ],
+      "represented_source_domains": [
+        "split_interconnect_and_audio_haptics"
+      ],
+      "represented_route_length_total_mm": 212.34,
+      "represented_controlled_impedance_route_count": 0,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "bottom_microphone_flex_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/bottom_microphone_flex_from_terminal.step",
-      "from_terminal_step_bytes": 15572,
+      "from_terminal_step_bytes": 15659,
       "to_terminal_part": "bottom_microphone_flex_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/bottom_microphone_flex_to_terminal.step",
-      "to_terminal_step_bytes": 15651,
+      "to_terminal_step_bytes": 15711,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31223,
+      "terminal_step_bytes_total": 31370,
       "solid_step_part_names": [
         "bottom_microphone_flex_leads",
         "bottom_microphone_flex_from_terminal",
@@ -780,7 +2813,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46806,
+      "solid_step_part_bytes_total": 46953,
       "from_endpoint_center_mm": [
         0.0,
         0.0,
@@ -845,15 +2878,67 @@
         "PDM_DAT"
       ],
       "represented_net_count": 2,
+      "represented_route_ids": [
+        "PDM_CLK",
+        "PDM_DAT"
+      ],
+      "represented_route_count": 2,
+      "represented_route_records": [
+        {
+          "id": "PDM_CLK",
+          "net": "PDM_CLK",
+          "canonical_net": "PDM_CLK",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 106.17,
+          "manhattan_length_mm": 140.5,
+          "route_classes": [
+            "audio_control_aon"
+          ],
+          "source_domains": [
+            "split_interconnect_and_audio_haptics"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "PDM_DAT",
+          "net": "PDM_DAT",
+          "canonical_net": "PDM_DAT",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 106.17,
+          "manhattan_length_mm": 140.5,
+          "route_classes": [
+            "audio_control_aon"
+          ],
+          "source_domains": [
+            "split_interconnect_and_audio_haptics"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "audio_control_aon"
+      ],
+      "represented_source_domains": [
+        "split_interconnect_and_audio_haptics"
+      ],
+      "represented_route_length_total_mm": 212.34,
+      "represented_controlled_impedance_route_count": 0,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "top_microphone_flex_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/top_microphone_flex_from_terminal.step",
-      "from_terminal_step_bytes": 15572,
+      "from_terminal_step_bytes": 15659,
       "to_terminal_part": "top_microphone_flex_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/top_microphone_flex_to_terminal.step",
-      "to_terminal_step_bytes": 15599,
+      "to_terminal_step_bytes": 15659,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31171,
+      "terminal_step_bytes_total": 31318,
       "solid_step_part_names": [
         "top_microphone_flex_tail",
         "top_microphone_flex_from_terminal",
@@ -861,7 +2946,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46736,
+      "solid_step_part_bytes_total": 46883,
       "from_endpoint_center_mm": [
         0.0,
         0.0,
@@ -926,15 +3011,67 @@
         "SPK_N"
       ],
       "represented_net_count": 2,
+      "represented_route_ids": [
+        "SPEAKER_P",
+        "SPEAKER_N"
+      ],
+      "represented_route_count": 2,
+      "represented_route_records": [
+        {
+          "id": "SPEAKER_P",
+          "net": "SPK_P",
+          "canonical_net": "SPK_P",
+          "layer": "F.Cu",
+          "width_mm": 0.16,
+          "length_mm": 12.403,
+          "manhattan_length_mm": 15.0,
+          "route_classes": [
+            "audio_control_aon"
+          ],
+          "source_domains": [
+            "split_interconnect_and_audio_haptics"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "SPEAKER_N",
+          "net": "SPK_N",
+          "canonical_net": "SPK_N",
+          "layer": "F.Cu",
+          "width_mm": 0.16,
+          "length_mm": 12.157,
+          "manhattan_length_mm": 14.5,
+          "route_classes": [
+            "audio_control_aon"
+          ],
+          "source_domains": [
+            "split_interconnect_and_audio_haptics"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "audio_control_aon"
+      ],
+      "represented_source_domains": [
+        "split_interconnect_and_audio_haptics"
+      ],
+      "represented_route_length_total_mm": 24.56,
+      "represented_controlled_impedance_route_count": 0,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "earpiece_receiver_lead_flex_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/earpiece_receiver_lead_flex_from_terminal.step",
-      "from_terminal_step_bytes": 15572,
+      "from_terminal_step_bytes": 15633,
       "to_terminal_part": "earpiece_receiver_lead_flex_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/earpiece_receiver_lead_flex_to_terminal.step",
-      "to_terminal_step_bytes": 15564,
+      "to_terminal_step_bytes": 15607,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31136,
+      "terminal_step_bytes_total": 31240,
       "solid_step_part_names": [
         "earpiece_receiver_lead_flex",
         "earpiece_receiver_lead_flex_from_terminal",
@@ -942,7 +3079,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46666,
+      "solid_step_part_bytes_total": 46770,
       "from_endpoint_center_mm": [
         0.0,
         0.0,
@@ -1005,15 +3142,67 @@
         "HAPTIC_OUT"
       ],
       "represented_net_count": 1,
+      "represented_route_ids": [
+        "HAPTIC_OUT_A",
+        "HAPTIC_OUT_B"
+      ],
+      "represented_route_count": 2,
+      "represented_route_records": [
+        {
+          "id": "HAPTIC_OUT_A",
+          "net": "HAPTIC_OUT",
+          "canonical_net": "HAPTIC_OUT",
+          "layer": "F.Cu",
+          "width_mm": 0.16,
+          "length_mm": 9.937,
+          "manhattan_length_mm": 13.0,
+          "route_classes": [
+            "audio_control_aon"
+          ],
+          "source_domains": [
+            "split_interconnect_and_audio_haptics"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "HAPTIC_OUT_B",
+          "net": "HAPTIC_OUT",
+          "canonical_net": "HAPTIC_OUT",
+          "layer": "F.Cu",
+          "width_mm": 0.16,
+          "length_mm": 9.937,
+          "manhattan_length_mm": 13.0,
+          "route_classes": [
+            "audio_control_aon"
+          ],
+          "source_domains": [
+            "split_interconnect_and_audio_haptics"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "audio_control_aon"
+      ],
+      "represented_source_domains": [
+        "split_interconnect_and_audio_haptics"
+      ],
+      "represented_route_length_total_mm": 19.874,
+      "represented_controlled_impedance_route_count": 0,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "haptic_flex_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/haptic_flex_from_terminal.step",
-      "from_terminal_step_bytes": 15572,
+      "from_terminal_step_bytes": 15607,
       "to_terminal_part": "haptic_flex_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/haptic_flex_to_terminal.step",
-      "to_terminal_step_bytes": 15625,
+      "to_terminal_step_bytes": 15685,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31197,
+      "terminal_step_bytes_total": 31292,
       "solid_step_part_names": [
         "haptic_flex_tail",
         "haptic_flex_from_terminal",
@@ -1021,7 +3210,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46758,
+      "solid_step_part_bytes_total": 46853,
       "from_endpoint_center_mm": [
         0.0,
         0.0,
@@ -1099,15 +3288,196 @@
         "ESIM_IO"
       ],
       "represented_net_count": 9,
+      "represented_route_ids": [
+        "USIM_VCC",
+        "USIM_CLK",
+        "USIM_RST",
+        "USIM_IO",
+        "USIM_DET",
+        "ESIM_VCC",
+        "ESIM_CLK",
+        "ESIM_RST",
+        "ESIM_IO"
+      ],
+      "represented_route_count": 9,
+      "represented_route_records": [
+        {
+          "id": "USIM_VCC",
+          "net": "USIM_VCC",
+          "canonical_net": "USIM_VCC",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 46.526,
+          "manhattan_length_mm": 60.7,
+          "route_classes": [
+            "sim_nfc_sensor"
+          ],
+          "source_domains": [
+            "cellular_wifi_bt_rf_host"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USIM_CLK",
+          "net": "USIM_CLK",
+          "canonical_net": "USIM_CLK",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 46.355,
+          "manhattan_length_mm": 60.2,
+          "route_classes": [
+            "sim_nfc_sensor"
+          ],
+          "source_domains": [
+            "cellular_wifi_bt_rf_host"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USIM_RST",
+          "net": "USIM_RST",
+          "canonical_net": "USIM_RST",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 46.19,
+          "manhattan_length_mm": 59.7,
+          "route_classes": [
+            "sim_nfc_sensor"
+          ],
+          "source_domains": [
+            "cellular_wifi_bt_rf_host"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USIM_IO",
+          "net": "USIM_IO",
+          "canonical_net": "USIM_IO",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 46.031,
+          "manhattan_length_mm": 59.2,
+          "route_classes": [
+            "sim_nfc_sensor"
+          ],
+          "source_domains": [
+            "cellular_wifi_bt_rf_host"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USIM_DET",
+          "net": "USIM_DET",
+          "canonical_net": "USIM_DET",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 45.877,
+          "manhattan_length_mm": 58.7,
+          "route_classes": [],
+          "source_domains": [],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "ESIM_VCC",
+          "net": "ESIM_VCC",
+          "canonical_net": "ESIM_VCC",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 49.743,
+          "manhattan_length_mm": 62.7,
+          "route_classes": [
+            "sim_nfc_sensor"
+          ],
+          "source_domains": [
+            "cellular_wifi_bt_rf_host"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "ESIM_CLK",
+          "net": "ESIM_CLK",
+          "canonical_net": "ESIM_CLK",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 49.609,
+          "manhattan_length_mm": 62.2,
+          "route_classes": [
+            "sim_nfc_sensor"
+          ],
+          "source_domains": [
+            "cellular_wifi_bt_rf_host"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "ESIM_RST",
+          "net": "ESIM_RST",
+          "canonical_net": "ESIM_RST",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 49.48,
+          "manhattan_length_mm": 61.7,
+          "route_classes": [
+            "sim_nfc_sensor"
+          ],
+          "source_domains": [
+            "cellular_wifi_bt_rf_host"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "ESIM_IO",
+          "net": "ESIM_IO",
+          "canonical_net": "ESIM_IO",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 49.356,
+          "manhattan_length_mm": 61.2,
+          "route_classes": [
+            "sim_nfc_sensor"
+          ],
+          "source_domains": [
+            "cellular_wifi_bt_rf_host"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "sim_nfc_sensor"
+      ],
+      "represented_source_domains": [
+        "cellular_wifi_bt_rf_host"
+      ],
+      "represented_route_length_total_mm": 429.167,
+      "represented_controlled_impedance_route_count": 0,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "sim_esim_signal_flex_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/sim_esim_signal_flex_from_terminal.step",
-      "from_terminal_step_bytes": 15572,
+      "from_terminal_step_bytes": 15633,
       "to_terminal_part": "sim_esim_signal_flex_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/sim_esim_signal_flex_to_terminal.step",
-      "to_terminal_step_bytes": 15625,
+      "to_terminal_step_bytes": 15685,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31197,
+      "terminal_step_bytes_total": 31318,
       "solid_step_part_names": [
         "sim_esim_signal_flex_marker",
         "sim_esim_signal_flex_from_terminal",
@@ -1115,7 +3485,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46780,
+      "solid_step_part_bytes_total": 46901,
       "from_endpoint_center_mm": [
         0.0,
         0.0,
@@ -1191,15 +3561,85 @@
         "NFC_EN"
       ],
       "represented_net_count": 4,
+      "represented_route_ids": [
+        "NFC_RF_P_LOOP",
+        "NFC_RF_N_LOOP",
+        "NFC_IRQ",
+        "NFC_ENABLE"
+      ],
+      "represented_route_count": 4,
+      "represented_route_records": [
+        {
+          "id": "NFC_RF_P_LOOP",
+          "net": "NFC_RF_P",
+          "canonical_net": "NFC_RF_P",
+          "layer": "F.Cu",
+          "width_mm": 0.16,
+          "length_mm": 7.654,
+          "manhattan_length_mm": 8.8,
+          "route_classes": [],
+          "source_domains": [],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "NFC_RF_N_LOOP",
+          "net": "NFC_RF_N",
+          "canonical_net": "NFC_RF_N",
+          "layer": "F.Cu",
+          "width_mm": 0.16,
+          "length_mm": 5.687,
+          "manhattan_length_mm": 6.4,
+          "route_classes": [],
+          "source_domains": [],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "NFC_IRQ",
+          "net": "NFC_IRQ_N",
+          "canonical_net": "NFC_IRQ_N",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 13.127,
+          "manhattan_length_mm": 17.4,
+          "route_classes": [],
+          "source_domains": [],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "NFC_ENABLE",
+          "net": "NFC_EN",
+          "canonical_net": "NFC_EN",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 13.153,
+          "manhattan_length_mm": 17.3,
+          "route_classes": [],
+          "source_domains": [],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [],
+      "represented_source_domains": [],
+      "represented_route_length_total_mm": 39.621,
+      "represented_controlled_impedance_route_count": 0,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "nfc_loop_antenna_flex_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/nfc_loop_antenna_flex_from_terminal.step",
-      "from_terminal_step_bytes": 15643,
+      "from_terminal_step_bytes": 15685,
       "to_terminal_part": "nfc_loop_antenna_flex_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/nfc_loop_antenna_flex_to_terminal.step",
-      "to_terminal_step_bytes": 15643,
+      "to_terminal_step_bytes": 15685,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31286,
+      "terminal_step_bytes_total": 31370,
       "solid_step_part_names": [
         "nfc_loop_antenna_flex_marker",
         "nfc_loop_antenna_flex_from_terminal",
@@ -1207,7 +3647,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46843,
+      "solid_step_part_bytes_total": 46927,
       "from_endpoint_center_mm": [
         -26.0,
         30.0,
@@ -1288,15 +3728,227 @@
         "LPDDR_CK_N"
       ],
       "represented_net_count": 9,
+      "represented_route_ids": [
+        "USB_DP",
+        "USB_DN",
+        "DISPLAY_RESET",
+        "TOUCH_I2C_SCL",
+        "TOUCH_I2C_SDA",
+        "CAM0_MCLK",
+        "CAM1_MCLK",
+        "LPDDR_CK_P",
+        "LPDDR_CK_N"
+      ],
+      "represented_route_count": 9,
+      "represented_route_records": [
+        {
+          "id": "USB_DP",
+          "net": "USB_DP",
+          "canonical_net": "USB_DP",
+          "layer": "F.Cu",
+          "width_mm": 0.16,
+          "length_mm": 23.075,
+          "manhattan_length_mm": 27.8,
+          "route_classes": [
+            "usb2_diff"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "split_interconnect_and_audio_haptics",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "usb2_diff_impedance_ohm",
+              "value": 90
+            }
+          ],
+          "linked_via_ids": [
+            "USB_DP_ESCAPE_VIA"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USB_DN",
+          "net": "USB_DN",
+          "canonical_net": "USB_DN",
+          "layer": "F.Cu",
+          "width_mm": 0.16,
+          "length_mm": 14.503,
+          "manhattan_length_mm": 18.8,
+          "route_classes": [
+            "usb2_diff"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "split_interconnect_and_audio_haptics",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "usb2_diff_impedance_ohm",
+              "value": 90
+            }
+          ],
+          "linked_via_ids": [
+            "USB_DN_ESCAPE_VIA"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "DISPLAY_RESET",
+          "net": "DISP_RESET_N",
+          "canonical_net": "DISP_RESET_N",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 23.493,
+          "manhattan_length_mm": 27.6,
+          "route_classes": [
+            "display_camera_control"
+          ],
+          "source_domains": [
+            "display_touch_mipi_dsi"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "TOUCH_I2C_SCL",
+          "net": "TOUCH_I2C_SCL",
+          "canonical_net": "TOUCH_I2C_SCL",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 23.877,
+          "manhattan_length_mm": 29.0,
+          "route_classes": [
+            "display_camera_control"
+          ],
+          "source_domains": [
+            "display_touch_mipi_dsi"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "TOUCH_I2C_SDA",
+          "net": "TOUCH_I2C_SDA",
+          "canonical_net": "TOUCH_I2C_SDA",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 24.1,
+          "manhattan_length_mm": 29.7,
+          "route_classes": [
+            "display_camera_control"
+          ],
+          "source_domains": [
+            "display_touch_mipi_dsi"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CAM0_MCLK",
+          "net": "CAM0_MCLK",
+          "canonical_net": "CAM0_MCLK",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 15.797,
+          "manhattan_length_mm": 19.8,
+          "route_classes": [
+            "display_camera_control"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "CAM1_MCLK",
+          "net": "CAM1_MCLK",
+          "canonical_net": "CAM1_MCLK",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 16.024,
+          "manhattan_length_mm": 20.3,
+          "route_classes": [
+            "display_camera_control"
+          ],
+          "source_domains": [
+            "front_rear_camera_mipi_csi"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "LPDDR_CK_P",
+          "net": "LPDDR_CK_P",
+          "canonical_net": "LPDDR_CK_P",
+          "layer": "F.Cu",
+          "width_mm": 0.09,
+          "length_mm": 4.155,
+          "manhattan_length_mm": 5.7,
+          "route_classes": [
+            "lpddr"
+          ],
+          "source_domains": [
+            "compute_memory_storage_escape"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [
+            "COMPUTE_MEMORY_ESCAPE_VIA_A"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "LPDDR_CK_N",
+          "net": "LPDDR_CK_N",
+          "canonical_net": "LPDDR_CK_N",
+          "layer": "F.Cu",
+          "width_mm": 0.09,
+          "length_mm": 4.421,
+          "manhattan_length_mm": 6.2,
+          "route_classes": [
+            "lpddr"
+          ],
+          "source_domains": [
+            "compute_memory_storage_escape"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "display_camera_control",
+        "lpddr",
+        "usb2_diff"
+      ],
+      "represented_source_domains": [
+        "compute_memory_storage_escape",
+        "display_touch_mipi_dsi",
+        "factory_test_fiducials_and_manufacturing_coupons",
+        "front_rear_camera_mipi_csi",
+        "split_interconnect_and_audio_haptics",
+        "usb_c_power_sidekey_spine"
+      ],
+      "represented_route_length_total_mm": 149.445,
+      "represented_controlled_impedance_route_count": 2,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "compute_som_sodimm_carrier_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/compute_som_sodimm_carrier_from_terminal.step",
-      "from_terminal_step_bytes": 15572,
+      "from_terminal_step_bytes": 15633,
       "to_terminal_part": "compute_som_sodimm_carrier_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/compute_som_sodimm_carrier_to_terminal.step",
-      "to_terminal_step_bytes": 15590,
+      "to_terminal_step_bytes": 15607,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31162,
+      "terminal_step_bytes_total": 31240,
       "solid_step_part_names": [
         "compute_som_sodimm_connector",
         "compute_som_sodimm_carrier_from_terminal",
@@ -1304,7 +3956,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46723,
+      "solid_step_part_bytes_total": 46801,
       "from_endpoint_center_mm": [
         0.0,
         0.0,
@@ -1374,15 +4026,55 @@
         "CELL_RF_MAIN"
       ],
       "represented_net_count": 1,
+      "represented_route_ids": [
+        "CELL_MAIN_RF"
+      ],
+      "represented_route_count": 1,
+      "represented_route_records": [
+        {
+          "id": "CELL_MAIN_RF",
+          "net": "CELL_RF_MAIN",
+          "canonical_net": "CELL_RF_MAIN",
+          "layer": "F.Cu",
+          "width_mm": 0.22,
+          "length_mm": 10.612,
+          "manhattan_length_mm": 12.5,
+          "route_classes": [
+            "rf_single"
+          ],
+          "source_domains": [
+            "cellular_wifi_bt_rf_host",
+            "factory_test_fiducials_and_manufacturing_coupons"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "rf_single_impedance_ohm",
+              "value": 50
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "rf_single"
+      ],
+      "represented_source_domains": [
+        "cellular_wifi_bt_rf_host",
+        "factory_test_fiducials_and_manufacturing_coupons"
+      ],
+      "represented_route_length_total_mm": 10.612,
+      "represented_controlled_impedance_route_count": 1,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "cellular_main_rf_feed_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/cellular_main_rf_feed_from_terminal.step",
-      "from_terminal_step_bytes": 15625,
+      "from_terminal_step_bytes": 15685,
       "to_terminal_part": "cellular_main_rf_feed_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/cellular_main_rf_feed_to_terminal.step",
-      "to_terminal_step_bytes": 15590,
+      "to_terminal_step_bytes": 15607,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31215,
+      "terminal_step_bytes_total": 31292,
       "solid_step_part_names": [
         "cellular_rf_feed_development_envelope",
         "cellular_main_rf_feed_from_terminal",
@@ -1390,7 +4082,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46888,
+      "solid_step_part_bytes_total": 46965,
       "from_endpoint_center_mm": [
         -15.5,
         45.0,
@@ -1452,15 +4144,55 @@
         "CELL_RF_DIV"
       ],
       "represented_net_count": 1,
+      "represented_route_ids": [
+        "CELL_DIV_RF"
+      ],
+      "represented_route_count": 1,
+      "represented_route_records": [
+        {
+          "id": "CELL_DIV_RF",
+          "net": "CELL_RF_DIV",
+          "canonical_net": "CELL_RF_DIV",
+          "layer": "F.Cu",
+          "width_mm": 0.22,
+          "length_mm": 9.583,
+          "manhattan_length_mm": 11.3,
+          "route_classes": [
+            "rf_single"
+          ],
+          "source_domains": [
+            "cellular_wifi_bt_rf_host",
+            "factory_test_fiducials_and_manufacturing_coupons"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "rf_single_impedance_ohm",
+              "value": 50
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "rf_single"
+      ],
+      "represented_source_domains": [
+        "cellular_wifi_bt_rf_host",
+        "factory_test_fiducials_and_manufacturing_coupons"
+      ],
+      "represented_route_length_total_mm": 9.583,
+      "represented_controlled_impedance_route_count": 1,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "cellular_diversity_rf_feed_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/cellular_diversity_rf_feed_from_terminal.step",
-      "from_terminal_step_bytes": 15625,
+      "from_terminal_step_bytes": 15685,
       "to_terminal_part": "cellular_diversity_rf_feed_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/cellular_diversity_rf_feed_to_terminal.step",
-      "to_terminal_step_bytes": 15616,
+      "to_terminal_step_bytes": 15659,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31241,
+      "terminal_step_bytes_total": 31344,
       "solid_step_part_names": [
         "cellular_div_rf_feed_development_envelope",
         "cellular_diversity_rf_feed_from_terminal",
@@ -1468,7 +4200,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46862,
+      "solid_step_part_bytes_total": 46965,
       "from_endpoint_center_mm": [
         -15.5,
         45.0,
@@ -1532,15 +4264,75 @@
         "RF_VBAT"
       ],
       "represented_net_count": 2,
+      "represented_route_ids": [
+        "CELL_DIV_RF",
+        "RF_VBAT_TP"
+      ],
+      "represented_route_count": 2,
+      "represented_route_records": [
+        {
+          "id": "CELL_DIV_RF",
+          "net": "CELL_RF_DIV",
+          "canonical_net": "CELL_RF_DIV",
+          "layer": "F.Cu",
+          "width_mm": 0.22,
+          "length_mm": 9.583,
+          "manhattan_length_mm": 11.3,
+          "route_classes": [
+            "rf_single"
+          ],
+          "source_domains": [
+            "cellular_wifi_bt_rf_host",
+            "factory_test_fiducials_and_manufacturing_coupons"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "rf_single_impedance_ohm",
+              "value": 50
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "RF_VBAT_TP",
+          "net": "RF_VBAT",
+          "canonical_net": "RF_VBAT",
+          "layer": "F.Cu",
+          "width_mm": 0.28,
+          "length_mm": 214.313,
+          "manhattan_length_mm": 252.0,
+          "route_classes": [
+            "power"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "power",
+        "rf_single"
+      ],
+      "represented_source_domains": [
+        "cellular_wifi_bt_rf_host",
+        "factory_test_fiducials_and_manufacturing_coupons"
+      ],
+      "represented_route_length_total_mm": 223.896,
+      "represented_controlled_impedance_route_count": 1,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "cellular_antenna_aperture_tuner_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/cellular_antenna_aperture_tuner_from_terminal.step",
-      "from_terminal_step_bytes": 15625,
+      "from_terminal_step_bytes": 15685,
       "to_terminal_part": "cellular_antenna_aperture_tuner_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/cellular_antenna_aperture_tuner_to_terminal.step",
-      "to_terminal_step_bytes": 15616,
+      "to_terminal_step_bytes": 15650,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31241,
+      "terminal_step_bytes_total": 31335,
       "solid_step_part_names": [
         "antenna_aperture_tuner",
         "cellular_antenna_aperture_tuner_from_terminal",
@@ -1548,7 +4340,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46820,
+      "solid_step_part_bytes_total": 46914,
       "from_endpoint_center_mm": [
         -15.5,
         45.0,
@@ -1611,15 +4403,55 @@
         "CELL_GNSS_RF"
       ],
       "represented_net_count": 1,
+      "represented_route_ids": [
+        "GNSS_RF"
+      ],
+      "represented_route_count": 1,
+      "represented_route_records": [
+        {
+          "id": "GNSS_RF",
+          "net": "CELL_GNSS_RF",
+          "canonical_net": "CELL_GNSS_RF",
+          "layer": "F.Cu",
+          "width_mm": 0.18,
+          "length_mm": 7.202,
+          "manhattan_length_mm": 8.5,
+          "route_classes": [
+            "rf_single"
+          ],
+          "source_domains": [
+            "cellular_wifi_bt_rf_host",
+            "factory_test_fiducials_and_manufacturing_coupons"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "rf_single_impedance_ohm",
+              "value": 50
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "rf_single"
+      ],
+      "represented_source_domains": [
+        "cellular_wifi_bt_rf_host",
+        "factory_test_fiducials_and_manufacturing_coupons"
+      ],
+      "represented_route_length_total_mm": 7.202,
+      "represented_controlled_impedance_route_count": 1,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "cellular_gnss_rf_feed_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/cellular_gnss_rf_feed_from_terminal.step",
-      "from_terminal_step_bytes": 15625,
+      "from_terminal_step_bytes": 15685,
       "to_terminal_part": "cellular_gnss_rf_feed_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/cellular_gnss_rf_feed_to_terminal.step",
-      "to_terminal_step_bytes": 15625,
+      "to_terminal_step_bytes": 15685,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31250,
+      "terminal_step_bytes_total": 31370,
       "solid_step_part_names": [
         "cellular_gnss_rf_feed_development_envelope",
         "cellular_gnss_rf_feed_from_terminal",
@@ -1627,7 +4459,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46871,
+      "solid_step_part_bytes_total": 46991,
       "from_endpoint_center_mm": [
         -15.5,
         45.0,
@@ -1689,15 +4521,57 @@
         "WIFI_BT_RF0"
       ],
       "represented_net_count": 1,
+      "represented_route_ids": [
+        "WIFI_RF0"
+      ],
+      "represented_route_count": 1,
+      "represented_route_records": [
+        {
+          "id": "WIFI_RF0",
+          "net": "WIFI_BT_RF0",
+          "canonical_net": "WIFI_BT_RF0",
+          "layer": "F.Cu",
+          "width_mm": 0.18,
+          "length_mm": 12.139,
+          "manhattan_length_mm": 13.5,
+          "route_classes": [
+            "rf_single",
+            "test_access"
+          ],
+          "source_domains": [
+            "cellular_wifi_bt_rf_host",
+            "factory_test_fiducials_and_manufacturing_coupons"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "rf_single_impedance_ohm",
+              "value": 50
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "rf_single",
+        "test_access"
+      ],
+      "represented_source_domains": [
+        "cellular_wifi_bt_rf_host",
+        "factory_test_fiducials_and_manufacturing_coupons"
+      ],
+      "represented_route_length_total_mm": 12.139,
+      "represented_controlled_impedance_route_count": 1,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "wifi_bt_rf0_feed_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/wifi_bt_rf0_feed_from_terminal.step",
-      "from_terminal_step_bytes": 15599,
+      "from_terminal_step_bytes": 15659,
       "to_terminal_part": "wifi_bt_rf0_feed_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/wifi_bt_rf0_feed_to_terminal.step",
-      "to_terminal_step_bytes": 15599,
+      "to_terminal_step_bytes": 15659,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31198,
+      "terminal_step_bytes_total": 31318,
       "solid_step_part_names": [
         "wifi_bt_rf_feed_development_envelope",
         "wifi_bt_rf0_feed_from_terminal",
@@ -1705,7 +4579,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46845,
+      "solid_step_part_bytes_total": 46965,
       "from_endpoint_center_mm": [
         20.0,
         42.0,
@@ -1767,15 +4641,57 @@
         "WIFI_BT_RF1"
       ],
       "represented_net_count": 1,
+      "represented_route_ids": [
+        "WIFI_RF1"
+      ],
+      "represented_route_count": 1,
+      "represented_route_records": [
+        {
+          "id": "WIFI_RF1",
+          "net": "WIFI_BT_RF1",
+          "canonical_net": "WIFI_BT_RF1",
+          "layer": "F.Cu",
+          "width_mm": 0.18,
+          "length_mm": 12.139,
+          "manhattan_length_mm": 13.5,
+          "route_classes": [
+            "rf_single",
+            "test_access"
+          ],
+          "source_domains": [
+            "cellular_wifi_bt_rf_host",
+            "factory_test_fiducials_and_manufacturing_coupons"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "rf_single_impedance_ohm",
+              "value": 50
+            }
+          ],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "rf_single",
+        "test_access"
+      ],
+      "represented_source_domains": [
+        "cellular_wifi_bt_rf_host",
+        "factory_test_fiducials_and_manufacturing_coupons"
+      ],
+      "represented_route_length_total_mm": 12.139,
+      "represented_controlled_impedance_route_count": 1,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "wifi_bt_rf1_feed_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/wifi_bt_rf1_feed_from_terminal.step",
-      "from_terminal_step_bytes": 15599,
+      "from_terminal_step_bytes": 15633,
       "to_terminal_part": "wifi_bt_rf1_feed_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/wifi_bt_rf1_feed_to_terminal.step",
-      "to_terminal_step_bytes": 15599,
+      "to_terminal_step_bytes": 15659,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31198,
+      "terminal_step_bytes_total": 31292,
       "solid_step_part_names": [
         "wifi_bt_rf1_feed_development_envelope",
         "wifi_bt_rf1_feed_from_terminal",
@@ -1783,7 +4699,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46793,
+      "solid_step_part_bytes_total": 46887,
       "from_endpoint_center_mm": [
         20.0,
         42.0,
@@ -1859,15 +4775,204 @@
         "PDM_DAT"
       ],
       "represented_net_count": 8,
+      "represented_route_ids": [
+        "USB_DP",
+        "USB_DN",
+        "I2S_BCLK",
+        "I2S_LRCLK",
+        "I2S_DOUT",
+        "I2S_DIN",
+        "PDM_CLK",
+        "PDM_DAT"
+      ],
+      "represented_route_count": 8,
+      "represented_route_records": [
+        {
+          "id": "USB_DP",
+          "net": "USB_DP",
+          "canonical_net": "USB_DP",
+          "layer": "F.Cu",
+          "width_mm": 0.16,
+          "length_mm": 23.075,
+          "manhattan_length_mm": 27.8,
+          "route_classes": [
+            "usb2_diff"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "split_interconnect_and_audio_haptics",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "usb2_diff_impedance_ohm",
+              "value": 90
+            }
+          ],
+          "linked_via_ids": [
+            "USB_DP_ESCAPE_VIA"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "USB_DN",
+          "net": "USB_DN",
+          "canonical_net": "USB_DN",
+          "layer": "F.Cu",
+          "width_mm": 0.16,
+          "length_mm": 14.503,
+          "manhattan_length_mm": 18.8,
+          "route_classes": [
+            "usb2_diff"
+          ],
+          "source_domains": [
+            "factory_test_fiducials_and_manufacturing_coupons",
+            "split_interconnect_and_audio_haptics",
+            "usb_c_power_sidekey_spine"
+          ],
+          "controlled_impedance_targets_ohm": [
+            {
+              "constraint": "usb2_diff_impedance_ohm",
+              "value": 90
+            }
+          ],
+          "linked_via_ids": [
+            "USB_DN_ESCAPE_VIA"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "I2S_BCLK",
+          "net": "I2S_BCLK",
+          "canonical_net": "I2S_BCLK",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 117.395,
+          "manhattan_length_mm": 142.9,
+          "route_classes": [
+            "audio_control_aon"
+          ],
+          "source_domains": [
+            "split_interconnect_and_audio_haptics"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [
+            "AUDIO_I2S_VIA"
+          ],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "I2S_LRCLK",
+          "net": "I2S_LRCLK",
+          "canonical_net": "I2S_LRCLK",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 117.395,
+          "manhattan_length_mm": 142.9,
+          "route_classes": [
+            "audio_control_aon"
+          ],
+          "source_domains": [
+            "split_interconnect_and_audio_haptics"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "I2S_DOUT",
+          "net": "I2S_DOUT",
+          "canonical_net": "I2S_DOUT",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 117.395,
+          "manhattan_length_mm": 142.9,
+          "route_classes": [
+            "audio_control_aon"
+          ],
+          "source_domains": [
+            "split_interconnect_and_audio_haptics"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "I2S_DIN",
+          "net": "I2S_DIN",
+          "canonical_net": "I2S_DIN",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 117.395,
+          "manhattan_length_mm": 142.9,
+          "route_classes": [
+            "audio_control_aon"
+          ],
+          "source_domains": [
+            "split_interconnect_and_audio_haptics"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "PDM_CLK",
+          "net": "PDM_CLK",
+          "canonical_net": "PDM_CLK",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 106.17,
+          "manhattan_length_mm": 140.5,
+          "route_classes": [
+            "audio_control_aon"
+          ],
+          "source_domains": [
+            "split_interconnect_and_audio_haptics"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        },
+        {
+          "id": "PDM_DAT",
+          "net": "PDM_DAT",
+          "canonical_net": "PDM_DAT",
+          "layer": "F.Cu",
+          "width_mm": 0.12,
+          "length_mm": 106.17,
+          "manhattan_length_mm": 140.5,
+          "route_classes": [
+            "audio_control_aon"
+          ],
+          "source_domains": [
+            "split_interconnect_and_audio_haptics"
+          ],
+          "controlled_impedance_targets_ohm": [],
+          "linked_via_ids": [],
+          "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+        }
+      ],
+      "represented_route_classes": [
+        "audio_control_aon",
+        "usb2_diff"
+      ],
+      "represented_source_domains": [
+        "factory_test_fiducials_and_manufacturing_coupons",
+        "split_interconnect_and_audio_haptics",
+        "usb_c_power_sidekey_spine"
+      ],
+      "represented_route_length_total_mm": 719.498,
+      "represented_controlled_impedance_route_count": 2,
+      "all_represented_nets_have_route_trace": true,
       "from_terminal_part": "split_interconnect_side_flex_from_terminal",
       "from_terminal_step": "mechanical/e1-phone/out/split_interconnect_side_flex_from_terminal.step",
-      "from_terminal_step_bytes": 15599,
+      "from_terminal_step_bytes": 15633,
       "to_terminal_part": "split_interconnect_side_flex_to_terminal",
       "to_terminal_step": "mechanical/e1-phone/out/split_interconnect_side_flex_to_terminal.step",
-      "to_terminal_step_bytes": 15625,
+      "to_terminal_step_bytes": 15685,
       "terminal_marker_count": 2,
       "terminal_markers_present": true,
-      "terminal_step_bytes_total": 31224,
+      "terminal_step_bytes_total": 31318,
       "solid_step_part_names": [
         "split_interconnect_side_flex",
         "split_interconnect_side_flex_from_terminal",
@@ -1875,7 +4980,7 @@
       ],
       "solid_step_parts_present": true,
       "solid_step_part_count": 3,
-      "solid_step_part_bytes_total": 46804,
+      "solid_step_part_bytes_total": 46898,
       "from_endpoint_center_mm": [
         22.0,
         37.5,

@@ -1,0 +1,12 @@
+# Trim nonessential Buildroot packages from the generated-AP initramfs.
+# The smoke workload uses BusyBox plus the three files copied by the workload.
+# CONFIG fragments are merged after br-base/buildroot-config.
+# BR2_PACKAGE_BASH is not set
+# BR2_PACKAGE_COREUTILS is not set
+# BR2_PACKAGE_PROCPS_NG is not set
+# BR2_PACKAGE_LESS is not set
+# BR2_PACKAGE_VIM is not set
+# BR2_PACKAGE_VIM_RUNTIME is not set
+# BR2_PACKAGE_PCIUTILS is not set
+# BR2_PACKAGE_ZEROMQ is not set
+# BR2_PACKAGE_ZMQPP is not set

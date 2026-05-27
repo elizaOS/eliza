@@ -2,7 +2,7 @@
 
 Status: rough CAD estimate, not measured hardware mass.
 
-Total estimated mass: 182.18 g
+Total estimated mass: 182.19 g
 
 ## By Role
 
@@ -12,10 +12,12 @@ Total estimated mass: 182.18 g
 - `PCB`: 4.17 g
 - `PCB assembly marker`: 0.0 g
 - `PCB component marker`: 0.0 g
+- `PCB connector marker`: 0.0 g
 - `PCB mechanical marker`: 0.0 g
 - `PCB passive marker`: 0.0 g
 - `PCB protection marker`: 0.0 g
 - `PCB test marker`: 0.0 g
+- `PCB trace marker`: 0.01 g
 - `RF feed`: 0.0 g
 - `RF keepout`: 0.0 g
 - `RF tuner`: 0.0 g

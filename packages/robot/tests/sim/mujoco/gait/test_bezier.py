@@ -19,7 +19,6 @@ from eliza_robot.sim.mujoco.gait import (
     get_rz,
 )
 
-
 # ----------------------------------------------------------------------
 # get_rz
 # ----------------------------------------------------------------------
@@ -130,6 +129,39 @@ def test_controller_profile_override_takes_precedence() -> None:
     assert ctl.swing_height == pytest.approx(0.12)
     assert ctl.cycle_hz == pytest.approx(2.5)
     assert ctl.stance_width == pytest.approx(0.05)
+
+
+def test_controller_reads_real_profile_gait_fields() -> None:
+    """Real profiles use Pydantic fields with meter-suffixed names."""
+    from eliza_robot.profiles import load_profile
+
+    profile = load_profile("hiwonder-ainex")
+    ctl = BezierGaitController(profile=profile, swing_height=0.01, cycle_hz=10.0)
+
+    assert ctl.swing_height == pytest.approx(profile.gait.swing_height_m)
+    assert ctl.cycle_hz == pytest.approx(profile.gait.cycle_hz)
+    assert ctl.stance_width == pytest.approx(profile.gait.stance_width_m)
+    assert ctl.foot_offset == pytest.approx(profile.gait.foot_offset_m)
+
+
+def test_profile_foot_offset_does_not_saturate_leg_ik() -> None:
+    """Large body-to-foot profile offsets are bounded before the leg IK trim."""
+    from eliza_robot.sim.mujoco.gait.controller import L_KNEE, R_KNEE
+
+    class _StubProfile:
+        gait = {
+            "swing_height": 0.08,
+            "cycle_hz": 1.25,
+            "stance_width": 0.10,
+            "foot_offset": -0.25,
+        }
+
+    ctl = BezierGaitController(profile=_StubProfile())
+    q = ctl.step(vx=0.0, vy=0.0, vyaw=0.0, dt=0.02)
+
+    assert ctl.foot_offset == pytest.approx(-0.25)
+    assert abs(float(q[L_KNEE])) > 0.3
+    assert abs(float(q[R_KNEE])) > 0.3
 
 
 # ----------------------------------------------------------------------

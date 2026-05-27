@@ -92,6 +92,8 @@
         "eliza-evidence: target=opensbi artifact=opensbi_fw_dynamic_handoff",
         "OpenSBI",
         "Next Address",
+        "Domain0 Next Arg1",
+        "0x0000000080b00000",
         "eliza-evidence: status=PASS"
       ]
     },

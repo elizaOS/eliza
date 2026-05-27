@@ -625,6 +625,31 @@ def write_report(
         },
         "findings": findings,
         "blocked_evidence_inventory": blocked_inventory or [],
+        "blocker_dependency_counts": {
+            "repo_artifact_generation": 0,
+            "live_device_validation": 0,
+            "actionable_external_dependency": blocked_rows,
+        },
+        "next_command_by_dependency": {
+            "actionable_external_dependency": [VALIDATION_COMMAND],
+        },
+        "validation_commands": [
+            VALIDATION_COMMAND,
+            SUPPLIER_RETURN_VALIDATION_COMMAND,
+            FIRST_ARTICLE_VALIDATION_COMMAND,
+            ENCLOSURE_VALIDATION_COMMAND,
+            ROUTED_OUTPUT_VALIDATION_COMMAND,
+        ],
+        "primary_blocker": {
+            "dependency": "actionable_external_dependency",
+            "blocked_rows": blocked_rows,
+            "required_action": (
+                "Validate each underlying supplier, routed, enclosure, or first-article "
+                "evidence row, then attach approved owner/reviewer metadata and final hashes."
+            ),
+            "validation_command": VALIDATION_COMMAND,
+            "release_credit": False,
+        },
         "next_unblock_actions": (blocked_inventory or [])[:20],
         "claim_boundary": "e1_phone_release_content_blocker_report_only_not_release_evidence",
     }

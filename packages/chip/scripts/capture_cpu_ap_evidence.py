@@ -26,6 +26,7 @@ from cpu_ap_evidence_lib import (
     rel,
     sha256_path,
     text_problems,
+    transcript_metadata_problems,
     transcript_specs,
 )
 
@@ -44,6 +45,9 @@ MODE_ENV = {
     "linux-boot": "ELIZA_LINUX_BOOT_CMD",
     "trap-timer-irq": "ELIZA_TRAP_TIMER_IRQ_CMD",
 }
+
+LINUX_SERIAL_BOOT_EVIDENCE = ROOT / "docs/evidence/linux/eliza_e1_serial_boot.log"
+LINUX_OPENSBI_HANDOFF_EVIDENCE = ROOT / "docs/evidence/linux/opensbi_fw_dynamic_handoff.log"
 
 DTS_BOOT_REQUIREMENTS = {
     "cpu node": [r"\bcpus\s*\{", r"device_type\s*=\s*\"cpu\""],
@@ -65,6 +69,45 @@ def utc_now() -> str:
     return dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def evidence_marker(text: str, name: str) -> str | None:
+    match = re.search(rf"^eliza-evidence: {re.escape(name)}=(.+)$", text, re.M)
+    return match.group(1).strip() if match else None
+
+
+def parse_evidence_utc(value: str | None) -> dt.datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=dt.UTC)
+    return parsed.astimezone(dt.UTC)
+
+
+def ap_benchmark_source_freshness_problem(
+    *,
+    source: Path,
+    linux_text: str,
+    linux_path: str,
+) -> str | None:
+    linux_intake = parse_evidence_utc(evidence_marker(linux_text, "intake_utc"))
+    if linux_intake is None:
+        return (
+            f"{linux_path} is missing a valid eliza-evidence: intake_utc marker; "
+            "cannot prove AP benchmark transcript freshness"
+        )
+    source_mtime = dt.datetime.fromtimestamp(source.stat().st_mtime, dt.UTC)
+    if source_mtime < linux_intake:
+        return (
+            f"{source} mtime {source_mtime.replace(microsecond=0).isoformat().replace('+00:00', 'Z')} "
+            f"is older than accepted linux-boot intake {linux_intake.isoformat().replace('+00:00', 'Z')}; "
+            "rerun the AP benchmark capture after linux-boot intake"
+        )
+    return None
+
+
 def load_manifest_or_exit() -> dict:
     errors: list[str] = []
     manifest = load_evidence_manifest(errors)
@@ -73,6 +116,166 @@ def load_manifest_or_exit() -> dict:
             print(f"error: {error}", file=sys.stderr)
         raise SystemExit(1)
     return manifest
+
+
+def raw_transcript_from_accepted(text: str) -> str:
+    begin = "eliza-evidence: raw_transcript_begin"
+    end = "eliza-evidence: raw_transcript_end"
+    start = text.find(begin)
+    if start < 0:
+        return text
+    start += len(begin)
+    stop = text.find(end, start)
+    if stop < 0:
+        return text[start:].strip()
+    return text[start:stop].strip()
+
+
+def accepted_transcript_text(
+    manifest: dict, transcript_key: str, rel_path: str, problems: list[str]
+) -> str:
+    spec = transcript_specs(manifest).get(transcript_key, {})
+    path = ROOT / rel_path
+    if not path.is_file():
+        problems.append(f"missing accepted CPU/AP transcript: {rel_path}")
+        return ""
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    problems.extend(text_problems(text, spec, rel_path, raw=False))
+    problems.extend(transcript_metadata_problems(text, rel_path))
+    return text
+
+
+def serial_boot_doc_text(raw_text: str) -> str:
+    if "Kernel command line:" in raw_text:
+        return raw_text
+    match = re.search(r"Forcing kernel command line to:\s*(?:'([^']+)'|([^\r\n]+))", raw_text)
+    if not match:
+        return raw_text
+    return raw_text + "\nKernel command line: " + (match.group(1) or match.group(2)).strip()
+
+
+def opensbi_handoff_doc_text(raw_text: str) -> str:
+    additions: list[str] = []
+    if "Domain0 Next Arg1" not in raw_text:
+        match = re.search(r"(?:Domain0\s+)?Next Arg1\s*:?\s*(0x[0-9a-fA-F]+)", raw_text)
+        if match:
+            additions.append(f"Domain0 Next Arg1: {match.group(1)}")
+    if "0x0000000080b00000" not in raw_text and "0x80b00000" in raw_text:
+        additions.append("expected normalized Domain0 Next Arg1: 0x0000000080b00000")
+    if not additions:
+        return raw_text
+    return raw_text.rstrip() + "\n" + "\n".join(additions)
+
+
+def write_linux_doc_mirror(
+    *,
+    destination: Path,
+    target: str,
+    artifact_name: str,
+    claim_boundary: str,
+    source: str,
+    raw_text: str,
+    extra_required: tuple[str, ...],
+    problems: list[str],
+) -> bool:
+    missing = [marker for marker in extra_required if marker not in raw_text]
+    if missing:
+        problems.append(
+            f"{rel(destination)} would be missing Linux evidence markers: "
+            + ", ".join(missing)
+        )
+        return False
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        "\n".join(
+            [
+                f"eliza-evidence: target={target} artifact={artifact_name}",
+                f"eliza-evidence: claim_boundary={claim_boundary}",
+                f"eliza-evidence: source={source}",
+                f"eliza-evidence: mirrored_from=accepted_cpu_ap_transcript",
+                f"eliza-evidence: mirror_utc={utc_now()}",
+                "eliza-evidence: raw_transcript_begin",
+                raw_text.rstrip(),
+                "eliza-evidence: raw_transcript_end",
+                "eliza-evidence: status=PASS",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return True
+
+
+def sync_linux_docs(args: argparse.Namespace) -> int:
+    modes = set(getattr(args, "modes", ("linux", "opensbi")))
+    manifest = load_manifest_or_exit()
+    problems: list[str] = []
+    wrote: list[str] = []
+
+    linux_rel = "build/evidence/cpu_ap/eliza_e1_linux_boot.log"
+    linux_text = (
+        accepted_transcript_text(manifest, "linux_boot_log", linux_rel, problems)
+        if "linux" in modes
+        else ""
+    )
+    if "linux" in modes and linux_text:
+        linux_raw = serial_boot_doc_text(raw_transcript_from_accepted(linux_text))
+        if write_linux_doc_mirror(
+            destination=LINUX_SERIAL_BOOT_EVIDENCE,
+            target="linux",
+            artifact_name="eliza_e1_serial_boot",
+            claim_boundary=(
+                "generated_chipyard_ap_serial_boot_transcript_only_not_silicon_or_board_evidence"
+            ),
+            source=linux_rel,
+            raw_text=linux_raw,
+            extra_required=(
+                "OpenSBI",
+                "Linux version",
+                "Kernel command line:",
+                "Run /init as init process",
+            ),
+            problems=problems,
+        ):
+            wrote.append(rel(LINUX_SERIAL_BOOT_EVIDENCE))
+
+    opensbi_rel = "build/evidence/cpu_ap/eliza_e1_opensbi_boot.log"
+    opensbi_text = (
+        accepted_transcript_text(manifest, "opensbi_boot_log", opensbi_rel, problems)
+        if "opensbi" in modes
+        else ""
+    )
+    if "opensbi" in modes and opensbi_text:
+        opensbi_raw = opensbi_handoff_doc_text(raw_transcript_from_accepted(opensbi_text))
+        if write_linux_doc_mirror(
+            destination=LINUX_OPENSBI_HANDOFF_EVIDENCE,
+            target="opensbi",
+            artifact_name="opensbi_fw_dynamic_handoff",
+            claim_boundary=(
+                "generated_chipyard_ap_opensbi_handoff_transcript_only_not_silicon_or_board_evidence"
+            ),
+            source=opensbi_rel,
+            raw_text=opensbi_raw,
+            extra_required=(
+                "OpenSBI v1.2",
+                "Next Address",
+                "Domain0 Next Arg1",
+                "0x0000000080b00000",
+            ),
+            problems=problems,
+        ):
+            wrote.append(rel(LINUX_OPENSBI_HANDOFF_EVIDENCE))
+
+    if problems:
+        print("STATUS: BLOCKED linux.doc_evidence_sync - accepted CPU/AP evidence is incomplete")
+        for problem in problems:
+            print(f"  - {problem}")
+        return 2
+
+    print("STATUS: PASS linux.doc_evidence_sync")
+    for path in wrote:
+        print(f"  wrote: {path}")
+    return 0
 
 
 def strip_dts_comments(text: str) -> str:
@@ -178,6 +381,32 @@ def intake(args: argparse.Namespace) -> int:
             + "\neliza-evidence: reconstructed_uart_tx_end\n"
         )
     problems = text_problems(validation_text, spec, str(source), raw=True)
+    if args.mode == "ap-benchmarks":
+        linux_spec = transcript_specs(manifest).get("linux_boot_log", {})
+        linux_rel = linux_spec.get("path")
+        linux_path = ROOT / str(linux_rel)
+        if not isinstance(linux_rel, str) or not linux_path.is_file():
+            problems.append(
+                "ap-benchmarks intake requires an accepted linux-boot transcript at "
+                "build/evidence/cpu_ap/eliza_e1_linux_boot.log"
+            )
+        else:
+            linux_text = linux_path.read_text(encoding="utf-8", errors="ignore")
+            problems.extend(text_problems(linux_text, linux_spec, linux_rel, raw=False))
+            problems.extend(
+                transcript_metadata_problems(
+                    linux_text,
+                    linux_rel,
+                    generated_manifest=generated_manifest,
+                )
+            )
+            freshness_problem = ap_benchmark_source_freshness_problem(
+                source=source,
+                linux_text=linux_text,
+                linux_path=linux_rel,
+            )
+            if freshness_problem:
+                problems.append(freshness_problem)
     if problems:
         print("STATUS: FAIL cpu_ap.transcript_intake - source transcript is not acceptable")
         for problem in problems:
@@ -221,6 +450,10 @@ def intake(args: argparse.Namespace) -> int:
     digest = sha256_path(destination)
     print(f"STATUS: PASS cpu_ap.transcript_intake - archived {rel(destination)} sha256={digest}")
     print(f"  update generated import manifest evidence_sha256.{spec['sha256_key']}={digest}")
+    if args.mode == "linux-boot":
+        sync_status = sync_linux_docs(argparse.Namespace(modes=("linux",)))
+        if sync_status != 0:
+            return sync_status
     return 0
 
 
@@ -255,6 +488,11 @@ def template(args: argparse.Namespace) -> int:
         print("# Raw transcript from the generated AP simulator must contain these markers:")
         for marker in spec.get("raw_required_strings", []):
             print(f"# - {marker}")
+        for group in spec.get("at_least_one", []):
+            if isinstance(group, list):
+                choices = [str(marker) for marker in group if isinstance(marker, str)]
+                if choices:
+                    print("# - one of: " + " | ".join(choices))
         print("#")
         print(f"eliza-evidence: template_for={artifact_name}")
         print("eliza-evidence: replace_this_file_with_real_generated_ap_output=true")
@@ -277,6 +515,7 @@ def capture_plan(args: argparse.Namespace) -> int:
                 "destination": spec.get("path"),
                 "command_env": MODE_ENV[mode],
                 "raw_required_strings": spec.get("raw_required_strings", []),
+                "at_least_one": spec.get("at_least_one", []),
                 "intake_command": (
                     "python3 scripts/capture_cpu_ap_evidence.py intake "
                     f'{mode} --source /path/to/{mode}.log --command "$'
@@ -321,6 +560,13 @@ def capture_plan(args: argparse.Namespace) -> int:
         markers = raw_required_strings if isinstance(raw_required_strings, list) else []
         for marker in markers:
             print(f"    - {marker}")
+        at_least_one = entry["at_least_one"]
+        groups = at_least_one if isinstance(at_least_one, list) else []
+        for group in groups:
+            if isinstance(group, list):
+                choices = [str(marker) for marker in group if isinstance(marker, str)]
+                if choices:
+                    print("    - one of: " + " | ".join(choices))
     return 0
 
 
@@ -347,6 +593,22 @@ def main(argv: list[str]) -> int:
 
     hashes_parser = sub.add_parser("hashes", help="print hashes for existing CPU/AP artifacts")
     hashes_parser.set_defaults(func=hashes)
+
+    sync_parser = sub.add_parser(
+        "sync-linux-docs",
+        help=(
+            "mirror accepted CPU/AP OpenSBI/Linux boot transcripts into the Linux docs "
+            "evidence artifacts used by minimum-linux-target"
+        ),
+    )
+    sync_parser.add_argument(
+        "modes",
+        nargs="*",
+        choices=("linux", "opensbi"),
+        default=("linux", "opensbi"),
+        help="Evidence mirrors to refresh. Defaults to both linux and opensbi.",
+    )
+    sync_parser.set_defaults(func=sync_linux_docs)
 
     template_parser = sub.add_parser(
         "template",

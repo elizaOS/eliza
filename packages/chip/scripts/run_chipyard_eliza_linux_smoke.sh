@@ -22,6 +22,7 @@ loadmem="${CHIPYARD_LINUX_SMOKE_LOADMEM:-1}"
 disable_dramsim="${CHIPYARD_LINUX_SMOKE_DISABLE_DRAMSIM:-0}"
 binary_arg="${CHIPYARD_LINUX_SMOKE_BINARY_ARG:-$binary}"
 trace_verbose="${CHIPYARD_LINUX_SMOKE_TRACE_VERBOSE:-0}"
+transcript_mode="${CHIPYARD_LINUX_SMOKE_TRANSCRIPT_MODE:-linux-smoke}"
 extra_sim_flags="${CHIPYARD_LINUX_SMOKE_EXTRA_SIM_FLAGS:-+uart_tx_printf=1}"
 if [ "$trace_verbose" = "1" ]; then
 	case " $extra_sim_flags " in
@@ -162,7 +163,7 @@ fi
 if [ -z "$binary" ]; then
 	printf 'STATUS: BLOCKED chipyard.verilator_linux_smoke\n'
 	printf '  simulator_path: external/chipyard/sims/verilator\n'
-	printf "  next_command: cd external/chipyard/sims/verilator && source ../../env.sh && make CONFIG=%s CONFIG_PACKAGE=%s BINARY=\\$CHIPYARD_LINUX_BINARY LOADMEM=1 run-binary\n" "$config" "$config_package"
+	printf '  next_command: cd external/chipyard/sims/verilator && source ../../env.sh && make CONFIG=%s CONFIG_PACKAGE=%s BINARY=$CHIPYARD_LINUX_BINARY LOADMEM=1 run-binary\n' "$config" "$config_package"
 	printf '  - CHIPYARD_LINUX_BINARY is unset; provide a real OpenSBI/Linux ELF payload\n'
 	exit 2
 fi
@@ -177,20 +178,29 @@ if [ -z "$binary_arg" ]; then
 	binary_arg="$binary"
 fi
 
-if [ "$(basename -- "$binary")" = "eliza-e1-linux-smoke-bin-nodisk" ]; then
-	kfrag="$repo_dir/sw/firemarshal/eliza-e1-linux-smoke/eliza-e1-linux-smoke-kfrag"
-	linux_config="$checkout/software/firemarshal/images/firechip/eliza-e1-linux-smoke/linux_config"
-	kfrag_cmdline=""
-	linux_cmdline=""
-	missing_kfrag_options=""
+	if [ "$(basename -- "$binary")" = "eliza-e1-linux-smoke-bin-nodisk" ]; then
+		kfrag="$repo_dir/sw/firemarshal/eliza-e1-linux-smoke/eliza-e1-linux-smoke-kfrag"
+		linux_config="$checkout/software/firemarshal/images/firechip/eliza-e1-linux-smoke/linux_config"
+		freshness_manifest="$checkout/software/firemarshal/images/firechip/eliza-e1-linux-smoke/payload_freshness_manifest.json"
+		enforced_disabled_options=" CONFIG_EFI CONFIG_EFI_STUB CONFIG_EFI_ESRT CONFIG_EFI_RUNTIME_WRAPPERS CONFIG_EFI_EARLYCON CONFIG_PORTABLE CONFIG_STRICT_KERNEL_RWX CONFIG_STRICT_MODULE_RWX "
+		kfrag_cmdline=""
+		linux_cmdline=""
+		missing_kfrag_options=""
 	if [ -f "$kfrag" ] && [ -f "$linux_config" ]; then
-		while IFS= read -r kfrag_line || [ -n "$kfrag_line" ]; do
-			[ -n "$kfrag_line" ] || continue
-			case "$kfrag_line" in
-				\#*) continue ;;
-			esac
-			if ! grep -F -x -q -- "$kfrag_line" "$linux_config"; then
-				missing_kfrag_options="${missing_kfrag_options}${missing_kfrag_options:+, }$kfrag_line"
+			while IFS= read -r kfrag_line || [ -n "$kfrag_line" ]; do
+				[ -n "$kfrag_line" ] || continue
+				case "$kfrag_line" in
+					\#\ CONFIG_*\ is\ not\ set)
+						kfrag_symbol="$(printf '%s\n' "$kfrag_line" | sed -n 's/^# \\(CONFIG_[^ ]*\\) is not set$/\\1/p')"
+						case "$enforced_disabled_options" in
+							*" $kfrag_symbol "*) ;;
+							*) continue ;;
+						esac
+						;;
+					\#*) continue ;;
+				esac
+				if ! grep -F -x -q -- "$kfrag_line" "$linux_config"; then
+					missing_kfrag_options="${missing_kfrag_options}${missing_kfrag_options:+, }$kfrag_line"
 			fi
 		done <"$kfrag"
 	fi
@@ -215,6 +225,94 @@ if [ "$(basename -- "$binary")" = "eliza-e1-linux-smoke-bin-nodisk" ]; then
 			exit 2
 		fi
 	fi
+	ELIZA_REPO_DIR="$repo_dir" \
+		ELIZA_CHIPYARD_CHECKOUT="$checkout" \
+		ELIZA_FIREMARSHAL_PAYLOAD="$binary" \
+		ELIZA_FIREMARSHAL_FRESHNESS_MANIFEST="$freshness_manifest" \
+		python3 - <<'PY'
+import hashlib
+import json
+import os
+from pathlib import Path
+
+repo = Path(os.environ["ELIZA_REPO_DIR"]).resolve()
+checkout = Path(os.environ["ELIZA_CHIPYARD_CHECKOUT"]).resolve()
+payload = Path(os.environ["ELIZA_FIREMARSHAL_PAYLOAD"]).resolve()
+manifest = Path(os.environ["ELIZA_FIREMARSHAL_FRESHNESS_MANIFEST"]).resolve()
+workload_dir = repo / "sw/firemarshal/eliza-e1-linux-smoke"
+inputs = [
+    repo / "sw/firemarshal/eliza-e1-linux-smoke.json",
+    workload_dir / "eliza-e1-linux-smoke-kfrag",
+    workload_dir / "eliza-e1-linux-smoke.sh",
+    workload_dir / "build-hwprobe.sh",
+    workload_dir / "eliza-e1-linux-smoke-overlay/etc/init.d/S00eliza-e1-linux-smoke",
+    workload_dir / "opensbi-eliza_defconfig",
+    workload_dir / "eliza-riscv-hwprobe.c",
+    workload_dir / "eliza-riscv-hwprobe",
+    workload_dir / "e1-npu-ml-smoke",
+]
+for optional in (
+    workload_dir / "eliza-skip-unaligned-probe.patch",
+    workload_dir / "opensbi-eliza-platform-fast-final.patch",
+):
+    if optional.exists():
+        inputs.append(optional)
+
+
+def rel(path):
+    try:
+        return str(path.relative_to(repo))
+    except ValueError:
+        return str(path)
+
+
+def sha256(path):
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def block(reason):
+    print("STATUS: BLOCKED chipyard.verilator_linux_smoke")
+    print("  simulator_path: external/chipyard/sims/verilator")
+    print(f"  - preferred FireMarshal payload freshness is not accepted: {reason}")
+    print("  next_command: scripts/build_firemarshal_eliza_linux_smoke_payload.sh")
+    raise SystemExit(2)
+
+
+preferred_payload = (
+    checkout
+    / "software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk"
+).resolve()
+if payload != preferred_payload:
+    raise SystemExit(0)
+if not manifest.is_file():
+    block(f"missing {rel(manifest)}")
+try:
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as exc:
+    block(f"invalid {rel(manifest)}: {exc}")
+if not isinstance(data, dict) or data.get("schema") != "eliza.firemarshal_linux_smoke_payload_freshness.v1":
+    block(f"{rel(manifest)} has an unsupported schema")
+payload_record = data.get("payload")
+if not isinstance(payload_record, dict) or payload_record.get("sha256") != sha256(payload):
+    block(f"{rel(manifest)} payload digest does not match {rel(payload)}")
+input_records = data.get("inputs")
+if not isinstance(input_records, dict):
+    block(f"{rel(manifest)} has no input digest map")
+missing = [rel(path) for path in inputs if not path.is_file()]
+if missing:
+    block("missing current input(s): " + ", ".join(missing[:6]) + ("" if len(missing) <= 6 else f", +{len(missing) - 6} more"))
+mismatched = []
+for path in inputs:
+    record = input_records.get(rel(path))
+    if not isinstance(record, dict) or record.get("sha256") != sha256(path):
+        mismatched.append(rel(path))
+if mismatched:
+    block("manifest digest mismatch for current input(s): " + ", ".join(mismatched[:6]) + ("" if len(mismatched) <= 6 else f", +{len(mismatched) - 6} more"))
+PY
 fi
 
 case "$run_target" in
@@ -241,6 +339,15 @@ case "$disable_dramsim" in
 		printf 'STATUS: BLOCKED chipyard.verilator_linux_smoke\n'
 		printf '  simulator_path: external/chipyard/sims/verilator\n'
 		printf '  - unsupported CHIPYARD_LINUX_SMOKE_DISABLE_DRAMSIM: %s\n' "$disable_dramsim"
+		exit 2
+		;;
+esac
+case "$transcript_mode" in
+	linux-smoke|ap-benchmarks) ;;
+	*)
+		printf 'STATUS: BLOCKED chipyard.verilator_linux_smoke\n'
+		printf '  simulator_path: external/chipyard/sims/verilator\n'
+		printf '  - unsupported CHIPYARD_LINUX_SMOKE_TRANSCRIPT_MODE: %s\n' "$transcript_mode"
 		exit 2
 		;;
 esac
@@ -342,6 +449,7 @@ command_text="$command_text $run_target"
 	printf 'eliza-evidence: timeout_after_seconds=%s\n' "$timeout_seconds"
 	printf 'eliza-evidence: timeout_cycles=%s\n' "$timeout_cycles"
 	printf 'eliza-evidence: run_target=%s\n' "$run_target"
+	printf 'eliza-evidence: transcript_mode=%s\n' "$transcript_mode"
 	printf 'eliza-evidence: jobs=%s\n' "$jobs"
 	printf 'eliza-evidence: loadmem=%s\n' "$loadmem"
 	printf 'eliza-evidence: break_sim_prereq=%s\n' "$break_sim_prereq"
@@ -356,7 +464,7 @@ command_text="$command_text $run_target"
 	if [ -n "$extra_sim_ldflags" ]; then
 		printf 'eliza-evidence: extra_sim_ldflags=%s\n' "$extra_sim_ldflags"
 	fi
-	printf 'eliza-evidence: note=qemu-virt and Renode reference transcripts do not satisfy this generated AP Linux smoke\n'
+	printf 'eliza-evidence: note=software reference transcripts are excluded from generated AP evidence intake\n'
 	printf 'eliza-evidence: raw_transcript_begin\n'
 } >"$log_tmp"
 : >"$raw_log"
@@ -433,6 +541,17 @@ if { [ "$status" -ne 0 ] && [ "$testdriver_success_finish" != "1" ]; } || [ "$ke
 fi
 
 cd "$repo_dir"
+if [ "$transcript_mode" = "ap-benchmarks" ]; then
+	{
+		printf 'STATUS: PASS chipyard.verilator_ap_benchmarks\n'
+		printf 'eliza-evidence: ap_benchmark_wrapper_marker=present\n'
+	} >>"$log"
+	printf 'STATUS: PASS chipyard.verilator_ap_benchmarks\n'
+	printf '  log: build/chipyard/eliza_rocket/verilator-linux-smoke.log\n'
+	printf '  note: AP benchmark transcript marker validation is performed by scripts/capture_cpu_ap_evidence.py intake ap-benchmarks\n'
+	exit 0
+fi
+
 CHIPYARD_LINUX_BINARY="$binary" python3 scripts/check_chipyard_verilator_linux_smoke.py
 {
 	printf 'eliza-evidence: target=linux artifact=eliza_e1_serial_boot\n'

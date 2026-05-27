@@ -14,6 +14,7 @@ REPORT = Path(
     os.environ.get("AOSP_LINUX_PREFLIGHT_REPORT", ROOT / "build/reports/aosp_linux_preflight.json")
 )
 CLAIM_BOUNDARY = "host_preflight_only_not_aosp_build_boot_cuttlefish_or_e1_chip_hardware_evidence"
+DEFAULT_AOSP_DIRS = (Path("/home/shaw/aosp"),)
 
 LINUX_REQUIREMENTS = [
     "Linux host with hardware virtualization enabled",
@@ -165,6 +166,20 @@ def repo_input_state() -> dict:
     }
 
 
+def resolve_aosp_dir(args: argparse.Namespace) -> tuple[str, str]:
+    if args.aosp_dir:
+        return args.aosp_dir, "arg"
+    env_value = os.environ.get("AOSP_DIR", "")
+    if env_value:
+        return env_value, "env"
+    if os.environ.get("ELIZA_DISABLE_AOSP_DIR_DEFAULTS") == "1":
+        return "", "unset"
+    for candidate in DEFAULT_AOSP_DIRS:
+        if (candidate / "build/envsetup.sh").is_file() and (candidate / "device").is_dir():
+            return str(candidate), "repo-default"
+    return "", "unset"
+
+
 def group_output() -> str:
     try:
         return subprocess.check_output(["id", "-nG"], text=True).strip()
@@ -178,7 +193,7 @@ def build_report(args: argparse.Namespace) -> tuple[int, dict]:
     track_blockers: dict[str, list[str]] = {name: [] for name in EXECUTION_TRACKS}
     host_os = os.uname().sysname
     host_arch = os.uname().machine
-    aosp_dir_text = args.aosp_dir or os.environ.get("AOSP_DIR", "")
+    aosp_dir_text, aosp_dir_source = resolve_aosp_dir(args)
     aosp_dir = Path(aosp_dir_text).expanduser().resolve() if aosp_dir_text else None
     repo_inputs = repo_input_state()
     has_existing_checkout = bool(
@@ -287,6 +302,7 @@ def build_report(args: argparse.Namespace) -> tuple[int, dict]:
         "status": "blocked" if blockers else "pass",
         "claim_boundary": CLAIM_BOUNDARY,
         "aosp_dir": str(aosp_dir) if aosp_dir else "",
+        "aosp_dir_source": aosp_dir_source,
         "host": {
             "os": host_os,
             "arch": host_arch,

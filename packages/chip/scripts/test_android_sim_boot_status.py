@@ -34,6 +34,7 @@ def run(
     env.pop("AOSP_DIR", None)
     env["ANDROID_SIM_BOOT_REPORT"] = str(REPORT)
     env["AOSP_LINUX_PREFLIGHT_REPORT"] = str(PREFLIGHT_REPORT)
+    env["ELIZA_DISABLE_AOSP_DIR_DEFAULTS"] = "1"
     if env_overrides:
         env.update(env_overrides)
     return subprocess.run(

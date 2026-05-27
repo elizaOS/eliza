@@ -1,0 +1,488 @@
+{
+  "profile": "asimov-1",
+  "label": "combined_actions",
+  "policy_source": "scripted_smoke",
+  "preserve_state_between_commands": false,
+  "commands": [
+    {
+      "profile": "asimov-1",
+      "label": "stand up",
+      "task_id": "stand_up",
+      "policy_source": "scripted_smoke",
+      "steps_requested": 80,
+      "steps_executed": 39,
+      "terminated": true,
+      "truncated": false,
+      "first_done_step": 39,
+      "done_reason": "terminated",
+      "fall_threshold": 0.378,
+      "torso_z": {
+        "min": 0.36758224884775953,
+        "max": 0.6380209614268368,
+        "final": 0.36758224884775953,
+        "mean": 0.5504740731281558
+      },
+      "upright_proj": {
+        "min": 0.4797879011151246,
+        "max": 0.9999827486286288,
+        "final": 0.4797879011151246,
+        "mean": 0.8438775941558563
+      },
+      "reward": {
+        "min": -8.246360185807632,
+        "max": 5.489886571311313,
+        "final": -8.246360185807632,
+        "mean": 3.4050547574192658
+      },
+      "delta_x_m": {
+        "min": -0.07315133255858414,
+        "max": 0.24788896026417187,
+        "final": 0.24788896026417187,
+        "mean": 0.0301682551010489
+      },
+      "delta_y_m": {
+        "min": -0.17470127079579992,
+        "max": 0.003808502576895134,
+        "final": -0.17470127079579992,
+        "mean": -0.06029991091440022
+      },
+      "delta_yaw_rad": {
+        "min": -0.3792992370174224,
+        "max": 0.00518645484886082,
+        "final": -0.3792992370174224,
+        "mean": -0.2626159169081584
+      },
+      "action_norm": {
+        "min": 0.0,
+        "max": 0.0,
+        "final": 0.0,
+        "mean": 0.0
+      },
+      "nonzero_action_steps": 0,
+      "attempted_action": true,
+      "goal_success": false,
+      "goal_failed": false,
+      "goal_reason": "",
+      "rollout_ok": false,
+      "checks": {
+        "no_termination": false,
+        "torso_above_fall_threshold": false,
+        "upright_positive": true,
+        "attempted_action": true,
+        "goal_success": false
+      }
+    },
+    {
+      "profile": "asimov-1",
+      "label": "walk forward",
+      "task_id": "walk_forward",
+      "policy_source": "scripted_smoke",
+      "steps_requested": 80,
+      "steps_executed": 63,
+      "terminated": true,
+      "truncated": false,
+      "first_done_step": 63,
+      "done_reason": "terminated",
+      "fall_threshold": 0.378,
+      "torso_z": {
+        "min": 0.35701978775511245,
+        "max": 0.6430203323779368,
+        "final": 0.35701978775511245,
+        "mean": 0.6074726877251411
+      },
+      "upright_proj": {
+        "min": 0.6254250857536717,
+        "max": 0.9999996996886694,
+        "final": 0.6254250857536717,
+        "mean": 0.9244754709168854
+      },
+      "reward": {
+        "min": -8.00017617394257,
+        "max": 9.419637027413865,
+        "final": -8.00017617394257,
+        "mean": 3.4967516851783316
+      },
+      "delta_x_m": {
+        "min": -0.5288675001726488,
+        "max": 0.029462115374033624,
+        "final": -0.5288675001726488,
+        "mean": -0.13152089718386897
+      },
+      "delta_y_m": {
+        "min": -0.00046837657515807926,
+        "max": 0.0022832959142024306,
+        "final": 0.0007103105994857341,
+        "mean": 0.0007756574986786184
+      },
+      "delta_yaw_rad": {
+        "min": -0.003863298961422029,
+        "max": 0.05190383329484154,
+        "final": 0.05175651441570757,
+        "mean": 0.007265453638859671
+      },
+      "action_norm": {
+        "min": 8.550631504665161e-17,
+        "max": 0.9166304469108582,
+        "final": 0.265038400888443,
+        "mean": 0.5829110413730617
+      },
+      "nonzero_action_steps": 62,
+      "attempted_action": true,
+      "goal_success": false,
+      "goal_failed": false,
+      "goal_reason": "",
+      "rollout_ok": false,
+      "checks": {
+        "no_termination": false,
+        "torso_above_fall_threshold": false,
+        "upright_positive": true,
+        "attempted_action": true,
+        "goal_success": false
+      }
+    },
+    {
+      "profile": "asimov-1",
+      "label": "walk backward",
+      "task_id": "walk_backward",
+      "policy_source": "scripted_smoke",
+      "steps_requested": 80,
+      "steps_executed": 67,
+      "terminated": true,
+      "truncated": false,
+      "first_done_step": 67,
+      "done_reason": "terminated",
+      "fall_threshold": 0.378,
+      "torso_z": {
+        "min": 0.3450546822942045,
+        "max": 0.6413273203706925,
+        "final": 0.3450546822942045,
+        "mean": 0.6030710381780182
+      },
+      "upright_proj": {
+        "min": 0.4149122833314194,
+        "max": 0.9999996996886694,
+        "final": 0.4149122833314194,
+        "mean": 0.9048152213839314
+      },
+      "reward": {
+        "min": -8.054024243798851,
+        "max": 12.018839339408347,
+        "final": -8.054024243798851,
+        "mean": 3.768404013136283
+      },
+      "delta_x_m": {
+        "min": -0.6238161016758613,
+        "max": 0.02946810559344583,
+        "final": -0.6238161016758613,
+        "mean": -0.14580370722194655
+      },
+      "delta_y_m": {
+        "min": -0.0004621164525280034,
+        "max": 0.011118207258004983,
+        "final": 0.011118207258004983,
+        "mean": 0.0015741476034965278
+      },
+      "delta_yaw_rad": {
+        "min": -0.0689871142898952,
+        "max": 0.004884985545534344,
+        "final": -0.05090778465323627,
+        "mean": -0.01607694786222657
+      },
+      "action_norm": {
+        "min": 8.550631504665161e-17,
+        "max": 0.9166304469108582,
+        "final": 0.8265348076820374,
+        "mean": 0.5762182452729834
+      },
+      "nonzero_action_steps": 66,
+      "attempted_action": true,
+      "goal_success": false,
+      "goal_failed": false,
+      "goal_reason": "",
+      "rollout_ok": false,
+      "checks": {
+        "no_termination": false,
+        "torso_above_fall_threshold": false,
+        "upright_positive": true,
+        "attempted_action": true,
+        "goal_success": false
+      }
+    },
+    {
+      "profile": "asimov-1",
+      "label": "sidestep left",
+      "task_id": "sidestep_left",
+      "policy_source": "scripted_smoke",
+      "steps_requested": 80,
+      "steps_executed": 78,
+      "terminated": true,
+      "truncated": false,
+      "first_done_step": 78,
+      "done_reason": "terminated",
+      "fall_threshold": 0.378,
+      "torso_z": {
+        "min": 0.3702987457010471,
+        "max": 0.6338614250983742,
+        "final": 0.3702987457010471,
+        "mean": 0.6086602862825041
+      },
+      "upright_proj": {
+        "min": 0.4943247917089054,
+        "max": 0.9999999364998543,
+        "final": 0.4943247917089054,
+        "mean": 0.9361115440240635
+      },
+      "reward": {
+        "min": -9.103015010235092,
+        "max": 3.6337694346856857,
+        "final": -9.103015010235092,
+        "mean": 3.2097393395865312
+      },
+      "delta_x_m": {
+        "min": -0.6084824425900507,
+        "max": -0.00022699732086922517,
+        "final": -0.6084824425900507,
+        "mean": -0.13274163114803686
+      },
+      "delta_y_m": {
+        "min": -0.00012088497994618181,
+        "max": 3.6629672666450384e-05,
+        "final": 3.6629672666450384e-05,
+        "mean": -7.003453647140089e-05
+      },
+      "delta_yaw_rad": {
+        "min": -0.0013342899993580835,
+        "max": 2.383642574427884e-05,
+        "final": -0.0008301735366610594,
+        "mean": -0.00024246077165739904
+      },
+      "action_norm": {
+        "min": 6.304255129921434e-17,
+        "max": 0.724112331867218,
+        "final": 0.7060116529464722,
+        "mean": 0.46211133140903443
+      },
+      "nonzero_action_steps": 77,
+      "attempted_action": true,
+      "goal_success": false,
+      "goal_failed": false,
+      "goal_reason": "",
+      "rollout_ok": false,
+      "checks": {
+        "no_termination": false,
+        "torso_above_fall_threshold": false,
+        "upright_positive": true,
+        "attempted_action": true,
+        "goal_success": false
+      }
+    },
+    {
+      "profile": "asimov-1",
+      "label": "sidestep right",
+      "task_id": "sidestep_right",
+      "policy_source": "scripted_smoke",
+      "steps_requested": 80,
+      "steps_executed": 78,
+      "terminated": true,
+      "truncated": false,
+      "first_done_step": 78,
+      "done_reason": "terminated",
+      "fall_threshold": 0.378,
+      "torso_z": {
+        "min": 0.3732280600187215,
+        "max": 0.6337369400561267,
+        "final": 0.3732280600187215,
+        "mean": 0.6089469632510324
+      },
+      "upright_proj": {
+        "min": 0.49893634019877275,
+        "max": 0.9999999503573584,
+        "final": 0.49893634019877275,
+        "mean": 0.9366310754111555
+      },
+      "reward": {
+        "min": -9.093002083341702,
+        "max": 3.6377710702161288,
+        "final": -9.093002083341702,
+        "mean": 3.2134089925827523
+      },
+      "delta_x_m": {
+        "min": -0.6061337565153049,
+        "max": -0.00022699732086922517,
+        "final": -0.6061337565153049,
+        "mean": -0.13214031636389612
+      },
+      "delta_y_m": {
+        "min": -0.00012580946856924179,
+        "max": 7.012153724555982e-05,
+        "final": 7.012153724555982e-05,
+        "mean": -6.450807091156518e-05
+      },
+      "delta_yaw_rad": {
+        "min": -0.0028503999065067273,
+        "max": 8.795751994043373e-06,
+        "final": -0.0028503999065067273,
+        "mean": -0.00034360022540119115
+      },
+      "action_norm": {
+        "min": 6.304255129921434e-17,
+        "max": 0.724112331867218,
+        "final": 0.7060116529464722,
+        "mean": 0.46211133140903443
+      },
+      "nonzero_action_steps": 77,
+      "attempted_action": true,
+      "goal_success": false,
+      "goal_failed": false,
+      "goal_reason": "",
+      "rollout_ok": false,
+      "checks": {
+        "no_termination": false,
+        "torso_above_fall_threshold": false,
+        "upright_positive": true,
+        "attempted_action": true,
+        "goal_success": false
+      }
+    },
+    {
+      "profile": "asimov-1",
+      "label": "turn left",
+      "task_id": "turn_left",
+      "policy_source": "scripted_smoke",
+      "steps_requested": 80,
+      "steps_executed": 76,
+      "terminated": true,
+      "truncated": false,
+      "first_done_step": 76,
+      "done_reason": "terminated",
+      "fall_threshold": 0.378,
+      "torso_z": {
+        "min": 0.3372389935258136,
+        "max": 0.6397667305759683,
+        "final": 0.3372389935258136,
+        "mean": 0.6048484560068378
+      },
+      "upright_proj": {
+        "min": 0.38692543794635015,
+        "max": 0.9999996678156345,
+        "final": 0.38692543794635015,
+        "mean": 0.9197835217179391
+      },
+      "reward": {
+        "min": -9.893900932778639,
+        "max": 3.6007345265291026,
+        "final": -9.893900932778639,
+        "mean": 3.132730441715162
+      },
+      "delta_x_m": {
+        "min": -0.6296949629401161,
+        "max": 0.01575421591152481,
+        "final": -0.6296949629401161,
+        "mean": -0.13884369377684355
+      },
+      "delta_y_m": {
+        "min": -0.0001214616175376159,
+        "max": 7.655922520833325e-07,
+        "final": -2.8095725079111845e-05,
+        "mean": -7.271645658281134e-05
+      },
+      "delta_yaw_rad": {
+        "min": -0.004741687227304583,
+        "max": 2.6034266565137675e-05,
+        "final": -0.004741687227304583,
+        "mean": -0.0006262332358171941
+      },
+      "action_norm": {
+        "min": 0.8276472687721252,
+        "max": 0.9627785682678223,
+        "final": 0.9396629333496094,
+        "mean": 0.8961708082964546
+      },
+      "nonzero_action_steps": 76,
+      "attempted_action": true,
+      "goal_success": false,
+      "goal_failed": false,
+      "goal_reason": "",
+      "rollout_ok": false,
+      "checks": {
+        "no_termination": false,
+        "torso_above_fall_threshold": false,
+        "upright_positive": true,
+        "attempted_action": true,
+        "goal_success": false
+      }
+    },
+    {
+      "profile": "asimov-1",
+      "label": "turn right",
+      "task_id": "turn_right",
+      "policy_source": "scripted_smoke",
+      "steps_requested": 80,
+      "steps_executed": 76,
+      "terminated": true,
+      "truncated": false,
+      "first_done_step": 76,
+      "done_reason": "terminated",
+      "fall_threshold": 0.378,
+      "torso_z": {
+        "min": 0.3674324369189214,
+        "max": 0.6395426441683019,
+        "final": 0.3674324369189214,
+        "mean": 0.6079859136297849
+      },
+      "upright_proj": {
+        "min": 0.4378229679673886,
+        "max": 0.9999996404340409,
+        "final": 0.4378229679673886,
+        "mean": 0.9260133137718686
+      },
+      "reward": {
+        "min": -9.147671506332813,
+        "max": 3.602093013302616,
+        "final": -9.147671506332813,
+        "mean": 3.1748590018661567
+      },
+      "delta_x_m": {
+        "min": -0.6067162273959624,
+        "max": 0.015602097077533435,
+        "final": -0.6067162273959624,
+        "mean": -0.13294688540448046
+      },
+      "delta_y_m": {
+        "min": -0.0003817670020210639,
+        "max": 1.1746663014383052e-05,
+        "final": -0.00037593754683169637,
+        "mean": -0.00011698668426725167
+      },
+      "delta_yaw_rad": {
+        "min": -0.004549210795219363,
+        "max": 0.00040087505457351094,
+        "final": -0.004549210795219363,
+        "mean": -0.00017811831348669662
+      },
+      "action_norm": {
+        "min": 0.8276472687721252,
+        "max": 0.9627785682678223,
+        "final": 0.9396629333496094,
+        "mean": 0.8961708082964546
+      },
+      "nonzero_action_steps": 76,
+      "attempted_action": true,
+      "goal_success": false,
+      "goal_failed": false,
+      "goal_reason": "",
+      "rollout_ok": false,
+      "checks": {
+        "no_termination": false,
+        "torso_above_fall_threshold": false,
+        "upright_positive": true,
+        "attempted_action": true,
+        "goal_success": false
+      }
+    }
+  ],
+  "steps_requested": 560,
+  "steps_executed": 477,
+  "rollout_ok": false,
+  "any_goal_success": false
+}

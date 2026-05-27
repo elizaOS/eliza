@@ -28,6 +28,8 @@ DEFAULT_MD_REPORT = READINESS_DIR / f"routed-board-release-acceptance-matrix-{RE
 DEFAULT_CANDIDATE_MANIFEST = E1_DIR / "production/routed-output-candidate-manifest-2026-05-22.yaml"
 DEFAULT_COMPONENT_MODEL_MANIFEST = E1_DIR / "production/step/component-3d-model-manifest.yaml"
 DEFAULT_COMPONENT_MODEL_DIR = E1_DIR / "production/step/component-models"
+DEFAULT_COMPONENT_3D_BINDING_REPORT = E1_DIR / "production/reports/component-3d-binding.yaml"
+DEFAULT_COMPONENT_3D_BINDING_MATRIX = E1_DIR / "production/reports/component-3d-binding-matrix.csv"
 
 
 DOMAIN_REQUIREMENT_HINTS = {
@@ -94,13 +96,17 @@ def candidate_end_to_end_context(
     candidate_manifest_path: Path,
     component_manifest_path: Path = DEFAULT_COMPONENT_MODEL_MANIFEST,
     component_model_dir: Path = DEFAULT_COMPONENT_MODEL_DIR,
+    component_binding_report_path: Path = DEFAULT_COMPONENT_3D_BINDING_REPORT,
+    component_binding_matrix_path: Path = DEFAULT_COMPONENT_3D_BINDING_MATRIX,
 ) -> dict[str, Any]:
     component_manifest = load_candidate_manifest(component_manifest_path)
     component_dir_manifest_path = component_model_dir / "release-manifest.yaml"
     component_dir_manifest = load_candidate_manifest(component_dir_manifest_path)
+    component_binding_report = load_candidate_manifest(component_binding_report_path)
     terminal_binding = component_manifest.get("terminal_contract_binding", {})
     model_binding = component_manifest.get("model_to_footprint_binding", {})
     visual_summary = component_manifest.get("package_visual_summary", {})
+    local_step_binding = component_manifest.get("local_discrete_step_binding", {})
     visual = candidate_manifest.get("routed_step_visual_detail", {})
     connection = candidate_manifest.get("cad_connection_coverage", {})
     traceability = candidate_manifest.get("kicad_cad_traceability", {})
@@ -123,6 +129,12 @@ def candidate_end_to_end_context(
         "component_model_directory": display_rel(component_model_dir)
         if component_model_dir.exists()
         else "",
+        "component_3d_binding_report": display_rel(component_binding_report_path)
+        if component_binding_report
+        else "",
+        "component_3d_binding_matrix": display_rel(component_binding_matrix_path)
+        if component_binding_matrix_path.is_file()
+        else "",
         "status": candidate_manifest.get("status", ""),
         "release_credit": bool(candidate_manifest.get("release_credit") is True),
         "source_board": candidate_manifest.get("source_board", ""),
@@ -133,8 +145,21 @@ def candidate_end_to_end_context(
             "footprint_envelope_count": int(visual.get("footprint_envelope_count", 0) or 0),
             "pad_contact_visual_count": int(visual.get("pad_contact_visual_count", 0) or 0),
             "route_segment_visual_count": int(visual.get("route_segment_visual_count", 0) or 0),
+            "route_segment_net_name_count": int(
+                visual.get("route_segment_net_name_count", 0) or 0
+            ),
+            "route_segment_trace_bound_count": int(
+                visual.get("route_segment_trace_bound_count", 0) or 0
+            ),
+            "route_segment_trace_unbound_count": int(
+                visual.get("route_segment_trace_unbound_count", 0) or 0
+            ),
+            "controlled_impedance_segment_visual_count": int(
+                visual.get("controlled_impedance_segment_visual_count", 0) or 0
+            ),
             "board_segment_count": int(visual.get("board_segment_count", 0) or 0),
             "board_via_count": int(visual.get("board_via_count", 0) or 0),
+            "via_net_name_count": int(visual.get("via_net_name_count", 0) or 0),
             "development_footprint_refs": int(visual.get("development_footprint_refs", 0) or 0),
         },
         "cad_connection_coverage": {
@@ -309,6 +334,33 @@ def candidate_end_to_end_context(
             "models_with_npth_mechanical_feature_contract_count": int(
                 terminal_binding.get("models_with_npth_mechanical_feature_contract_count", 0) or 0
             ),
+            "local_discrete_step_file_count": int(
+                local_step_binding.get("local_discrete_step_file_count", 0) or 0
+            ),
+            "local_discrete_step_imported_solid_count": int(
+                local_step_binding.get("local_discrete_step_imported_solid_count", 0) or 0
+            ),
+            "local_discrete_step_bbox_match_count": int(
+                local_step_binding.get("local_discrete_step_bbox_match_count", 0) or 0
+            ),
+            "local_discrete_step_bytes_total": int(
+                local_step_binding.get("local_discrete_step_bytes_total", 0) or 0
+            ),
+            "all_models_have_local_discrete_step_file": bool(
+                local_step_binding.get("all_models_have_local_discrete_step_file", False)
+            ),
+            "all_local_discrete_step_hashes_match_files": bool(
+                local_step_binding.get("all_local_discrete_step_hashes_match_files", False)
+            ),
+            "all_local_discrete_step_sizes_match_files": bool(
+                local_step_binding.get("all_local_discrete_step_sizes_match_files", False)
+            ),
+            "all_local_discrete_steps_import_as_solids": bool(
+                local_step_binding.get("all_local_discrete_steps_import_as_solids", False)
+            ),
+            "all_local_discrete_step_bboxes_match_envelopes": bool(
+                local_step_binding.get("all_local_discrete_step_bboxes_match_envelopes", False)
+            ),
             "all_pinout_bound_models_have_terminal_contract": bool(
                 terminal_binding.get("all_pinout_bound_models_have_terminal_contract", False)
             ),
@@ -363,6 +415,63 @@ def candidate_end_to_end_context(
             "all_model_records_source_routed_step_bound": bool(
                 component_dir_manifest.get("all_model_records_source_routed_step_bound", False)
             ),
+            "all_model_records_have_combined_step_locator": bool(
+                component_dir_manifest.get("all_model_records_have_combined_step_locator", False)
+            ),
+            "all_model_records_have_local_discrete_step_file": bool(
+                component_dir_manifest.get(
+                    "all_model_records_have_local_discrete_step_file", False
+                )
+            ),
+            "all_local_discrete_step_files_import_as_solids": bool(
+                component_dir_manifest.get(
+                    "all_local_discrete_step_files_import_as_solids", False
+                )
+            ),
+            "all_local_discrete_step_bboxes_match_envelopes": bool(
+                component_dir_manifest.get(
+                    "all_local_discrete_step_bboxes_match_envelopes", False
+                )
+            ),
+            "all_model_records_have_expected_supplier_step_file": bool(
+                component_dir_manifest.get(
+                    "all_model_records_have_expected_supplier_step_file", False
+                )
+            ),
+            "local_discrete_step_imported_solid_count": int(
+                component_dir_manifest.get("local_discrete_step_imported_solid_count", 0) or 0
+            ),
+            "local_discrete_step_bbox_match_count": int(
+                component_dir_manifest.get("local_discrete_step_bbox_match_count", 0) or 0
+            ),
+            "local_discrete_step_file_count": int(
+                component_dir_manifest.get("local_discrete_step_file_count", 0) or 0
+            ),
+            "local_discrete_step_bytes_total": int(
+                component_dir_manifest.get("local_discrete_step_bytes_total", 0) or 0
+            ),
+            "missing_supplier_discrete_model_count": int(
+                component_dir_manifest.get("missing_supplier_discrete_model_count", 0) or 0
+            ),
+            "supplier_step_intake_placeholder_count": int(
+                component_dir_manifest.get("supplier_step_intake_placeholder_count", 0) or 0
+            ),
+            "supplier_step_intake_local_surrogate_count": int(
+                component_dir_manifest.get("supplier_step_intake_local_surrogate_count", 0) or 0
+            ),
+            "supplier_step_intake_missing_count": int(
+                component_dir_manifest.get("supplier_step_intake_missing_count", 0) or 0
+            ),
+            "supplier_step_intake_not_applicable_count": int(
+                component_dir_manifest.get("supplier_step_intake_not_applicable_count", 0) or 0
+            ),
+            "supplier_step_intake_release_candidate_count": int(
+                component_dir_manifest.get("supplier_step_intake_release_candidate_count", 0)
+                or 0
+            ),
+            "supplier_step_intake_lane_counts": component_dir_manifest.get(
+                "supplier_step_intake_lane_counts", {}
+            ),
             "all_records_release_credit_false": bool(
                 component_dir_manifest.get("all_records_release_credit_false", False)
             ),
@@ -384,6 +493,29 @@ def candidate_end_to_end_context(
                 component_dir_manifest.get("all_npth_mechanical_features_have_contract", False)
             ),
             "release_allowed": bool(component_dir_manifest.get("release_allowed") is True),
+        },
+        "component_3d_binding_gap_matrix": {
+            "schema": component_binding_report.get("schema", ""),
+            "status": component_binding_report.get("status", ""),
+            "row_count": int(component_binding_report.get("row_count", 0) or 0),
+            "csv_matrix": component_binding_report.get("csv_matrix", ""),
+            "csv_matrix_sha256": component_binding_report.get("csv_matrix_sha256", ""),
+            "csv_matrix_bytes": int(component_binding_report.get("csv_matrix_bytes", 0) or 0),
+            "local_discrete_step_file_count": int(
+                component_binding_report.get("local_discrete_step_file_count", 0) or 0
+            ),
+            "local_discrete_step_import_pass_count": int(
+                component_binding_report.get("local_discrete_step_import_pass_count", 0) or 0
+            ),
+            "local_discrete_step_bbox_match_count": int(
+                component_binding_report.get("local_discrete_step_bbox_match_count", 0) or 0
+            ),
+            "supplier_step_intake_status_counts": component_binding_report.get(
+                "supplier_step_intake_status_counts", {}
+            ),
+            "supplier_lane_counts": component_binding_report.get("supplier_lane_counts", {}),
+            "release_credit": bool(component_binding_report.get("release_credit") is True),
+            "release_allowed": bool(component_binding_report.get("release_allowed") is True),
         },
         "local_candidate_can_satisfy_release_gate": False,
         "reason_not_release": (
@@ -766,6 +898,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     candidate_connection = candidate["cad_connection_coverage"]
     candidate_models = candidate["component_model_manifest_summary"]
     candidate_model_dir = candidate["component_model_directory_summary"]
+    candidate_binding = candidate["component_3d_binding_gap_matrix"]
     lines.extend(
         [
             "",
@@ -843,6 +976,13 @@ def render_markdown(report: dict[str, Any]) -> str:
             f"`{candidate_model_dir['all_non_signal_pad_contracts_match_pad_visuals']}` |",
             "| Directory NPTH contracts match footprints | "
             f"`{candidate_model_dir['all_npth_mechanical_features_have_contract']}` |",
+            f"| Component 3D binding rows | `{candidate_binding['row_count']}` |",
+            "| Component 3D binding local STEP files | "
+            f"`{candidate_binding['local_discrete_step_file_count']}` |",
+            "| Component 3D binding supplier intake statuses | "
+            f"`{candidate_binding['supplier_step_intake_status_counts']}` |",
+            "| Component 3D binding release credit | "
+            f"`{candidate_binding['release_credit']}` |",
             f"| Supplier-approved model rows | `{candidate_models['supplier_approved_model_count']}` |",
             "",
             candidate["reason_not_release"],

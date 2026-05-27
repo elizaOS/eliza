@@ -48,7 +48,7 @@ DEFAULT_ALBERTA_CHECKPOINT = ROOT / "checkpoints" / "alberta_text_conditioned"
 async def _gate_training(ckpt_dir: Path) -> dict:
     """Gate 1: checkpoint loads and emits 24-D actions."""
     print(f"[gate-1] loading {ckpt_dir}/manifest.json ...")
-    p = TextConditionedPolicy(ckpt_dir)
+    p = TextConditionedPolicy(ckpt_dir, strict_manifest=True)
     proprio = np.zeros(45, dtype=np.float32)
     proprio[5] = 1.0
     results = []
@@ -68,7 +68,7 @@ async def _gate_training(ckpt_dir: Path) -> dict:
 
 async def _gate_training_dim(ckpt_dir: Path, output_dim: int) -> dict:
     print(f"[gate-1] loading {ckpt_dir}/policy manifest ...")
-    p = TextConditionedPolicy(ckpt_dir)
+    p = TextConditionedPolicy(ckpt_dir, strict_manifest=True)
     proprio = np.zeros(int(p.manifest.proprio_dim or 45), dtype=np.float32)
     if proprio.shape[0] > 5:
         proprio[5] = 1.0
@@ -91,7 +91,7 @@ async def _gate_training_dim(ckpt_dir: Path, output_dim: int) -> dict:
 async def _gate_conditioning(ckpt_dir: Path) -> dict:
     """Gate 2: text input materially changes the policy output."""
     print("[gate-2] conditioning differentiation...")
-    p = TextConditionedPolicy(ckpt_dir)
+    p = TextConditionedPolicy(ckpt_dir, strict_manifest=True)
     proprio = np.zeros(45, dtype=np.float32)
     proprio[5] = 1.0
     actions = {}

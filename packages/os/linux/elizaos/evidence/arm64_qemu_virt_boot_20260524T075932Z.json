@@ -1,0 +1,36 @@
+{
+  "arch": "arm64",
+  "boot_completed": true,
+  "claim_boundary": "qemu_virt_boot_transcript_evidence_only_no_silicon_or_physical_board_claim",
+  "cpus": 2,
+  "duration_s": 152,
+  "forbidden_markers_present": [],
+  "iso_boot_artifacts": {
+    "found": {
+      "arm64_live_initrd": "/live/initrd.img-6.12.90+deb13-arm64",
+      "arm64_live_kernel": "/live/vmlinuz-6.12.90+deb13-arm64",
+      "arm64_removable_uefi_loader": "/EFI/boot/bootaa64.efi",
+      "grub_config": "/boot/grub/grub.cfg"
+    },
+    "missing": []
+  },
+  "iso_path": "out/elizaos-linux-arm64-default-20260524T075932Z.iso",
+  "iso_sha256": "74f4480782aeeb42dbc2c2eedbd60490c2bf1e79622a2b50961420f45e11e09c",
+  "markers_found": [
+    "elizaOS Linux (Linux aarch64)",
+    "elizaos-firstboot-ready",
+    "elizaos-curl-health-ready",
+    "elizaos-agent-ready",
+    "elizaos-tui-ready"
+  ],
+  "markers_missing": [],
+  "memory_mb": 2048,
+  "provenance": "qemu_virt_arm64",
+  "qemu_exit_code": 0,
+  "schema": "eliza.os.linux.qemu_virt_boot.v1",
+  "start_utc": "2026-05-24T08:38:32Z",
+  "timeout_s": 600,
+  "transcript_path": "evidence/arm64_qemu_virt_boot_20260524T075932Z.log",
+  "transcript_sha256": "913129ab9b90153874481949a04cc7c94c1b605a518d4358388eaf0498046a84",
+  "u_boot_path": null
+}

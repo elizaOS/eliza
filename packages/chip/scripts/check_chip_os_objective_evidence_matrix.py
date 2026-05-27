@@ -474,7 +474,8 @@ def evaluate_requirement(req: Requirement, report_dir: Path) -> dict[str, Any]:
 
     findings: list[str] = []
     status = data.get("status")
-    if status != req.required_status:
+    normalized_status = status.lower() if isinstance(status, str) else status
+    if normalized_status != req.required_status:
         findings.append(f"report status is {status!r}, expected {req.required_status!r}")
     for field, expected in req.required_fields:
         observed = nested(data, field)

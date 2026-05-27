@@ -15,6 +15,12 @@ with reset vector, RAM, UART, timer, interrupt controller, and a selected
 OpenSBI platform or generic `fw_dynamic` handoff. Until then this directory is
 documentation-only and must not be treated as boot evidence.
 
+The CPU/AP OpenSBI evidence gate is intentionally narrow: accepted transcripts
+must contain a real `OpenSBI v1.2` banner plus the Domain0 handoff table,
+including `Domain0 Next Arg1` with the expected FDT handoff address
+`0x0000000080b00000`. Diagnostic, fallback, banner-only, qemu-virt reference,
+or synthetic logs are blockers and must not be mirrored into release evidence.
+
 ## External Evidence Capture
 
 The capture script records `EXTERNAL_TREE`, `COMMAND`, `START_UTC`, `END_UTC`,

@@ -291,7 +291,7 @@
 
   <keyframe>
     <key name="stand"
-         qpos="0 0 0.28 1 0 0 0
+         qpos="0 0 0.24 1 0 0 0
                0 0 0 0 0 0
                0 0 0 0 0 0
                0 0

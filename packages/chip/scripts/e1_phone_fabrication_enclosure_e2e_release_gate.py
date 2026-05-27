@@ -620,6 +620,56 @@ def build_report(
                     "component_model_directory_all_terminal_contract_flags_pass"
                 ]
             ),
+            "component_model_directory_local_discrete_step_file_count": (
+                objective_local_progress[
+                    "component_model_directory_local_discrete_step_file_count"
+                ]
+            ),
+            "component_model_directory_local_discrete_step_imported_solid_count": (
+                objective_local_progress[
+                    "component_model_directory_local_discrete_step_imported_solid_count"
+                ]
+            ),
+            "component_model_directory_local_discrete_step_bbox_match_count": (
+                objective_local_progress[
+                    "component_model_directory_local_discrete_step_bbox_match_count"
+                ]
+            ),
+            "component_model_directory_local_discrete_step_bytes_total": (
+                objective_local_progress[
+                    "component_model_directory_local_discrete_step_bytes_total"
+                ]
+            ),
+            "component_model_directory_supplier_step_intake_placeholder_count": (
+                objective_local_progress[
+                    "component_model_directory_supplier_step_intake_placeholder_count"
+                ]
+            ),
+            "component_model_directory_supplier_step_intake_local_surrogate_count": (
+                objective_local_progress[
+                    "component_model_directory_supplier_step_intake_local_surrogate_count"
+                ]
+            ),
+            "component_model_directory_supplier_step_intake_missing_count": (
+                objective_local_progress[
+                    "component_model_directory_supplier_step_intake_missing_count"
+                ]
+            ),
+            "component_model_directory_supplier_step_intake_not_applicable_count": (
+                objective_local_progress[
+                    "component_model_directory_supplier_step_intake_not_applicable_count"
+                ]
+            ),
+            "component_model_directory_supplier_step_intake_release_candidate_count": (
+                objective_local_progress[
+                    "component_model_directory_supplier_step_intake_release_candidate_count"
+                ]
+            ),
+            "component_model_directory_supplier_step_intake_lane_counts": (
+                objective_local_progress[
+                    "component_model_directory_supplier_step_intake_lane_counts"
+                ]
+            ),
             "component_model_directory_release_allowed": objective_local_progress[
                 "component_model_directory_release_allowed"
             ],

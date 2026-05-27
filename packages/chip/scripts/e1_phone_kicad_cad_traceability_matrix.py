@@ -106,6 +106,16 @@ def declared_pin_count(pinout: dict[str, Any]) -> int:
     return 0
 
 
+def complete_pin_table_expected_count(pinout: dict[str, Any]) -> int:
+    mechanical = pinout.get("mechanical")
+    if not isinstance(mechanical, dict):
+        return 0
+    for key in ("electrical_pad_count_with_exposed_pads", "pin_count", "bump_count"):
+        if key in mechanical:
+            return int(mechanical[key])
+    return 0
+
+
 def recursive_pin_record_count(value: Any) -> int:
     if isinstance(value, dict):
         total = 1 if "pin" in value and str(value.get("pin")) != "ALL" else 0
@@ -283,11 +293,13 @@ def build_report() -> dict[str, Any]:
         pinout = load_yaml(path) if path.is_file() else {}
         urls = public_source_urls(pinout)
         declared_count = declared_pin_count(pinout)
+        complete_pin_table_count = complete_pin_table_expected_count(pinout)
         concrete_record_count = recursive_pin_record_count(pinout)
         row = {
             "file": file_name,
             "function": record.get("function"),
             "part": record.get("part"),
+            "manifest_completeness": record.get("completeness"),
             "schema": pinout.get("schema"),
             "evidence_class": pinout.get("evidence_class"),
             "manifest_evidence_class": record.get("evidence_class"),
@@ -296,7 +308,11 @@ def build_report() -> dict[str, Any]:
             "sha256": file_sha256(path) if path.is_file() else "",
             "public_source_url_count": len(urls),
             "declared_pin_count": declared_count,
+            "complete_pin_table_expected_count": complete_pin_table_count,
             "captured_pin_record_count": concrete_record_count,
+            "complete_pin_table_captured": bool(
+                complete_pin_table_count and concrete_record_count == complete_pin_table_count
+            ),
             "public_source_present": bool(urls),
             "release_credit": False,
         }
@@ -329,7 +345,7 @@ def build_report() -> dict[str, Any]:
         and len(pad_records) == 32
         and len(binding_records) == 89
         and len(step_records) == 89
-        and len(connection_records) == 21
+        and len(connection_records) == 24
         else "blocked_traceability_gap"
     )
     return {
@@ -361,6 +377,9 @@ def build_report() -> dict[str, Any]:
             ),
             "captured_pinout_record_count_total": sum(
                 int(row["captured_pin_record_count"] or 0) for row in captured_pinout_rows
+            ),
+            "captured_pinout_complete_table_file_count": sum(
+                1 for row in captured_pinout_rows if row["complete_pin_table_captured"]
             ),
             "captured_pinout_public_source_count": sum(
                 1 for row in captured_pinout_rows if row["public_source_present"]

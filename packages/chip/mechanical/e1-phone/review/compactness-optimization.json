@@ -1,15 +1,15 @@
 {
   "claim_boundary": "CAD compactness optimization audit from selected off-the-shelf module envelopes; not proof that supplier final STEP or routed PCB cannot reduce size further.",
-  "status": "blocked",
+  "status": "cad_compactness_optimized",
   "current_envelope_mm": [
     78.0,
     153.6,
     11.8
   ],
   "physical_span_with_external_features_mm": [
-    81.332,
+    81.1,
     153.6,
-    12.11
+    11.8
   ],
   "lower_bounds": {
     "display_touch_panel_mm": [
@@ -55,180 +55,19 @@
       "id": "flush_back_molded_depth",
       "actual": {
         "molded_envelope_depth_mm": 11.8,
-        "physical_span_with_external_features_mm": 12.11,
+        "physical_span_with_external_features_mm": 11.8,
         "rear_solid_protrusion_mm": 0.0,
-        "front_solid_protrusion_mm": 0.31,
-        "depth_outliers": [
-          {
-            "part": "display_touch_fpc_from_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "display_touch_fpc_to_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "rear_camera_csi_fpc_from_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "rear_camera_csi_fpc_to_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "front_camera_csi_fpc_from_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "front_camera_csi_fpc_to_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "side_key_flex_from_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "side_key_flex_to_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "bottom_microphone_flex_from_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "bottom_microphone_flex_to_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "top_microphone_flex_from_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "top_microphone_flex_to_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "haptic_flex_from_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "haptic_flex_to_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "sim_esim_signal_flex_from_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "sim_esim_signal_flex_to_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "nfc_loop_antenna_flex_from_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "nfc_loop_antenna_flex_to_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "compute_som_sodimm_carrier_from_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "compute_som_sodimm_carrier_to_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "cellular_main_rf_feed_from_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "cellular_main_rf_feed_to_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "cellular_diversity_rf_feed_from_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "cellular_diversity_rf_feed_to_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "cellular_gnss_rf_feed_from_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "cellular_gnss_rf_feed_to_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "wifi_bt_rf0_feed_from_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "wifi_bt_rf0_feed_to_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "wifi_bt_rf1_feed_from_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "wifi_bt_rf1_feed_to_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "split_interconnect_side_flex_from_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          },
-          {
-            "part": "split_interconnect_side_flex_to_terminal",
-            "rear_protrusion_mm": 0.0,
-            "front_protrusion_mm": 0.31
-          }
-        ]
+        "front_solid_protrusion_mm": 0.0,
+        "depth_outliers": []
       },
       "target": "molded slab depth <=12.8 mm with a fully flush flat back: zero rear solid protrusion and no package outside the enclosure datum (depth raised to 12.7 mm by product-owner approval for the >=0.6 mm battery swell void and >=0.4 mm camera burial)",
-      "pass": false
+      "pass": true
     },
     {
       "id": "side_controls_do_not_resize_molded_body",
       "actual": {
-        "physical_width_with_buttons_mm": 81.332,
-        "molded_body_width_excluding_side_controls_mm": 79.782,
+        "physical_width_with_buttons_mm": 81.1,
+        "molded_body_width_excluding_side_controls_mm": 78.0,
         "molded_envelope_width_mm": 78.0,
         "side_button_left_protrusion_mm": 1.55,
         "side_button_right_protrusion_mm": 1.55,
@@ -236,7 +75,7 @@
         "side_button_max_single_side_protrusion_mm": 1.55
       },
       "target": "side controls may protrude locally up to 3.1 mm per side while the molded orange body stays at the display-driven width",
-      "pass": false
+      "pass": true
     },
     {
       "id": "pcb_battery_do_not_drive_outer_envelope",

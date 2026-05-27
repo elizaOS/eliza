@@ -207,7 +207,7 @@ def check_handoffs(errors: list[str]) -> None:
             "scripts/run_qemu.sh --build-firmware",
         ),
         CHIPYARD_RUN: (
-            "note=qemu-virt and Renode reference transcripts do not satisfy this generated AP Linux smoke",
+            "note=software reference transcripts are excluded from generated AP evidence intake",
             "LOADMEM=1 run-binary",
         ),
         CHIPYARD_GENERATED_CHECK: (

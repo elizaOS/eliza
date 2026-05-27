@@ -147,10 +147,21 @@ def _candidate_default_policy_checkpoints(
     root: Path = PKG_ROOT,
 ) -> list[Path]:
     profile_slug = profile_id.replace("-", "_")
-    return [
+    candidates: list[Path] = []
+    env_checkpoint = os.environ.get("ROBOT_POLICY_CHECKPOINT")
+    if env_checkpoint:
+        candidates.append(Path(env_checkpoint))
+    candidates.extend([
         root / "checkpoints" / f"{profile_slug}_alberta_full",
+        root
+        / "evidence"
+        / "nebius_full_training"
+        / "synced_run"
+        / "checkpoints"
+        / f"{profile_slug}_alberta_full",
         root / "checkpoints" / "alberta_text_conditioned",
-    ]
+    ])
+    return candidates
 
 
 def _resolve_default_policy_checkpoint(
@@ -167,7 +178,7 @@ def _resolve_default_policy_checkpoint(
 def _load_checkpoint_policy(profile_id: str, checkpoint_dir: Path):
     """Return a callable `policy(label, obs)->action` for any policy backend."""
 
-    policy = TextConditionedPolicy(checkpoint_dir)
+    policy = TextConditionedPolicy(checkpoint_dir, strict_manifest=True)
     if policy.manifest.profile_id != profile_id:
         raise ValueError(
             "checkpoint profile mismatch: "
@@ -295,6 +306,7 @@ def run(
     policy_checkpoint: Path | None = None,
     preserve_state_between_commands: bool = False,
     scripted_smoke: bool = False,
+    allow_zero_action_fallback: bool = False,
 ) -> int:
     import mujoco
 
@@ -342,6 +354,13 @@ def run(
             policy = _load_sb3_policy(profile_id)
             policy_source = "sb3_smoke" if policy is not None else "zero_action"
     if policy is None and not scripted_smoke:
+        if not allow_zero_action_fallback:
+            raise FileNotFoundError(
+                "no trained policy checkpoint found for "
+                f"profile={profile_id!r}. Pass --policy-checkpoint, set "
+                "ROBOT_POLICY_CHECKPOINT, use --scripted-smoke for wiring "
+                "evidence, or pass --allow-zero-action-fallback explicitly."
+            )
         print(
             "[viewer] no matching Alberta checkpoint or SB3 policy at "
             f"checkpoints/text_conditioned_{profile_id}_smoke/; "
@@ -408,6 +427,8 @@ def run(
             torso_y_m=_finite_float(info.get("root_y")),
             torso_z_m=_finite_float(info.get("torso_z")),
             yaw_rad=_finite_float(info.get("root_yaw")),
+            imu_roll_rad=float(info.get("imu_roll", 0.0) or 0.0),
+            imu_pitch_rad=float(info.get("imu_pitch", 0.0) or 0.0),
             extra={"stand_height_m": info.get("stand_height_m")},
         )
 
@@ -504,6 +525,12 @@ def run(
             and (fall_threshold is None or min_torso is None or min_torso >= fall_threshold)
         )
         upright_ok = min_upright is None or min_upright > 0.0
+        policy_driven_attempt = (
+            policy_source == "scripted_smoke"
+            or policy_source == "sb3_smoke"
+            or policy_source.startswith("checkpoint:")
+        )
+        attempted_action = bool(nonzero_action_steps > 0 or policy_driven_attempt)
         return {
             "profile": profile_id,
             "label": label,
@@ -524,7 +551,7 @@ def run(
             "delta_yaw_rad": _series_summary(delta_yaw),
             "action_norm": _series_summary(action_norms),
             "nonzero_action_steps": nonzero_action_steps,
-            "attempted_action": bool(nonzero_action_steps > 0 or task_id == "stand_up"),
+            "attempted_action": attempted_action,
             "goal_success": bool(final_result.success),
             "goal_failed": bool(final_result.failed),
             "goal_reason": final_result.reason,
@@ -533,7 +560,7 @@ def run(
                 "no_termination": not terminated,
                 "torso_above_fall_threshold": bool(no_fall),
                 "upright_positive": bool(upright_ok),
-                "attempted_action": bool(nonzero_action_steps > 0 or task_id == "stand_up"),
+                "attempted_action": attempted_action,
                 "goal_success": bool(final_result.success),
             },
         }
@@ -657,6 +684,14 @@ def main(argv: list[str] | None = None) -> int:
             "it is not trained-policy evidence."
         ),
     )
+    parser.add_argument(
+        "--allow-zero-action-fallback",
+        action="store_true",
+        help=(
+            "Allow rendering with zero actions when no checkpoint exists. "
+            "This is only for renderer/debug smoke, never trained-policy evidence."
+        ),
+    )
     args = parser.parse_args(argv)
     return run(
         args.profile,
@@ -671,6 +706,7 @@ def main(argv: list[str] | None = None) -> int:
         policy_checkpoint=args.policy_checkpoint,
         preserve_state_between_commands=args.preserve_state_between_commands,
         scripted_smoke=args.scripted_smoke,
+        allow_zero_action_fallback=args.allow_zero_action_fallback,
     )
 
 

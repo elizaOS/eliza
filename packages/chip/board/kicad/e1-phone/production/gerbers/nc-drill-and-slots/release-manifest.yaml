@@ -6,7 +6,7 @@ created_at: '2026-05-22'
 tool_or_supplier_revision: generate_e1_phone_factory_output_candidates.py
 input_artifact_hashes:
   board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb: ed022f26f2ab500c01a92e7d214b9c9683fcc6b0e376f4045eda359501640a8f
-  board/kicad/e1-phone/component-height-step-integration.yaml: 82f219b73e48c4f998b172714edd0d94593094c706fae7a02ff9e0c3aa63d63b
+  board/kicad/e1-phone/component-height-step-integration.yaml: 68b6671ced762dfb47607415c3881b7c69bc6da3b3bcf2fbab9c6c9b8d44ad1b
   board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml: 509ade0d8f5c5f3491a67a61e6f5f28a7b719dbc4b49bb03dabf9d0adc2b8398
 reviewer: unreviewed
 reviewed_at: unreviewed_local_candidate_2026-05-22
@@ -20,6 +20,21 @@ lot_or_serial_traceability: missing
 release_allowed: false
 claim_boundary: Local candidate artifact only. Not supplier, factory, lab, first-article, quote, fabrication,
   enclosure, or end-to-end release evidence.
+board_serial: unserialized_until_routed_first_article_board_exists
+supplier_lot_ids:
+- supplier_lots_unassigned_until_approved_bom_avl
+fixture_id: fixture_unassigned_until_cm_test_station_selected
+fixture_calibration_id: calibration_record_unavailable_until_fixture_exists
+test_software_revision: test_software_unreleased_until_factory_program_exists
+operator: operator_unassigned_until_executed_first_article
+limits_file: board/kicad/e1-phone/production/test/factory-test-limits.yaml
+measured_results:
+  source_requirement_id: board/kicad/e1-phone/production/gerbers/nc-drill-and-slots
+  measurement_state: not_measured_until_routed_hardware_and_fixture_exist
+  release_credit: false
+pass_fail_disposition: not_evaluated_until_executed_first_article
+waivers:
+- none_recorded_until_executed_first_article
 kicad_project_revision: development_real_footprint_snapshot
 routed_pcb_hash: ed022f26f2ab500c01a92e7d214b9c9683fcc6b0e376f4045eda359501640a8f
 erc_result: not_run

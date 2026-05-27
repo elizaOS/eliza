@@ -38,6 +38,39 @@ from typing import Literal
 ROOT = Path(__file__).resolve().parents[1]
 REPORT_PATH = ROOT / "build/reports/tapeout-readiness.json"
 PRODUCT_RELEASE_STATUS_PATH = ROOT / "build/reports/product_release_status.json"
+PD_SIGNOFF_REPORT_PATH = ROOT / "build/reports/pd_signoff.json"
+PD_RELEASE_EVIDENCE_REPORT_PATH = ROOT / "build/reports/pd_release_evidence.json"
+OPENLANE_RELEASE_PREFLIGHT_REPORT_PATH = ROOT / "build/reports/openlane_run_release_preflight.json"
+FPGA_RELEASE_REPORT_PATH = ROOT / "build/reports/fpga_release.json"
+PACKAGE_CROSS_PROBE_REPORT_PATH = ROOT / "build/reports/package_cross_probe.json"
+KICAD_ARTIFACTS_REPORT_PATH = ROOT / "build/reports/kicad_artifacts.json"
+MANUFACTURING_ARTIFACTS_REPORT_PATH = ROOT / "build/reports/manufacturing_artifacts.json"
+ANDROID_RELEASE_READINESS_REPORT_PATH = (
+    ROOT / "build/reports/android_release_readiness_contract.json"
+)
+PDK_ACCESS_GATE_REPORT_PATH = ROOT / "build/reports/pdk_access_gate.json"
+PDN_WORKLOAD_SIGNOFF_REPORT_PATH = ROOT / "build/reports/pdn_workload_signoff.json"
+IO_CELL_CONTRACT_REPORT_PATH = ROOT / "build/reports/io_cell_contract.json"
+ANDROID_SIMULATED_PERIPHERAL_REPORT_PATH = (
+    ROOT / "build/reports/android_simulated_peripheral_evidence.json"
+)
+ANDROID_SYSTEM_BRIDGE_REPORT_PATH = ROOT / "build/reports/android_system_bridge_contract.json"
+LINUX_BOOT_ARTIFACTS_REPORT_PATH = ROOT / "build/reports/linux_boot_artifacts.json"
+MINIMUM_LINUX_NPU_TARGET_REPORT_PATH = ROOT / "build/reports/minimum_linux_npu_target.json"
+OS_RV64_CHIP_BOOT_CONTRACT_REPORT_PATH = ROOT / "build/reports/os_rv64_chip_boot_contract.json"
+E1_PHONE_ROUTED_OUTPUT_REPORT_PATH = ROOT / "build/reports/e1_phone_routed_output_content.json"
+E1_PHONE_FACTORY_OUTPUT_REPORT_PATH = ROOT / "build/reports/e1_phone_factory_output_content.json"
+E1_PHONE_FIRST_ARTICLE_REPORT_PATH = ROOT / "build/reports/e1_phone_first_article_content.json"
+E1_PHONE_SUPPLIER_RETURN_REPORT_PATH = ROOT / "build/reports/e1_phone_supplier_return_content.json"
+E1_PHONE_RELEASE_APPROVAL_REPORT_PATH = (
+    ROOT / "build/reports/e1_phone_release_approval_signatures.json"
+)
+PHONE_RUNTIME_READINESS_REPORT_PATH = ROOT / "build/reports/phone_runtime_readiness_contract.json"
+BOOT_SECURITY_CHAIN_CONTRACT_REPORT_PATH = ROOT / "build/reports/boot_security_chain_contract.json"
+LINUX_FIRMWARE_BOOT_CHAIN_CONTRACT_REPORT_PATH = (
+    ROOT / "build/reports/linux_firmware_boot_chain_contract.json"
+)
+AOSP_LINUX_HANDOFF_CONTRACT_REPORT_PATH = ROOT / "build/reports/aosp_linux_handoff_contract.json"
 SCHEMA = "eliza.tapeout_readiness.v1"
 CLAIM_BOUNDARY = "tapeout_readiness_aggregator_view_only_no_silicon_or_release_claim"
 GATE_TIMEOUT_SECONDS = int(os.environ.get("ELIZA_TAPEOUT_GATE_TIMEOUT_SECONDS", "180"))
@@ -886,6 +919,26 @@ def classify_blocker_dependency(result: GateResult) -> BlockerDependency:
     if result.status != "BLOCKED":
         return "not_blocked"
 
+    if result.name == "product-release-status-check":
+        product_dependency = product_release_status_dependency()
+        if product_dependency is not None:
+            return product_dependency
+    if result.name == "pd-soc-input-contract-check":
+        return "actionable_external_dependency"
+    if result.name in ("cpu-ap-completion-gate", "aosp-simulator-completion-check"):
+        return "live_device_validation"
+    chip_release_dependency = chip_release_report_dependency(result.name)
+    if chip_release_dependency is not None:
+        return chip_release_dependency
+    if result.name == "e1-phone-routed-output-content-check":
+        routed_dependency = routed_output_content_dependency()
+        if routed_dependency is not None:
+            return routed_dependency
+    if result.name == "chipyard-generated-linux-contract-check":
+        chipyard_dependency = chipyard_generated_linux_dependency(result)
+        if chipyard_dependency is not None:
+            return chipyard_dependency
+
     blob = " ".join(
         (
             result.name,
@@ -929,9 +982,355 @@ def classify_blocker_dependency(result: GateResult) -> BlockerDependency:
     return "repo_artifact_generation"
 
 
-def blocker_action(result: GateResult) -> dict[str, str]:
+CHIP_RELEASE_REPORTS_BY_GATE: dict[str, Path] = {
+    "pdk-access-gate": PDK_ACCESS_GATE_REPORT_PATH,
+    "pd-signoff-check": PD_SIGNOFF_REPORT_PATH,
+    "pd-release-evidence-check": PD_RELEASE_EVIDENCE_REPORT_PATH,
+    "pdn-workload-signoff": PDN_WORKLOAD_SIGNOFF_REPORT_PATH,
+    "io-cell-contract-check": IO_CELL_CONTRACT_REPORT_PATH,
+    "openlane-run-release-preflight-check": OPENLANE_RELEASE_PREFLIGHT_REPORT_PATH,
+    "fpga-release-check": FPGA_RELEASE_REPORT_PATH,
+    "package-cross-probe-check": PACKAGE_CROSS_PROBE_REPORT_PATH,
+    "package-cross-probe-release-check": PACKAGE_CROSS_PROBE_REPORT_PATH,
+    "kicad-artifact-check": KICAD_ARTIFACTS_REPORT_PATH,
+    "kicad-artifacts-release-check": KICAD_ARTIFACTS_REPORT_PATH,
+    "manufacturing-artifacts-release-check": MANUFACTURING_ARTIFACTS_REPORT_PATH,
+    "android-release-readiness-contract-check": ANDROID_RELEASE_READINESS_REPORT_PATH,
+    "linux-boot-artifacts-check": LINUX_BOOT_ARTIFACTS_REPORT_PATH,
+    "android-simulated-peripheral-evidence-check": ANDROID_SIMULATED_PERIPHERAL_REPORT_PATH,
+    "android-system-bridge-contract-check": ANDROID_SYSTEM_BRIDGE_REPORT_PATH,
+    "minimum-linux-npu-target-check": MINIMUM_LINUX_NPU_TARGET_REPORT_PATH,
+    "os-rv64-chip-boot-contract-check": OS_RV64_CHIP_BOOT_CONTRACT_REPORT_PATH,
+    "boot-security-chain-contract-check": BOOT_SECURITY_CHAIN_CONTRACT_REPORT_PATH,
+    "linux-firmware-boot-chain-contract-check": LINUX_FIRMWARE_BOOT_CHAIN_CONTRACT_REPORT_PATH,
+    "aosp-linux-handoff-contract-check": AOSP_LINUX_HANDOFF_CONTRACT_REPORT_PATH,
+}
+
+
+def chip_release_report_dependency(gate_name: str) -> BlockerDependency | None:
+    """Classify chip release gates from their structured nested reports."""
+    path = CHIP_RELEASE_REPORTS_BY_GATE.get(gate_name)
+    if path is None:
+        return None
+    report = read_report(path)
+    if not report:
+        return None
+    fixed_dependency = fixed_chip_release_report_dependency(gate_name)
+    if fixed_dependency is not None:
+        return fixed_dependency
+
+    dependency_from_counts = dependency_from_blocker_counts(report)
+    if dependency_from_counts is not None:
+        return dependency_from_counts
+    dependency_from_rows = dependency_from_blocker_rows(report)
+    if dependency_from_rows is not None:
+        return dependency_from_rows
+
+    if report_has_repo_generatable_now(report):
+        return "repo_artifact_generation"
+    if report_has_blocked_generation_without_repo_close(report):
+        return "actionable_external_dependency"
+    if report_text_has_live_dependency(report):
+        return "live_device_validation"
+    if report_text_has_external_dependency(report):
+        return "actionable_external_dependency"
+
+    summary = report.get("summary")
+    if isinstance(summary, dict):
+        blocker_classes = summary.get("blocker_classes")
+        blocker_category_counts = summary.get("blocker_category_counts")
+        class_blob = json.dumps(
+            {
+                "blocker_classes": blocker_classes,
+                "blocker_category_counts": blocker_category_counts,
+            },
+            sort_keys=True,
+        ).lower()
+        if any(
+            token in class_blob
+            for token in (
+                "external",
+                "vendor",
+                "foundry",
+                "approval",
+                "release_gate_blocked",
+                "missing_vendor_evidence",
+            )
+        ):
+            return "actionable_external_dependency"
+    return None
+
+
+def fixed_chip_release_report_dependency(gate_name: str) -> BlockerDependency | None:
+    if gate_name in (
+        "boot-security-chain-contract-check",
+        "linux-firmware-boot-chain-contract-check",
+    ):
+        return "actionable_external_dependency"
+    if gate_name == "aosp-linux-handoff-contract-check":
+        return "live_device_validation"
+    return None
+
+
+def chipyard_generated_linux_dependency(result: GateResult) -> BlockerDependency | None:
+    blob = " ".join((result.name, result.evidence, result.script)).lower()
+    if "--require-boot-evidence" in result.args:
+        return "live_device_validation"
+    if "missing executable ap evidence" in blob or "eliza_e1_ap_benchmarks.log" in blob:
+        return "live_device_validation"
+    return None
+
+
+def dependency_from_blocker_rows(report: dict[str, object]) -> BlockerDependency | None:
+    rows: list[object] = []
+    for key in ("blockers", "findings"):
+        value = report.get(key)
+        if isinstance(value, list):
+            rows.extend(value)
+    dependencies: set[str] = {
+        str(row.get("blocker_dependency"))
+        for row in rows
+        if isinstance(row, dict) and row.get("blocker_dependency")
+    }
+    if "repo_artifact_generation" in dependencies:
+        return "repo_artifact_generation"
+    if "live_device_validation" in dependencies:
+        return "live_device_validation"
+    if "actionable_external_dependency" in dependencies:
+        return "actionable_external_dependency"
+    return None
+
+
+def report_text_has_live_dependency(value: object) -> bool:
+    text = json.dumps(value, sort_keys=True).lower()
+    return any(
+        token in text
+        for token in (
+            "adb",
+            "booted target",
+            "boot cuttlefish",
+            "capture generated",
+            "capture a generated",
+            "live evidence",
+            "runtime evidence",
+            "serial transcript",
+        )
+    )
+
+
+def report_text_has_external_dependency(value: object) -> bool:
+    text = json.dumps(value, sort_keys=True).lower()
+    return any(
+        token in text
+        for token in (
+            "foundry",
+            "commercial",
+            "eda seat",
+            "vendor",
+            "supplier",
+            "hard-ip",
+            "wafer",
+            "mask/nre",
+            "external approval",
+            "external checkout",
+            "external linux",
+            "external buildroot",
+            "external opensbi",
+        )
+    )
+
+
+def dependency_from_blocker_counts(report: dict[str, object]) -> BlockerDependency | None:
+    counts = report.get("blocker_dependency_counts")
+    if not isinstance(counts, dict):
+        return None
+    try:
+        repo = int(counts.get("repo_artifact_generation") or 0)
+        live = int(counts.get("live_device_validation") or 0)
+        external = int(counts.get("actionable_external_dependency") or 0)
+    except (TypeError, ValueError):
+        return None
+    if repo > 0:
+        return "repo_artifact_generation"
+    if live > 0:
+        return "live_device_validation"
+    if external > 0:
+        return "actionable_external_dependency"
+    return None
+
+
+def report_has_repo_generatable_now(value: object) -> bool:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in ("repo_generatable_now", "can_generate_from_repo_now"):
+                if item is True:
+                    return True
+            if key in ("repo_generatable_now_count", "can_close_from_current_repo_count"):
+                try:
+                    if int(item or 0) > 0:
+                        return True
+                except (TypeError, ValueError):
+                    pass
+            if report_has_repo_generatable_now(item):
+                return True
+    elif isinstance(value, list):
+        return any(report_has_repo_generatable_now(item) for item in value)
+    return False
+
+
+def report_has_blocked_generation_without_repo_close(value: object) -> bool:
+    if isinstance(value, dict):
+        has_blocked_generation = False
+        repo_close_count: int | None = None
+        for key, item in value.items():
+            if key in ("blocked_generation_count", "blocked_repo_generation_count"):
+                try:
+                    has_blocked_generation = int(item or 0) > 0
+                except (TypeError, ValueError):
+                    has_blocked_generation = False
+            if key in ("repo_generatable_now_count", "can_close_from_current_repo_count"):
+                try:
+                    repo_close_count = int(item or 0)
+                except (TypeError, ValueError):
+                    repo_close_count = None
+            if report_has_blocked_generation_without_repo_close(item):
+                return True
+        return has_blocked_generation and repo_close_count == 0
+    if isinstance(value, list):
+        return any(report_has_blocked_generation_without_repo_close(item) for item in value)
+    return False
+
+
+def product_release_status_dependency() -> BlockerDependency | None:
+    """Classify the product rollup from its structured dependency summary."""
+    try:
+        report = json.loads(PRODUCT_RELEASE_STATUS_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+
+    groups = report.get("repo_artifact_generation_groups")
+    if isinstance(groups, list) and groups:
+        has_repo_generatable_now = False
+        all_groups_categorized = True
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            counts = group.get("repo_generation_category_counts")
+            if not isinstance(counts, dict):
+                all_groups_categorized = False
+                continue
+            try:
+                has_repo_generatable_now = has_repo_generatable_now or int(
+                    counts.get("repo_generatable_now") or 0
+                ) > 0
+            except (TypeError, ValueError):
+                all_groups_categorized = False
+        if has_repo_generatable_now:
+            return "repo_artifact_generation"
+        if not all_groups_categorized:
+            return None
+
+    counts = report.get("blocker_dependency_counts")
+    if not isinstance(counts, dict):
+        return None
+    try:
+        live = int(counts.get("live_device_validation") or 0)
+        external = int(counts.get("actionable_external_dependency") or 0)
+        repo = int(counts.get("repo_artifact_generation") or 0)
+    except (TypeError, ValueError):
+        return None
+    if repo > 0 and (external > 0 or live > 0):
+        return "live_device_validation" if live > external else "actionable_external_dependency"
+    if external > 0:
+        return "actionable_external_dependency"
+    if live > 0:
+        return "live_device_validation"
+    if repo > 0:
+        return "repo_artifact_generation"
+    return None
+
+
+def routed_output_content_dependency() -> BlockerDependency | None:
+    """Classify routed-output blockers from the routed content report."""
+    try:
+        report = json.loads(E1_PHONE_ROUTED_OUTPUT_REPORT_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+    summary = report.get("summary")
+    if not isinstance(summary, dict):
+        return None
+    try:
+        closes_release = int(summary.get("repo_generation_closes_release_blocker_count") or 0)
+        external_required = int(summary.get("external_release_evidence_required_count") or 0)
+        missing_generated = int(summary.get("true_missing_generated_output_count") or 0)
+        missing_outputs = int(summary.get("missing_outputs") or 0)
+    except (TypeError, ValueError):
+        return None
+    if closes_release > 0 or missing_generated > 0 or missing_outputs > 0:
+        return "repo_artifact_generation"
+    if external_required > 0:
+        return "actionable_external_dependency"
+    return None
+
+
+def read_report(path: Path) -> dict[str, object]:
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {}
+    return report if isinstance(report, dict) else {}
+
+
+def report_summary(path: Path) -> dict[str, object]:
+    report = read_report(path)
+    summary = report.get("summary")
+    return summary if isinstance(summary, dict) else {}
+
+
+def count_value(summary: dict[str, object], key: str) -> int:
+    try:
+        return int(summary.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def externalized_candidate_action(
+    *,
+    noun: str,
+    summary: dict[str, object],
+    external_key: str,
+    candidate_key: str,
+    missing_key: str,
+    validation_command: str,
+) -> str:
+    external_count = count_value(summary, external_key)
+    candidate_count = count_value(summary, candidate_key)
+    missing_count = count_value(summary, missing_key)
+    if external_count > 0 and missing_count == 0:
+        return (
+            f"Replace {candidate_count} present candidate/non-release {noun} rows with "
+            f"approved, hash-bound release evidence; {external_count} rows still require "
+            f"external approval or supplier/factory evidence. Rerun {validation_command}."
+        )
+    if missing_count > 0:
+        return (
+            f"Generate or attach {missing_count} missing {noun} rows, then replace any "
+            f"candidate rows with approved release evidence and rerun {validation_command}."
+        )
+    return (
+        f"Inspect the {noun} report, replace placeholders with approved release evidence, "
+        f"and rerun {validation_command}."
+    )
+
+
+def blocker_action(result: GateResult) -> dict[str, object]:
     """Return an operator-facing next action for a blocked aggregate gate."""
     product_repo_groups = product_repo_artifact_group_summary()
+    routed_summary = report_summary(E1_PHONE_ROUTED_OUTPUT_REPORT_PATH)
+    factory_summary = report_summary(E1_PHONE_FACTORY_OUTPUT_REPORT_PATH)
+    first_article_summary = report_summary(E1_PHONE_FIRST_ARTICLE_REPORT_PATH)
+    supplier_summary = report_summary(E1_PHONE_SUPPLIER_RETURN_REPORT_PATH)
+    approval_summary = report_summary(E1_PHONE_RELEASE_APPROVAL_REPORT_PATH)
     action_by_gate = {
         "e1-phone-board-package-check": (
             "Keep structural board package checks green while replacing fail-closed "
@@ -943,24 +1342,36 @@ def blocker_action(result: GateResult) -> dict[str, str]:
             "blocked child gate and rerunning the fabrication release checker."
         ),
         "e1-phone-release-approval-signature-check": (
-            "Collect owner/reviewer/captured_at/revision-or-lot/SHA256-backed "
-            "approval rows; placeholder, template, and presence-only rows do not count."
+            f"Collect owner/reviewer/captured_at/revision-or-lot/SHA256-backed approval "
+            f"rows for {count_value(approval_summary, 'release_blocked')} blocked rows; "
+            "placeholder, template, and presence-only rows do not count."
         ),
         "e1-phone-supplier-return-content-check": (
-            "Collect supplier-returned quotes, drawings, STEP/B-rep models, samples, "
-            "pinouts, and acceptance evidence for every blocked supplier matrix row."
+            f"Collect supplier-returned quotes, drawings, STEP/B-rep models, samples, "
+            f"pinouts, and acceptance evidence for {count_value(supplier_summary, 'blocked')} "
+            "blocked supplier matrix rows."
         ),
-        "e1-phone-routed-output-content-check": (
-            "Generate or replace missing routed release outputs, then validate DRC/ERC, "
-            "SI/PI/RF, IPC/fabrication, and exact-net evidence for every routed domain."
+        "e1-phone-routed-output-content-check": externalized_candidate_action(
+            noun="routed output",
+            summary=routed_summary,
+            external_key="external_release_evidence_required_count",
+            candidate_key="candidate_present_but_blocked_count",
+            missing_key="true_missing_generated_output_count",
+            validation_command="python3 scripts/check_e1_phone_routed_output_content.py",
         ),
-        "e1-phone-factory-output-content-check": (
-            "Generate the missing BOM, Gerber/drill, IPC-2581, POS, panel, assembly, "
-            "probe, and factory-test outputs with content-valid manifests."
+        "e1-phone-factory-output-content-check": externalized_candidate_action(
+            noun="factory output",
+            summary=factory_summary,
+            external_key="external_release_evidence_required_count",
+            candidate_key="candidate_present_but_blocked_count",
+            missing_key="true_missing_factory_output_count",
+            validation_command="python3 scripts/check_e1_phone_factory_output_content.py",
         ),
         "e1-phone-first-article-content-check": (
-            "Execute first-article traveler/test logs on real units and replace template "
-            "or presence-only rows with signed, hashed measurement evidence."
+            f"Execute first-article traveler/test logs on real units and replace "
+            f"{count_value(first_article_summary, 'blocked_template_present_count')} template "
+            f"and {count_value(first_article_summary, 'blocked_required_present_count')} "
+            "presence-only rows with signed, hashed measurement evidence."
         ),
         "e1-phone-enclosure-mechanical-content-check": (
             "Collect routed-board STEP clearance, production enclosure handoff packets, "
@@ -985,7 +1396,7 @@ def blocker_action(result: GateResult) -> dict[str, str]:
         validation = " ".join((validation, *result.args))
     if result.name == "phone-runtime-readiness-contract-check":
         validation = "packages/chip/scripts/check_phone_runtime_readiness_contract.py"
-    return {
+    action: dict[str, object] = {
         "name": result.name,
         "dependency": result.blocker_dependency,
         "script": result.script,
@@ -996,6 +1407,11 @@ def blocker_action(result: GateResult) -> dict[str, str]:
             "Inspect the checker report, replace placeholders with real evidence, and rerun the gate.",
         ),
     }
+    if result.name == "phone-runtime-readiness-contract-check":
+        runtime_action = runtime_next_capture_action()
+        if runtime_action is not None:
+            action["next_runtime_capture_action"] = runtime_action
+    return action
 
 
 def product_repo_artifact_group_summary(limit: int = 5) -> str:
@@ -1025,7 +1441,105 @@ def product_repo_artifact_group_summary(limit: int = 5) -> str:
     return "; ".join(rows)
 
 
+def product_next_release_action() -> dict[str, object] | None:
+    """Return product rollup's structured next release action when available."""
+    try:
+        report = json.loads(PRODUCT_RELEASE_STATUS_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+    action = report.get("next_release_action")
+    return action if isinstance(action, dict) else None
+
+
+def runtime_next_capture_action() -> dict[str, object] | None:
+    """Return runtime contract's structured next live-capture action when available."""
+    try:
+        report = json.loads(PHONE_RUNTIME_READINESS_REPORT_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+    action = report.get("next_runtime_capture_action")
+    return action if isinstance(action, dict) else None
+
+
 AGGREGATE_RELEASE_PHASES: tuple[dict[str, object], ...] = (
+    {
+        "phase": "chip_pd_signoff",
+        "goal": "Close PD signoff, release evidence, OpenLane, antenna, and tapeout-scope gates.",
+        "gates": {
+            "pd-preflight-check",
+            "pd-soc-input-contract-check",
+            "pd-signoff-manifest-check",
+            "pd-signoff-check",
+            "pd-release-evidence-check",
+            "pd-evidence-gates",
+            "antenna-metadata-release-check",
+            "openlane-run-release-preflight-check",
+            "pdn-workload-signoff",
+            "physical-closure-work-order-check",
+            "manufacturing-tapeout-scope-check",
+            "multi-pdk-closure-check",
+            "pdk-portability-check",
+            "pdk-access-gate",
+            "die-area-budget-check",
+        },
+        "acceptance_commands": [
+            "python3 scripts/check_pd_signoff.py",
+            "python3 scripts/check_pd_release_evidence.py",
+            "python3 scripts/check_openlane_run_preflight.py --release",
+            "python3 scripts/aggregate_tapeout_readiness.py --scope chip --strict",
+        ],
+    },
+    {
+        "phase": "chip_package_board_release",
+        "goal": "Close package, pinout, KiCad/manufacturing, board-package, and cross-probe release evidence.",
+        "gates": {
+            "pinout-check",
+            "package-cross-probe-check",
+            "package-cross-probe-release-check",
+            "kicad-artifact-check",
+            "kicad-artifacts-release-check",
+            "manufacturing-artifacts-check",
+            "manufacturing-artifacts-release-check",
+            "e1-phone-manufacturing-artifacts-check",
+            "board-package-evidence-check",
+            "padframe-check",
+            "io-cell-contract-check",
+        },
+        "acceptance_commands": [
+            "python3 scripts/check_package_cross_probe.py --release",
+            "python3 scripts/check_manufacturing_artifacts.py --release",
+            "python3 scripts/check_kicad_artifacts.py --release",
+            "python3 scripts/aggregate_tapeout_readiness.py --scope chip --strict",
+        ],
+    },
+    {
+        "phase": "chip_platform_bsp_runtime_release",
+        "goal": "Close platform, BSP, Linux/Android handoff, FPGA, and real-world silicon evidence gates.",
+        "gates": {
+            "platform-contract-check",
+            "chip-stats-consistency-check",
+            "real-world-gates-check",
+            "fpga-target-check",
+            "fpga-release-check",
+            "software-bsp-scaffold-check",
+            "linux-platform-contract-check",
+            "linux-boot-artifacts-check",
+            "aosp-linux-handoff-contract-check",
+            "android-release-readiness-contract-check",
+            "android-simulated-peripheral-evidence-check",
+            "android-system-bridge-contract-check",
+            "android-sim-boot-check",
+            "chipyard-generated-linux-contract-check",
+            "e1-npu-linux-smoke-check",
+            "minimum-linux-npu-target-check",
+            "os-rv64-chip-boot-contract-check",
+        },
+        "acceptance_commands": [
+            "python3 scripts/check_fpga_release.py --release",
+            "python3 scripts/check_real_world_gates.py",
+            "python3 scripts/aggregate_tapeout_readiness.py --scope chip --strict",
+        ],
+    },
     {
         "phase": "phone_fabrication_enclosure_release",
         "goal": "Close board package, fabrication, approvals, supplier, routed, factory, first-article, and enclosure gates.",
@@ -1095,61 +1609,106 @@ def blocker_phase_plan(results: list[GateResult]) -> list[dict[str, object]]:
         if not matched:
             continue
         next_actions = [blocker_action(result) for result in matched]
-        rows.append(
-            {
-                "phase": phase["phase"],
-                "goal": phase["goal"],
-                "release_credit": False,
-                "blocked_gate_count": len(matched),
-                "blocker_dependency_counts": {
-                    "repo_artifact_generation": sum(
-                        1
-                        for result in matched
-                        if result.blocker_dependency == "repo_artifact_generation"
-                    ),
-                    "live_device_validation": sum(
-                        1
-                        for result in matched
-                        if result.blocker_dependency == "live_device_validation"
-                    ),
-                    "actionable_external_dependency": sum(
-                        1
-                        for result in matched
-                        if result.blocker_dependency == "actionable_external_dependency"
-                    ),
-                },
-                "next_command_by_dependency": {
-                    dependency: sorted(
-                        {
-                            action["validation_command"]
-                            for action in next_actions
-                            if action["dependency"] == dependency
-                        }
-                    )
-                    for dependency in (
-                        "repo_artifact_generation",
-                        "live_device_validation",
-                        "actionable_external_dependency",
-                    )
-                    if any(action["dependency"] == dependency for action in next_actions)
-                },
-                "blocked_gates": [result.name for result in matched],
-                "blocked_gate_details": [
+        row: dict[str, object] = {
+            "phase": phase["phase"],
+            "goal": phase["goal"],
+            "release_credit": False,
+            "blocked_gate_count": len(matched),
+            "blocker_dependency_counts": {
+                "repo_artifact_generation": sum(
+                    1
+                    for result in matched
+                    if result.blocker_dependency == "repo_artifact_generation"
+                ),
+                "live_device_validation": sum(
+                    1
+                    for result in matched
+                    if result.blocker_dependency == "live_device_validation"
+                ),
+                "actionable_external_dependency": sum(
+                    1
+                    for result in matched
+                    if result.blocker_dependency == "actionable_external_dependency"
+                ),
+            },
+            "next_command_by_dependency": {
+                dependency: sorted(
                     {
-                        "name": result.name,
-                        "blocker_dependency": result.blocker_dependency,
-                        "validation_command": action["validation_command"],
-                        "next_action": action["next_action"],
-                        "evidence": result.evidence,
+                        str(action["validation_command"])
+                        for action in next_actions
+                        if action["dependency"] == dependency
                     }
-                    for result, action in zip(matched, next_actions, strict=True)
-                ],
-                "validation_commands": [action["validation_command"] for action in next_actions],
-                "acceptance_commands": phase["acceptance_commands"],
-                "sample_evidence": [result.evidence for result in matched[:5]],
+                )
+                for dependency in (
+                    "repo_artifact_generation",
+                    "live_device_validation",
+                    "actionable_external_dependency",
+                )
+                if any(action["dependency"] == dependency for action in next_actions)
+            },
+            "blocked_gates": [result.name for result in matched],
+            "blocked_gate_details": [],
+            "validation_commands": [
+                str(action["validation_command"]) for action in next_actions
+            ],
+            "acceptance_commands": phase["acceptance_commands"],
+            "sample_evidence": [result.evidence for result in matched[:5]],
+        }
+        details: list[dict[str, object]] = []
+        for result, action in zip(matched, next_actions, strict=True):
+            detail: dict[str, object] = {
+                "name": result.name,
+                "blocker_dependency": result.blocker_dependency,
+                "validation_command": action["validation_command"],
+                "next_action": action["next_action"],
+                "evidence": result.evidence,
             }
-        )
+            if isinstance(action.get("next_runtime_capture_action"), dict):
+                detail["next_runtime_capture_action"] = action["next_runtime_capture_action"]
+                row["next_runtime_capture_action"] = action["next_runtime_capture_action"]
+            details.append(detail)
+        row["blocked_gate_details"] = details
+        rows.append(row)
     return rows
+
+
+def next_release_action(phase_plan: list[dict[str, object]]) -> dict[str, object] | None:
+    """Expose the first blocked aggregate phase as a top-level operator action."""
+    for phase in phase_plan:
+        dependency_counts = phase.get("blocker_dependency_counts")
+        if not isinstance(dependency_counts, dict):
+            continue
+        try:
+            blocked_count = int(phase.get("blocked_gate_count") or 0)
+        except (TypeError, ValueError):
+            blocked_count = 0
+        if blocked_count <= 0:
+            continue
+        action: dict[str, object] = {
+            "phase": phase.get("phase"),
+            "goal": phase.get("goal"),
+            "release_credit": False,
+            "blocked_gate_count": blocked_count,
+            "blocker_dependency_counts": dependency_counts,
+            "blocked_gates": phase.get("blocked_gates", []),
+            "primary_commands": phase.get("validation_commands", []),
+            "acceptance_commands": phase.get("acceptance_commands", []),
+            "sample_evidence": phase.get("sample_evidence", []),
+            "claim_boundary": "operator_release_action_only_not_release_evidence",
+        }
+        phase_name = str(phase.get("phase") or "")
+        if phase_name == "product_release_rollup":
+            product_action = product_next_release_action()
+            if product_action is not None:
+                action["product_next_release_action"] = product_action
+        if phase_name == "phone_end_to_end_runtime_release":
+            runtime_action = phase.get("next_runtime_capture_action")
+            if not isinstance(runtime_action, dict):
+                runtime_action = runtime_next_capture_action()
+            if runtime_action is not None:
+                action["next_runtime_capture_action"] = runtime_action
+        return action
+    return None
 
 
 def run_gate(spec: GateSpec) -> GateResult:
@@ -1285,6 +1844,7 @@ def build_report(results: list[GateResult]) -> dict[str, object]:
         blocker_action_plan[dependency].append(blocker_action(result))
     release_blocker = summary["fail"] > 0
     effective_release_blocker = release_blocker or summary["blocked"] > 0
+    phase_plan = blocker_phase_plan(categorized_results)
     return {
         "schema": SCHEMA,
         "as_of": date.today().isoformat(),
@@ -1295,7 +1855,9 @@ def build_report(results: list[GateResult]) -> dict[str, object]:
         "blocker_dependency_counts": blocker_dependency_counts,
         "blocker_groups": blocker_groups,
         "blocker_action_plan": blocker_action_plan,
-        "blocker_phase_plan": blocker_phase_plan(categorized_results),
+        "blocker_phase_plan": phase_plan,
+        "next_release_action": next_release_action(phase_plan),
+        "next_runtime_capture_action": runtime_next_capture_action(),
         "release_blocker": release_blocker,
         "effective_release_blocker": effective_release_blocker,
         "claim_boundary": CLAIM_BOUNDARY,

@@ -87,23 +87,16 @@ class ElizaE1NPU(address: BigInt, beatBytes: Int)(implicit p: Parameters)
       val bBase = gemmBase(15, 8)
       val cBase = gemmBase(23, 16)
       val cWordBase = cBase(7, 2)
-      val cells = Seq(
-        gemmCell(0, 0, m, n, k, bBase),
-        gemmCell(0, 1, m, n, k, bBase),
-        gemmCell(0, 2, m, n, k, bBase),
-        gemmCell(1, 0, m, n, k, bBase),
-        gemmCell(1, 1, m, n, k, bBase),
-        gemmCell(1, 2, m, n, k, bBase),
-        gemmCell(2, 0, m, n, k, bBase),
-        gemmCell(2, 1, m, n, k, bBase),
-        gemmCell(2, 2, m, n, k, bBase))
+      val cells = Seq.tabulate(3, 3) { (row, col) =>
+        gemmCell(row, col, m, n, k, bBase)
+      }
 
-      for (i <- cells.indices) {
-        val wordIndex = cWordBase + i.U
-        when(i.U < (m * n)) {
+      for (row <- 0 until 3; col <- 0 until 3) {
+        val wordIndex = cWordBase + row.U * n + col.U
+        when(row.U < m && col.U < n) {
           for (w <- 0 until 16) {
             when(wordIndex === w.U) {
-              scratch(w) := cells(i).asUInt
+              scratch(w) := cells(row)(col).asUInt
             }
           }
         }
@@ -113,8 +106,8 @@ class ElizaE1NPU(address: BigInt, beatBytes: Int)(implicit p: Parameters)
       perfOps := perfOps + 1.U
       perfErrors := 0.U
       unsupportedOps := 0.U
-      result := cells.head.asUInt
-      resultHi := cells(1).asUInt
+      result := cells(0)(0).asUInt
+      resultHi := cells(0)(1).asUInt
     }
 
     def runOpcode(): Unit = {

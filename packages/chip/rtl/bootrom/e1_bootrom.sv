@@ -21,7 +21,7 @@
 // build-staged image without editing RTL.
 
 module e1_bootrom #(
-    parameter string ROM_HEX = "build/boot-rom/e1_secure_boot_rom.hex"
+    parameter ROM_HEX = "build/boot-rom/e1_secure_boot_rom.hex"
 ) (
     input  logic [5:0]  addr,
     output logic [31:0] rdata
@@ -31,17 +31,22 @@ module e1_bootrom #(
     logic [31:0] mem [WORDS];
 
     initial begin : init_rom
-        string rom_path;
         for (int i = 0; i < WORDS; i++) begin
             mem[i] = 32'h0000_0000;
         end
-        // The image path is the ROM_HEX parameter by default; a testbench may
-        // override it with the BOOT_ROM_HEX plusarg (resolved relative to the
-        // simulator cwd) to point at an alternate build-staged image.
-        if (!$value$plusargs("BOOT_ROM_HEX=%s", rom_path)) begin
-            rom_path = ROM_HEX;
+`ifndef YOSYS
+        begin : sim_rom_load
+            string rom_path;
+            // A testbench may override the ROM_HEX parameter with a plusarg
+            // resolved relative to the simulator cwd.
+            if (!$value$plusargs("BOOT_ROM_HEX=%s", rom_path)) begin
+                rom_path = ROM_HEX;
+            end
+            $readmemh(rom_path, mem);
         end
-        $readmemh(rom_path, mem);
+`else
+        $readmemh(ROM_HEX, mem);
+`endif
         // Debug-visible identity/version header (published ROM contract):
         // magic "OSO", "CHIP", format version, and the 32'h0000_1000 handoff
         // word. Overlaid after the image load so external bring-up tooling can

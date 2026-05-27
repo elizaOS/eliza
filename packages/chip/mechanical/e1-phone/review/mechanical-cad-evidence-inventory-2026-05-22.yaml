@@ -8,51 +8,59 @@ scope:
   claim_boundary: "Existing generated/concept CAD outputs are counted, but do not prove release-ready enclosure fit without routed-board, supplier, and physical evidence."
 cad_output_file_counts:
   directory: "mechanical/e1-phone/out"
-  total_files_recursive: 1293
-  top_level_files: 777
+  total_files_recursive: 1329
+  top_level_files: 813
   recursive_by_extension:
     .glb: 4
     .json: 3
     .mp4: 1
-    .obj: 270
+    .obj: 282
     .png: 516
-    .step: 229
-    .stl: 270
+    .step: 241
+    .stl: 282
   top_level_by_extension:
     .glb: 4
     .json: 3
     .mp4: 1
-    .obj: 270
-    .step: 229
-    .stl: 270
+    .obj: 282
+    .step: 241
+    .stl: 282
 concept_generated_assets:
-  assembly_manifest_part_count: 222
-  solid_handoff_status: "blocked"
-  solid_handoff_part_count: null
-  solid_assembly_step: null
-  solid_assembly_step_bytes: 0
-  solid_handoff_ocp_terminal_step_fallback_count: 42
-  solid_handoff_ocp_terminal_step_fallback_error: ""
+  assembly_manifest_part_count: 234
+  solid_handoff_status: "generated"
+  solid_handoff_part_count: 234
+  solid_assembly_step: "mechanical/e1-phone/out/e1-phone-solid-assembly.step"
+  solid_assembly_step_bytes: 4017567
+  solid_handoff_ocp_terminal_step_fallback_count: 0
+  solid_handoff_ocp_terminal_step_fallback_error: null
   cad_connection_coverage_status: "cad_connection_markers_complete_not_release"
-  cad_connection_required_count: 21
-  cad_connection_passing_count: 21
-  cad_connection_terminal_marker_count: 42
-  cad_connection_terminal_pair_count: 21
-  cad_connection_solid_step_part_count: 63
-  cad_connection_solid_step_part_set_count: 21
-  cad_connection_solid_step_part_bytes_total: 982305
-  cad_connection_represented_net_count_total: 94
-  cad_connection_record_count: 21
-  cad_connection_represented_net_list_total: 94
+  cad_connection_required_count: 24
+  cad_connection_passing_count: 24
+  cad_connection_terminal_marker_count: 48
+  cad_connection_terminal_pair_count: 24
+  cad_connection_solid_step_part_count: 72
+  cad_connection_solid_step_part_set_count: 24
+  cad_connection_solid_step_part_bytes_total: 1125435
+  cad_connection_represented_net_count_total: 112
+  cad_connection_represented_route_count_total: 113
+  cad_connection_represented_route_length_total_mm: 4069.901
+  cad_connection_represented_controlled_impedance_route_count_total: 40
+  cad_connection_record_count: 24
+  cad_connection_represented_net_list_total: 112
+  cad_connection_represented_route_id_list_total: 113
   cad_connection_all_records_have_represented_nets: true
+  cad_connection_all_records_have_represented_routes: true
   cad_connection_all_represented_nets_match_routed_nets: true
-  cad_connection_visual_route_span_total_mm: 374.0
+  cad_connection_all_represented_routes_match_counts: true
+  cad_connection_all_represented_nets_have_route_trace: true
+  cad_connection_visual_route_span_total_mm: 397.8
   cad_connection_physical_medium_counts:
     battery_power_flex: 1
     board_to_board_edge_connector: 1
     flexible_antenna_loop: 1
     flexible_printed_circuit: 10
     insulated_wire_pair: 2
+    pcb_copper_trace_group: 3
     rf_50ohm_feed: 5
     rf_tuner_interconnect: 1
   cad_connection_electrical_class_counts:
@@ -60,6 +68,7 @@ concept_generated_assets:
     audio_power_pair: 1
     audio_receiver_pair: 1
     battery_power_sense: 1
+    battery_power_sense_board_route: 1
     cellular_wifi_rf: 5
     compute_board_to_board_mixed_speed: 1
     digital_microphone: 2
@@ -68,16 +77,18 @@ concept_generated_assets:
     mipi_csi_camera_control: 2
     mipi_dsi_touch_control: 1
     nfc_loop_rf: 1
+    pd_charger_power_control_board_route: 1
     sim_esim_low_speed: 1
     top_bottom_board_mixed_signal: 1
     usb2_pd_vbus: 1
-  cad_connection_controlled_impedance_count: 13
-  cad_connection_controlled_impedance_requirement_defined_count: 21
-  cad_connection_bend_radius_requirement_defined_count: 21
-  cad_connection_supplier_release_required_count: 21
+    usb2_pd_vbus_board_route: 1
+  cad_connection_controlled_impedance_count: 14
+  cad_connection_controlled_impedance_requirement_defined_count: 24
+  cad_connection_bend_radius_requirement_defined_count: 24
+  cad_connection_supplier_release_required_count: 24
   cad_connection_release_credit: false
-  step_validation_status: "blocked"
-  step_validation_validated_count: 0
+  step_validation_status: "pass"
+  step_validation_validated_count: 234
   concept_demo_board_steps_ignored:
     - "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo.step"
     - "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step"
@@ -93,40 +104,86 @@ local_routed_step_candidate_ready:
   detailed_routed_step_candidate_present: true
   detailed_routed_step_candidate_ready_for_local_review: true
   detailed_routed_step_candidate_path: "board/kicad/e1-phone/production/step/routed-board-with-components.step"
-  detailed_routed_step_candidate_bytes: 32959460
+  detailed_routed_step_candidate_bytes: 32970696
   detailed_routed_step_candidate_route_count: 153
   detailed_routed_step_candidate_segment_count: 306
+  detailed_routed_step_candidate_route_segment_net_name_count: 151
+  detailed_routed_step_candidate_route_segment_trace_bound_count: 306
+  detailed_routed_step_candidate_route_segment_trace_unbound_count: 0
+  detailed_routed_step_candidate_controlled_impedance_segment_visual_count: 96
+  detailed_routed_step_candidate_via_net_name_count: 16
   detailed_routed_step_candidate_release_credit: false
   release_claim_allowed: false
+component_model_directory_ready:
+  ready: true
+  scope: "local_component_model_directory_not_supplier_steps"
+  manifest: "board/kicad/e1-phone/production/step/component-models/release-manifest.yaml"
+  model_record_count: 89
+  combined_step_locator_count: 89
+  local_discrete_step_file_count: 89
+  local_discrete_step_imported_solid_count: 89
+  local_discrete_step_bbox_match_count: 89
+  local_discrete_step_bytes_total: 1385932
+  expected_supplier_step_file_count: 89
+  missing_supplier_discrete_model_count: 89
+  supplier_step_intake_placeholder_count: 0
+  supplier_step_intake_local_surrogate_count: 47
+  supplier_step_intake_missing_count: 0
+  supplier_step_intake_not_applicable_count: 42
+  supplier_step_intake_release_candidate_count: 0
+  supplier_step_intake_lane_counts:
+    audio_speaker_microphone_flexes: 8
+    battery_pack: 2
+    board_support_passives_mechanicals: 42
+    cellular: 8
+    charger_power_path: 1
+    display_touch: 3
+    front_camera: 2
+    pmic: 9
+    rear_camera: 2
+    side_buttons: 3
+    top_bottom_interconnect: 2
+    usb_c_receptacle_evt0: 1
+    usb_pd_controller: 1
+    wifi_bluetooth: 5
+  all_model_records_source_routed_step_bound: true
+  all_model_records_have_combined_step_locator: true
+  all_model_records_have_local_discrete_step_file: true
+  all_local_discrete_step_files_import_as_solids: true
+  all_local_discrete_step_bboxes_match_envelopes: true
+  all_model_records_have_expected_supplier_step_file: true
+  release_claim_allowed: false
 local_enclosure_cad_ready:
-  ready: false
+  ready: true
   scope: "generated_evt0_concept_cad_only"
-  solid_handoff_generated: false
-  solid_handoff_ocp_terminal_step_fallback_count: 42
-  solid_handoff_ocp_terminal_step_fallback_complete: true
+  solid_handoff_generated: true
+  solid_handoff_ocp_terminal_step_fallback_count: 0
+  solid_handoff_ocp_terminal_step_fallback_complete: false
   cad_connection_coverage_complete: true
-  assembly_step_present: false
-  assembly_step_bytes: 0
-  assembly_manifest_part_count: 222
-  step_validation_passed: false
-  step_validation_validated_count: 0
+  assembly_step_present: true
+  assembly_step_bytes: 4017567
+  assembly_manifest_part_count: 234
+  step_validation_passed: true
+  step_validation_validated_count: 234
   release_claim_allowed: false
 manifest_inventory:
   assembly:
     path: "mechanical/e1-phone/out/assembly-manifest.json"
     present: true
-    item_count: 222
+    item_count: 234
     role_counts:
       EMI shield: 3
       I/O: 2
       I/O seal: 6
       PCB: 1
       PCB assembly marker: 1
-      PCB component marker: 14
+      PCB component marker: 16
+      PCB connector marker: 1
       PCB mechanical marker: 1
       PCB passive marker: 7
       PCB protection marker: 2
       PCB test marker: 1
+      PCB trace marker: 3
       RF feed: 5
       RF keepout: 3
       RF tuner: 1
@@ -143,7 +200,7 @@ manifest_inventory:
       cellular module: 1
       compute interconnect: 1
       compute module keepout: 1
-      connection terminal: 42
+      connection terminal: 48
       connector: 2
       flex/cable: 13
       haptics: 1
@@ -182,22 +239,22 @@ review_gate_inventory:
         path: "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step"
         kind: "real_footprint_development_step"
         present: true
-        size_bytes: 32959460
-        sha256: "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92"
+        size_bytes: 32970696
+        sha256: "9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58"
         release_credit: false
       -
         path: "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step"
         kind: "routed_development_step"
         present: true
-        size_bytes: 32959460
-        sha256: "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92"
+        size_bytes: 32970696
+        sha256: "9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58"
         release_credit: false
       -
         path: "board/kicad/e1-phone/production/step/routed-board-with-components.step"
         kind: "blocked_routed_output_candidate_step"
         present: true
-        size_bytes: 32959460
-        sha256: "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92"
+        size_bytes: 32970696
+        sha256: "9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58"
         release_credit: false
     detailed_routed_step_candidate:
       path: "board/kicad/e1-phone/production/step/routed-board-with-components.step"
@@ -205,16 +262,21 @@ review_gate_inventory:
       blocked_metadata: true
       release_credit: false
       reason_not_release: "local routed-output candidate copied from non-release development STEP; lacks physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models, and measured enclosure clearance"
-      size_bytes: 32959460
-      sha256: "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92"
+      size_bytes: 32970696
+      sha256: "9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58"
       source_step: "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step"
-      source_step_sha256: "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92"
-      source_step_size_bytes: 32959460
+      source_step_sha256: "9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58"
+      source_step_size_bytes: 32970696
       route_count: 153
       segment_count: 306
       footprint_envelope_count: 89
       pad_contact_visual_count: 1452
       route_segment_visual_count: 306
+      route_segment_net_name_count: 151
+      route_segment_trace_bound_count: 306
+      route_segment_trace_unbound_count: 0
+      controlled_impedance_segment_visual_count: 96
+      via_net_name_count: 16
       candidate_matches_routed_output_manifest: true
       candidate_matches_development_source: true
       routed_development_intake: "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml"
@@ -286,33 +348,40 @@ review_gate_inventory:
   solid_cad_handoff:
     path: "mechanical/e1-phone/review/solid-cad-handoff.json"
     present: true
-    status: "blocked"
-    claim_boundary: "STEP/B-rep handoff preflight; CadQuery/OCP was not available."
+    status: "generated"
+    claim_boundary: "OCP STEP box-envelope handoff for EVT0 mechanical review; supplier STEP, routed-board STEP, detailed fillets, and toolmaker steel design are still required."
+    assembly_step: "mechanical/e1-phone/out/e1-phone-solid-assembly.step"
+    assembly_step_bytes: 4017567
+    part_count: 234
     remaining_blockers:
-      - "Install CadQuery/OCP in the Python environment used by `make phone-cad`."
-      - "Replace CAD-envelope solids with supplier STEP models before release."
-    ocp_terminal_step_fallback_count: 42
-    ocp_terminal_step_fallback_error: ""
+      - "Solids are parametric envelopes, not final supplier STEP models."
+      - "PCB is still the concept KiCad outline, not a release-approved routed board STEP."
+      - "Production surfaces still need toolmaker-approved draft, shutoffs, split lines, and texture."
   cad_connection_coverage:
     path: "mechanical/e1-phone/review/cad-connection-coverage.json"
     present: true
     status: "cad_connection_markers_complete_not_release"
     claim_boundary: "CAD envelope connection coverage for flex, cable, and RF-feed markers. This proves explicit local CAD markers and routed-development net names only; it is not supplier FPC drawing, RF layout, impedance, DRC/ERC, or production release evidence."
-    required_connection_count: 21
-    passing_connection_count: 21
-    required_connection_terminal_marker_count: 42
-    passing_connection_terminal_pair_count: 21
-    required_connection_solid_step_part_count: 63
-    passing_connection_solid_step_part_set_count: 21
-    connection_solid_step_part_bytes_total: 982305
-    represented_net_count_total: 94
-    visual_route_span_total_mm: 374.0
+    required_connection_count: 24
+    passing_connection_count: 24
+    required_connection_terminal_marker_count: 48
+    passing_connection_terminal_pair_count: 24
+    required_connection_solid_step_part_count: 72
+    passing_connection_solid_step_part_set_count: 24
+    connection_solid_step_part_bytes_total: 1125435
+    represented_net_count_total: 112
+    represented_route_count_total: 113
+    represented_route_length_total_mm: 4069.901
+    represented_controlled_impedance_route_count_total: 40
+    all_represented_nets_have_route_trace: true
+    visual_route_span_total_mm: 397.8
     physical_medium_counts:
       battery_power_flex: 1
       board_to_board_edge_connector: 1
       flexible_antenna_loop: 1
       flexible_printed_circuit: 10
       insulated_wire_pair: 2
+      pcb_copper_trace_group: 3
       rf_50ohm_feed: 5
       rf_tuner_interconnect: 1
     electrical_class_counts:
@@ -320,6 +389,7 @@ review_gate_inventory:
       audio_power_pair: 1
       audio_receiver_pair: 1
       battery_power_sense: 1
+      battery_power_sense_board_route: 1
       cellular_wifi_rf: 5
       compute_board_to_board_mixed_speed: 1
       digital_microphone: 2
@@ -328,25 +398,30 @@ review_gate_inventory:
       mipi_csi_camera_control: 2
       mipi_dsi_touch_control: 1
       nfc_loop_rf: 1
+      pd_charger_power_control_board_route: 1
       sim_esim_low_speed: 1
       top_bottom_board_mixed_signal: 1
       usb2_pd_vbus: 1
-    controlled_impedance_connection_count: 13
-    controlled_impedance_requirement_defined_count: 21
-    bend_radius_requirement_defined_count: 21
-    supplier_release_required_connection_count: 21
+      usb2_pd_vbus_board_route: 1
+    controlled_impedance_connection_count: 14
+    controlled_impedance_requirement_defined_count: 24
+    bend_radius_requirement_defined_count: 24
+    supplier_release_required_connection_count: 24
     routed_development_net_count: 151
     release_credit: false
-    cad_connection_record_count: 21
-    cad_connection_represented_net_list_total: 94
+    cad_connection_record_count: 24
+    cad_connection_represented_net_list_total: 112
+    cad_connection_represented_route_id_list_total: 113
     cad_connection_all_records_have_represented_nets: true
+    cad_connection_all_records_have_represented_routes: true
     cad_connection_all_represented_nets_match_routed_nets: true
+    cad_connection_all_represented_routes_match_counts: true
   step_validation:
     path: "mechanical/e1-phone/review/step-validation.json"
     present: true
-    status: "blocked"
-    claim_boundary: "STEP validation could not run because CadQuery/OCP is unavailable."
-    validated_count: 0
+    status: "pass"
+    claim_boundary: "Automated STEP re-import and envelope validation; not supplier CAD approval."
+    validated_count: 234
 missing_release_ready_evidence:
   -
     gate: "routed_board_step_intake"
@@ -364,22 +439,22 @@ missing_release_ready_evidence:
         path: "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step"
         kind: "real_footprint_development_step"
         present: true
-        size_bytes: 32959460
-        sha256: "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92"
+        size_bytes: 32970696
+        sha256: "9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58"
         release_credit: false
       -
         path: "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step"
         kind: "routed_development_step"
         present: true
-        size_bytes: 32959460
-        sha256: "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92"
+        size_bytes: 32970696
+        sha256: "9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58"
         release_credit: false
       -
         path: "board/kicad/e1-phone/production/step/routed-board-with-components.step"
         kind: "blocked_routed_output_candidate_step"
         present: true
-        size_bytes: 32959460
-        sha256: "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92"
+        size_bytes: 32970696
+        sha256: "9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58"
         release_credit: false
     detailed_routed_step_candidate:
       path: "board/kicad/e1-phone/production/step/routed-board-with-components.step"
@@ -387,16 +462,21 @@ missing_release_ready_evidence:
       blocked_metadata: true
       release_credit: false
       reason_not_release: "local routed-output candidate copied from non-release development STEP; lacks physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models, and measured enclosure clearance"
-      size_bytes: 32959460
-      sha256: "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92"
+      size_bytes: 32970696
+      sha256: "9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58"
       source_step: "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step"
-      source_step_sha256: "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92"
-      source_step_size_bytes: 32959460
+      source_step_sha256: "9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58"
+      source_step_size_bytes: 32970696
       route_count: 153
       segment_count: 306
       footprint_envelope_count: 89
       pad_contact_visual_count: 1452
       route_segment_visual_count: 306
+      route_segment_net_name_count: 151
+      route_segment_trace_bound_count: 306
+      route_segment_trace_unbound_count: 0
+      controlled_impedance_segment_visual_count: 96
+      via_net_name_count: 16
       candidate_matches_routed_output_manifest: true
       candidate_matches_development_source: true
       routed_development_intake: "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml"

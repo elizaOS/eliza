@@ -79,6 +79,37 @@ def _matrix_shape_ok(result: dict[str, Any], n_tasks: int) -> bool:
     return all(_finite_number(value) for value in baseline)
 
 
+def _motion_matrix_shape_ok(result: dict[str, Any], n_tasks: int) -> bool:
+    matrix = result.get("motion_matrix")
+    baseline = result.get("motion_baseline")
+    if not isinstance(matrix, list) or not isinstance(baseline, list):
+        return False
+    if len(matrix) != n_tasks or len(baseline) != n_tasks:
+        return False
+    required = (
+        "success_rate",
+        "collision_rate",
+        "passed_obstacle_rate",
+        "mean_forward_progress_m",
+        "mean_goal_dist",
+        "min_obstacle_clearance_m",
+    )
+    for row in matrix:
+        if not isinstance(row, list) or len(row) != n_tasks:
+            return False
+        for item in row:
+            if not isinstance(item, dict):
+                return False
+            if not all(_finite_number(item.get(key)) for key in required):
+                return False
+    for item in baseline:
+        if not isinstance(item, dict):
+            return False
+        if not all(_finite_number(item.get(key)) for key in required):
+            return False
+    return True
+
+
 def _learner_seed_coverage(results: list[Any], learners: tuple[str, ...]) -> dict[str, list[int]]:
     coverage: dict[str, set[int]] = {name: set() for name in learners}
     for result in results:
@@ -133,6 +164,7 @@ def validate_alberta_benchmark_artifacts(
     demo = _load(demo_json_path)
     config = bundle.get("config") if isinstance(bundle.get("config"), dict) else {}
     summary = bundle.get("summary") if isinstance(bundle.get("summary"), dict) else {}
+    motion = bundle.get("motion") if isinstance(bundle.get("motion"), dict) else {}
     results = bundle.get("results") if isinstance(bundle.get("results"), list) else []
     learner_names = {
         result.get("name")
@@ -165,6 +197,24 @@ def validate_alberta_benchmark_artifacts(
         if alberta_forgetting is not None and ppo_forgetting is not None
         else None
     )
+    observed_comparisons = {
+        "alberta_acc_gte_ppo": acc_delta is not None and acc_delta >= 0.0,
+        "alberta_forgetting_lte_ppo": (
+            forgetting_delta is not None and forgetting_delta <= 0.0
+        ),
+    }
+    enforced_delta_gates = {
+        "alberta_acc_gte_ppo": (
+            observed_comparisons["alberta_acc_gte_ppo"]
+            if require_alberta_acc_gte_ppo
+            else True
+        ),
+        "alberta_forgetting_lte_ppo": (
+            observed_comparisons["alberta_forgetting_lte_ppo"]
+            if require_alberta_forgetting_lte_ppo
+            else True
+        ),
+    }
     checks = {
         "benchmark_dir": benchmark_dir.is_dir(),
         "json": json_path.is_file(),
@@ -222,14 +272,57 @@ def validate_alberta_benchmark_artifacts(
         )
         if results and n_tasks > 0
         else False,
+        "motion_matrix_shapes": True
+        if expected_env != "obstacle_course"
+        else (
+            bool(results)
+            and n_tasks > 0
+            and all(
+                isinstance(result, dict)
+                and result.get("name") in configured_learners
+                and _motion_matrix_shape_ok(result, n_tasks)
+                for result in results
+            )
+        ),
+        "obstacle_motion_summary": True
+        if expected_env != "obstacle_course"
+        else all(
+            isinstance(motion.get(name), dict)
+            and _finite_number(motion[name].get("final_forward_progress_m_mean"))
+            and _finite_number(motion[name].get("final_passed_obstacle_rate_mean"))
+            and _finite_number(motion[name].get("final_collision_rate_mean"))
+            for name in REQUIRED_LEARNERS
+        ),
+        "obstacle_forward_progress": True
+        if expected_env != "obstacle_course"
+        else any(
+            isinstance(motion.get(name), dict)
+            and _finite_number(motion[name].get("final_forward_progress_m_mean"))
+            and float(motion[name]["final_forward_progress_m_mean"]) >= 1.0
+            for name in REQUIRED_LEARNERS
+        ),
+        "obstacle_passes_obstacle": True
+        if expected_env != "obstacle_course"
+        else any(
+            isinstance(motion.get(name), dict)
+            and _finite_number(motion[name].get("final_passed_obstacle_rate_mean"))
+            and float(motion[name]["final_passed_obstacle_rate_mean"]) >= 0.5
+            for name in REQUIRED_LEARNERS
+        ),
+        "obstacle_collision_rate": True
+        if expected_env != "obstacle_course"
+        else all(
+            isinstance(motion.get(name), dict)
+            and _finite_number(motion[name].get("final_collision_rate_mean"))
+            and float(motion[name]["final_collision_rate_mean"]) <= 0.25
+            for name in REQUIRED_LEARNERS
+        ),
         "metrics": required_learners_present
         and all(_metric_block_ok(summary, name) for name in configured_learners),
-        "alberta_acc_gte_ppo": True
-        if not require_alberta_acc_gte_ppo
-        else acc_delta is not None and acc_delta >= 0.0,
-        "alberta_forgetting_lte_ppo": True
-        if not require_alberta_forgetting_lte_ppo
-        else forgetting_delta is not None and forgetting_delta <= 0.0,
+        "alberta_acc_gte_ppo": enforced_delta_gates["alberta_acc_gte_ppo"],
+        "alberta_forgetting_lte_ppo": enforced_delta_gates[
+            "alberta_forgetting_lte_ppo"
+        ],
     }
     return {
         "ok": all(checks.values()),
@@ -243,6 +336,8 @@ def validate_alberta_benchmark_artifacts(
             "alberta_acc_minus_ppo": acc_delta,
             "alberta_forgetting_minus_ppo": forgetting_delta,
         },
+        "observed_comparisons": observed_comparisons,
+        "enforced_delta_gates": enforced_delta_gates,
         "required_deltas": {
             "require_alberta_acc_gte_ppo": bool(require_alberta_acc_gte_ppo),
             "require_alberta_forgetting_lte_ppo": bool(
@@ -256,6 +351,7 @@ def validate_alberta_benchmark_artifacts(
         "demo": demo,
         "config": config,
         "summary": summary,
+        "motion": motion,
         "seed_coverage": seed_coverage,
         "configured_learners": list(configured_learners),
         "required_learners": list(REQUIRED_LEARNERS),

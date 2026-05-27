@@ -213,6 +213,7 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
         else {},
         "handoff_commands": handoff_commands,
         "aosp_dir": report.get("aosp_dir"),
+        "aosp_dir_source": report.get("aosp_dir_source"),
     }
     return payload(findings, evidence)
 

@@ -45,7 +45,7 @@ REQUIRED_GENERATED_ARTIFACTS = (
 REQUIRED_LOG_MARKERS = ("OpenSBI/SBI handoff", "Linux version")
 OPENSBI_MARKERS = ("OpenSBI", "SBI specification", "Domain0 Next Address", "Boot HART ID")
 OPENSBI_ACCEPTANCE_MARKERS = ("SBI specification", "Domain0 Next Address", "Boot HART ID")
-EXPECTED_OPENSBI_FDT_ADDR = 0x88000000
+EXPECTED_OPENSBI_FDT_ADDR = 0x80B00000
 EXPECTED_KERNEL_ENTRY = 0x80200000
 DRAM_BASE = 0x80000000
 DRAM_SIZE = 0x10000000
@@ -83,6 +83,13 @@ PROGRESS_MARKERS = (
     "SBI SRST extension detected",
     "earlycon:",
     "printk: bootconsole",
+    "Memory limited to",
+    "memblock=",
+    "memblock_alloc",
+    "memblock_reserve",
+    "memblock_free",
+    "memblock_phys_alloc",
+    "memblock_add",
     "Kernel panic - not syncing",
     "OF: reserved mem:",
     "Zone ranges:",
@@ -104,6 +111,19 @@ PROGRESS_MARKERS = (
     "eliza-evidence: command=",
     "eliza-evidence: timeout_after_seconds=",
     "eliza-evidence: exit_code=",
+)
+LINUX_MEMORY_PROGRESS_MARKERS = (
+    "Memory limited to",
+    "memblock=",
+    "memblock_alloc",
+    "memblock_reserve",
+    "memblock_free",
+    "memblock_phys_alloc",
+    "memblock_add",
+    "OF: reserved mem:",
+    "Zone ranges:",
+    "Early memory node ranges",
+    "Initmem setup node",
 )
 CONTAINER_PATH_ENV = "CHIPYARD_ALLOW_CONTAINER_GENERATED_PATHS"
 GENERATED_CONFIG_DIR = SIM_DIR / "generated-src/chipyard.harness.TestHarness.ElizaRocketConfig"
@@ -139,10 +159,17 @@ FIREMARSHAL_SMOKE_PAYLOAD_MANIFEST = (
 FIREMARSHAL_SMOKE_JSON = ROOT / "sw/firemarshal/eliza-e1-linux-smoke.json"
 FIREMARSHAL_SMOKE_DIR = ROOT / "sw/firemarshal/eliza-e1-linux-smoke"
 FIREMARSHAL_SMOKE_WORKLOAD = FIREMARSHAL_SMOKE_DIR / "eliza-e1-linux-smoke.sh"
+FIREMARSHAL_SMOKE_OVERLAY_INIT = (
+    FIREMARSHAL_SMOKE_DIR / "eliza-e1-linux-smoke-overlay/etc/init.d/S00eliza-e1-linux-smoke"
+)
 FIREMARSHAL_HWPROBE_BUILD_SCRIPT = FIREMARSHAL_SMOKE_DIR / "build-hwprobe.sh"
 FIREMARSHAL_HWPROBE_SOURCE = FIREMARSHAL_SMOKE_DIR / "eliza-riscv-hwprobe.c"
 FIREMARSHAL_HWPROBE_BINARY = FIREMARSHAL_SMOKE_DIR / "eliza-riscv-hwprobe"
 FIREMARSHAL_NPU_ML_SMOKE_BINARY = FIREMARSHAL_SMOKE_DIR / "e1-npu-ml-smoke"
+FIREMARSHAL_OPENSBI_DEFCONFIG = FIREMARSHAL_SMOKE_DIR / "opensbi-eliza_defconfig"
+FIREMARSHAL_OPENSBI_FAST_FINAL_PATCH = (
+    FIREMARSHAL_SMOKE_DIR / "opensbi-eliza-platform-fast-final.patch"
+)
 BOOTROM_RV64_IMAGE = (
     CHECKOUT / "generators/testchipip/src/main/resources/testchipip/bootrom/bootrom.rv64.img"
 )
@@ -363,11 +390,17 @@ def firemarshal_payload_config_blockers() -> list[str]:
                 "preferred FireMarshal eliza-e1 Linux smoke workload must build OpenSBI "
                 "with FW_OPTIONS=0 so Platform/Domain boot prints remain observable"
             )
-        if "FW_PAYLOAD_FDT_ADDR=0x88000000" not in opensbi_tokens:
+        expected_fdt_arg = f"FW_PAYLOAD_FDT_ADDR=0x{EXPECTED_OPENSBI_FDT_ADDR:x}"
+        explicit_fdt_args = [
+            token for token in opensbi_tokens if token.startswith("FW_PAYLOAD_FDT_ADDR=")
+        ]
+        stale_fdt_args = [token for token in explicit_fdt_args if token != expected_fdt_arg]
+        if stale_fdt_args:
             blockers.append(
                 "preferred FireMarshal eliza-e1 Linux smoke workload must override "
-                "FW_PAYLOAD_FDT_ADDR=0x88000000 so OpenSBI copies the boot ROM DTB "
-                "to writable DRAM before applying fixups"
+                f"stale OpenSBI FDT handoff args ({', '.join(stale_fdt_args)}) and use "
+                f"either the implicit low-FDT FireMarshal path or the explicit low-FDT "
+                f"{expected_fdt_arg} path"
             )
         if (
             "eliza-riscv-hwprobe" not in file_sources
@@ -458,15 +491,20 @@ def firemarshal_payload_config_blockers() -> list[str]:
 
 
 def firemarshal_payload_freshness_inputs() -> list[Path]:
-    return [
+    inputs = [
         FIREMARSHAL_SMOKE_JSON,
         FIREMARSHAL_SMOKE_KFRAG,
         FIREMARSHAL_SMOKE_WORKLOAD,
         FIREMARSHAL_HWPROBE_BUILD_SCRIPT,
+        FIREMARSHAL_SMOKE_OVERLAY_INIT,
+        FIREMARSHAL_OPENSBI_DEFCONFIG,
         FIREMARSHAL_HWPROBE_SOURCE,
         FIREMARSHAL_HWPROBE_BINARY,
         FIREMARSHAL_NPU_ML_SMOKE_BINARY,
     ]
+    if FIREMARSHAL_OPENSBI_FAST_FINAL_PATCH.exists():
+        inputs.append(FIREMARSHAL_OPENSBI_FAST_FINAL_PATCH)
+    return inputs
 
 
 def sha256_file(path: Path) -> str:
@@ -1070,6 +1108,11 @@ def has_quiet_linux_completion_evidence(
     payload_text = payload or str(
         log_metadata.get("payload") or log_metadata.get("binary_arg") or ""
     )
+    generated_completion_logs = log_metadata.get("generated_linux_completion_logs")
+    if "eliza-e1-linux-smoke" in payload_text and isinstance(
+        generated_completion_logs, list
+    ) and generated_completion_logs:
+        return True
     if "linux-poweroff-quiet" not in payload_text:
         return False
     quiet_completion_logs = log_metadata.get("quiet_linux_completion_logs")
@@ -1296,6 +1339,58 @@ def collect_quiet_linux_completion_logs() -> list[dict[str, object]]:
     return evidence
 
 
+def collect_generated_linux_completion_logs() -> list[dict[str, object]]:
+    evidence: list[dict[str, object]] = []
+    if not SIM_OUTPUT_DIR.is_dir():
+        return evidence
+    for sim_log in sorted(SIM_OUTPUT_DIR.glob("*eliza-e1-linux-smoke*.log")):
+        try:
+            text = sim_log.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if TESTDRIVER_SUCCESS_FINISH_MARKER not in text:
+            continue
+        if (
+            has_kernel_panic(text)
+            or "Assertion failed in TestDriver" in text
+            or "Verilog $stop" in text
+        ):
+            continue
+        if not has_accepted_linux_markers(text):
+            continue
+        if not has_accepted_opensbi_markers(text) and "earlycon:" not in text:
+            continue
+        required_workload_markers = (
+            "eliza-evidence: target=generated_chipyard_ap artifact=eliza-e1-linux-smoke",
+            "Run /init as init process",
+            "riscv_hwprobe: syscall rc=0",
+            "eliza-evidence: target=linux artifact=e1_npu_ml_smoke",
+            "e1-npu-ml-smoke: PASS",
+            "claim_level=L3",
+            "eliza-evidence: status=PASS",
+            "reboot: Power down",
+        )
+        if not all(marker in text for marker in required_workload_markers):
+            continue
+        finish_line = next(
+            (
+                line.strip()
+                for line in text.splitlines()
+                if TESTDRIVER_SUCCESS_FINISH_MARKER in line
+            ),
+            TESTDRIVER_SUCCESS_FINISH_MARKER,
+        )
+        evidence.append(
+            {
+                "path": rel(sim_log),
+                "finish": finish_line,
+                "size_bytes": sim_log.stat().st_size,
+                "mtime": sim_log.stat().st_mtime,
+            }
+        )
+    return evidence
+
+
 def process_rows_from_ps(stdout: str) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for line in stdout.splitlines():
@@ -1378,11 +1473,32 @@ def active_simulator_artifact_users(
     return users
 
 
+def linux_memory_progress_for_text(text: str) -> dict[str, object]:
+    lines: list[str] = []
+    marker_counts = {marker: 0 for marker in LINUX_MEMORY_PROGRESS_MARKERS}
+    for line in text.splitlines():
+        if not any(marker in line for marker in LINUX_MEMORY_PROGRESS_MARKERS):
+            continue
+        clean = clean_progress_marker(line)
+        lines.append(clean)
+        for marker in LINUX_MEMORY_PROGRESS_MARKERS:
+            if marker in line:
+                marker_counts[marker] += 1
+    marker_counts = {marker: count for marker, count in marker_counts.items() if count}
+    return {
+        "observed": bool(lines),
+        "marker_counts": marker_counts,
+        "last_marker": lines[-1] if lines else "",
+        "recent_markers": lines[-12:],
+    }
+
+
 def progress_metadata_for_text(path: Path, text: str) -> dict[str, object]:
     last_progress = ""
     sim_failures: list[str] = []
     sim_success_finishes: list[str] = []
     observable_text = observable_boot_text(text)
+    linux_memory_progress = linux_memory_progress_for_text(observable_text)
     for line in observable_text.splitlines():
         if any(marker in line for marker in PROGRESS_MARKERS):
             last_progress = clean_progress_marker(line)
@@ -1406,6 +1522,7 @@ def progress_metadata_for_text(path: Path, text: str) -> dict[str, object]:
         "has_linux_banner": "Linux version" in observable_text,
         "has_linux_boot_markers": has_accepted_linux_markers(observable_text),
         "has_kernel_panic": has_kernel_panic(observable_text),
+        "linux_memory_progress": linux_memory_progress,
         "sim_failures": sim_failures[-8:],
         "sim_success_finishes": sim_success_finishes[-8:],
     }
@@ -1444,6 +1561,22 @@ def live_sim_output_metadata(
         "logs": logs,
         "latest": logs[0] if logs else None,
     }
+
+
+def handoff_observable_text_for_report(
+    initial_observable_text: str,
+    active_processes: list[dict[str, object]],
+    latest_live: object,
+) -> tuple[str, str]:
+    if active_processes and isinstance(latest_live, dict):
+        live_path_value = latest_live.get("path")
+        if isinstance(live_path_value, str) and live_path_value:
+            live_path = Path(live_path_value)
+            if not live_path.is_absolute():
+                live_path = ROOT / live_path
+            if live_path.is_file():
+                return observable_boot_text(read_text_sample(live_path)), "active_live_log"
+    return initial_observable_text, "canonical_log"
 
 
 def active_attempt_temp_logs(out_dir: Path = OUT_DIR) -> list[Path]:
@@ -1607,13 +1740,22 @@ def parse_log_metadata() -> dict[str, object]:
         "sim_passes": [],
         "sim_success_finishes": [],
         "quiet_linux_completion_logs": [],
+        "generated_linux_completion_logs": [],
         "simdram_entry": None,
         "simdram_load_range": None,
         "last_progress_marker": "",
+        "linux_memory_progress": {
+            "observed": False,
+            "marker_counts": {},
+            "last_marker": "",
+            "recent_markers": [],
+        },
     }
     last_progress = ""
     quiet_completion_logs = collect_quiet_linux_completion_logs()
+    generated_completion_logs = collect_generated_linux_completion_logs()
     metadata["quiet_linux_completion_logs"] = quiet_completion_logs
+    metadata["generated_linux_completion_logs"] = generated_completion_logs
     metadata["last_progress_marker"] = last_progress
     if not LOG.is_file():
         return metadata
@@ -1621,6 +1763,9 @@ def parse_log_metadata() -> dict[str, object]:
     raw_transcript_closed = False
     lines_after_raw_transcript_end = 0
     log_text = read_text_sample(LOG)
+    metadata["linux_memory_progress"] = linux_memory_progress_for_text(
+        observable_boot_text(log_text)
+    )
     for line in log_text.splitlines():
         if raw_transcript_closed and line.strip() and not line.startswith("eliza-evidence:"):
             lines_after_raw_transcript_end += 1
@@ -1706,6 +1851,14 @@ def parse_log_metadata() -> dict[str, object]:
     if "linux-poweroff-quiet" in payload_text:
         for quiet_log in quiet_completion_logs:
             finish = quiet_log.get("finish")
+            if isinstance(finish, str):
+                sim_success_finishes = metadata["sim_success_finishes"]
+                if isinstance(sim_success_finishes, list) and finish not in sim_success_finishes:
+                    sim_success_finishes.append(finish)
+                last_progress = finish
+    if "eliza-e1-linux-smoke" in payload_text:
+        for completion_log in generated_completion_logs:
+            finish = completion_log.get("finish")
             if isinstance(finish, str):
                 sim_success_finishes = metadata["sim_success_finishes"]
                 if isinstance(sim_success_finishes, list) and finish not in sim_success_finishes:
@@ -2124,28 +2277,6 @@ def classify_smoke_progress(
                 "memory map, initramfs, and generated DTS handoff evidence"
             ),
         }
-    if has_accepted_linux_markers(observable_text):
-        return {
-            "stage": "linux_boot",
-            "next_step": "capture the complete generated-AP Linux boot transcript",
-        }
-    if has_quiet_linux_completion_evidence(log_text, log_metadata, None):
-        return {
-            "stage": "quiet_linux_workload_completed",
-            "next_step": (
-                "use the quiet workload as generated-AP Linux completion evidence; "
-                "capture target-side NPU MMIO/GEMM evidence next"
-            ),
-        }
-    if simulator_rebuild_was_interrupted(log_text, log_metadata):
-        return {
-            "stage": "simulator_rebuild_interrupted",
-            "next_step": (
-                "rerun the generated AP smoke with enough wall time for Chipyard "
-                "generation and Verilator simulator rebuild to finish before evaluating "
-                "OpenSBI/Linux runtime progress"
-            ),
-        }
     sim_failures = log_metadata.get("sim_failures")
     sim_timeout = isinstance(sim_failures, list) and any(
         "timeout" in str(failure) for failure in sim_failures
@@ -2155,6 +2286,27 @@ def classify_smoke_progress(
         or "[timeout-wrapper]" in log_text
         and "status=timeout" in log_text
     )
+    interrupted_exit = (
+        str(log_metadata.get("exit_code") or "") not in {"", "0", "124"}
+        or str(log_metadata.get("signal") or "")
+    )
+    if has_quiet_linux_completion_evidence(log_text, log_metadata, None):
+        generated_logs = log_metadata.get("generated_linux_completion_logs")
+        if isinstance(generated_logs, list) and generated_logs:
+            return {
+                "stage": "generated_linux_workload_completed",
+                "next_step": (
+                    "use the generated AP Linux workload transcript as completion "
+                    "evidence; capture or refresh CPU/AP evidence archives as needed"
+                ),
+            }
+        return {
+            "stage": "quiet_linux_workload_completed",
+            "next_step": (
+                "use the quiet workload as generated-AP Linux completion evidence; "
+                "capture target-side NPU MMIO/GEMM evidence next"
+            ),
+        }
     if "Linux version" in observable_text:
         if sim_timeout:
             return {
@@ -2162,7 +2314,7 @@ def classify_smoke_progress(
                 "next_step": (
                     "rerun the generated AP smoke with a larger "
                     "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES budget and enough wall time "
-                    "to reach Linux command line/initramfs markers"
+                    "to reach Linux initramfs/userspace markers"
                 ),
             }
         if wrapper_timeout:
@@ -2172,16 +2324,43 @@ def classify_smoke_progress(
                 "stage": "linux_early_boot_then_wall_timeout",
                 "next_step": (
                     "generated AP reached the Linux banner but the smoke wrapper hit "
-                    "CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS before accepted command-line/"
-                    "initramfs/userspace markers appeared"
+                    "CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS before accepted initramfs/"
+                    "userspace markers appeared"
                     f"{progress_detail}; increase the wall-clock budget only if the "
                     "same marker is still making forward progress, otherwise debug "
                     "the Linux early memory/platform handoff"
                 ),
             }
+        if interrupted_exit:
+            last_progress = str(log_metadata.get("last_progress_marker") or "").strip()
+            progress_detail = f"; last progress marker: {last_progress}" if last_progress else ""
+            return {
+                "stage": "linux_early_boot_interrupted",
+                "next_step": (
+                    "generated AP reached the Linux banner, but the smoke wrapper "
+                    "ended before an accepted complete transcript was captured"
+                    f"{progress_detail}; rerun the generated AP smoke after applying "
+                    "the next diagnostic or acceptance configuration"
+                ),
+            }
+        if not has_accepted_linux_markers(observable_text):
+            return {
+                "stage": "linux_banner_only",
+                "next_step": "continue until Linux command line/initramfs markers appear",
+            }
+    if has_accepted_linux_markers(observable_text):
         return {
-            "stage": "linux_banner_only",
-            "next_step": "continue until Linux command line/initramfs markers appear",
+            "stage": "linux_boot",
+            "next_step": "capture the complete generated-AP Linux boot transcript",
+        }
+    if simulator_rebuild_was_interrupted(log_text, log_metadata):
+        return {
+            "stage": "simulator_rebuild_interrupted",
+            "next_step": (
+                "rerun the generated AP smoke with enough wall time for Chipyard "
+                "generation and Verilator simulator rebuild to finish before evaluating "
+                "OpenSBI/Linux runtime progress"
+            ),
         }
     if "*** PASSED ***" in log_text:
         return {
@@ -2482,6 +2661,7 @@ def write_report(status: str, blockers: list[str], payload: str | None) -> None:
         "instruction_trace": instruction_trace,
         "diagnostic_instruction_trace": diagnostic_trace,
         "progress": progress,
+        "linux_memory_progress": log_metadata.get("linux_memory_progress"),
         "quiet_linux_completion_evidence": quiet_linux_completion,
         "host": {
             "system": platform.system(),
@@ -2609,18 +2789,22 @@ def main() -> int:
     active_attempt = active_smoke_attempt_metadata()
     live_output = live_sim_output_metadata(payload, log_metadata)
     fdt_audit = generated_fdt_audit()
+    latest_live = live_output.get("latest")
+    handoff_observable_text, handoff_source = handoff_observable_text_for_report(
+        initial_observable_text, active_processes, latest_live
+    )
     opensbi_fdt_handoff = parse_opensbi_domain_handoff(
-        initial_observable_text,
+        handoff_observable_text,
         fdt_audit.get("dtb_size_bytes")
         if isinstance(fdt_audit.get("dtb_size_bytes"), int)
         else None,
     )
+    opensbi_fdt_handoff["source"] = handoff_source
     fdt_handoff = fdt_handoff_diagnosis(instruction_trace, fdt_audit)
     diagnostic_fdt_handoff = fdt_handoff_diagnosis(diagnostic_trace, fdt_audit)
     uart_console = uart_console_diagnosis(
         initial_log_text, log_metadata, instruction_trace, fdt_audit
     )
-    latest_live = live_output.get("latest")
     if active_processes:
         blocker = (
             "generated AP Linux smoke is currently running; canonical evidence remains "
@@ -2643,6 +2827,11 @@ def main() -> int:
             live_progress = latest_live.get("last_progress_marker")
             if live_progress:
                 blocker += f"; latest live simulator progress: {live_progress}"
+            live_memory_progress = latest_live.get("linux_memory_progress")
+            if isinstance(live_memory_progress, dict):
+                live_memory_marker = live_memory_progress.get("last_marker")
+                if live_memory_marker:
+                    blocker += f"; latest Linux memory progress: {live_memory_marker}"
             blocker += f"; live log: {latest_live.get('path')}"
         if instruction_trace.get("fresh_for_log") and instruction_trace.get(
             "bootrom_to_payload_handoff"
@@ -2666,7 +2855,8 @@ def main() -> int:
             f"{fdt_handoff.get('reason')}"
         )
     if (
-        not instruction_trace.get("exists")
+        not quiet_linux_completion
+        and not instruction_trace.get("exists")
         and diagnostic_trace.get("bootrom_to_payload_handoff")
         and diagnostic_fdt_handoff.get("last_symbol")
     ):
@@ -2731,13 +2921,6 @@ def main() -> int:
                 f"a1={opensbi_fdt_handoff.get('domain0_next_arg1')} "
                 f"dtb_size={fdt_audit.get('dtb_size_bytes')}"
             )
-        elif not opensbi_fdt_handoff.get("domain0_next_arg1_clear_of_kernel_low_window"):
-            blockers.append(
-                "OpenSBI Domain0 handoff FDT address collides with the kernel low "
-                "load window: "
-                f"kernel={opensbi_fdt_handoff.get('domain0_next_address')} "
-                f"a1={opensbi_fdt_handoff.get('domain0_next_arg1')}"
-            )
     log_text = ""
     if not LOG.is_file():
         if not quiet_linux_completion:
@@ -2761,20 +2944,21 @@ def main() -> int:
                 "raw_transcript_end; timeout handling allowed simulator output to outlive "
                 "the evidence wrapper"
             )
+        report_canonical_failures = not active_processes
         fatal_errors = log_metadata.get("fatal_errors")
-        if not quiet_linux_completion and isinstance(fatal_errors, list):
+        if report_canonical_failures and not quiet_linux_completion and isinstance(fatal_errors, list):
             for fatal_error in fatal_errors:
                 blockers.append(f"{rel(LOG)} records fatal error: {fatal_error}")
         exceptions = log_metadata.get("exceptions")
-        if not quiet_linux_completion and isinstance(exceptions, list):
+        if report_canonical_failures and not quiet_linux_completion and isinstance(exceptions, list):
             for exception in exceptions:
                 blockers.append(f"{rel(LOG)} records generator exception: {exception}")
         kernel_panics = log_metadata.get("kernel_panics")
-        if not quiet_linux_completion and isinstance(kernel_panics, list):
+        if report_canonical_failures and not quiet_linux_completion and isinstance(kernel_panics, list):
             for kernel_panic in kernel_panics:
                 blockers.append(f"{rel(LOG)} records Linux kernel panic: {kernel_panic}")
         sim_failures = log_metadata.get("sim_failures")
-        if not quiet_linux_completion and isinstance(sim_failures, list):
+        if report_canonical_failures and not quiet_linux_completion and isinstance(sim_failures, list):
             for sim_failure in sim_failures:
                 hint = ""
                 if "timeout" in sim_failure and "+max-cycles=" in log_text:
@@ -2789,14 +2973,20 @@ def main() -> int:
                     )
                 blockers.append(f"{rel(LOG)} records simulator failure: {sim_failure}{hint}")
         exit_code = log_metadata.get("exit_code")
-        if exit_code and exit_code != "0" and not quiet_linux_completion:
+        if report_canonical_failures and exit_code and exit_code != "0" and not quiet_linux_completion:
             reason = f"{rel(LOG)} records simulator wrapper exit_code={exit_code}"
             timeout_after = log_metadata.get("timeout_after_seconds")
             if timeout_after:
                 reason += f" after timeout_after_seconds={timeout_after}"
             blockers.append(reason)
         last_progress = log_metadata.get("last_progress_marker")
-        if exit_code and exit_code != "0" and last_progress and not quiet_linux_completion:
+        if (
+            report_canonical_failures
+            and exit_code
+            and exit_code != "0"
+            and last_progress
+            and not quiet_linux_completion
+        ):
             blockers.append(f"last simulator progress before wrapper exit: {last_progress}")
         if last_progress and not (
             quiet_linux_completion

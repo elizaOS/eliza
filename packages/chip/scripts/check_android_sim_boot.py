@@ -160,6 +160,10 @@ def main() -> int:
 
     if data.get("schema") != "eliza.android_sim_boot.v1":
         errors.append("android sim report schema mismatch")
+    if data.get("aosp_dir_source") is not None and not isinstance(
+        data.get("aosp_dir_source"), str
+    ):
+        errors.append("android sim report aosp_dir_source must be string when present")
     status = data.get("status")
     if status not in VALID_STATUSES:
         errors.append(f"android sim report status {status!r} is invalid")

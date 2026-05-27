@@ -291,7 +291,7 @@ cross_checks:
 release_blockers:
   - supplier pinouts, footprints, mating connector data, and STEP models are not frozen
   - KiCad schematic remains scaffold text and has no ERC release report
-  - production concept PCB has placeholder footprints, no routed tracks, and no filled zones; local routed real-footprint development board is non-release
+  - production concept PCB has placeholder footprints, no release-approved routed tracks, and no filled zones; local routed real-footprint development board is non-release
   - route feasibility and escape density are not proven with supplier footprints and a trial route
   - module host integration closure is blocked on supplier pinouts, real schematic capture, routed host interfaces, firmware, RF, and bring-up evidence
   - external interface design review is blocked on supplier drawings, routed STEP clearance, and measured USB-C, display, camera, and side-key validation

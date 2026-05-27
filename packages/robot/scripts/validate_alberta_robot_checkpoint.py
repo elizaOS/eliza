@@ -92,10 +92,83 @@ def _history_contract(history: Any, tasks: list[str]) -> bool:
     return True
 
 
+def _phase_promotion_contract(
+    manifest: dict[str, Any],
+    tasks: list[str],
+    *,
+    total_steps: int,
+    eval_episodes: int,
+    require_phase_promotion: bool,
+) -> bool:
+    if manifest.get("phase_promotion_schema") is None and not require_phase_promotion:
+        return True
+    if manifest.get("phase_promotion_schema") != "alberta-phase-promotion-v1":
+        return False
+    promotion = manifest.get("phase_promotion")
+    if not isinstance(promotion, dict):
+        return False
+    threshold = promotion.get("success_threshold")
+    if not _finite_number(threshold):
+        return False
+    threshold = float(threshold)
+    phases = promotion.get("phases")
+    failed_phase = promotion.get("failed_phase")
+    try:
+        promoted_count = int(promotion.get("promoted_phase_count"))
+        requested_count = int(promotion.get("requested_phase_count"))
+        promotion_eval_episodes = int(promotion.get("eval_episodes"))
+    except Exception:
+        return False
+    if not (
+        promotion.get("status") == "completed"
+        and promotion.get("gate") == "curriculum_goal_checker"
+        and 0.0 < threshold <= 1.0
+        and promoted_count == requested_count == len(tasks)
+        and failed_phase is None
+        and promotion_eval_episodes == eval_episodes
+        and isinstance(phases, list)
+        and len(phases) == len(tasks)
+    ):
+        return False
+    last_cumulative = 0
+    for phase_idx, (row, task) in enumerate(zip(phases, tasks, strict=True)):
+        if not isinstance(row, dict):
+            return False
+        if int(row.get("phase", -1)) != phase_idx or row.get("task") != task:
+            return False
+        if row.get("promotion_passed") is not True:
+            return False
+        if not _finite_number(row.get("steps_trained")) or not _finite_number(
+            row.get("cumulative_steps")
+        ):
+            return False
+        if not _finite_number(row.get("eval_mean_return")) or not _finite_number(
+            row.get("eval_success_rate")
+        ):
+            return False
+        steps_trained = int(row["steps_trained"])
+        cumulative_steps = int(row["cumulative_steps"])
+        success_rate = float(row["eval_success_rate"])
+        try:
+            row_eval_episodes = int(row.get("eval_episodes"))
+        except Exception:
+            return False
+        if not (
+            steps_trained > 0
+            and cumulative_steps > last_cumulative
+            and row_eval_episodes == eval_episodes
+            and 0.0 <= success_rate <= 1.0
+            and success_rate >= threshold
+        ):
+            return False
+        last_cumulative = cumulative_steps
+    return last_cumulative == total_steps
+
+
 def _validate_inference(checkpoint: Path, manifest: dict[str, Any], prompts: list[str]) -> dict[str, Any]:
     from eliza_robot.rl.text_conditioned.policy import TextConditionedPolicy
 
-    policy = TextConditionedPolicy(checkpoint)
+    policy = TextConditionedPolicy(checkpoint, strict_manifest=True)
     proprio = np.zeros(int(manifest["proprio_dim"]), dtype=np.float32)
     output_dim = int(manifest["output_dim"])
     results = []
@@ -123,6 +196,7 @@ def validate_alberta_robot_checkpoint(
     min_steps: int = 1,
     require_domain_rand: bool = False,
     require_inference: bool = False,
+    require_phase_promotion: bool = False,
 ) -> dict[str, Any]:
     checkpoint = checkpoint.resolve()
     manifest = _load_json(checkpoint / "manifest.json", {})
@@ -177,6 +251,13 @@ def validate_alberta_robot_checkpoint(
         "domain_rand": (manifest.get("domain_rand") is True) if require_domain_rand else isinstance(manifest.get("domain_rand"), bool),
         "controller": _controller_contract(manifest.get("controller"), pca_dim=pca_dim),
         "history": _history_contract(manifest.get("history"), tasks),
+        "phase_promotion": _phase_promotion_contract(
+            manifest,
+            tasks,
+            total_steps=total_steps,
+            eval_episodes=int(manifest.get("eval_episodes", 0) or 0),
+            require_phase_promotion=require_phase_promotion,
+        ),
     }
     inference_report = None
     if require_inference and checks["policy_artifact"] and checks["manifest"] and checks["profile_loads"]:
@@ -211,6 +292,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--min-steps", type=int, default=1)
     parser.add_argument("--require-domain-rand", action="store_true")
     parser.add_argument("--require-inference", action="store_true")
+    parser.add_argument("--require-phase-promotion", action="store_true")
     args = parser.parse_args(argv)
     report = validate_alberta_robot_checkpoint(
         args.checkpoint,
@@ -219,6 +301,7 @@ def main(argv: list[str] | None = None) -> int:
         min_steps=args.min_steps,
         require_domain_rand=args.require_domain_rand,
         require_inference=args.require_inference,
+        require_phase_promotion=args.require_phase_promotion,
     )
     print(json.dumps(report, indent=2))
     return 0 if report["ok"] else 2

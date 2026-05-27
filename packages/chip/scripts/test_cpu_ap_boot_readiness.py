@@ -39,11 +39,12 @@ def test_report_schema_and_next_commands_are_machine_readable() -> None:
         raise AssertionError(f"unexpected status: {report['status']}")
 
     commands = "\n".join(blocker["next"] for blocker in report["blockers"])
-    for token in (
-        "run_chipyard_eliza_linux_smoke.sh",
-        "CHIPYARD_LINUX_BINARY=",
-    ):
-        assert_contains(commands, token)
+    if report["blockers"]:
+        for token in (
+            "run_chipyard_eliza_linux_smoke.sh",
+            "CHIPYARD_LINUX_BINARY=",
+        ):
+            assert_contains(commands, token)
 
 
 def test_generated_dts_uart_token_matches_current_generated_ap() -> None:

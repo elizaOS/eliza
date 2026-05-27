@@ -18,6 +18,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -26,6 +27,7 @@ if str(PKG_ROOT) not in sys.path:
     sys.path.insert(0, str(PKG_ROOT))
 
 from eliza_robot.curriculum.goal_checker import GoalChecker, TelemetrySample  # noqa: E402
+from eliza_robot.curriculum.loader import load_curriculum  # noqa: E402
 from eliza_robot.profiles.schema import list_profiles, load_profile  # noqa: E402
 from eliza_robot.rl.text_conditioned.policy import TextConditionedPolicy  # noqa: E402
 from eliza_robot.rl.text_conditioned.profile_env import (  # noqa: E402
@@ -42,6 +44,10 @@ DEFAULT_TASKS = (
     "turn_left",
     "turn_right",
 )
+TEXT_POLICY_EVAL_SCHEMA = "robot-text-policy-eval-v1"
+CURRICULUM_EVAL_SCHEMA = "robot-policy-curriculum-eval-v1"
+REQUIRED_CURRICULUM_EVAL_OUT = Path("evidence/curriculum_eval/eval_text_policy.json")
+REQUIRED_CURRICULUM_REPORT_OUT = Path("evidence/curriculum_eval/report.json")
 
 
 def _default_checkpoint(profile_id: str) -> Path:
@@ -52,7 +58,7 @@ def _load_policy(ckpt: Path) -> TextConditionedPolicy:
     manifest = ckpt / "manifest.json"
     if not manifest.is_file():
         raise FileNotFoundError(f"missing checkpoint manifest: {manifest}")
-    return TextConditionedPolicy(ckpt)
+    return TextConditionedPolicy(ckpt, strict_manifest=True)
 
 
 def _validate_policy_contract(policy: TextConditionedPolicy, profile_id: str) -> None:
@@ -91,6 +97,31 @@ def _optional_float(value) -> float | None:
     return out
 
 
+def _float_stats(values: list[float]) -> dict[str, float | None]:
+    if not values:
+        return {"min": None, "max": None, "mean": None, "final": None}
+    return {
+        "min": float(np.min(values)),
+        "max": float(np.max(values)),
+        "mean": float(np.mean(values)),
+        "final": float(values[-1]),
+    }
+
+
+def _rollout_failed(last_result: Any, *, terminated: bool, success: bool) -> bool:
+    """Treat env termination as a programmatic failure unless success already held."""
+    return bool(getattr(last_result, "failed", False) or (terminated and not success))
+
+
+def _rollout_reason(last_result: Any, *, terminated: bool, success: bool) -> str:
+    reason = str(getattr(last_result, "reason", "") or "")
+    if reason:
+        return reason
+    if terminated and not success:
+        return "env_terminated_before_goal_success"
+    return ""
+
+
 def _telemetry_sample_from_info(t_s: float, info: dict) -> TelemetrySample:
     return TelemetrySample(
         t_s=t_s,
@@ -98,6 +129,8 @@ def _telemetry_sample_from_info(t_s: float, info: dict) -> TelemetrySample:
         torso_y_m=_optional_float(info.get("root_y")),
         torso_z_m=_optional_float(info.get("torso_z")),
         yaw_rad=_optional_float(info.get("root_yaw")),
+        imu_roll_rad=float(info.get("imu_roll", 0.0) or 0.0),
+        imu_pitch_rad=float(info.get("imu_pitch", 0.0) or 0.0),
         extra={"stand_height_m": info.get("stand_height_m")},
     )
 
@@ -134,8 +167,10 @@ def _roll_one(env, policy, task_id: str, *, max_steps: int) -> dict:
     terminated = False
     truncated = False
     traces = {
+        "delta_x": [],
         "torso_z": [],
         "delta_y": [],
+        "delta_yaw": [],
     }
     for _ in range(max_steps):
         if policy is None:
@@ -159,14 +194,20 @@ def _roll_one(env, policy, task_id: str, *, max_steps: int) -> dict:
         truncated = bool(trunc)
         if term or trunc:
             break
+    success = bool(last_result.success)
+    failed = _rollout_failed(last_result, terminated=terminated, success=success)
     return {
         "reward": total,
         "steps": steps,
         "terminated": terminated,
         "truncated": truncated,
-        "success": bool(last_result.success),
-        "failed": bool(last_result.failed),
-        "reason": last_result.reason,
+        "success": success,
+        "failed": failed,
+        "reason": _rollout_reason(
+            last_result,
+            terminated=terminated,
+            success=success,
+        ),
         "final_delta_x": float(_optional_float(last_info.get("delta_x")) or 0.0),
         "final_delta_y": float(_optional_float(last_info.get("delta_y")) or 0.0),
         "final_delta_yaw": float(_optional_float(last_info.get("delta_yaw")) or 0.0),
@@ -175,10 +216,60 @@ def _roll_one(env, policy, task_id: str, *, max_steps: int) -> dict:
         "max_abs_lateral_drift": (
             max(abs(v) for v in traces["delta_y"]) if traces["delta_y"] else None
         ),
+        "telemetry": {
+            "delta_x_m": _float_stats(traces["delta_x"]),
+            "delta_y_m": _float_stats(traces["delta_y"]),
+            "delta_yaw_rad": _float_stats(traces["delta_yaw"]),
+            "torso_z_m": _float_stats(traces["torso_z"]),
+        },
     }
 
 
-def _roll_one_asimov_mjx(env, policy, task_id: str, *, max_steps: int, seed: int) -> tuple[float, int]:
+def _yaw_from_mujoco_quat(qw: float, qx: float, qy: float, qz: float) -> float:
+    return float(
+        np.arctan2(
+            2.0 * (qw * qz + qx * qy),
+            1.0 - 2.0 * (qy * qy + qz * qz),
+        )
+    )
+
+
+def _telemetry_sample_from_mjx_state(state, t_s: float, *, stand_height_m: float | None):
+    import jax
+
+    qpos = np.asarray(jax.device_get(state.data.qpos), dtype=np.float64).reshape(-1)
+    torso_x = float(qpos[0]) if qpos.shape[0] > 0 else None
+    torso_y = float(qpos[1]) if qpos.shape[0] > 1 else None
+    torso_z = float(qpos[2]) if qpos.shape[0] > 2 else None
+    yaw = (
+        _yaw_from_mujoco_quat(
+            float(qpos[3]),
+            float(qpos[4]),
+            float(qpos[5]),
+            float(qpos[6]),
+        )
+        if qpos.shape[0] > 6
+        else None
+    )
+    return TelemetrySample(
+        t_s=t_s,
+        torso_x_m=torso_x,
+        torso_y_m=torso_y,
+        torso_z_m=torso_z,
+        yaw_rad=yaw,
+        extra={"stand_height_m": stand_height_m},
+    )
+
+
+def _roll_one_asimov_mjx(
+    env,
+    policy,
+    task_id: str,
+    *,
+    max_steps: int,
+    seed: int,
+    task_spec=None,
+) -> dict:
     import jax
     import jax.numpy as jp
 
@@ -190,9 +281,26 @@ def _roll_one_asimov_mjx(env, policy, task_id: str, *, max_steps: int, seed: int
     info["text_embed"] = env._task_embeddings[task_idx]  # noqa: SLF001
     obs = env._get_obs(state.data, info)  # noqa: SLF001
     state = state.replace(obs=obs, info=info)
+    if task_spec is None:
+        task_spec = next(task for task in load_curriculum().tasks if task.id == task_id)
+    control_dt_s = float(getattr(env, "dt", 1.0 / 50.0))
+    stand_height_m = float(  # noqa: SLF001
+        getattr(env._config, "stand_height_target", 0.63)
+    )
+    checker = GoalChecker(task_spec, episode_start_t_s=0.0)
+    last_result = checker.update(
+        _telemetry_sample_from_mjx_state(state, 0.0, stand_height_m=stand_height_m)
+    )
+    start_sample = checker.samples[-1]
+    last_sample = start_sample
+    delta_x_trace = [0.0]
+    delta_y_trace = [0.0]
+    delta_yaw_trace = [0.0]
+    torso_z_trace = [float(start_sample.torso_z_m or 0.0)]
 
     total = 0.0
     steps = 0
+    terminated = False
     for _ in range(max_steps):
         if policy is None:
             action = np.zeros(env.action_size, dtype=np.float32)
@@ -208,9 +316,89 @@ def _roll_one_asimov_mjx(env, policy, task_id: str, *, max_steps: int, seed: int
         state = env.step(state, jp.asarray(action, dtype=jp.float32))
         total += float(jax.device_get(state.reward))
         steps += 1
-        if bool(jax.device_get(state.done)):
+        last_sample = _telemetry_sample_from_mjx_state(
+            state,
+            steps * control_dt_s,
+            stand_height_m=stand_height_m,
+        )
+        delta_x_trace.append(float((last_sample.torso_x_m or 0.0) - (start_sample.torso_x_m or 0.0)))
+        delta_y_trace.append(float((last_sample.torso_y_m or 0.0) - (start_sample.torso_y_m or 0.0)))
+        delta_yaw_trace.append(float((last_sample.yaw_rad or 0.0) - (start_sample.yaw_rad or 0.0)))
+        torso_z_trace.append(float(last_sample.torso_z_m or 0.0))
+        last_result = checker.update(last_sample)
+        terminated = bool(jax.device_get(state.done))
+        if terminated or last_result.success or last_result.failed:
             break
-    return total, steps
+    success = bool(last_result.success)
+    failed = _rollout_failed(last_result, terminated=terminated, success=success)
+    return {
+        "reward": total,
+        "steps": steps,
+        "terminated": terminated,
+        "truncated": steps >= max_steps and not terminated,
+        "success": success,
+        "failed": failed,
+        "reason": _rollout_reason(
+            last_result,
+            terminated=terminated,
+            success=success,
+        ),
+        "final_delta_x": float((last_sample.torso_x_m or 0.0) - (start_sample.torso_x_m or 0.0)),
+        "final_delta_y": float((last_sample.torso_y_m or 0.0) - (start_sample.torso_y_m or 0.0)),
+        "final_delta_yaw": float((last_sample.yaw_rad or 0.0) - (start_sample.yaw_rad or 0.0)),
+        "final_torso_z": float(last_sample.torso_z_m or 0.0),
+        "min_torso_z": float(np.min(torso_z_trace)) if torso_z_trace else None,
+        "max_abs_lateral_drift": (
+            float(np.max(np.abs(delta_y_trace))) if delta_y_trace else None
+        ),
+        "telemetry": {
+            "delta_x_m": _float_stats(delta_x_trace),
+            "delta_y_m": _float_stats(delta_y_trace),
+            "delta_yaw_rad": _float_stats(delta_yaw_trace),
+            "torso_z_m": _float_stats(torso_z_trace),
+        },
+    }
+
+
+def _normalize_mjx_rollout(rollout) -> dict:
+    if isinstance(rollout, dict):
+        return rollout
+    reward, steps = rollout
+    return {
+        "reward": float(reward),
+        "steps": int(steps),
+        "success": False,
+        "failed": False,
+        "terminated": False,
+        "truncated": False,
+        "reason": "",
+        "final_delta_x": 0.0,
+        "final_delta_y": 0.0,
+        "final_delta_yaw": 0.0,
+        "final_torso_z": 0.0,
+        "min_torso_z": None,
+        "max_abs_lateral_drift": None,
+        "telemetry": {},
+    }
+
+
+def _movement_summary(rollouts: list[dict]) -> dict[str, Any]:
+    def values(key: str) -> list[float]:
+        out = []
+        for rollout in rollouts:
+            value = _optional_float(rollout.get(key))
+            if value is not None:
+                out.append(value)
+        return out
+
+    return {
+        "final_delta_x_m": _float_stats(values("final_delta_x")),
+        "final_delta_y_m": _float_stats(values("final_delta_y")),
+        "final_delta_yaw_rad": _float_stats(values("final_delta_yaw")),
+        "final_torso_z_m": _float_stats(values("final_torso_z")),
+        "min_torso_z_m": _float_stats(values("min_torso_z")),
+        "max_abs_lateral_drift_m": _float_stats(values("max_abs_lateral_drift")),
+    }
 
 
 def _evaluate_asimov_mjx(
@@ -241,30 +429,57 @@ def _evaluate_asimov_mjx(
         domain_randomization={},
     )
     per_task: dict[str, dict] = {}
+    task_specs = {task.id: task for task in load_curriculum().tasks}
     rng = np.random.default_rng(0)
     for task_id in tasks:
         rewards = []
         survivals = []
+        successes = []
+        failures = []
+        delta_x = []
+        delta_y = []
+        delta_yaw = []
+        torso_z = []
+        rollouts = []
         for _ in range(episodes):
             seed = int(rng.integers(2**31 - 1))
-            reward, steps = _roll_one_asimov_mjx(
-                env,
-                policy,
-                task_id,
-                max_steps=max_steps,
-                seed=seed,
+            rollout = _normalize_mjx_rollout(
+                _roll_one_asimov_mjx(
+                    env,
+                    policy,
+                    task_id,
+                    max_steps=max_steps,
+                    seed=seed,
+                    task_spec=task_specs[task_id],
+                )
             )
-            rewards.append(reward)
-            survivals.append(steps)
+            rewards.append(float(rollout["reward"]))
+            survivals.append(int(rollout["steps"]))
+            successes.append(bool(rollout["success"]))
+            failures.append(bool(rollout["failed"]))
+            delta_x.append(float(rollout["final_delta_x"]))
+            delta_y.append(float(rollout["final_delta_y"]))
+            delta_yaw.append(float(rollout["final_delta_yaw"]))
+            torso_z.append(float(rollout["final_torso_z"]))
+            rollouts.append(rollout)
         per_task[task_id] = {
             "mean_reward": float(np.mean(rewards)),
             "std_reward": float(np.std(rewards)),
             "min_reward": float(np.min(rewards)),
             "max_reward": float(np.max(rewards)),
             "mean_steps_survived": float(np.mean(survivals)),
+            "success_rate": float(np.mean(successes)),
+            "failure_rate": float(np.mean(failures)),
+            "mean_final_delta_x_m": float(np.mean(delta_x)),
+            "mean_final_delta_y_m": float(np.mean(delta_y)),
+            "mean_final_delta_yaw_rad": float(np.mean(delta_yaw)),
+            "mean_final_torso_z_m": float(np.mean(torso_z)),
+            "movement_summary": _movement_summary(rollouts),
+            "rollouts": rollouts,
             "episodes": episodes,
         }
     return {
+        "schema": TEXT_POLICY_EVAL_SCHEMA,
         "profile_id": "asimov-1",
         "env": "asimov_mjx",
         "checkpoint": str(ckpt),
@@ -281,6 +496,9 @@ def _evaluate_asimov_mjx(
         "tasks": per_task,
         "mean_reward_overall": float(
             np.mean([per_task[t]["mean_reward"] for t in tasks])
+        ),
+        "mean_success_rate_overall": float(
+            np.mean([per_task[t]["success_rate"] for t in tasks])
         ),
     }
 
@@ -334,6 +552,7 @@ def evaluate(
         delta_y = []
         delta_yaw = []
         torso_z = []
+        rollouts = []
         for _ in range(episodes):
             rollout = _roll_one(env, policy, task_id, max_steps=max_steps)
             rewards.append(float(rollout["reward"]))
@@ -344,6 +563,7 @@ def evaluate(
             delta_y.append(float(rollout["final_delta_y"]))
             delta_yaw.append(float(rollout["final_delta_yaw"]))
             torso_z.append(float(rollout["final_torso_z"]))
+            rollouts.append(rollout)
         per_task[task_id] = {
             "mean_reward": float(np.mean(rewards)),
             "std_reward": float(np.std(rewards)),
@@ -356,9 +576,12 @@ def evaluate(
             "mean_final_delta_y_m": float(np.mean(delta_y)),
             "mean_final_delta_yaw_rad": float(np.mean(delta_yaw)),
             "mean_final_torso_z_m": float(np.mean(torso_z)),
+            "movement_summary": _movement_summary(rollouts),
+            "rollouts": rollouts,
             "episodes": episodes,
         }
     return {
+        "schema": TEXT_POLICY_EVAL_SCHEMA,
         "profile_id": profile_id,
         "env": "profile_mujoco",
         "checkpoint": str(ckpt),
@@ -374,6 +597,87 @@ def evaluate(
             np.mean([per_task[t]["success_rate"] for t in tasks])
         ),
     }
+
+
+def curriculum_report_from_eval(report: dict) -> dict:
+    """Convert an eval report into the production curriculum-gate schema."""
+    task_metrics = report.get("tasks") if isinstance(report.get("tasks"), dict) else {}
+    rows = []
+    for task_id, metrics in task_metrics.items():
+        metrics = metrics if isinstance(metrics, dict) else {}
+        success_rate = float(metrics.get("success_rate", 0.0) or 0.0)
+        failure_rate = float(metrics.get("failure_rate", 0.0) or 0.0)
+        rows.append(
+            {
+                "task_id": task_id,
+                "success_programmatic": bool(success_rate >= 1.0),
+                "success_rate": success_rate,
+                "failure_rate": failure_rate,
+                "episodes": int(metrics.get("episodes", 0) or 0),
+                "mean_reward": float(metrics.get("mean_reward", 0.0) or 0.0),
+                "mean_steps_survived": float(
+                    metrics.get("mean_steps_survived", 0.0) or 0.0
+                ),
+                "mean_final_delta_x_m": float(
+                    metrics.get("mean_final_delta_x_m", 0.0) or 0.0
+                ),
+                "mean_final_delta_y_m": float(
+                    metrics.get("mean_final_delta_y_m", 0.0) or 0.0
+                ),
+                "mean_final_delta_yaw_rad": float(
+                    metrics.get("mean_final_delta_yaw_rad", 0.0) or 0.0
+                ),
+                "mean_final_torso_z_m": float(
+                    metrics.get("mean_final_torso_z_m", 0.0) or 0.0
+                ),
+                "movement_summary": metrics.get("movement_summary", {}),
+                "error": None,
+            }
+        )
+    n_tasks = len(rows)
+    n_programmatic_pass = sum(1 for row in rows if row["success_programmatic"])
+    return {
+        "schema": CURRICULUM_EVAL_SCHEMA,
+        "source": "eval_text_policy",
+        "checkpoint": report.get("checkpoint"),
+        "profile_id": report.get("profile_id"),
+        "env": report.get("env"),
+        "policy": report.get("policy"),
+        "n_tasks": n_tasks,
+        "n_programmatic_pass": n_programmatic_pass,
+        "programmatic_pass_rate": n_programmatic_pass / max(n_tasks, 1),
+        "mean_success_rate_overall": float(
+            report.get("mean_success_rate_overall", 0.0) or 0.0
+        ),
+        "tasks": rows,
+    }
+
+
+def _normalized_relative(path: Path) -> Path:
+    return Path(str(path).lstrip("./"))
+
+
+def _validate_curriculum_output_paths(out: Path | None, curriculum_out: Path | None) -> None:
+    if out is None and curriculum_out is None:
+        return
+    if out is None or curriculum_out is None:
+        raise ValueError(
+            "curriculum evidence generation requires both "
+            f"--out {REQUIRED_CURRICULUM_EVAL_OUT} and "
+            f"--curriculum-report-out {REQUIRED_CURRICULUM_REPORT_OUT}"
+        )
+    got_out = _normalized_relative(out)
+    got_curriculum = _normalized_relative(curriculum_out)
+    if (
+        got_out != REQUIRED_CURRICULUM_EVAL_OUT
+        or got_curriculum != REQUIRED_CURRICULUM_REPORT_OUT
+    ):
+        raise ValueError(
+            "curriculum evidence output paths must be exact: "
+            f"--out {REQUIRED_CURRICULUM_EVAL_OUT} and "
+            f"--curriculum-report-out {REQUIRED_CURRICULUM_REPORT_OUT}; "
+            f"got --out {got_out} and --curriculum-report-out {got_curriculum}"
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -403,7 +707,30 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Ignore any saved checkpoint; benchmark the zero-action baseline.",
     )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Optional path to write the native evaluation JSON report.",
+    )
+    parser.add_argument(
+        "--curriculum-report-out",
+        type=Path,
+        default=None,
+        help=(
+            "Optional path to write a checkpoint-bound curriculum gate report "
+            "consumed by validate_nebius_full_training_run.py."
+        ),
+    )
+    parser.add_argument(
+        "--fail-under-success-rate",
+        type=float,
+        default=None,
+        help="Exit 2 if the curriculum report pass rate is below this threshold.",
+    )
     args = parser.parse_args(argv)
+    if args.curriculum_report_out is not None or args.fail_under_success_rate is not None:
+        _validate_curriculum_output_paths(args.out, args.curriculum_report_out)
     if args.profile == "asimov-1" and args.backend in {"auto", "mjx"}:
         # Keep local ASIMOV MJX evaluation off the CUDA plugin unless callers
         # explicitly select another backend. Developer machines often have CUDA
@@ -421,12 +748,32 @@ def main(argv: list[str] | None = None) -> int:
         ckpt=args.ckpt,
         backend=args.backend,
     )
+    if args.out is not None:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    curriculum_report = None
+    if args.curriculum_report_out is not None or args.fail_under_success_rate is not None:
+        curriculum_report = curriculum_report_from_eval(report)
+    if args.curriculum_report_out is not None and curriculum_report is not None:
+        args.curriculum_report_out.parent.mkdir(parents=True, exist_ok=True)
+        args.curriculum_report_out.write_text(
+            json.dumps(curriculum_report, indent=2) + "\n",
+            encoding="utf-8",
+        )
     print(json.dumps(report, indent=2))
+    exit_code = 0
+    if (
+        args.fail_under_success_rate is not None
+        and curriculum_report is not None
+        and float(curriculum_report["programmatic_pass_rate"])
+        < float(args.fail_under_success_rate)
+    ):
+        exit_code = 2
     if args.profile == "asimov-1" and args.backend in {"auto", "mjx"}:
         sys.stdout.flush()
         sys.stderr.flush()
-        os._exit(0)
-    return 0
+        os._exit(exit_code)
+    return exit_code
 
 
 if __name__ == "__main__":

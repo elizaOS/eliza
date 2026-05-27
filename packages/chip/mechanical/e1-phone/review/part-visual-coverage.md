@@ -141,6 +141,9 @@ This gate maps each CAD part to generated review views and the per-part contact 
 - PASS: `dram_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `storage_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `pmic_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `usb_pd_controller_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `charger_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `battery_connector_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `audio_codec_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `rf_transceiver_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `gnss_lna_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
@@ -171,6 +174,9 @@ This gate maps each CAD part to generated review views and the per-part contact 
 - PASS: `side_key_flex_tail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `battery_connector_lead_flex` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `usb_c_power_data_escape_tail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `usb_pd_controller_escape_trace_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `pd_charger_control_trace_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `charger_battery_power_sense_trace_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `bottom_speaker_lead_pair` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `bottom_microphone_flex_leads` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `top_microphone_flex_tail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
@@ -198,6 +204,12 @@ This gate maps each CAD part to generated review views and the per-part contact 
 - PASS: `battery_lead_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `usb_c_escape_tail_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `usb_c_escape_tail_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `usb_c_to_pd_controller_escape_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `usb_c_to_pd_controller_escape_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `pd_controller_to_charger_control_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `pd_controller_to_charger_control_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `charger_to_battery_power_sense_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `charger_to_battery_power_sense_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `bottom_speaker_lead_pair_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `bottom_speaker_lead_pair_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `bottom_microphone_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`

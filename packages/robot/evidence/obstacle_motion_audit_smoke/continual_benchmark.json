@@ -1,0 +1,522 @@
+{
+  "config": {
+    "env_kind": "obstacle_course",
+    "n_tasks": 3,
+    "n_joints": 6,
+    "steps_per_task": 500,
+    "eval_episodes": 3,
+    "seeds": 1,
+    "gamma": 0.5,
+    "actor_step_size": 0.01,
+    "critic_step_size": 0.02,
+    "actor_lamda": 0.7,
+    "critic_lamda": 0.7,
+    "log_sigma_init": -1.0,
+    "embed_dim": 16,
+    "n_prototypes": 192,
+    "gate_temperature": 0.1,
+    "proprio_random_dim": 64,
+    "obstacle_episode_steps": 80,
+    "learners": [
+      "alberta",
+      "ppo"
+    ]
+  },
+  "summary": {
+    "alberta": {
+      "acc": {
+        "mean": 7.25651042096408,
+        "std": 0.0
+      },
+      "bwt": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "forgetting": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "fwt": {
+        "mean": 0.0,
+        "std": 0.0
+      }
+    },
+    "ppo": {
+      "acc": {
+        "mean": 1.719204922639747,
+        "std": 0.0
+      },
+      "bwt": {
+        "mean": 0.08803645159466217,
+        "std": 0.0
+      },
+      "forgetting": {
+        "mean": 0.12770276740727676,
+        "std": 0.0
+      },
+      "fwt": {
+        "mean": 0.19625703248044388,
+        "std": 0.0
+      }
+    }
+  },
+  "adaptation": {
+    "alberta": {
+      "mean_new_task_gain": 6.899485789029548,
+      "min_new_task_gain": 5.083209910043342,
+      "tasks_with_positive_gain": 3.0,
+      "task_count": 3.0,
+      "mean_final_minus_best": 0.0,
+      "min_final_minus_best": 0.0,
+      "first_task_retention_delta": 0.0,
+      "seeds": 1
+    },
+    "ppo": {
+      "mean_new_task_gain": 1.2829507494064238,
+      "min_new_task_gain": 0.9845089019994118,
+      "tasks_with_positive_gain": 3.0,
+      "task_count": 3.0,
+      "mean_final_minus_best": -0.08513517827151784,
+      "min_final_minus_best": -0.2554055348145535,
+      "first_task_retention_delta": -0.2554055348145535,
+      "seeds": 1
+    }
+  },
+  "motion": {
+    "alberta": {
+      "seeds": 1,
+      "final_success_rate_mean": 0.8888888888888888,
+      "final_collision_rate_mean": 0.1111111111111111,
+      "final_passed_obstacle_rate_mean": 0.8888888888888888,
+      "final_forward_progress_m_mean": 2.123314102490743,
+      "final_min_obstacle_clearance_m_min": -0.0015737402439117698
+    },
+    "ppo": {
+      "seeds": 1,
+      "final_success_rate_mean": 0.0,
+      "final_collision_rate_mean": 0.0,
+      "final_passed_obstacle_rate_mean": 0.0,
+      "final_forward_progress_m_mean": 0.7107810775438944,
+      "final_min_obstacle_clearance_m_min": 0.038279713392257664
+    }
+  },
+  "results": [
+    {
+      "name": "alberta",
+      "matrix": [
+        [
+          8.518087996746383,
+          0.2923840011396205,
+          0.5701665769117944
+        ],
+        [
+          8.518087996746383,
+          7.59806677919072,
+          0.5701665769117944
+        ],
+        [
+          8.518087996746383,
+          7.59806677919072,
+          5.653376486955136
+        ]
+      ],
+      "baseline": [
+        0.20852331775217944,
+        0.2923840011396205,
+        0.5701665769117944
+      ],
+      "metrics": {
+        "acc": 7.25651042096408,
+        "bwt": 0.0,
+        "forgetting": 0.0,
+        "fwt": 0.0,
+        "final_per_task": [
+          8.518087996746383,
+          7.59806677919072,
+          5.653376486955136
+        ],
+        "diagonal_per_task": [
+          8.518087996746383,
+          7.59806677919072,
+          5.653376486955136
+        ]
+      },
+      "seed": 1000,
+      "motion_baseline": [
+        {
+          "episodes": 3,
+          "success_rate": 0.0,
+          "collision_rate": 0.0,
+          "passed_obstacle_rate": 0.0,
+          "mean_forward_progress_m": 0.0,
+          "mean_final_x": -1.1926663319269817,
+          "mean_final_y": -0.01574525112907092,
+          "mean_goal_dist": 2.5423479874928794,
+          "min_obstacle_clearance_m": 0.9075182390213012,
+          "mean_return": 0.20852331775217944,
+          "mean_length": 80.0
+        },
+        {
+          "episodes": 3,
+          "success_rate": 0.0,
+          "collision_rate": 0.0,
+          "passed_obstacle_rate": 0.0,
+          "mean_forward_progress_m": 0.0,
+          "mean_final_x": -1.1892369190851848,
+          "mean_final_y": 0.009408758953213692,
+          "mean_goal_dist": 2.512779394785563,
+          "min_obstacle_clearance_m": 0.9075182390213012,
+          "mean_return": 0.2923840011396205,
+          "mean_length": 80.0
+        },
+        {
+          "episodes": 3,
+          "success_rate": 0.0,
+          "collision_rate": 0.0,
+          "passed_obstacle_rate": 0.0,
+          "mean_forward_progress_m": 0.0,
+          "mean_final_x": -1.186745007832845,
+          "mean_final_y": -0.016787535200516384,
+          "mean_goal_dist": 2.4640642007191977,
+          "min_obstacle_clearance_m": 0.90059241771698,
+          "mean_return": 0.5701665769117944,
+          "mean_length": 80.0
+        }
+      ],
+      "motion_matrix": [
+        [
+          {
+            "episodes": 3,
+            "success_rate": 1.0,
+            "collision_rate": 0.0,
+            "passed_obstacle_rate": 1.0,
+            "mean_forward_progress_m": 2.245622475941976,
+            "mean_final_x": 1.0529561440149944,
+            "mean_final_y": 0.8881400227546692,
+            "mean_goal_dist": 0.1575869768857956,
+            "min_obstacle_clearance_m": 0.15427243828773496,
+            "mean_return": 8.518087996746383,
+            "mean_length": 71.0
+          },
+          {
+            "episodes": 3,
+            "success_rate": 0.0,
+            "collision_rate": 0.0,
+            "passed_obstacle_rate": 0.0,
+            "mean_forward_progress_m": 0.0,
+            "mean_final_x": -1.1892369190851848,
+            "mean_final_y": 0.009408758953213692,
+            "mean_goal_dist": 2.512779394785563,
+            "min_obstacle_clearance_m": 0.9075182390213012,
+            "mean_return": 0.2923840011396205,
+            "mean_length": 80.0
+          },
+          {
+            "episodes": 3,
+            "success_rate": 0.0,
+            "collision_rate": 0.0,
+            "passed_obstacle_rate": 0.0,
+            "mean_forward_progress_m": 0.0,
+            "mean_final_x": -1.186745007832845,
+            "mean_final_y": -0.016787535200516384,
+            "mean_goal_dist": 2.4640642007191977,
+            "min_obstacle_clearance_m": 0.90059241771698,
+            "mean_return": 0.5701665769117944,
+            "mean_length": 80.0
+          }
+        ],
+        [
+          {
+            "episodes": 3,
+            "success_rate": 1.0,
+            "collision_rate": 0.0,
+            "passed_obstacle_rate": 1.0,
+            "mean_forward_progress_m": 2.245622475941976,
+            "mean_final_x": 1.0529561440149944,
+            "mean_final_y": 0.8881400227546692,
+            "mean_goal_dist": 0.1575869768857956,
+            "min_obstacle_clearance_m": 0.15427243828773496,
+            "mean_return": 8.518087996746383,
+            "mean_length": 71.0
+          },
+          {
+            "episodes": 3,
+            "success_rate": 1.0,
+            "collision_rate": 0.0,
+            "passed_obstacle_rate": 1.0,
+            "mean_forward_progress_m": 2.273284117380778,
+            "mean_final_x": 1.0840472380320232,
+            "mean_final_y": -0.6736771066983541,
+            "mean_goal_dist": 0.1555236428976059,
+            "min_obstacle_clearance_m": 0.015467674732208225,
+            "mean_return": 7.59806677919072,
+            "mean_length": 58.666666666666664
+          },
+          {
+            "episodes": 3,
+            "success_rate": 0.0,
+            "collision_rate": 0.0,
+            "passed_obstacle_rate": 0.0,
+            "mean_forward_progress_m": 0.0,
+            "mean_final_x": -1.186745007832845,
+            "mean_final_y": -0.016787535200516384,
+            "mean_goal_dist": 2.4640642007191977,
+            "min_obstacle_clearance_m": 0.90059241771698,
+            "mean_return": 0.5701665769117944,
+            "mean_length": 80.0
+          }
+        ],
+        [
+          {
+            "episodes": 3,
+            "success_rate": 1.0,
+            "collision_rate": 0.0,
+            "passed_obstacle_rate": 1.0,
+            "mean_forward_progress_m": 2.245622475941976,
+            "mean_final_x": 1.0529561440149944,
+            "mean_final_y": 0.8881400227546692,
+            "mean_goal_dist": 0.1575869768857956,
+            "min_obstacle_clearance_m": 0.15427243828773496,
+            "mean_return": 8.518087996746383,
+            "mean_length": 71.0
+          },
+          {
+            "episodes": 3,
+            "success_rate": 1.0,
+            "collision_rate": 0.0,
+            "passed_obstacle_rate": 1.0,
+            "mean_forward_progress_m": 2.273284117380778,
+            "mean_final_x": 1.0840472380320232,
+            "mean_final_y": -0.6736771066983541,
+            "mean_goal_dist": 0.1555236428976059,
+            "min_obstacle_clearance_m": 0.015467674732208225,
+            "mean_return": 7.59806677919072,
+            "mean_length": 58.666666666666664
+          },
+          {
+            "episodes": 3,
+            "success_rate": 0.6666666666666666,
+            "collision_rate": 0.3333333333333333,
+            "passed_obstacle_rate": 0.6666666666666666,
+            "mean_forward_progress_m": 1.851035714149475,
+            "mean_final_x": 0.664290688931942,
+            "mean_final_y": 0.4848318099975586,
+            "mean_goal_dist": 0.556471144159635,
+            "min_obstacle_clearance_m": -0.0015737402439117698,
+            "mean_return": 5.653376486955136,
+            "mean_length": 48.333333333333336
+          }
+        ]
+      ]
+    },
+    {
+      "name": "ppo",
+      "matrix": [
+        [
+          1.202066496793841,
+          0.2819168706818785,
+          0.743793841470234
+        ],
+        [
+          0.939396954295054,
+          1.3768195746230374,
+          1.0257292159952254
+        ],
+        [
+          0.9466609619792875,
+          1.8082980126269153,
+          2.402655793313038
+        ]
+      ],
+      "baseline": [
+        0.2175575947944293,
+        0.3135205569594435,
+        0.6016114647567726
+      ],
+      "metrics": {
+        "acc": 1.719204922639747,
+        "bwt": 0.08803645159466217,
+        "forgetting": 0.12770276740727676,
+        "fwt": 0.19625703248044388,
+        "final_per_task": [
+          0.9466609619792875,
+          1.8082980126269153,
+          2.402655793313038
+        ],
+        "diagonal_per_task": [
+          1.202066496793841,
+          1.3768195746230374,
+          2.402655793313038
+        ]
+      },
+      "seed": 1000,
+      "motion_baseline": [
+        {
+          "episodes": 3,
+          "success_rate": 0.0,
+          "collision_rate": 0.0,
+          "passed_obstacle_rate": 0.0,
+          "mean_forward_progress_m": 0.0059528350830078125,
+          "mean_final_x": -1.1867134968439739,
+          "mean_final_y": -0.016683124626676243,
+          "mean_goal_dist": 2.5370635191599527,
+          "min_obstacle_clearance_m": 0.9017340850830078,
+          "mean_return": 0.2175575947944293,
+          "mean_length": 80.0
+        },
+        {
+          "episodes": 3,
+          "success_rate": 0.0,
+          "collision_rate": 0.0,
+          "passed_obstacle_rate": 0.0,
+          "mean_forward_progress_m": 0.009312828381856283,
+          "mean_final_x": -1.1799240907033284,
+          "mean_final_y": 0.004017091045777003,
+          "mean_goal_dist": 2.5022563139597573,
+          "min_obstacle_clearance_m": 0.8980946254730224,
+          "mean_return": 0.3135205569594435,
+          "mean_length": 80.0
+        },
+        {
+          "episodes": 3,
+          "success_rate": 0.0,
+          "collision_rate": 0.0,
+          "passed_obstacle_rate": 0.0,
+          "mean_forward_progress_m": 0.0015799204508463542,
+          "mean_final_x": -1.1851650873819988,
+          "mean_final_y": 0.002548948551217715,
+          "mean_goal_dist": 2.4578126271565757,
+          "min_obstacle_clearance_m": 0.8984578561782837,
+          "mean_return": 0.6016114647567726,
+          "mean_length": 80.0
+        }
+      ],
+      "motion_matrix": [
+        [
+          {
+            "episodes": 3,
+            "success_rate": 0.0,
+            "collision_rate": 0.0,
+            "passed_obstacle_rate": 0.0,
+            "mean_forward_progress_m": 0.5233078797658285,
+            "mean_final_x": -0.6693584521611532,
+            "mean_final_y": 0.13095483432213464,
+            "mean_goal_dist": 2.0007020632425943,
+            "min_obstacle_clearance_m": 0.390767605304718,
+            "mean_return": 1.202066496793841,
+            "mean_length": 80.0
+          },
+          {
+            "episodes": 3,
+            "success_rate": 0.0,
+            "collision_rate": 0.0,
+            "passed_obstacle_rate": 0.0,
+            "mean_forward_progress_m": -0.011869033177693685,
+            "mean_final_x": -1.2011059522628784,
+            "mean_final_y": 0.0002634717772404353,
+            "mean_goal_dist": 2.521259387334188,
+            "min_obstacle_clearance_m": 0.9075503063201904,
+            "mean_return": 0.2819168706818785,
+            "mean_length": 80.0
+          },
+          {
+            "episodes": 3,
+            "success_rate": 0.0,
+            "collision_rate": 0.0,
+            "passed_obstacle_rate": 0.0,
+            "mean_forward_progress_m": 0.06988835334777832,
+            "mean_final_x": -1.1168566544850667,
+            "mean_final_y": 0.019327239754299324,
+            "mean_goal_dist": 2.387513001759847,
+            "min_obstacle_clearance_m": 0.8282535982131958,
+            "mean_return": 0.743793841470234,
+            "mean_length": 80.0
+          }
+        ],
+        [
+          {
+            "episodes": 3,
+            "success_rate": 0.0,
+            "collision_rate": 0.0,
+            "passed_obstacle_rate": 0.0,
+            "mean_forward_progress_m": 0.3723602890968323,
+            "mean_final_x": -0.8203060428301493,
+            "mean_final_y": 0.1107862318555514,
+            "mean_goal_dist": 2.149203618367513,
+            "min_obstacle_clearance_m": 0.5392431926727295,
+            "mean_return": 0.939396954295054,
+            "mean_length": 80.0
+          },
+          {
+            "episodes": 3,
+            "success_rate": 0.0,
+            "collision_rate": 0.0,
+            "passed_obstacle_rate": 0.0,
+            "mean_forward_progress_m": 0.5716578165690104,
+            "mean_final_x": -0.6175791025161743,
+            "mean_final_y": -0.12508399784564972,
+            "mean_goal_dist": 1.9282844463984172,
+            "min_obstacle_clearance_m": 0.3430453848838806,
+            "mean_return": 1.3768195746230374,
+            "mean_length": 80.0
+          },
+          {
+            "episodes": 3,
+            "success_rate": 0.0,
+            "collision_rate": 0.0,
+            "passed_obstacle_rate": 0.0,
+            "mean_forward_progress_m": 0.2840268611907959,
+            "mean_final_x": -0.9027181466420492,
+            "mean_final_y": -0.03004561737179756,
+            "mean_goal_dist": 2.1938114166259766,
+            "min_obstacle_clearance_m": 0.6173623514175415,
+            "mean_return": 1.0257292159952254,
+            "mean_length": 80.0
+          }
+        ],
+        [
+          {
+            "episodes": 3,
+            "success_rate": 0.0,
+            "collision_rate": 0.0,
+            "passed_obstacle_rate": 0.0,
+            "mean_forward_progress_m": 0.37395427624384564,
+            "mean_final_x": -0.818712055683136,
+            "mean_final_y": 0.1153080090880394,
+            "mean_goal_dist": 2.146172046661377,
+            "min_obstacle_clearance_m": 0.5386941742897033,
+            "mean_return": 0.9466609619792875,
+            "mean_length": 80.0
+          },
+          {
+            "episodes": 3,
+            "success_rate": 0.0,
+            "collision_rate": 0.0,
+            "passed_obstacle_rate": 0.0,
+            "mean_forward_progress_m": 0.8570123712221781,
+            "mean_final_x": -0.3322245379288991,
+            "mean_final_y": -0.11929716914892197,
+            "mean_goal_dist": 1.6642958323160808,
+            "min_obstacle_clearance_m": 0.059018344879150364,
+            "mean_return": 1.8082980126269153,
+            "mean_length": 80.0
+          },
+          {
+            "episodes": 3,
+            "success_rate": 0.0,
+            "collision_rate": 0.0,
+            "passed_obstacle_rate": 0.0,
+            "mean_forward_progress_m": 0.9013765851656595,
+            "mean_final_x": -0.285368412733078,
+            "mean_final_y": 0.18484934667746225,
+            "mean_goal_dist": 1.54141370455424,
+            "min_obstacle_clearance_m": 0.038279713392257664,
+            "mean_return": 2.402655793313038,
+            "mean_length": 80.0
+          }
+        ]
+      ]
+    }
+  ],
+  "generated_at": "2026-05-27T11:54:03"
+}

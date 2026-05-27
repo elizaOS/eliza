@@ -259,6 +259,8 @@ def write_report(
                 "severity": "blocker" if status == "blocked" else "info",
             }
         )
+    diagnostics = blocker_diagnostics(blocked_inventory or [])
+    category_counts = diagnostics["fabrication_release_blocker_categories"]
     report = {
         "schema": REPORT_SCHEMA,
         "status": status,
@@ -272,13 +274,40 @@ def write_report(
             if unique_blockers is not None
             else total_blockers,
             "blockers": len(findings),
-            "fabrication_release_blocker_categories": blocker_diagnostics(blocked_inventory or [])[
-                "fabrication_release_blocker_categories"
-            ],
+            "fabrication_release_blocker_categories": category_counts,
         },
         "findings": findings,
         "blocked_evidence_inventory": blocked_inventory or [],
-        "blocker_diagnostics": blocker_diagnostics(blocked_inventory or []),
+        "blocker_dependency_counts": {
+            "repo_artifact_generation": category_counts["true_missing_artifacts"],
+            "live_device_validation": 0,
+            "actionable_external_dependency": max(
+                0,
+                total_blockers - category_counts["true_missing_artifacts"],
+            ),
+        },
+        "next_command_by_dependency": {
+            "actionable_external_dependency": [VALIDATION_COMMAND],
+            **(
+                {"repo_artifact_generation": [VALIDATION_COMMAND]}
+                if category_counts["true_missing_artifacts"] > 0
+                else {}
+            ),
+        },
+        "validation_commands": [VALIDATION_COMMAND],
+        "primary_blocker": {
+            "dependency": "actionable_external_dependency"
+            if category_counts["true_missing_artifacts"] < total_blockers
+            else "repo_artifact_generation",
+            "blocked_rows": total_blockers,
+            "required_action": (
+                "Close the child fabrication, supplier, routed, factory, first-article, "
+                "enclosure, and approval gates, then rerun the fabrication release gate."
+            ),
+            "validation_command": VALIDATION_COMMAND,
+            "release_credit": False,
+        },
+        "blocker_diagnostics": diagnostics,
         "next_unblock_actions": (blocked_inventory or [])[:20],
         "claim_boundary": "release_gate_blocker_report_only_not_release_evidence",
     }

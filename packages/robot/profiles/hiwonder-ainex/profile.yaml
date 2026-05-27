@@ -75,6 +75,11 @@ gait:
   default_height_m: 0.25
   controller: bezier
 
+contact:
+  floor_geom_names: [floor]
+  left_foot_geom_names: [l_foot1, l_foot2]
+  right_foot_geom_names: [r_foot1, r_foot2]
+
 # ---------------------------------------------------------------------------
 # Sensors — single forward-facing RGB camera on the head link.
 # Hiwonder AiNex stock camera is the OV5640 module (~120° wide FOV) at

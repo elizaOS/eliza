@@ -4,7 +4,9 @@
 // threshold-gated: it overrides only when the dot-product margin is strong,
 // and trains on wrong or low-margin predictions. Optional target-history and
 // path-history feature slices make this a compact multi-perspective corrector
-// without changing the default global-history-only geometry.
+// without changing the default global-history-only geometry. Weights carry
+// parity and corrupted weights contribute neutral zero until training repairs
+// them with clean parity.
 
 `timescale 1ns/1ps
 
@@ -27,12 +29,18 @@ module h2p_corrector
     input  logic [TAGE_HIST_LEN_MAX-1:0] upd_hist,
     input  logic [ITTAGE_TARGET_HISTORY_BITS-1:0] upd_target_hist,
     input  logic [ITTAGE_PATH_HISTORY_BITS-1:0] upd_path_hist,
-    input  logic                upd_taken
+    input  logic                upd_taken,
+
+    input  logic                test_corrupt_parity_valid,
+    input  logic [VADDR_W-1:0]  test_corrupt_parity_pc,
+    input  logic [$clog2(H2P_FEATURES+1)-1:0] test_corrupt_parity_feature
 );
     typedef logic signed [H2P_WEIGHT_W-1:0] h2p_weight_t;
     typedef logic signed [H2P_SCORE_W-1:0] h2p_score_t;
+    localparam int unsigned H2P_FEATURE_IDX_W = $clog2(H2P_FEATURES+1);
 
     h2p_weight_t weights_q [H2P_ENTRIES][H2P_FEATURES+1];
+    logic        weight_parity_q [H2P_ENTRIES][H2P_FEATURES+1];
 
     function automatic logic [H2P_IDX_W-1:0] h2p_idx(
         input logic [VADDR_W-1:0] pc
@@ -54,6 +62,21 @@ module h2p_corrector
         h2p_abs = value[H2P_SCORE_W-1] ? -value : value;
     endfunction
 
+    function automatic logic h2p_weight_parity(input h2p_weight_t value);
+        h2p_weight_parity = ^value;
+    endfunction
+
+    function automatic h2p_weight_t h2p_clean_weight(
+        input logic [H2P_IDX_W-1:0] idx,
+        input logic [H2P_FEATURE_IDX_W-1:0] feature
+    );
+        if (weight_parity_q[idx][feature] == h2p_weight_parity(weights_q[idx][feature])) begin
+            h2p_clean_weight = weights_q[idx][feature];
+        end else begin
+            h2p_clean_weight = '0;
+        end
+    endfunction
+
     function automatic h2p_score_t h2p_score(
         input logic [VADDR_W-1:0] pc,
         input logic [TAGE_HIST_LEN_MAX-1:0] hist,
@@ -64,13 +87,15 @@ module h2p_corrector
         logic [H2P_IDX_W-1:0] idx;
         int unsigned feature_idx;
         idx = h2p_idx(pc);
-        total = h2p_score_t'(weights_q[idx][0]);
+        total = h2p_score_t'(h2p_clean_weight(idx, 0));
         feature_idx = 1;
         for (int unsigned hist_bit = 0; hist_bit < H2P_HIST_LEN; hist_bit++) begin
             if (hist[hist_bit]) begin
-                total = total + h2p_score_t'(weights_q[idx][feature_idx]);
+                total = total + h2p_score_t'(
+                    h2p_clean_weight(idx, H2P_FEATURE_IDX_W'(feature_idx)));
             end else begin
-                total = total - h2p_score_t'(weights_q[idx][feature_idx]);
+                total = total - h2p_score_t'(
+                    h2p_clean_weight(idx, H2P_FEATURE_IDX_W'(feature_idx)));
             end
             feature_idx++;
         end
@@ -78,17 +103,21 @@ module h2p_corrector
         /* verilator lint_off UNUSEDLOOP */
         for (int unsigned hist_bit = 0; hist_bit < H2P_TARGET_HIST_LEN; hist_bit++) begin
             if (target_hist[hist_bit % ITTAGE_TARGET_HISTORY_BITS]) begin
-                total = total + h2p_score_t'(weights_q[idx][feature_idx]);
+                total = total + h2p_score_t'(
+                    h2p_clean_weight(idx, H2P_FEATURE_IDX_W'(feature_idx)));
             end else begin
-                total = total - h2p_score_t'(weights_q[idx][feature_idx]);
+                total = total - h2p_score_t'(
+                    h2p_clean_weight(idx, H2P_FEATURE_IDX_W'(feature_idx)));
             end
             feature_idx++;
         end
         for (int unsigned hist_bit = 0; hist_bit < H2P_PATH_HIST_LEN; hist_bit++) begin
             if (path_hist[hist_bit % ITTAGE_PATH_HISTORY_BITS]) begin
-                total = total + h2p_score_t'(weights_q[idx][feature_idx]);
+                total = total + h2p_score_t'(
+                    h2p_clean_weight(idx, H2P_FEATURE_IDX_W'(feature_idx)));
             end else begin
-                total = total - h2p_score_t'(weights_q[idx][feature_idx]);
+                total = total - h2p_score_t'(
+                    h2p_clean_weight(idx, H2P_FEATURE_IDX_W'(feature_idx)));
             end
             feature_idx++;
         end
@@ -144,36 +173,77 @@ module h2p_corrector
             for (int unsigned i = 0; i < H2P_ENTRIES; i++) begin
                 for (int unsigned j = 0; j < H2P_FEATURES+1; j++) begin
                     weights_q[i][j] <= '0;
+                    weight_parity_q[i][j] <= h2p_weight_parity('0);
                 end
             end
             /* verilator lint_on UNUSEDLOOP */
-        end else if (upd_train) begin
-            weights_q[upd_idx][0] <= sat_add_weight(weights_q[upd_idx][0], actual_sign);
-            for (int unsigned hist_bit = 0; hist_bit < H2P_HIST_LEN; hist_bit++) begin
-                weights_q[upd_idx][hist_bit+1] <= sat_add_weight(
-                    weights_q[upd_idx][hist_bit+1],
-                    upd_hist[hist_bit] ? actual_sign : -actual_sign
-                );
+        end else begin
+            if (test_corrupt_parity_valid) begin
+                weight_parity_q[h2p_idx(test_corrupt_parity_pc)]
+                               [test_corrupt_parity_feature] <=
+                    ~weight_parity_q[h2p_idx(test_corrupt_parity_pc)]
+                                    [test_corrupt_parity_feature];
             end
-            /* verilator lint_off UNSIGNED */
-            /* verilator lint_off UNUSEDLOOP */
-            for (int unsigned hist_bit = 0; hist_bit < H2P_TARGET_HIST_LEN; hist_bit++) begin
-                weights_q[upd_idx][H2P_HIST_LEN+1+hist_bit] <= sat_add_weight(
-                    weights_q[upd_idx][H2P_HIST_LEN+1+hist_bit],
-                    upd_target_hist[hist_bit % ITTAGE_TARGET_HISTORY_BITS] ?
-                        actual_sign : -actual_sign
-                );
+            if (upd_train) begin
+                weights_q[upd_idx][0] <=
+                    sat_add_weight(h2p_clean_weight(upd_idx, 0), actual_sign);
+                weight_parity_q[upd_idx][0] <=
+                    h2p_weight_parity(sat_add_weight(
+                        h2p_clean_weight(upd_idx, 0), actual_sign));
+                for (int unsigned hist_bit = 0; hist_bit < H2P_HIST_LEN; hist_bit++) begin
+                    weights_q[upd_idx][hist_bit+1] <= sat_add_weight(
+                        h2p_clean_weight(
+                            upd_idx,
+                            H2P_FEATURE_IDX_W'(hist_bit+1)),
+                        upd_hist[hist_bit] ? actual_sign : -actual_sign
+                    );
+                    weight_parity_q[upd_idx][hist_bit+1] <= h2p_weight_parity(
+                        sat_add_weight(
+                            h2p_clean_weight(
+                                upd_idx,
+                                H2P_FEATURE_IDX_W'(hist_bit+1)),
+                            upd_hist[hist_bit] ? actual_sign : -actual_sign));
+                end
+                /* verilator lint_off UNSIGNED */
+                /* verilator lint_off UNUSEDLOOP */
+                for (int unsigned hist_bit = 0; hist_bit < H2P_TARGET_HIST_LEN; hist_bit++) begin
+                    weights_q[upd_idx][H2P_HIST_LEN+1+hist_bit] <= sat_add_weight(
+                        h2p_clean_weight(
+                            upd_idx,
+                            H2P_FEATURE_IDX_W'(H2P_HIST_LEN+1+hist_bit)),
+                        upd_target_hist[hist_bit % ITTAGE_TARGET_HISTORY_BITS] ?
+                            actual_sign : -actual_sign
+                    );
+                    weight_parity_q[upd_idx][H2P_HIST_LEN+1+hist_bit] <=
+                        h2p_weight_parity(sat_add_weight(
+                            h2p_clean_weight(
+                                upd_idx,
+                                H2P_FEATURE_IDX_W'(H2P_HIST_LEN+1+hist_bit)),
+                            upd_target_hist[hist_bit % ITTAGE_TARGET_HISTORY_BITS] ?
+                                actual_sign : -actual_sign));
+                end
+                for (int unsigned hist_bit = 0; hist_bit < H2P_PATH_HIST_LEN; hist_bit++) begin
+                    weights_q[upd_idx][H2P_HIST_LEN+H2P_TARGET_HIST_LEN+1+hist_bit] <=
+                        sat_add_weight(
+                        h2p_clean_weight(
+                            upd_idx,
+                            H2P_FEATURE_IDX_W'(
+                                H2P_HIST_LEN+H2P_TARGET_HIST_LEN+1+hist_bit)),
+                        upd_path_hist[hist_bit % ITTAGE_PATH_HISTORY_BITS] ?
+                            actual_sign : -actual_sign
+                    );
+                    weight_parity_q[upd_idx][H2P_HIST_LEN+H2P_TARGET_HIST_LEN+1+hist_bit] <=
+                        h2p_weight_parity(sat_add_weight(
+                            h2p_clean_weight(
+                                upd_idx,
+                                H2P_FEATURE_IDX_W'(
+                                    H2P_HIST_LEN+H2P_TARGET_HIST_LEN+1+hist_bit)),
+                            upd_path_hist[hist_bit % ITTAGE_PATH_HISTORY_BITS] ?
+                                actual_sign : -actual_sign));
+                end
+                /* verilator lint_on UNUSEDLOOP */
+                /* verilator lint_on UNSIGNED */
             end
-            for (int unsigned hist_bit = 0; hist_bit < H2P_PATH_HIST_LEN; hist_bit++) begin
-                weights_q[upd_idx][H2P_HIST_LEN+H2P_TARGET_HIST_LEN+1+hist_bit] <=
-                    sat_add_weight(
-                    weights_q[upd_idx][H2P_HIST_LEN+H2P_TARGET_HIST_LEN+1+hist_bit],
-                    upd_path_hist[hist_bit % ITTAGE_PATH_HISTORY_BITS] ?
-                        actual_sign : -actual_sign
-                );
-            end
-            /* verilator lint_on UNUSEDLOOP */
-            /* verilator lint_on UNSIGNED */
         end
     end
 endmodule

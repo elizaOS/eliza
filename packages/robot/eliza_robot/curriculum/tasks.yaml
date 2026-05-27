@@ -52,8 +52,11 @@ tasks:
       ja: ["立て", "立ち上がれ", "じっとして"]
       zh: ["站起来", "站好", "保持站立"]
     description: "Return to and maintain the calibrated standing pose."
-    init_state: "sit"
-    init_torso_height_ratio: 0.65
+    # Conservative crouch until each profile has an authored seated keyframe.
+    # Lower generic root heights can interpenetrate the ground and make the
+    # task physically impossible before learning starts.
+    init_state: "crouch"
+    init_torso_height_ratio: 0.90
     reward:
       torso_height_target_ratio: 1.0
       torso_height_tolerance_ratio: 0.12
@@ -64,6 +67,7 @@ tasks:
     success:
       torso_z_min_ratio: 0.90
       torso_z_max_ratio: 1.25
+      torso_z_delta_min_ratio: 0.08
       hold_s: 2.0
       fall_pitch_rad: 0.5
       fall_roll_rad: 0.5
@@ -85,6 +89,9 @@ tasks:
     success:
       torso_z_min_m: 0.13
       torso_z_max_m: 0.20
+      max_abs_delta_x_m: 0.10
+      max_abs_delta_y_m: 0.10
+      max_abs_delta_yaw_rad: 0.35
       hold_s: 1.0
     max_episode_s: 4.0
 
@@ -108,6 +115,7 @@ tasks:
       delta_x_m_min: 0.30
       window_s: 5.0
       max_lateral_drift_m: 0.20
+      max_abs_delta_yaw_rad: 0.40
       no_fall: true
     max_episode_s: 8.0
 
@@ -128,6 +136,8 @@ tasks:
       torso_z_min_ratio: 0.75
       delta_x_m_max: -0.20
       window_s: 5.0
+      max_lateral_drift_m: 0.20
+      max_abs_delta_yaw_rad: 0.40
       no_fall: true
     max_episode_s: 8.0
 
@@ -146,6 +156,8 @@ tasks:
       torso_z_min_ratio: 0.75
       delta_y_m_min: 0.20
       window_s: 5.0
+      max_forward_drift_m: 0.20
+      max_abs_delta_yaw_rad: 0.40
       no_fall: true
     max_episode_s: 8.0
 
@@ -164,6 +176,8 @@ tasks:
       torso_z_min_ratio: 0.75
       delta_y_m_max: -0.20
       window_s: 5.0
+      max_forward_drift_m: 0.20
+      max_abs_delta_yaw_rad: 0.40
       no_fall: true
     max_episode_s: 8.0
 
@@ -183,6 +197,7 @@ tasks:
       torso_z_min_ratio: 0.75
       delta_yaw_rad_min: 0.7   # ~40°
       window_s: 4.0
+      max_translation_drift_m: 0.25
       no_fall: true
     max_episode_s: 8.0
 
@@ -202,6 +217,7 @@ tasks:
       torso_z_min_ratio: 0.75
       delta_yaw_rad_max: -0.7
       window_s: 4.0
+      max_translation_drift_m: 0.25
       no_fall: true
     max_episode_s: 8.0
 

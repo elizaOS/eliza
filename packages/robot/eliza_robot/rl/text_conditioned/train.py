@@ -187,6 +187,9 @@ def _train_alberta(
     episode_steps: int,
     eval_episodes: int,
     domain_rand: bool,
+    require_phase_success: bool,
+    min_phase_success_rate: float,
+    phase_eval_interval_steps: int | None,
 ) -> dict:
     from eliza_robot.rl.alberta.train_robot import (
         steps_per_task_from_total,
@@ -206,6 +209,9 @@ def _train_alberta(
         seed=seed,
         requested_total_steps=total_steps,
         domain_rand=domain_rand,
+        require_phase_success=require_phase_success,
+        min_phase_success_rate=min_phase_success_rate,
+        phase_eval_interval_steps=phase_eval_interval_steps,
     )
 
 
@@ -316,7 +322,8 @@ def _write_full_training_job(
         f"  # Production contract default: --min-steps {total_steps}\n"
         "  uv run python scripts/validate_asimov1_production_checkpoint.py \"$JOB_DIR\" --min-steps \"$BRAX_MJX_STEPS\" --require-inference-check\n"
         "  if [[ \"$BRAX_MJX_SKIP_ROLLOUT_EVAL\" != \"1\" ]]; then\n"
-        "    uv run python scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt \"$JOB_DIR\" --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes \"$BRAX_MJX_EVAL_EPISODES\" --max-steps \"$BRAX_MJX_EVAL_MAX_STEPS\"\n"
+        "    mkdir -p evidence/curriculum_eval\n"
+        "    uv run python scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt \"$JOB_DIR\" --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes \"$BRAX_MJX_EVAL_EPISODES\" --max-steps \"$BRAX_MJX_EVAL_MAX_STEPS\" --out evidence/curriculum_eval/eval_text_policy.json --curriculum-report-out evidence/curriculum_eval/report.json --fail-under-success-rate 1.0\n"
         "    uv run python scripts/sim_validation_gate.py --profile asimov-1 --checkpoint \"$JOB_DIR\" --require-asimov-model-provenance\n"
         "  fi\n"
         "else\n"
@@ -386,6 +393,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pca-dim", type=int, default=32)
     parser.add_argument("--episode-steps", type=int, default=200)
     parser.add_argument("--eval-episodes", type=int, default=3)
+    parser.add_argument(
+        "--require-phase-success",
+        action="store_true",
+        help=(
+            "require each Alberta task phase to pass GoalChecker promotion "
+            "before advancing or writing a production checkpoint"
+        ),
+    )
+    parser.add_argument("--min-phase-success-rate", type=float, default=1.0)
+    parser.add_argument(
+        "--phase-eval-interval-steps",
+        type=int,
+        default=None,
+        help="evaluate phase promotion after this many env steps; default is one eval at the end of each phase",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--full", action="store_true")
     parser.add_argument("--num-envs", type=int, default=8192)
@@ -441,6 +463,9 @@ def main(argv: list[str] | None = None) -> int:
         episode_steps=args.episode_steps,
         eval_episodes=args.eval_episodes,
         domain_rand=not args.no_domain_rand,
+        require_phase_success=args.require_phase_success,
+        min_phase_success_rate=args.min_phase_success_rate,
+        phase_eval_interval_steps=args.phase_eval_interval_steps,
     )
     return 0
 

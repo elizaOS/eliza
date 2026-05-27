@@ -66,7 +66,7 @@ def _write_markdown(path: Path, report: dict[str, Any]) -> None:
             "## Missing Gates",
             "",
         ]
-        missing = summary.get("missing_gates") or report.get("missing_gates") or []
+        missing = report.get("missing_gates") or summary.get("missing_gates") or []
         if missing:
             lines.extend(f"- `{name}`" for name in missing)
         else:
@@ -75,26 +75,67 @@ def _write_markdown(path: Path, report: dict[str, Any]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _training_report_ready_for_finalization(report: dict[str, Any]) -> bool:
+    if report.get("ok") is True:
+        return True
+    requirements = report.get("completion_requirements")
+    if not isinstance(requirements, dict):
+        return False
+    ignored = {
+        "finalization_ok",
+        "finalization_report_matches_current_validation",
+    }
+    non_finalization_requirements = [
+        bool(value) for name, value in requirements.items() if name not in ignored
+    ]
+    return (
+        report.get("validation_ok") is True
+        and bool(non_finalization_requirements)
+        and all(non_finalization_requirements)
+    )
+
+
+def _inventory_ready_for_finalization(inventory: dict[str, Any]) -> bool:
+    if inventory.get("ok") is True:
+        return True
+    missing = inventory.get("missing")
+    if not isinstance(missing, list):
+        return False
+    allowed_missing = {"finalization_report", "finalization_summary"}
+    return bool(inventory) and set(map(str, missing)).issubset(allowed_missing)
+
+
 def finalize_nebius_full_training_run(run_root: Path) -> dict[str, Any]:
     run_root = run_root.resolve()
     monitor = _load_json(run_root / "monitor_status.json")
     validation = _load_json(run_root / "validation_report.json")
     inventory = _load_json(run_root / "artifact_inventory.json")
+    training_report = _load_json(run_root / "training_comparison_report.json")
     summary = monitor.get("summary") if isinstance(monitor.get("summary"), dict) else {}
     checks = validation.get("checks") if isinstance(validation.get("checks"), dict) else {}
+    training_report_ready = _training_report_ready_for_finalization(training_report)
+    inventory_ready = _inventory_ready_for_finalization(inventory)
     ok = (
         monitor.get("state") == "complete"
         and monitor.get("ok") is True
         and validation.get("ok") is True
-        and inventory.get("ok") is True
+        and inventory_ready
+        and training_report_ready
         and bool(checks)
         and all(bool(value) for value in checks.values())
     )
     missing_gates = [name for name, value in checks.items() if not value]
     if not missing_gates and isinstance(summary.get("missing_gates"), list):
         missing_gates = list(summary["missing_gates"])
-    if inventory.get("ok") is not True:
+    if not inventory_ready:
         missing_gates.append("artifact_inventory")
+    if not training_report_ready:
+        missing_gates.append("training_comparison_report")
+    effective_summary = dict(summary)
+    effective_summary["passed_gates"] = [
+        name for name, value in checks.items() if bool(value)
+    ]
+    effective_summary["missing_gates"] = list(missing_gates)
     report = {
         "schema": "robot-nebius-full-training-finalization-v1",
         "ok": ok,
@@ -105,8 +146,11 @@ def finalize_nebius_full_training_run(run_root: Path) -> dict[str, Any]:
         "monitor_ok": monitor.get("ok"),
         "validation_ok": validation.get("ok"),
         "artifact_inventory_ok": inventory.get("ok"),
+        "artifact_inventory_ready_for_finalization": inventory_ready,
+        "training_report_ok": training_report.get("ok"),
+        "training_report_ready_for_finalization": training_report_ready,
         "checks": checks,
-        "summary": summary,
+        "summary": effective_summary,
         "missing_gates": missing_gates,
         "artifacts": {
             "monitor_status": str(run_root / "monitor_status.json"),
@@ -115,6 +159,8 @@ def finalize_nebius_full_training_run(run_root: Path) -> dict[str, Any]:
             "validation_summary": str(run_root / "validation_summary.md"),
             "artifact_inventory": str(run_root / "artifact_inventory.json"),
             "artifact_inventory_summary": str(run_root / "artifact_inventory.md"),
+            "training_comparison_report": str(run_root / "training_comparison_report.json"),
+            "training_comparison_summary": str(run_root / "training_comparison_report.md"),
             "finalization_report": str(run_root / "finalization_report.json"),
             "finalization_summary": str(run_root / "finalization_summary.md"),
         },

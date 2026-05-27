@@ -177,6 +177,7 @@ def _write_asimov_alberta_checkpoint(path: Path, *, steps: int = 2_000_000) -> N
     np.savez(path / "alberta_policy.npz", **controller.state_dict())
     manifest = {
         "regime": "alberta_streaming",
+        "phase_promotion_schema": "alberta-phase-promotion-v1",
         "curriculum_version": load_curriculum().version,
         "pca_dim": 32,
         "active_tasks": TASKS,
@@ -235,9 +236,43 @@ def _write_asimov_alberta_checkpoint(path: Path, *, steps: int = 2_000_000) -> N
                 "train_episodes": 1,
                 "train_mean_return": -1.0,
                 "eval_mean_return": -0.5,
+                "eval_success_rate": 1.0,
+                "promotion_passed": True,
             }
             for phase, task in enumerate(TASKS)
         ],
+    }
+    cumulative = 0
+    phases = []
+    steps_per_task = steps // len(TASKS)
+    for phase, task in enumerate(TASKS):
+        cumulative += steps_per_task
+        phases.append(
+            {
+                "phase": phase,
+                "task": task,
+                "attempt": 1,
+                "steps_trained": steps_per_task,
+                "cumulative_steps": cumulative,
+                "eval_episodes": 3,
+                "eval_mean_return": -0.5,
+                "eval_success_rate": 1.0,
+                "eval_failures": 0,
+                "promotion_passed": True,
+                "promotion_reason": "success_rate_gte_threshold",
+            }
+        )
+    manifest["phase_promotion"] = {
+        "gate": "curriculum_goal_checker",
+        "status": "completed",
+        "success_threshold": 1.0,
+        "eval_episodes": 3,
+        "eval_interval_steps": steps_per_task,
+        "max_phase_attempts": 1,
+        "promoted_phase_count": len(TASKS),
+        "requested_phase_count": len(TASKS),
+        "failed_phase": None,
+        "phases": phases,
     }
     (path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 

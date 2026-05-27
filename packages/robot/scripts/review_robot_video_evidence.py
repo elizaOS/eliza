@@ -17,6 +17,8 @@ import numpy as np
 
 PKG_ROOT = Path(__file__).resolve().parents[1]
 FINAL_STEP_FALL_TOLERANCE_M = 0.01
+MIN_WALK_FORWARD_PROGRESS_M = 0.05
+MIN_TURN_YAW_RAD = 0.05
 
 
 def _safe_stem(path: Path) -> str:
@@ -159,6 +161,44 @@ def _telemetry_ok(telemetry: dict[str, Any] | None) -> bool | None:
     return None
 
 
+def _summary_final(summary: Any) -> float | None:
+    if not isinstance(summary, dict):
+        return None
+    return _float_or_none(summary.get("final"))
+
+
+def _telemetry_action_progress_ok(
+    telemetry: dict[str, Any] | None,
+    action: str | None,
+) -> bool | None:
+    if telemetry is None:
+        return None
+    commands = telemetry.get("commands")
+    if isinstance(commands, list):
+        command_results = [
+            _telemetry_action_progress_ok(
+                command,
+                str(command.get("task_id") or command.get("label") or ""),
+            )
+            for command in commands
+            if isinstance(command, dict)
+        ]
+        command_results = [result for result in command_results if result is not None]
+        return all(command_results) if command_results else None
+    task = str(telemetry.get("task_id") or action or "").lower()
+    dx = _summary_final(telemetry.get("delta_x_m"))
+    dyaw = _summary_final(telemetry.get("delta_yaw_rad"))
+    if "walk_forward" in task or "walk forward" in task:
+        return dx is not None and dx >= MIN_WALK_FORWARD_PROGRESS_M
+    if "walk_backward" in task or "walk backward" in task:
+        return dx is not None and dx <= -MIN_WALK_FORWARD_PROGRESS_M
+    if "turn_left" in task or "turn left" in task:
+        return dyaw is not None and dyaw >= MIN_TURN_YAW_RAD
+    if "turn_right" in task or "turn right" in task:
+        return dyaw is not None and dyaw <= -MIN_TURN_YAW_RAD
+    return None
+
+
 def _telemetry_summary(telemetry: dict[str, Any] | None) -> dict[str, Any]:
     if telemetry is None:
         return {"present": False, "ok": None}
@@ -177,8 +217,13 @@ def _telemetry_summary(telemetry: dict[str, Any] | None) -> dict[str, Any]:
         "truncated": telemetry.get("truncated"),
         "first_done_step": telemetry.get("first_done_step"),
         "fall_threshold": telemetry.get("fall_threshold"),
+        "action_progress_ok": _telemetry_action_progress_ok(
+            telemetry, str(telemetry.get("task_id") or telemetry.get("label") or "")
+        ),
+        "min_walk_forward_progress_m": MIN_WALK_FORWARD_PROGRESS_M,
+        "min_turn_yaw_rad": MIN_TURN_YAW_RAD,
     }
-    for key in ("torso_z", "upright_proj", "reward"):
+    for key in ("torso_z", "upright_proj", "reward", "delta_x_m", "delta_y_m", "delta_yaw_rad"):
         if isinstance(telemetry.get(key), dict):
             summary[key] = telemetry[key]
     if isinstance(telemetry.get("commands"), list):
@@ -193,9 +238,18 @@ def _telemetry_summary(telemetry: dict[str, Any] | None) -> dict[str, Any]:
                 "first_done_step": command.get("first_done_step"),
                 "torso_z": command.get("torso_z"),
                 "upright_proj": command.get("upright_proj"),
+                "delta_x_m": command.get("delta_x_m"),
+                "delta_yaw_rad": command.get("delta_yaw_rad"),
+                "action_progress_ok": _telemetry_action_progress_ok(
+                    command, str(command.get("task_id") or command.get("label") or "")
+                ),
             }
             for command in commands
             if _telemetry_ok(command) is False
+            or _telemetry_action_progress_ok(
+                command, str(command.get("task_id") or command.get("label") or "")
+            )
+            is False
         ]
     return summary
 
@@ -329,6 +383,8 @@ def review_videos(
         telemetry = _load_telemetry(video.with_suffix(".telemetry.json"))
         telemetry_summary = _telemetry_summary(telemetry)
         telemetry_ok = _telemetry_ok(telemetry)
+        inferred_action = _infer_action(video.parent.name, video)
+        telemetry_action_ok = _telemetry_action_progress_ok(telemetry, inferred_action)
         contact_sheet = out_dir / f"{video.parent.name}_{_safe_stem(video)}_contact.jpg"
         contact_written = _write_contact_sheet(frames, contact_sheet)
         checks = {
@@ -346,8 +402,11 @@ def review_videos(
             checks["telemetry_rollout_ok"] = False
         elif telemetry_ok is True:
             checks["telemetry_rollout_ok"] = True
+        if telemetry_action_ok is False:
+            checks["telemetry_action_progress"] = False
+        elif telemetry_action_ok is True:
+            checks["telemetry_action_progress"] = True
         video_ok = all(checks.values())
-        inferred_action = _infer_action(video.parent.name, video)
         rel_video = str(video.relative_to(evidence_dir))
         verdict = _review_verdict(
             checks=checks,

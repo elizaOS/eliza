@@ -9,9 +9,9 @@ claim_boundary: This board binds the routed-development snapshot to concrete dev
   and public compute SoM connector pins are mapped to e1-phone nets where the local
   SoM pinout capture has explicit pin numbers. Pads without assigned nets are explicitly
   classified by disposition so that NC, mechanical, unused, geometry-only, and supplier-pending
-  contacts are not silent TODOs. It is still not a fabrication release because several
-  patterns remain geometry-only or need supplier drawing/DFM signoff before pin order
-  can be frozen.
+  contacts are explicitly classified rather than left as silent open work. It is still
+  not a fabrication release because several patterns remain geometry-only or need
+  supplier drawing/DFM signoff before pin order can be frozen.
 source_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed-development.kicad_pcb
 output_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
 fp_lib_table: board/kicad/e1-phone/fp-lib-table

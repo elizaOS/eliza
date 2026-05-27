@@ -1,6 +1,12 @@
 {
   "name": "eliza-e1-linux-smoke",
   "base": "br-base.json",
+  "distro": {
+    "name": "br",
+    "opts": {
+      "configs": ["eliza-e1-linux-smoke-br-trim"]
+    }
+  },
   "linux-config": "eliza-e1-linux-smoke-kfrag",
   "overlay": "eliza-e1-linux-smoke-overlay",
   "host-init": "build-hwprobe.sh",
@@ -11,6 +17,6 @@
   ],
   "command": "/usr/bin/eliza-e1-linux-smoke",
   "firmware": {
-    "opensbi-build-args": "FW_OPTIONS=0 FW_PAYLOAD_FDT_ADDR=0x88000000"
+    "opensbi-build-args": "FW_PAYLOAD_FDT_ADDR=0x80b00000 FW_OPTIONS=0 PLATFORM_DEFCONFIG=eliza_defconfig"
   }
 }

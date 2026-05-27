@@ -69,15 +69,17 @@
   "required_markers": {
     "vts_result": ["VTS_SCOPE", "e1_npu", "RESULT=0"],
     "cts_result": ["CTS_SCOPE", "NNAPI", "RESULT=0"],
-    "selinux_policy_build_log": ["e1_npu_device", "hal_e1_npu_default"],
-    "selinux_neverallow_log": ["sepolicy_neverallows", "e1_npu"],
-    "vintf_check_log": ["checkvintf", "vendor.eliza.e1_npu"],
+    "selinux_policy_build_log": ["e1_npu_device", "hal_e1_npu_default", "eliza-evidence: status=PASS", "RESULT=0"],
+    "selinux_neverallow_log": ["sepolicy_neverallows", "e1_npu", "eliza-evidence: status=PASS", "RESULT=0"],
+    "vintf_check_log": ["checkvintf", "vendor.eliza.e1_npu", "eliza-evidence: status=PASS", "RESULT=0"],
     "nnapi_query_log": ["e1-npu", "NNAPI", "accelerator"],
     "absent_device_probe_log": [
       "e1_npu_status=unsupported",
       "device_node_present=false",
       "runtime_supported=false",
-      "nnapi_acceleration=false"
+      "nnapi_acceleration=false",
+      "eliza-evidence: status=PASS",
+      "RESULT=0"
     ]
   }
 }

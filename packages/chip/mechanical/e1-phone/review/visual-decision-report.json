@@ -13,10 +13,10 @@
   "display_candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
   "screen_margin_mm": 0.45,
   "visual_deltas": {
-    "front_back_mean_rgb_sum_delta": 8.125,
+    "front_back_mean_rgb_sum_delta": 8.126,
     "front_back_minimum_sum_delta": 7.5,
-    "front_back_orange_ratio_delta": 0.47365,
-    "front_back_dark_ratio_delta": 0.47114
+    "front_back_orange_ratio_delta": 0.47369,
+    "front_back_dark_ratio_delta": 0.471
   },
   "review_views": [
     {
@@ -39,8 +39,8 @@
         1650
       ],
       "nonwhite_pixel_ratio": 0.04622,
-      "orange_pixel_ratio_of_nonwhite": 0.21634,
-      "dark_pixel_ratio_of_nonwhite": 0.02411,
+      "orange_pixel_ratio_of_nonwhite": 0.2167,
+      "dark_pixel_ratio_of_nonwhite": 0.02408,
       "purpose": "USB-C, side buttons, seals, and tactile actuation packaging"
     },
     {
@@ -87,7 +87,7 @@
         1650
       ],
       "nonwhite_pixel_ratio": 0.05905,
-      "orange_pixel_ratio_of_nonwhite": 0.96879,
+      "orange_pixel_ratio_of_nonwhite": 0.96871,
       "dark_pixel_ratio_of_nonwhite": 0.01669,
       "purpose": "rear-side orange shell, camera window, and service-feature review"
     },
@@ -98,9 +98,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.02409,
-      "orange_pixel_ratio_of_nonwhite": 0.76394,
-      "dark_pixel_ratio_of_nonwhite": 0.19793,
+      "nonwhite_pixel_ratio": 0.02453,
+      "orange_pixel_ratio_of_nonwhite": 0.76678,
+      "dark_pixel_ratio_of_nonwhite": 0.19533,
       "purpose": "USB-C, speaker grille, and microphone aperture review"
     },
     {
@@ -111,8 +111,8 @@
         1650
       ],
       "nonwhite_pixel_ratio": 0.05589,
-      "orange_pixel_ratio_of_nonwhite": 0.49514,
-      "dark_pixel_ratio_of_nonwhite": 0.48783,
+      "orange_pixel_ratio_of_nonwhite": 0.49502,
+      "dark_pixel_ratio_of_nonwhite": 0.48769,
       "purpose": "front silhouette, orange side rail, black glass stack"
     },
     {
@@ -122,9 +122,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.03283,
-      "orange_pixel_ratio_of_nonwhite": 0.93375,
-      "dark_pixel_ratio_of_nonwhite": 0.04685,
+      "nonwhite_pixel_ratio": 0.03311,
+      "orange_pixel_ratio_of_nonwhite": 0.92388,
+      "dark_pixel_ratio_of_nonwhite": 0.04649,
       "purpose": "left-side button protrusion and shell depth"
     },
     {
@@ -135,8 +135,8 @@
         1650
       ],
       "nonwhite_pixel_ratio": 0.11012,
-      "orange_pixel_ratio_of_nonwhite": 0.03038,
-      "dark_pixel_ratio_of_nonwhite": 0.96141,
+      "orange_pixel_ratio_of_nonwhite": 0.03056,
+      "dark_pixel_ratio_of_nonwhite": 0.9614,
       "purpose": "compact footprint, screen margin, buttons, and front features"
     },
     {
@@ -185,14 +185,14 @@
     },
     "hard_orange_shell_visible": {
       "pass": true,
-      "front_orange_ratio": 0.49514,
-      "back_orange_ratio": 0.96879,
-      "bottom_orange_ratio": 0.76394
+      "front_orange_ratio": 0.49502,
+      "back_orange_ratio": 0.96871,
+      "bottom_orange_ratio": 0.76678
     },
     "black_glass_front_visible": {
       "pass": true,
-      "front_dark_ratio": 0.48783,
-      "top_down_dark_ratio": 0.96141
+      "front_dark_ratio": 0.48769,
+      "top_down_dark_ratio": 0.9614
     },
     "component_stack_visible": {
       "pass": true,

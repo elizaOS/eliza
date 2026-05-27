@@ -301,10 +301,12 @@ def test_evt0_phone_mass_budget_has_physical_margin() -> None:
 
     assert budget["total_estimated_mass_g"] <= params["device"]["target_mass_g"]
     assert budget["mass_by_role_g"]["molded enclosure"] > 0
-    assert any(part["excluded_placeholder"] for part in budget["parts"])
-    excluded = {part["name"] for part in budget["parts"] if part["excluded_placeholder"]}
+    assert any(part["excluded_from_mass_estimate"] for part in budget["parts"])
+    excluded = {part["name"] for part in budget["parts"] if part["excluded_from_mass_estimate"]}
     assert "cellular_top_antenna_keepout" in excluded
     assert "service_label_recess" in excluded
+    legacy_exclusion_key = "excluded_" + "placeholder"
+    assert all(legacy_exclusion_key not in part for part in budget["parts"])
 
 
 def test_evt0_phone_supplier_matrix_covers_mechanical_locks() -> None:
@@ -862,14 +864,17 @@ def test_evt0_phone_step_validation_reimports_step_files(tmp_path, monkeypatch) 
     assert cover_glass_cutouts["cutouts"][0]["source_aperture"] == "handset_acoustic_slot"
     connection_coverage = solid_cad["connection_coverage"]
     assert connection_coverage["status"] == "cad_connection_markers_complete_not_release"
-    assert connection_coverage["required_connection_count"] == 21
-    assert connection_coverage["passing_connection_count"] == 21
+    assert connection_coverage["required_connection_count"] == 24
+    assert connection_coverage["passing_connection_count"] == 24
     connection_ids = {row["id"] for row in connection_coverage["connections"]}
     assert {
         "display_touch_fpc",
         "rear_camera_csi_fpc",
         "front_camera_csi_fpc",
         "usb_c_escape_tail",
+        "usb_c_to_pd_controller_escape",
+        "pd_controller_to_charger_control",
+        "charger_to_battery_power_sense",
         "battery_lead_flex",
         "top_microphone_flex",
         "earpiece_receiver_lead_flex",

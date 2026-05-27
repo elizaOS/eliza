@@ -32,7 +32,15 @@ DEFAULT_PROFILES = (
     "unitree-h1",
     "unitree-r1",
 )
-DEFAULT_COMMANDS = ("stand up", "walk forward", "turn left", "turn right")
+DEFAULT_COMMANDS = (
+    "stand up",
+    "walk forward",
+    "walk backward",
+    "sidestep left",
+    "sidestep right",
+    "turn left",
+    "turn right",
+)
 DEFAULT_ZERO_ACTION_SURVIVAL_STEPS = 2
 
 
@@ -91,7 +99,9 @@ def _check_profile(profile_id: str, *, pca_dim: int) -> dict[str, Any]:
         env.reset(seed=0)
         env._ensure_model()  # noqa: SLF001 - this is a validator.
         model = env._model  # noqa: SLF001
-        reset_torso_z, reset_upright_proj = env._root_pose_summary()  # noqa: SLF001
+        reset_pose = env._root_pose_summary()  # noqa: SLF001
+        reset_torso_z = reset_pose["z"]
+        reset_upright_proj = reset_pose["upright_proj"]
         obs_dim = int(env.observation_space.shape[0])
         action_dim = int(env.action_space.shape[0])
         profile_dof = int(profile.kinematics.dof)
@@ -317,7 +327,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--video-evidence",
         type=Path,
-        default=PKG_ROOT / "evidence" / "agent_videos",
+        default=PKG_ROOT / "evidence" / "multi_robot_smoke_videos",
     )
     parser.add_argument("--pca-dim", type=int, default=32)
     parser.add_argument("--min-video-bytes", type=int, default=1024)

@@ -1,0 +1,126 @@
+{
+  "schema": "robot-nebius-full-training-closeout-v1",
+  "ok": false,
+  "state": "invalid",
+  "run_id": "robot-full-clean-1779556360",
+  "bucket": "robot-rl-results-1779358330",
+  "dest": "evidence/nebius_full_training/synced_run",
+  "observed_at": "2026-05-24T07:35:00.624933Z",
+  "monitor": {
+    "ok": true,
+    "state": "complete",
+    "summary": {
+      "completed_stage_count": 6,
+      "total_stage_count": 6,
+      "completed_stages": [
+        "00_local_preflight",
+        "10_nebius_train_alberta",
+        "20_nebius_compare_backends",
+        "30_nebius_continual_benchmarks",
+        "40_nebius_brax_baseline",
+        "50_post_train_validation"
+      ],
+      "pending_stages": [],
+      "passed_gates": [
+        "run_root",
+        "success_marker",
+        "failure_marker_absent",
+        "stage_logs",
+        "stage_status",
+        "instance_launch_hygiene",
+        "training_inputs",
+        "multi_robot_readiness",
+        "alberta_checkpoint",
+        "asimov1_alberta_production",
+        "backend_comparison",
+        "joint_reach_benchmark",
+        "obstacle_course_benchmark",
+        "brax_full_training_run",
+        "brax_production_checkpoint",
+        "video_review",
+        "production_policy_videos"
+      ],
+      "missing_gates": [],
+      "next_action": "archive_and_cleanup"
+    }
+  },
+  "finalization": {
+    "ok": true,
+    "missing_gates": []
+  },
+  "training_report": {
+    "ok": false,
+    "missing_gates": [],
+    "backend_comparison": {
+      "present": true,
+      "profile_id": "asimov-1",
+      "tasks": [
+        "stand_up",
+        "walk_forward",
+        "walk_backward",
+        "sidestep_left",
+        "sidestep_right",
+        "turn_left",
+        "turn_right"
+      ],
+      "steps": 30000,
+      "winner_by_mean_reward": "ppo",
+      "alberta_mean_reward": 165.82098109095026,
+      "ppo_mean_reward": 194.84353875491988,
+      "untrained_mean_reward": 251.5049904876888,
+      "alberta_delta_vs_ppo": -29.02255766396962,
+      "alberta_delta_vs_untrained": -85.68400939673853,
+      "ppo_delta_vs_untrained": -56.66145173276891
+    },
+    "video_review": {
+      "present": true,
+      "ok": true,
+      "video_count": 25,
+      "action_progress": {
+        "reviewed_video_count": 25,
+        "ok_video_count": 25,
+        "profiles": [
+          "asimov-1",
+          "hiwonder-ainex",
+          "unitree-g1",
+          "unitree-h1",
+          "unitree-r1"
+        ],
+        "min_visual_progress": 0.0006431908730198355,
+        "mean_visual_progress": 0.009171747360743727,
+        "mean_frame_delta": 2.338795576989651
+      }
+    }
+  },
+  "artifact_inventory": {
+    "ok": true,
+    "present_count": 117,
+    "required_count": 117,
+    "missing": []
+  },
+  "objective_audit": {
+    "ok": false,
+    "passed": [
+      "alberta_framework_integrated",
+      "unified_robot_interface_all_profiles",
+      "traditional_and_sota_baselines_available",
+      "alberta_vs_ppo_side_by_side_comparison",
+      "continual_learning_obstacle_demo_no_forgetting",
+      "checkpoint_bound_local_policy_videos_reviewed",
+      "production_robot_policy_videos_reviewed",
+      "clean_relaunch_path_ready"
+    ],
+    "failed": [
+      "nebius_production_training_complete"
+    ]
+  },
+  "missing_gates": [
+    "nebius_production_training_complete"
+  ],
+  "monitor_status": "evidence/nebius_full_training/synced_run/monitor_status.json",
+  "validation_report": "evidence/nebius_full_training/synced_run/validation_report.json",
+  "finalization_report": "evidence/nebius_full_training/synced_run/finalization_report.json",
+  "training_comparison_report": "evidence/nebius_full_training/synced_run/training_comparison_report.json",
+  "artifact_inventory_report": "evidence/nebius_full_training/synced_run/artifact_inventory.json",
+  "objective_completion_audit": "evidence/nebius_full_training/synced_run/objective_completion_audit.json"
+}

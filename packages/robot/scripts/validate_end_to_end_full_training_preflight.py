@@ -46,6 +46,15 @@ REQUIRED_LAUNCH_ORDER = (
     "scripts/40_nebius_brax_baseline.sh",
     "scripts/50_post_train_validation.sh",
 )
+CURRICULUM_EVAL_TASKS = (
+    "stand_up",
+    "walk_forward",
+    "walk_backward",
+    "sidestep_left",
+    "sidestep_right",
+    "turn_left",
+    "turn_right",
+)
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -73,6 +82,22 @@ def _script_contains(path: Path, needles: tuple[str, ...]) -> bool:
         return False
     text = path.read_text(encoding="utf-8")
     return all(needle in text for needle in needles)
+
+
+def _post_training_eval_contract_ok(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8")
+    return all(
+        needle in text
+        for needle in (
+            "eval_text_policy.py",
+            "--tasks " + " ".join(CURRICULUM_EVAL_TASKS),
+            "--out evidence/curriculum_eval/eval_text_policy.json",
+            "--curriculum-report-out evidence/curriculum_eval/report.json",
+            "--fail-under-success-rate 1.0",
+        )
+    )
 
 
 def _local_preflight_profiles_ok(path: Path) -> bool:
@@ -166,12 +191,14 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
                 "--require-inference-check",
                 "validate_asimov1_real_agent_readiness.py",
                 "--require-production",
-                "eval_text_policy.py",
                 "evidence_text_to_action_e2e.py",
                 "--profile",
                 "record_agent_videos.py",
                 "--policy-checkpoint",
             ),
+        ),
+        "post_training_eval_contract": _post_training_eval_contract_ok(
+            script_paths["post_training_validation"]
         ),
         "run_all_stages_script": _script_contains(
             script_paths["run_all_stages"],

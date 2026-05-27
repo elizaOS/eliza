@@ -36,9 +36,11 @@ _write_full_training_job = importlib.import_module(
 validate_full_training_job = importlib.import_module(
     "scripts.validate_asimov1_full_training_job"
 ).validate_full_training_job
-validate_multi_robot = importlib.import_module(
+validate_multi_robot_module = importlib.import_module(
     "scripts.validate_multi_robot_training_readiness"
-).validate
+)
+validate_multi_robot = validate_multi_robot_module.validate
+record_agent_videos = importlib.import_module("scripts.record_agent_videos")
 validate_training_inputs = importlib.import_module(
     "scripts.validate_robot_training_inputs"
 ).build_report
@@ -55,7 +57,14 @@ DEFAULT_TASKS = (
     "turn_left",
     "turn_right",
 )
-DEFAULT_PROFILES = ("hiwonder-ainex", "asimov-1", "unitree-g1", "unitree-h1", "unitree-r1")
+DEFAULT_PROFILES = (
+    "hiwonder-ainex",
+    "asimov-1",
+    "unitree-g1",
+    "unitree-h1",
+    "unitree-r1",
+)
+DEFAULT_VIDEO_COMMANDS = tuple(record_agent_videos.PRODUCTION_REQUIRED_COMMANDS)
 
 
 def _write_executable(path: Path, text: str) -> None:
@@ -79,6 +88,10 @@ def _shell_header() -> str:
     )
 
 
+def _quoted_words(items: tuple[str, ...] | list[str]) -> str:
+    return " ".join(f'"{item}"' for item in items)
+
+
 def _make_scripts(
     out_dir: Path,
     *,
@@ -95,6 +108,7 @@ def _make_scripts(
     scripts_dir = out_dir / "scripts"
     scripts_dir.mkdir(parents=True, exist_ok=True)
     tasks_s = " ".join(tasks)
+    video_commands_s = _quoted_words(DEFAULT_VIDEO_COMMANDS)
     scripts: dict[str, str] = {}
 
     local_preflight = scripts_dir / "00_local_preflight.sh"
@@ -102,7 +116,9 @@ def _make_scripts(
         local_preflight,
         _shell_header()
         + f"uv run eliza-robot-validate-training-inputs --tasks {tasks_s} --out evidence/full_training_preflight/training_inputs_report.json\n"
-        + f"uv run python scripts/validate_multi_robot_training_readiness.py --profiles {' '.join(DEFAULT_PROFILES)} --commands \"stand up\" \"walk forward\" \"turn left\" \"turn right\" --video-evidence evidence/agent_videos\n"
+        + "uv run python scripts/validate_multi_robot_training_readiness.py "
+        + f"--profiles {' '.join(DEFAULT_PROFILES)} --commands {video_commands_s} "
+        + "--video-evidence evidence/multi_robot_smoke_videos\n"
         + f"uv run python scripts/validate_asimov1_full_training_job.py --job-dir {_rel(brax_job_dir)}\n"
         + f"uv run python scripts/run_asimov1_full_training.py --job-dir {_rel(brax_job_dir)} --check-only --require-ready\n"
         + "uv run eliza-robot-validate-full-training-preflight evidence/full_training_preflight\n",
@@ -116,7 +132,7 @@ def _make_scripts(
         + f"ALBERTA_STREAMING_STEPS=\"${{ALBERTA_STREAMING_STEPS:-{alberta_steps}}}\"\n"
         + "export JAX_PLATFORMS=cpu\n"
         + "export JAX_PLATFORM_NAME=cpu\n"
-        + f"uv run eliza-robot-train --profile {profile_id} --tasks {tasks_s} --steps \"$ALBERTA_STREAMING_STEPS\" --episode-steps {alberta_episode_steps} --eval-episodes {alberta_eval_episodes} --out checkpoints/{profile_id.replace('-', '_')}_alberta_full --seed 0\n",
+        + f"uv run eliza-robot-train --profile {profile_id} --tasks {tasks_s} --steps \"$ALBERTA_STREAMING_STEPS\" --episode-steps {alberta_episode_steps} --eval-episodes {alberta_eval_episodes} --out checkpoints/{profile_id.replace('-', '_')}_alberta_full --seed 0 --require-phase-success --min-phase-success-rate 1.0\n",
     )
     scripts["train_alberta"] = str(train_alberta)
 
@@ -189,11 +205,14 @@ def _make_scripts(
         + f"uv run eliza-robot-validate-asimov1-production-checkpoint {checkpoint} --min-steps \"$ALBERTA_STREAMING_STEPS\" --require-inference-check\n"
         + f"uv run python scripts/validate_asimov1_real_agent_readiness.py --checkpoint {checkpoint} --production-min-steps \"$ALBERTA_STREAMING_STEPS\" --require-production --max-steps 2\n"
         + "if [[ \"$POST_TRAIN_SKIP_EVAL\" != \"1\" ]]; then\n"
-        + f"  uv run python scripts/eval_text_policy.py --profile {profile_id} --ckpt {checkpoint} --tasks {tasks_s} --episodes \"$POST_TRAIN_EVAL_EPISODES\" --max-steps \"$POST_TRAIN_EVAL_MAX_STEPS\"\n"
+        + "  mkdir -p evidence/curriculum_eval\n"
+        + f"  uv run python scripts/eval_text_policy.py --profile {profile_id} --ckpt {checkpoint} --tasks {tasks_s} --episodes \"$POST_TRAIN_EVAL_EPISODES\" --max-steps \"$POST_TRAIN_EVAL_MAX_STEPS\" --out evidence/curriculum_eval/eval_text_policy.json --curriculum-report-out evidence/curriculum_eval/report.json --fail-under-success-rate 1.0\n"
         + "fi\n"
         + f"uv run python scripts/evidence_text_to_action_e2e.py --checkpoint {checkpoint} --profile {profile_id} --no-real\n"
-        + "rm -rf evidence/agent_videos evidence/video_review\n"
-        + f"uv run python scripts/record_agent_videos.py --profiles {profile_id} --commands \"stand up\" \"walk forward\" \"turn left\" \"turn right\" --out evidence/agent_videos --max-steps \"$POST_TRAIN_VIDEO_MAX_STEPS\" --policy-checkpoint {checkpoint}\n"
+        + "rm -rf evidence/multi_robot_smoke_videos evidence/agent_videos evidence/video_review\n"
+        + f"uv run python scripts/record_agent_videos.py --profiles {' '.join(DEFAULT_PROFILES)} --commands {video_commands_s} --out evidence/multi_robot_smoke_videos --max-steps \"$POST_TRAIN_VIDEO_MAX_STEPS\" --scripted-smoke\n"
+        + "uv run eliza-robot-review-video-evidence --evidence-dir evidence/multi_robot_smoke_videos --out-dir evidence/multi_robot_smoke_review --require-telemetry\n"
+        + f"uv run python scripts/record_agent_videos.py --profiles {profile_id} --commands {video_commands_s} --out evidence/agent_videos --max-steps \"$POST_TRAIN_VIDEO_MAX_STEPS\" --policy-checkpoint {checkpoint}\n"
         + "uv run eliza-robot-review-video-evidence --evidence-dir evidence/agent_videos --out-dir evidence/video_review --require-telemetry\n"
         + f"uv run eliza-robot-generate-alberta-report --package-root . --scope production-nebius-post-training --backend-dir evidence/backend_compare/{profile_id} --backend-validation evidence/backend_compare/{profile_id}/validation_report.json --obstacle-dir evidence/alberta_obstacle_course --obstacle-validation evidence/alberta_obstacle_course/validation_report.json --video-review evidence/video_review/video_review.json --video-manifest evidence/agent_videos/manifest.json --out-json evidence/ALBERTA_END_TO_END_REPORT.json --out-md evidence/ALBERTA_END_TO_END_REPORT.md\n",
     )
@@ -327,8 +346,8 @@ def prepare(
     if run_multi_readiness:
         multi_validation = validate_multi_robot(
             profiles=list(DEFAULT_PROFILES),
-            commands=["stand up", "walk forward", "turn left", "turn right"],
-            video_evidence=PKG_ROOT / "evidence" / "agent_videos",
+            commands=list(DEFAULT_VIDEO_COMMANDS),
+            video_evidence=PKG_ROOT / "evidence" / "multi_robot_smoke_videos",
             pca_dim=32,
             min_video_bytes=1024,
             require_combined_videos=True,
@@ -354,8 +373,14 @@ def prepare(
         "tasks_declared": set(tasks).issubset({task.id for task in curriculum.tasks}),
         "training_inputs_valid": bool(training_inputs["ok"]),
         "brax_job_valid": bool(brax_validation["ok"]),
-        "multi_robot_readiness": True if multi_validation is None else bool(multi_validation["ok"]),
-        "scripts_executable": all(os.access(path, os.X_OK) for path in scripts.values()),
+        "multi_robot_readiness": (
+            True if multi_validation is None else bool(multi_validation["ok"])
+        ),
+        "video_commands_cover_production": tuple(DEFAULT_VIDEO_COMMANDS)
+        == tuple(record_agent_videos.PRODUCTION_REQUIRED_COMMANDS),
+        "scripts_executable": all(
+            os.access(path, os.X_OK) for path in scripts.values()
+        ),
         "launch_template_hygiene": bool(launch_template["hygiene"]["ok"]),
     }
     report = {
@@ -367,6 +392,7 @@ def prepare(
         "profile_id": profile_id,
         "default_profiles": list(DEFAULT_PROFILES),
         "tasks": list(tasks),
+        "video_commands": list(DEFAULT_VIDEO_COMMANDS),
         "budgets": {
             "alberta_steps": int(alberta_steps),
             "alberta_episode_steps": int(alberta_episode_steps),

@@ -105,7 +105,7 @@ FTQ_IDX_W = 6
 CBP5_TAGE_SC_L_REFERENCE_MPKI = 3.986
 TARGET_2028_MPKI = 4.0
 WORKLOAD_RTL_CLAIM_BOUNDARY = (
-    "qemu_rv64_workload evidence is prefix RTL replay coverage for local "
+    "qemu_rv64_workload evidence is RTL replay coverage for local "
     "duty-cycle traces; it is not SPEC2017, Android, JavaScript-engine, "
     "phone, or release evidence."
 )

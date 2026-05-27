@@ -376,7 +376,7 @@
   <keyframe>
     <!-- Standing straight (legs at zero, arms tucked) -->
     <!-- qpos order: root(7) + joints in body order -->
-    <!-- root: x y z qw qx qy qz = 0 0 0.28 1 0 0 0 -->
+    <!-- root: x y z qw qx qy qz = 0 0 0.24 1 0 0 0 -->
     <!-- ball: x y z = 0.5 0 0.04 -->
     <!-- joints: r_hip_yaw r_hip_roll r_hip_pitch r_knee r_ank_pitch r_ank_roll -->
     <!--         l_hip_yaw l_hip_roll l_hip_pitch l_knee l_ank_pitch l_ank_roll -->
@@ -386,7 +386,7 @@
     <!-- qpos order: ball_x ball_y ball_z (3) | root_x root_y root_z root_qw root_qx root_qy root_qz (7) | joints (24) -->
     <key name="stand"
          qpos="0.5 0 0.04
-               0 0 0.28 1 0 0 0
+               0 0 0.24 1 0 0 0
                0 0 0 0 0 0
                0 0 0 0 0 0
                0 0
@@ -394,7 +394,7 @@
                0 -1.403 0 -1.226 0"/>
     <key name="stand_bent_knees"
          qpos="0.5 0 0.04
-               0 0 0.28 1 0 0 0
+               0 0 0.24 1 0 0 0
                0 0 -0.3 0.6 -0.3 0
                0 0 0.3 -0.6 0.3 0
                0 0

@@ -73,6 +73,11 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertEqual(payload["summary"]["runtime_evidence_collection_scope_count"], 1)
         self.assertEqual(payload["summary"]["blocked_runtime_evidence_file_count"], 0)
         self.assertEqual(payload["summary"]["highest_priority_capture_area"], "media")
+        self.assertEqual(payload["summary"]["next_runtime_capture_area"], "media")
+        self.assertEqual(payload["summary"]["next_runtime_capture_blocked_file_count"], 0)
+        self.assertIsNotNone(payload["next_runtime_capture_action"])
+        self.assertEqual(payload["next_runtime_capture_action"]["capture_area"], "media")
+        self.assertFalse(payload["next_runtime_capture_action"]["release_credit"])
         self.assertEqual(
             payload["findings"][0]["blocker_dependency"],
             "live_device_validation",
@@ -619,6 +624,18 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             "python3 packages/chip/scripts/aggregate_tapeout_readiness.py --scope phone --strict",
             inventory["next_commands"],
         )
+        self.assertEqual(
+            payload["next_runtime_capture_action"]["capture_area"],
+            "media",
+        )
+        self.assertIn(
+            "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
+            payload["next_runtime_capture_action"]["validation_commands"],
+        )
+        self.assertEqual(
+            payload["next_runtime_capture_action"]["claim_boundary"],
+            "operator_capture_action_only_not_runtime_release_evidence",
+        )
         self.assertNotIn(
             "python3 scripts/check_phone_runtime_readiness_contract.py",
             inventory["next_commands"],
@@ -670,6 +687,14 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         plan = payload["prioritized_runtime_capture_plan"]
         self.assertEqual(
             [row["capture_area"] for row in plan], ["security_lifecycle", "power_thermal"]
+        )
+        self.assertEqual(
+            payload["summary"]["next_runtime_capture_area"],
+            "security_lifecycle",
+        )
+        self.assertEqual(
+            payload["next_runtime_capture_action"]["capture_area"],
+            "security_lifecycle",
         )
         self.assertTrue(all(row["release_credit"] is False for row in plan))
         security = plan[0]

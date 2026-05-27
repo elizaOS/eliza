@@ -26,7 +26,7 @@ Joint order matches :data:`eliza_robot.sim.mujoco.ainex_constants.ALL_JOINT_NAME
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -129,6 +129,20 @@ def _two_link_ik(target_z: float) -> tuple[float, float, float]:
     return hip_pitch, knee, ankle_pitch
 
 
+def _gait_value(gait_cfg: Any, names: tuple[str, ...], default: float) -> float:
+    """Read gait config from either a dict-like stub or a real profile model."""
+    if isinstance(gait_cfg, dict):
+        for name in names:
+            if name in gait_cfg:
+                return float(gait_cfg[name])
+        return float(default)
+    for name in names:
+        value = getattr(gait_cfg, name, None)
+        if value is not None:
+            return float(value)
+    return float(default)
+
+
 class BezierGaitController:
     """Open-loop Bezier-foot gait → 24-DOF joint targets.
 
@@ -154,7 +168,7 @@ class BezierGaitController:
 
     def __init__(
         self,
-        profile: "Optional[RobotProfile]" = None,
+        profile: RobotProfile | None = None,
         swing_height: float = 0.08,
         cycle_hz: float = 4.1,
         stance_width: float = 0.10,
@@ -162,10 +176,16 @@ class BezierGaitController:
     ) -> None:
         if profile is not None:
             gait_cfg = getattr(profile, "gait", None) or {}
-            swing_height = float(gait_cfg.get("swing_height", swing_height))
-            cycle_hz = float(gait_cfg.get("cycle_hz", cycle_hz))
-            stance_width = float(gait_cfg.get("stance_width", stance_width))
-            foot_offset = float(gait_cfg.get("foot_offset", foot_offset))
+            swing_height = float(
+                _gait_value(gait_cfg, ("swing_height_m", "swing_height"), swing_height)
+            )
+            cycle_hz = float(_gait_value(gait_cfg, ("cycle_hz",), cycle_hz))
+            stance_width = float(
+                _gait_value(gait_cfg, ("stance_width_m", "stance_width"), stance_width)
+            )
+            foot_offset = float(
+                _gait_value(gait_cfg, ("foot_offset_m", "foot_offset"), foot_offset)
+            )
         # TODO: once W1.4 ships, also pull link lengths and the neutral
         # standing pose from the profile instead of the hard-coded
         # constants at the top of this file.
@@ -174,6 +194,9 @@ class BezierGaitController:
         self.cycle_hz = float(cycle_hz)
         self.stance_width = float(stance_width)
         self.foot_offset = float(foot_offset)
+        self._ik_foot_offset = (
+            float(self.foot_offset) if abs(float(self.foot_offset)) <= 0.04 else 0.0
+        )
         self._profile = profile
 
         # Initial phases: left and right feet 180 degrees apart.
@@ -213,7 +236,7 @@ class BezierGaitController:
         # Convert lift into a hip-to-foot distance. When the foot is on
         # the ground we want the nominal stance height; lifting the foot
         # by ``rz`` shortens the hip-to-foot distance by ``rz``.
-        hip_to_foot = _DEFAULT_NOMINAL_HEIGHT - desired_lift - self.foot_offset
+        hip_to_foot = _DEFAULT_NOMINAL_HEIGHT - desired_lift - self._ik_foot_offset
 
         # Solve IK per leg.
         l_hip_pitch, l_knee, l_ank_pitch = _two_link_ik(float(hip_to_foot[0]))

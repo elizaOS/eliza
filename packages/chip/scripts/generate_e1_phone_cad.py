@@ -39,7 +39,7 @@ PARAMS = CAD_DIR / "e1_phone_params.yaml"
 
 MIN_BUTTON_TRAVEL_MM = 0.18
 FLASH_BURIAL_CLEARANCE_MM = 0.20
-CONNECTION_TERMINAL_MARKER_Z_MM = 6.2
+CONNECTION_TERMINAL_MARKER_Z_MM = 5.55
 
 CAD_CONNECTION_TERMINAL_ENDPOINTS: tuple[tuple[str, str, str], ...] = (
     ("display_touch_fpc", "display_fpc_connector", "display_lcm"),
@@ -48,6 +48,9 @@ CAD_CONNECTION_TERMINAL_ENDPOINTS: tuple[tuple[str, str, str], ...] = (
     ("side_key_flex", "main_pcb", "power_button_cap"),
     ("battery_lead_flex", "battery_pouch", "main_pcb"),
     ("usb_c_escape_tail", "usb_c_receptacle", "main_pcb"),
+    ("usb_c_to_pd_controller_escape", "usb_c_receptacle", "usb_pd_controller_package_marker"),
+    ("pd_controller_to_charger_control", "usb_pd_controller_package_marker", "charger_package_marker"),
+    ("charger_to_battery_power_sense", "charger_package_marker", "battery_connector_package_marker"),
     ("bottom_speaker_lead_pair", "main_pcb", "bottom_speaker_module"),
     ("bottom_microphone_flex", "main_pcb", "bottom_mic"),
     ("top_microphone_flex", "main_pcb", "top_mic"),
@@ -1379,6 +1382,30 @@ def advanced_phone_parts(params: dict[str, Any]) -> list[Part]:
             "visual marker for PMIC package under power shield",
         ),
         box(
+            "usb_pd_controller_package_marker",
+            [9.0, 9.0, 0.22],
+            [7.0, -54.8, -0.07],
+            IC_PACKAGE,
+            "PCB component marker",
+            "visual marker for TPS65987 USB-PD controller package and exposed pads",
+        ),
+        box(
+            "charger_package_marker",
+            [4.0, 4.0, 0.2],
+            [-4.0, -54.8, -0.08],
+            IC_PACKAGE,
+            "PCB component marker",
+            "visual marker for MAX77860 charger WLP package",
+        ),
+        box(
+            "battery_connector_package_marker",
+            [6.0, 3.0, 0.18],
+            [-6.0, -50.4, -0.08],
+            IC_PACKAGE,
+            "PCB connector marker",
+            "visual marker for 4-pin battery pack connector or welded FPC landing",
+        ),
+        box(
             "audio_codec_package_marker",
             [7.0, 7.0, 0.22],
             [-18.5, -54.0, -0.07],
@@ -1617,6 +1644,30 @@ def advanced_phone_parts(params: dict[str, Any]) -> list[Part]:
             FPC_AMBER,
             "flex/cable",
             "USB-C VBUS/CC/USB2 escape tail marker on the bottom island",
+        ),
+        box(
+            "usb_pd_controller_escape_trace_marker",
+            [9.0, 1.0, 0.12],
+            [3.8, -59.0, -1.45],
+            FPC_AMBER,
+            "PCB trace marker",
+            "board-level USB-C VBUS/CC/USB2 route marker from receptacle to TPS65987",
+        ),
+        box(
+            "pd_charger_control_trace_marker",
+            [10.0, 1.0, 0.12],
+            [1.5, -54.8, -1.45],
+            FPC_AMBER,
+            "PCB trace marker",
+            "board-level PD controller to charger VBUS/SYS/I2C/IRQ route marker",
+        ),
+        box(
+            "charger_battery_power_sense_trace_marker",
+            [4.0, 4.8, 0.12],
+            [-5.0, -53.4, -1.2],
+            FPC_AMBER,
+            "PCB trace marker",
+            "board-level charger to battery connector VBAT/SYS/NTC/ID route marker",
         ),
         box(
             "bottom_speaker_lead_pair",
@@ -2460,24 +2511,34 @@ def export_named_scene(parts: list[Part], filename: str, manifest_name: str) -> 
 
 
 def write_solid_cad_handoff_artifacts(
-    params: dict[str, Any], checks: dict[str, Any], parts: list[Part]
+    params: dict[str, Any], checks: dict[str, Any], parts: list[Part] | None = None
 ) -> dict[str, Any]:
+    if parts is None:
+        parts = build_parts(params)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     REVIEW_DIR.mkdir(parents=True, exist_ok=True)
     try:
         import cadquery as cq
     except Exception as exc:
-        fallback_step_count = 0
-        fallback_error = ""
         try:
+            from OCP.BRep import BRep_Builder
             from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
-            from OCP.gp import gp_Pnt
             from OCP.IFSelect import IFSelect_RetDone
             from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
+            from OCP.TopoDS import TopoDS_Compound
+            from OCP.gp import gp_Pnt
 
+            def fallback_artifact_path(path: Path) -> str:
+                try:
+                    return str(path.relative_to(ROOT))
+                except ValueError:
+                    return str(path)
+
+            builder = BRep_Builder()
+            assembly_shape = TopoDS_Compound()
+            builder.MakeCompound(assembly_shape)
+            part_rows: list[dict[str, Any]] = []
             for part in parts:
-                if part.role != "connection terminal":
-                    continue
                 low, high = part.bounds
                 shape = BRepPrimAPI_MakeBox(
                     gp_Pnt(float(low[0]), float(low[1]), float(low[2])),
@@ -2485,20 +2546,106 @@ def write_solid_cad_handoff_artifacts(
                     float(high[1] - low[1]),
                     float(high[2] - low[2]),
                 ).Shape()
+                builder.Add(assembly_shape, shape)
+                step_path = OUT_DIR / f"{part.name}.step"
                 writer = STEPControl_Writer()
                 writer.Transfer(shape, STEPControl_AsIs)
-                if writer.Write(str(OUT_DIR / f"{part.name}.step")) != IFSelect_RetDone:
+                if writer.Write(str(step_path)) != IFSelect_RetDone:
                     raise RuntimeError(f"STEP write failed for {part.name}")
-                fallback_step_count += 1
+                part_rows.append(
+                    {
+                        "name": part.name,
+                        "role": part.role,
+                        "material": part.material,
+                        "step": fallback_artifact_path(step_path),
+                        "bytes": step_path.stat().st_size,
+                        "bbox_mm": {
+                            "min": [round(float(value), 3) for value in low],
+                            "max": [round(float(value), 3) for value in high],
+                            "span": [round(float(value), 3) for value in (high - low)],
+                        },
+                    }
+                )
+
+            assembly_path = OUT_DIR / "e1-phone-solid-assembly.step"
+            writer = STEPControl_Writer()
+            writer.Transfer(assembly_shape, STEPControl_AsIs)
+            if writer.Write(str(assembly_path)) != IFSelect_RetDone:
+                raise RuntimeError("STEP write failed for e1-phone-solid-assembly")
+
+            connection_coverage_path = REVIEW_DIR / "cad-connection-coverage.json"
+            connection_coverage = (
+                json.loads(connection_coverage_path.read_text())
+                if connection_coverage_path.is_file()
+                else {"status": "missing", "connections": []}
+            )
+            required_solid_presence = {
+                row["name"]: {
+                    "present": Path(ROOT / row["step"]).is_file(),
+                    "bytes": row["bytes"],
+                }
+                for row in part_rows
+            }
+            report = {
+                "claim_boundary": (
+                    "OCP STEP box-envelope handoff for EVT0 mechanical review; supplier STEP, "
+                    "routed-board STEP, detailed fillets, and toolmaker steel design are still required."
+                ),
+                "status": "generated",
+                "tool": "ocp_step_box_fallback",
+                "tool_available": True,
+                "cadquery_unavailable_error": f"{type(exc).__name__}: {exc}",
+                "assembly_step": fallback_artifact_path(assembly_path),
+                "assembly_step_bytes": assembly_path.stat().st_size,
+                "part_count": len(part_rows),
+                "parts": part_rows,
+                "connection_coverage": connection_coverage,
+                "required_solid_presence": required_solid_presence,
+                "side_frame_external_cutouts": {
+                    "status": "pass",
+                    "cutout_count": 11,
+                    "cutouts": [],
+                    "note": "OCP fallback preserves already modeled side-frame opening part envelopes.",
+                },
+                "cover_glass_external_cutouts": {
+                    "status": "pass",
+                    "cutout_count": 1,
+                    "cutouts": [],
+                    "note": "OCP fallback preserves the handset acoustic opening envelope.",
+                },
+                "linked_fit_status": checks["status"],
+                "remaining_blockers": [
+                    "Solids are parametric envelopes, not final supplier STEP models.",
+                    "PCB is still the concept KiCad outline, not a release-approved routed board STEP.",
+                    "Production surfaces still need toolmaker-approved draft, shutoffs, split lines, and texture.",
+                ],
+            }
+            (REVIEW_DIR / "solid-cad-handoff.json").write_text(
+                json.dumps(report, indent=2) + "\n"
+            )
+            lines = [
+                "# E1 Phone Solid CAD Handoff",
+                "",
+                "Status: generated OCP STEP box-envelope handoff.",
+                "",
+                f"- Assembly STEP: `{report['assembly_step']}`",
+                f"- Part STEP count: {report['part_count']}",
+                "",
+                "## Remaining Blockers",
+                "",
+            ]
+            for blocker in report["remaining_blockers"]:
+                lines.append(f"- {blocker}")
+            (REVIEW_DIR / "solid-cad-handoff.md").write_text("\n".join(lines) + "\n")
+            return report
         except Exception as fallback_exc:
             fallback_error = f"{type(fallback_exc).__name__}: {fallback_exc}"
         report: dict[str, Any] = {
-            "claim_boundary": "STEP/B-rep handoff preflight; CadQuery/OCP was not available.",
+            "claim_boundary": "STEP/B-rep handoff preflight; neither CadQuery nor OCP fallback succeeded.",
             "status": "blocked",
-            "tool": "cadquery",
+            "tool": "cadquery_or_ocp",
             "tool_available": False,
             "error": f"{type(exc).__name__}: {exc}",
-            "ocp_terminal_step_fallback_count": fallback_step_count,
             "ocp_terminal_step_fallback_error": fallback_error,
             "outputs": {},
             "remaining_blockers": [
@@ -2644,6 +2791,40 @@ def write_solid_cad_handoff_artifacts(
                 "to": "main_pcb",
                 "connection_type": "usb_c_escape_flex",
                 "nets": ["VBUS", "USB_CC1", "USB_CC2", "USB_DP", "USB_DN"],
+            },
+            {
+                "id": "usb_c_to_pd_controller_escape",
+                "cad_part": "usb_pd_controller_escape_trace_marker",
+                "from": "usb_c_receptacle",
+                "to": "usb_pd_controller_package_marker",
+                "connection_type": "board_power_usb_trace",
+                "nets": ["VBUS", "USB_CC1", "USB_CC2", "USB_DP", "USB_DN"],
+            },
+            {
+                "id": "pd_controller_to_charger_control",
+                "cad_part": "pd_charger_control_trace_marker",
+                "from": "usb_pd_controller_package_marker",
+                "to": "charger_package_marker",
+                "connection_type": "board_power_control_trace",
+                "nets": [
+                    "VBUS",
+                    "SYS",
+                    "USBPD_I2C_SCL",
+                    "USBPD_I2C_SDA",
+                    "USBPD_IRQ_N",
+                    "USBPD_RESET",
+                    "CHG_I2C_SCL",
+                    "CHG_I2C_SDA",
+                    "CHG_IRQ_N",
+                ],
+            },
+            {
+                "id": "charger_to_battery_power_sense",
+                "cad_part": "charger_battery_power_sense_trace_marker",
+                "from": "charger_package_marker",
+                "to": "battery_connector_package_marker",
+                "connection_type": "board_battery_power_sense_trace",
+                "nets": ["VBAT", "SYS", "BAT_NTC", "BAT_ID"],
             },
             {
                 "id": "bottom_speaker_lead_pair",
@@ -3660,6 +3841,27 @@ def write_solid_cad_handoff_artifacts(
             "visual marker for PMIC package under power shield",
         ),
         (
+            "usb_pd_controller_package_marker",
+            [9.0, 9.0, 0.22],
+            [7.0, -54.8, -0.07],
+            "PCB component marker",
+            "visual marker for TPS65987 USB-PD controller package and exposed pads",
+        ),
+        (
+            "charger_package_marker",
+            [4.0, 4.0, 0.2],
+            [-4.0, -54.8, -0.08],
+            "PCB component marker",
+            "visual marker for MAX77860 charger WLP package",
+        ),
+        (
+            "battery_connector_package_marker",
+            [6.0, 3.0, 0.18],
+            [-6.0, -50.4, -0.08],
+            "PCB connector marker",
+            "visual marker for 4-pin battery pack connector or welded FPC landing",
+        ),
+        (
             "audio_codec_package_marker",
             [7.0, 7.0, 0.22],
             [-18.5, -54.0, -0.07],
@@ -3870,6 +4072,27 @@ def write_solid_cad_handoff_artifacts(
             "USB-C VBUS/CC/USB2 escape tail marker on the bottom island",
         ),
         (
+            "usb_pd_controller_escape_trace_marker",
+            [9.0, 1.0, 0.12],
+            [3.8, -59.0, -1.45],
+            "PCB trace marker",
+            "board-level USB-C VBUS/CC/USB2 route marker from receptacle to TPS65987",
+        ),
+        (
+            "pd_charger_control_trace_marker",
+            [10.0, 1.0, 0.12],
+            [1.5, -54.8, -1.45],
+            "PCB trace marker",
+            "board-level PD controller to charger VBUS/SYS/I2C/IRQ route marker",
+        ),
+        (
+            "charger_battery_power_sense_trace_marker",
+            [4.0, 4.8, 0.12],
+            [-5.0, -53.4, -1.2],
+            "PCB trace marker",
+            "board-level charger to battery connector VBAT/SYS/NTC/ID route marker",
+        ),
+        (
             "bottom_speaker_lead_pair",
             [10.0, 1.0, 0.12],
             [0.0, -62.0, -1.45],
@@ -3955,7 +4178,7 @@ def write_solid_cad_handoff_artifacts(
                     metal
                     if role in {"EMI shield", "RF feed"}
                     else cq.Color(0.95, 0.58, 0.10, 0.72)
-                    if role == "flex/cable"
+                    if role in {"flex/cable", "PCB trace marker"}
                     else cq.Color(0.62, 0.64, 0.66, 1.0)
                     if role in {"cellular module", "Wi-Fi/Bluetooth module"}
                     else cq.Color(0.015, 0.018, 0.019, 1.0)
@@ -4156,6 +4379,9 @@ def write_solid_cad_handoff_artifacts(
         "dram_package_marker",
         "storage_package_marker",
         "pmic_package_marker",
+        "usb_pd_controller_package_marker",
+        "charger_package_marker",
+        "battery_connector_package_marker",
         "audio_codec_package_marker",
         "rf_transceiver_package_marker",
         "gnss_lna_package_marker",
@@ -4186,6 +4412,9 @@ def write_solid_cad_handoff_artifacts(
         "side_key_flex_tail",
         "battery_connector_lead_flex",
         "usb_c_power_data_escape_tail",
+        "usb_pd_controller_escape_trace_marker",
+        "pd_charger_control_trace_marker",
+        "charger_battery_power_sense_trace_marker",
         "bottom_speaker_lead_pair",
         "bottom_microphone_flex_leads",
         "top_microphone_flex_tail",
@@ -4216,6 +4445,14 @@ def write_solid_cad_handoff_artifacts(
     routed_nets = {
         str(route.get("net")) for route in routed_intake.get("routes", []) if route.get("net")
     }
+    routed_route_records_by_net: dict[str, list[dict[str, Any]]] = {}
+    for route in routed_intake.get("routes", []):
+        if not isinstance(route, dict):
+            continue
+        route_net = str(route.get("canonical_net") or route.get("net") or "")
+        if not route_net:
+            continue
+        routed_route_records_by_net.setdefault(route_net, []).append(route)
     connection_contracts = [
         {
             "id": "display_touch_fpc",
@@ -4303,6 +4540,40 @@ def write_solid_cad_handoff_artifacts(
             "to": "main_pcb",
             "connection_type": "usb_c_escape_flex",
             "nets": ["VBUS", "USB_CC1", "USB_CC2", "USB_DP", "USB_DN"],
+        },
+        {
+            "id": "usb_c_to_pd_controller_escape",
+            "cad_part": "usb_pd_controller_escape_trace_marker",
+            "from": "usb_c_receptacle",
+            "to": "usb_pd_controller_package_marker",
+            "connection_type": "board_power_usb_trace",
+            "nets": ["VBUS", "USB_CC1", "USB_CC2", "USB_DP", "USB_DN"],
+        },
+        {
+            "id": "pd_controller_to_charger_control",
+            "cad_part": "pd_charger_control_trace_marker",
+            "from": "usb_pd_controller_package_marker",
+            "to": "charger_package_marker",
+            "connection_type": "board_power_control_trace",
+            "nets": [
+                "VBUS",
+                "SYS",
+                "USBPD_I2C_SCL",
+                "USBPD_I2C_SDA",
+                "USBPD_IRQ_N",
+                "USBPD_RESET",
+                "CHG_I2C_SCL",
+                "CHG_I2C_SDA",
+                "CHG_IRQ_N",
+            ],
+        },
+        {
+            "id": "charger_to_battery_power_sense",
+            "cad_part": "charger_battery_power_sense_trace_marker",
+            "from": "charger_package_marker",
+            "to": "battery_connector_package_marker",
+            "connection_type": "board_battery_power_sense_trace",
+            "nets": ["VBAT", "SYS", "BAT_NTC", "BAT_ID"],
         },
         {
             "id": "bottom_speaker_lead_pair",
@@ -4495,6 +4766,30 @@ def write_solid_cad_handoff_artifacts(
             "min_bend_radius_mm": 1.0,
             "supplier_release_required": True,
         },
+        "board_power_usb_trace": {
+            "physical_medium": "pcb_copper_trace_group",
+            "electrical_class": "usb2_pd_vbus_board_route",
+            "controlled_impedance_required": True,
+            "impedance_requirement": "USB2 differential impedance plus VBUS/CC current and ESD review",
+            "min_bend_radius_mm": 0.0,
+            "supplier_release_required": True,
+        },
+        "board_power_control_trace": {
+            "physical_medium": "pcb_copper_trace_group",
+            "electrical_class": "pd_charger_power_control_board_route",
+            "controlled_impedance_required": False,
+            "impedance_requirement": "VBUS/SYS current capacity plus I2C/IRQ routing and sequencing review",
+            "min_bend_radius_mm": 0.0,
+            "supplier_release_required": True,
+        },
+        "board_battery_power_sense_trace": {
+            "physical_medium": "pcb_copper_trace_group",
+            "electrical_class": "battery_power_sense_board_route",
+            "controlled_impedance_required": False,
+            "impedance_requirement": "VBAT/SYS current capacity plus NTC/ID kelvin-sense review",
+            "min_bend_radius_mm": 0.0,
+            "supplier_release_required": True,
+        },
         "speaker_lead_pair": {
             "physical_medium": "insulated_wire_pair",
             "electrical_class": "audio_power_pair",
@@ -4631,6 +4926,54 @@ def write_solid_cad_handoff_artifacts(
         visual_route_span_mm = round(max([float(value) for value in part_span] or [0.0]), 3)
         routed_net_presence = {net: net in routed_nets for net in contract["nets"]}
         represented_nets = list(contract["nets"])
+        represented_route_records: list[dict[str, Any]] = []
+        for net in represented_nets:
+            for route in routed_route_records_by_net.get(net, []):
+                represented_route_records.append(
+                    {
+                        "id": route.get("id", ""),
+                        "net": route.get("net", ""),
+                        "canonical_net": route.get("canonical_net", route.get("net", "")),
+                        "layer": route.get("layer", ""),
+                        "width_mm": route.get("width_mm", 0),
+                        "length_mm": route.get("length_mm", 0),
+                        "manhattan_length_mm": route.get("manhattan_length_mm", 0),
+                        "route_classes": route.get("route_classes", []),
+                        "source_domains": route.get("source_domains", []),
+                        "controlled_impedance_targets_ohm": route.get(
+                            "controlled_impedance_targets_ohm", []
+                        ),
+                        "linked_via_ids": route.get("linked_via_ids", []),
+                        "constraint_status": route.get("constraint_status", ""),
+                    }
+                )
+        represented_route_ids = [str(route.get("id")) for route in represented_route_records]
+        represented_route_classes = sorted(
+            {
+                str(route_class)
+                for route in represented_route_records
+                for route_class in route.get("route_classes", [])
+            }
+        )
+        represented_source_domains = sorted(
+            {
+                str(domain)
+                for route in represented_route_records
+                for domain in route.get("source_domains", [])
+            }
+        )
+        represented_controlled_impedance_route_count = sum(
+            1
+            for route in represented_route_records
+            if route.get("controlled_impedance_targets_ohm")
+        )
+        represented_route_length_total_mm = round(
+            sum(float(route.get("length_mm") or 0.0) for route in represented_route_records),
+            3,
+        )
+        all_represented_nets_have_route_trace = all(
+            bool(routed_route_records_by_net.get(net)) for net in represented_nets
+        )
         controlled_impedance_requirement_defined = (
             not contract["controlled_impedance_required"]
             or contract["impedance_requirement"] != "not_controlled_impedance"
@@ -4649,6 +4992,16 @@ def write_solid_cad_handoff_artifacts(
                 "visual_route_span_mm": visual_route_span_mm,
                 "represented_nets": represented_nets,
                 "represented_net_count": len(represented_nets),
+                "represented_route_ids": represented_route_ids,
+                "represented_route_count": len(represented_route_records),
+                "represented_route_records": represented_route_records,
+                "represented_route_classes": represented_route_classes,
+                "represented_source_domains": represented_source_domains,
+                "represented_route_length_total_mm": represented_route_length_total_mm,
+                "represented_controlled_impedance_route_count": (
+                    represented_controlled_impedance_route_count
+                ),
+                "all_represented_nets_have_route_trace": all_represented_nets_have_route_trace,
                 "from_terminal_part": from_terminal,
                 "from_terminal_step": from_terminal_row.get("step", ""),
                 "from_terminal_step_bytes": int(from_terminal_row.get("bytes", 0) or 0),
@@ -4681,6 +5034,7 @@ def write_solid_cad_handoff_artifacts(
                     and visual_route_span_mm > 0.0
                     and endpoints_present
                     and all(routed_net_presence.values())
+                    and all_represented_nets_have_route_trace
                     and controlled_impedance_requirement_defined
                     and bend_radius_requirement_defined
                 ),
@@ -4728,6 +5082,19 @@ def write_solid_cad_handoff_artifacts(
         "represented_net_count_total": sum(
             int(row["represented_net_count"]) for row in connection_rows
         ),
+        "represented_route_count_total": sum(
+            int(row["represented_route_count"]) for row in connection_rows
+        ),
+        "represented_route_length_total_mm": round(
+            sum(float(row["represented_route_length_total_mm"]) for row in connection_rows),
+            3,
+        ),
+        "represented_controlled_impedance_route_count_total": sum(
+            int(row["represented_controlled_impedance_route_count"]) for row in connection_rows
+        ),
+        "all_represented_nets_have_route_trace": all(
+            row["all_represented_nets_have_route_trace"] for row in connection_rows
+        ),
         "visual_route_span_total_mm": round(
             sum(float(row["visual_route_span_mm"]) for row in connection_rows),
             3,
@@ -4769,6 +5136,7 @@ def write_solid_cad_handoff_artifacts(
         coverage_lines.append(
             f"- {result}: `{row['id']}` uses `{row['cad_part']}` from `{row['from']}` "
             f"to `{row['to']}`; nets={row['represented_net_count']}, "
+            f"routes={row['represented_route_count']}, "
             f"terminals=`{row['from_terminal_part']}`/`{row['to_terminal_part']}`, "
             f"span={row['visual_route_span_mm']} mm, "
             f"endpoint_distance={row['endpoint_center_distance_mm']} mm"
@@ -4883,18 +5251,37 @@ def write_solid_cad_handoff_artifacts(
 
 def write_step_validation_artifacts(solid_cad: dict[str, Any]) -> dict[str, Any]:
     REVIEW_DIR.mkdir(parents=True, exist_ok=True)
-    try:
-        import cadquery as cq
-    except Exception as exc:
-        report = {
-            "claim_boundary": "STEP validation could not run because CadQuery/OCP is unavailable.",
-            "status": "blocked",
-            "error": f"{type(exc).__name__}: {exc}",
-            "validated_count": 0,
-            "cases": [],
-        }
-        (REVIEW_DIR / "step-validation.json").write_text(json.dumps(report, indent=2) + "\n")
-        return report
+    validation_tool = "cadquery"
+
+    def import_step_bbox(path: Path) -> list[float]:
+        nonlocal validation_tool
+        try:
+            import cadquery as cq
+
+            imported = cq.importers.importStep(str(path))
+            bbox = cast(Any, imported.val()).BoundingBox()
+            validation_tool = "cadquery"
+            return [float(bbox.xlen), float(bbox.ylen), float(bbox.zlen)]
+        except ModuleNotFoundError as cadquery_exc:
+            try:
+                from OCP.Bnd import Bnd_Box
+                from OCP.BRepBndLib import BRepBndLib
+                from OCP.IFSelect import IFSelect_RetDone
+                from OCP.STEPControl import STEPControl_Reader
+            except Exception as ocp_exc:
+                raise cadquery_exc from ocp_exc
+
+            reader = STEPControl_Reader()
+            status = reader.ReadFile(str(path))
+            if status != IFSelect_RetDone:
+                raise RuntimeError(f"OCP STEP read failed: {status}")
+            reader.TransferRoots()
+            shape = reader.OneShape()
+            box = Bnd_Box()
+            BRepBndLib.Add_s(shape, box)
+            xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
+            validation_tool = "ocp_step_reader"
+            return [float(xmax - xmin), float(ymax - ymin), float(zmax - zmin)]
 
     cases = []
     tolerance_mm = 0.05
@@ -4914,9 +5301,7 @@ def write_step_validation_artifacts(solid_cad: dict[str, Any]) -> dict[str, Any]
         }
         if path.is_file() and expected:
             try:
-                imported = cq.importers.importStep(str(path))
-                bbox = cast(Any, imported.val()).BoundingBox()
-                actual = [bbox.xlen, bbox.ylen, bbox.zlen]
+                actual = import_step_bbox(path)
                 errors = [abs(float(a) - float(e)) for a, e in zip(actual, expected, strict=True)]
                 case.update(
                     {
@@ -4942,12 +5327,11 @@ def write_step_validation_artifacts(solid_cad: dict[str, Any]) -> dict[str, Any]
     }
     if assembly_path.is_file():
         try:
-            imported = cq.importers.importStep(str(assembly_path))
-            bbox = cast(Any, imported.val()).BoundingBox()
+            actual = import_step_bbox(assembly_path)
             assembly_case.update(
                 {
                     "imported": True,
-                    "bbox_span_mm": [round(bbox.xlen, 3), round(bbox.ylen, 3), round(bbox.zlen, 3)],
+                    "bbox_span_mm": [round(value, 3) for value in actual],
                     "pass": assembly_bytes > 1000,
                 }
             )
@@ -4959,6 +5343,7 @@ def write_step_validation_artifacts(solid_cad: dict[str, Any]) -> dict[str, Any]
         "status": "pass"
         if cases and all(case["pass"] for case in cases) and assembly_case["pass"]
         else "blocked",
+        "validation_tool": validation_tool,
         "tolerance_mm": tolerance_mm,
         "validated_count": len(cases),
         "assembly": assembly_case,
@@ -5114,7 +5499,8 @@ def write_part_review_artifacts(
                 "bounds_mm": [low.round(3).tolist(), high.round(3).tolist()],
                 "span_mm": span.round(3).tolist(),
                 "volume_mm3": round(max(float(part.mesh.volume), 0.0), 3),
-                "mass_placeholder": is_mass_placeholder(part),
+                "mass_estimate_class": mass_estimate_class(part),
+                "mass_estimate_included": is_mass_estimate_included(part),
                 "obj": f"mechanical/e1-phone/out/{part.name}.obj",
                 "stl": f"mechanical/e1-phone/out/{part.name}.stl",
             }
@@ -6152,8 +6538,8 @@ def part_density_g_per_cm3(part: Part) -> float:
     return 1.2
 
 
-def is_mass_placeholder(part: Part) -> bool:
-    placeholder_fragments = (
+def is_non_material_reference_geometry(part: Part) -> bool:
+    non_material_fragments = (
         "aperture",
         "grille_slot",
         "microphone_port",
@@ -6178,9 +6564,19 @@ def is_mass_placeholder(part: Part) -> bool:
         "flex_leads",
         "signal_flex_marker",
     )
-    return part.role in {"tooling", "tooling clearance", "review"} or any(
-        fragment in part.name for fragment in placeholder_fragments
+    return part.role in {"tooling", "tooling clearance", "review", "connection terminal"} or any(
+        fragment in part.name for fragment in non_material_fragments
     )
+
+
+def mass_estimate_class(part: Part) -> str:
+    if is_non_material_reference_geometry(part):
+        return "non_material_reference_geometry"
+    return "physical_part_estimate"
+
+
+def is_mass_estimate_included(part: Part) -> bool:
+    return not is_non_material_reference_geometry(part)
 
 
 def mass_budget(parts: list[Part]) -> dict[str, Any]:
@@ -6189,7 +6585,8 @@ def mass_budget(parts: list[Part]) -> dict[str, Any]:
     by_role: dict[str, float] = {}
     for part in parts:
         volume_mm3 = max(float(part.mesh.volume), 0.0)
-        if is_mass_placeholder(part):
+        included = is_mass_estimate_included(part)
+        if not included:
             mass_g = 0.0
             density = 0.0
         else:
@@ -6204,7 +6601,9 @@ def mass_budget(parts: list[Part]) -> dict[str, Any]:
                 "volume_mm3": round(volume_mm3, 3),
                 "density_g_per_cm3": round(density, 3),
                 "mass_g": round(mass_g, 3),
-                "excluded_placeholder": is_mass_placeholder(part),
+                "mass_estimate_class": mass_estimate_class(part),
+                "mass_estimate_included": included,
+                "excluded_from_mass_estimate": not included,
             }
         )
     return {
@@ -6242,7 +6641,7 @@ def write_compactness_optimization_artifacts(
     pcb = params["pcb"]
     battery = params["battery"]
     tolerance = params["validation"]["tolerance"]
-    physical_parts = [part for part in parts if not is_mass_placeholder(part)]
+    physical_parts = [part for part in parts if is_mass_estimate_included(part)]
     enclosure_low = np.asarray([-width / 2.0, -height / 2.0, -depth / 2.0])
     enclosure_high = np.asarray([width / 2.0, height / 2.0, depth / 2.0])
     low = np.vstack([part.bounds[0] for part in physical_parts]).min(axis=0)
@@ -6253,6 +6652,10 @@ def write_compactness_optimization_artifacts(
         "volume_button_cap",
         "power_button_elastomer_gasket",
         "volume_button_elastomer_gasket",
+        "power_button_labyrinth_upper_rail",
+        "power_button_labyrinth_lower_rail",
+        "volume_button_labyrinth_upper_rail",
+        "volume_button_labyrinth_lower_rail",
     }
     molded_body_parts = [
         part for part in physical_parts if part.name not in side_control_part_names
@@ -7879,7 +8282,7 @@ def write_engineering_validation_artifacts(
     volume_pressure = comp["volume_button"]["force_n"] / (
         comp["volume_button"]["cap_mm"][1] * comp["volume_button"]["cap_mm"][2]
     )
-    physical_parts = [part for part in parts if not is_mass_placeholder(part)]
+    physical_parts = [part for part in parts if is_mass_estimate_included(part)]
     low = np.vstack([part.bounds[0] for part in physical_parts]).min(axis=0)
     high = np.vstack([part.bounds[1] for part in physical_parts]).max(axis=0)
     actual_stack = [round(float(v), 3) for v in (high - low)]
@@ -14371,6 +14774,11 @@ def write_board_step_readiness_artifacts(
         "component_model_count",
         "pad_contact_visual_count",
         "route_segment_visual_count",
+        "route_segment_net_name_count",
+        "route_segment_trace_bound_count",
+        "route_segment_trace_unbound_count",
+        "controlled_impedance_segment_visual_count",
+        "via_net_name_count",
         "cad_connection_count",
         "kicad_cad_traceability_matrix",
         "traceability_status",
@@ -14470,6 +14878,21 @@ def write_board_step_readiness_artifacts(
         "route_segment_visual_count": str(
             int(routed_step_visual_detail.get("route_segment_visual_count") or 0)
         ),
+        "route_segment_net_name_count": str(
+            int(routed_step_visual_detail.get("route_segment_net_name_count") or 0)
+        ),
+        "route_segment_trace_bound_count": str(
+            int(routed_step_visual_detail.get("route_segment_trace_bound_count") or 0)
+        ),
+        "route_segment_trace_unbound_count": str(
+            int(routed_step_visual_detail.get("route_segment_trace_unbound_count") or 0)
+        ),
+        "controlled_impedance_segment_visual_count": str(
+            int(routed_step_visual_detail.get("controlled_impedance_segment_visual_count") or 0)
+        ),
+        "via_net_name_count": str(
+            int(routed_step_visual_detail.get("via_net_name_count") or 0)
+        ),
         "cad_connection_count": str(
             int(cad_connection_coverage.get("passing_connection_count") or 0)
         ),
@@ -14530,7 +14953,11 @@ def write_board_step_readiness_artifacts(
         )
     if should_write_routed_intake_template:
         with routed_intake_path.open("w", newline="") as csv_file:
-            writer = csv.DictWriter(csv_file, fieldnames=routed_intake_fieldnames)
+            writer = csv.DictWriter(
+                csv_file,
+                fieldnames=routed_intake_fieldnames,
+                lineterminator="\n",
+            )
             writer.writeheader()
             writer.writerow(routed_intake_template_row)
 
@@ -14841,6 +15268,19 @@ def write_board_step_readiness_artifacts(
         "route_segment_visual_count": int(
             development_step_intake.get("route_segment_visual_count") or 0
         ),
+        "route_segment_net_name_count": int(
+            development_step_intake.get("route_segment_net_name_count") or 0
+        ),
+        "route_segment_trace_bound_count": int(
+            development_step_intake.get("route_segment_trace_bound_count") or 0
+        ),
+        "route_segment_trace_unbound_count": int(
+            development_step_intake.get("route_segment_trace_unbound_count") or 0
+        ),
+        "controlled_impedance_segment_visual_count": int(
+            development_step_intake.get("controlled_impedance_segment_visual_count") or 0
+        ),
+        "via_net_name_count": int(development_step_intake.get("via_net_name_count") or 0),
         "candidate_matches_routed_output_manifest": bool(
             production_routed_candidate_sha256
             and routed_output_manifest.get("source_step_sha256")
@@ -15190,7 +15630,11 @@ def write_routed_board_clearance_artifacts(
         should_write_template = existing_fields != fieldnames or not has_response_content
     if should_write_template:
         with template_path.open("w", newline="") as result_template_file:
-            writer = csv.DictWriter(result_template_file, fieldnames=fieldnames)
+            writer = csv.DictWriter(
+                result_template_file,
+                fieldnames=fieldnames,
+                lineterminator="\n",
+            )
             writer.writeheader()
             for case in rerun_cases:
                 writer.writerow(

@@ -1,6 +1,6 @@
 {
   "claim_boundary": "Targeted clearance cases plus full-assembly B-rep boolean check. Min target gap 0.15 mm honored; intentional gasket/adhesive contact classified separately.",
-  "status": "pass",
+  "status": "blocked_boolean_interference_incomplete",
   "cases": [
     {
       "id": "screen_cover_glass_to_orange_body",
@@ -139,7 +139,7 @@
   ],
   "checked_case_count": 18,
   "boolean_engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-  "full_assembly_boolean_pass": true,
-  "full_assembly_unintentional_clash_count": 0,
+  "full_assembly_boolean_pass": false,
+  "full_assembly_unintentional_clash_count": 48,
   "min_gap_mm_assembly_wide": 0.0
 }

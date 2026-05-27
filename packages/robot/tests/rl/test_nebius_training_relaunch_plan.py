@@ -6,6 +6,16 @@ from pathlib import Path
 from scripts import prepare_end_to_end_full_training as prepare
 from scripts.plan_nebius_training_relaunch import plan_nebius_training_relaunch
 
+CURRICULUM_EVAL_TASKS = (
+    "stand_up",
+    "walk_forward",
+    "walk_backward",
+    "sidestep_left",
+    "sidestep_right",
+    "turn_left",
+    "turn_right",
+)
+
 
 def _write_json(path: Path, payload) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -17,7 +27,7 @@ def _bundle(tmp_path: Path) -> Path:
     prepare.prepare(
         out_dir=bundle,
         profile_id="asimov-1",
-        tasks=("stand_up", "walk_forward"),
+        tasks=CURRICULUM_EVAL_TASKS,
         alberta_steps=100,
         alberta_episode_steps=11,
         alberta_eval_episodes=2,

@@ -156,6 +156,14 @@ module e1_soc_integrated
     output ftq_prefetch_req_t   l1i_prefetch_req_o,
     output logic                l1i_prefetch_valid_o,
     output logic                l1i_prefetch_flush_o,
+    output logic                l1i_cache_resp_valid_o,
+    output logic                l1i_cache_resp_valid_lane1_o,
+    output logic                l1i_cache_miss_valid_o,
+    output logic                l1i_cache_miss_valid_lane1_o,
+    output logic                l1i_l2_acq_valid_o,
+    output logic                l1i_l2_active_lane1_o,
+    output logic                l2_l3_acq_valid_o,
+    output logic                l2_l3_grant_valid_o,
 
     // Zihpm read port exposed so the integration test can verify the
     // remapped event bus actually increments counters when the BPU fires
@@ -475,11 +483,19 @@ module e1_soc_integrated
     bpu_flush_t            bpu_predictor_flush_w;
     logic                  bpu_fetch_accept_w;
     logic                  l1i_demand_fetch_stream_ready_w;
+    logic                  l1i_cache_ifu_req_ready_w;
+    logic                  l1i_cache_ifu_req_ready_lane1_w;
+    logic                  l1i_cache_ftq_req_ready_w;
+    logic                  l1i_demand_ready_w;
+    logic                  l1i_demand_ready_lane1_w;
 
     assign bpu_default_context_w = bpu_default_context();
     assign bpu_predictor_flush_w = '0;
     assign bpu_fetch_accept_w = fetch_pop_i && fetch_stream_ready_i &&
                                 l1i_demand_fetch_stream_ready_w;
+    assign l1i_demand_ready_w = l1i_demand_ready_i && l1i_cache_ifu_req_ready_w;
+    assign l1i_demand_ready_lane1_w =
+        l1i_demand_ready_lane1_i && l1i_cache_ifu_req_ready_lane1_w;
 
     // BPU CSR read tap (unused at this top, but documented for the wave
     // viewer). Tied off; the integration test reads counters via the Zihpm
@@ -554,13 +570,13 @@ module e1_soc_integrated
         .fetch_stream_accept   (bpu_fetch_accept_w),
         .fetch_stream_ready    (l1i_demand_fetch_stream_ready_w),
         .ifu_req_valid         (l1i_demand_valid_o),
-        .ifu_req_ready         (l1i_demand_ready_i),
+        .ifu_req_ready         (l1i_demand_ready_w),
         .ifu_req_paddr         (l1i_demand_paddr_o),
         .ifu_req_ftq_idx       (l1i_demand_ftq_idx_o),
         .ifu_req_segment_idx   (l1i_demand_segment_idx_o),
         .ifu_req_kind          (l1i_demand_kind_o),
         .ifu_req_valid_lane1   (l1i_demand_valid_lane1_o),
-        .ifu_req_ready_lane1   (l1i_demand_ready_lane1_i),
+        .ifu_req_ready_lane1   (l1i_demand_ready_lane1_w),
         .ifu_req_paddr_lane1   (l1i_demand_paddr_lane1_o),
         .ifu_req_ftq_idx_lane1 (l1i_demand_ftq_idx_lane1_o),
         .ifu_req_segment_idx_lane1(l1i_demand_segment_idx_lane1_o),
@@ -591,7 +607,7 @@ module e1_soc_integrated
         .fetch_entry_valid (fetch_valid_o && bpu_fetch_accept_w),
         .fetch_entry       (bpu_fetch_entry),
         .flush_valid       (resolve_i.valid && resolve_i.misprediction),
-        .l1i_ready_i       (1'b1),
+        .l1i_ready_i       (l1i_cache_ftq_req_ready_w),
         .l1i_req_o         (l1i_prefetch_req_o),
         .l1i_valid_o       (l1i_prefetch_valid_o),
         .l1i_ready_vec_i   ('0),

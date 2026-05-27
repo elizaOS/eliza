@@ -188,6 +188,67 @@ def test_video_review_accepts_combined_boundary_step_commands(tmp_path: Path) ->
     assert report["videos"][0]["telemetry"]["failed_commands"] == []
 
 
+def test_video_review_rejects_walk_without_physical_progress(tmp_path: Path) -> None:
+    video = tmp_path / "evidence" / "robot-a" / "robot-a_walk_forward.mp4"
+    _write_video(video, frames=8, moving=True)
+    video.with_suffix(".telemetry.json").write_text(
+        json.dumps(
+            {
+                "rollout_ok": True,
+                "task_id": "walk_forward",
+                "delta_x_m": {"final": None},
+                "delta_yaw_rad": {"final": 0.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = review_videos(
+        tmp_path / "evidence",
+        out_dir=tmp_path / "review",
+        samples=4,
+        min_frames=5,
+        min_nonblank_ratio=0.01,
+        min_mean_frame_delta=0.01,
+        min_visual_progress=0.01,
+        require_telemetry=True,
+    )
+
+    assert report["ok"] is False
+    assert report["videos"][0]["checks"]["telemetry_action_progress"] is False
+    assert report["videos"][0]["telemetry"]["action_progress_ok"] is False
+
+
+def test_video_review_accepts_walk_with_physical_progress(tmp_path: Path) -> None:
+    video = tmp_path / "evidence" / "robot-a" / "robot-a_walk_forward.mp4"
+    _write_video(video, frames=8, moving=True)
+    video.with_suffix(".telemetry.json").write_text(
+        json.dumps(
+            {
+                "rollout_ok": True,
+                "task_id": "walk_forward",
+                "delta_x_m": {"final": 0.08},
+                "delta_yaw_rad": {"final": 0.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = review_videos(
+        tmp_path / "evidence",
+        out_dir=tmp_path / "review",
+        samples=4,
+        min_frames=5,
+        min_nonblank_ratio=0.01,
+        min_mean_frame_delta=0.01,
+        min_visual_progress=0.01,
+        require_telemetry=True,
+    )
+
+    assert report["ok"] is True
+    assert report["videos"][0]["checks"]["telemetry_action_progress"] is True
+
+
 def test_video_review_can_require_telemetry(tmp_path: Path) -> None:
     _write_video(tmp_path / "evidence" / "robot-a" / "robot-a_walk.mp4", frames=8, moving=True)
 

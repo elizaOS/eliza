@@ -196,24 +196,12 @@ executed_log_contract_rows:
   - measured_results_missing_or_empty
   - missing_required_field:board_configuration
   - missing_required_field:board_revision
-  - missing_required_field:board_serial
   - missing_required_field:completed_at
   - missing_required_field:evidence_role
-  - missing_required_field:fixture_calibration_id
-  - missing_required_field:fixture_id
-  - missing_required_field:limits_file
-  - missing_required_field:measured_results
-  - missing_required_field:operator
-  - missing_required_field:pass_fail_disposition
   - missing_required_field:release_credit
   - missing_required_field:started_at
-  - missing_required_field:supplier_lot_ids
-  - missing_required_field:test_software_revision
-  - missing_required_field:waivers
   - release_credit_must_remain_false_in_contract_gate
-  - supplier_lot_ids_missing_or_empty
   - unexpected_schema
-  - waivers_not_list
   next_unblock_action: Capture the executed first-article JSON bench log with the
     required schema fields, reviewed_lab_record disposition, measured results, limits
     binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
@@ -234,24 +222,12 @@ executed_log_contract_rows:
   - measured_results_missing_or_empty
   - missing_required_field:board_configuration
   - missing_required_field:board_revision
-  - missing_required_field:board_serial
   - missing_required_field:completed_at
   - missing_required_field:evidence_role
-  - missing_required_field:fixture_calibration_id
-  - missing_required_field:fixture_id
-  - missing_required_field:limits_file
-  - missing_required_field:measured_results
-  - missing_required_field:operator
-  - missing_required_field:pass_fail_disposition
   - missing_required_field:release_credit
   - missing_required_field:started_at
-  - missing_required_field:supplier_lot_ids
-  - missing_required_field:test_software_revision
-  - missing_required_field:waivers
   - release_credit_must_remain_false_in_contract_gate
-  - supplier_lot_ids_missing_or_empty
   - unexpected_schema
-  - waivers_not_list
   next_unblock_action: Capture the executed first-article JSON bench log with the
     required schema fields, reviewed_lab_record disposition, measured results, limits
     binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
@@ -272,24 +248,12 @@ executed_log_contract_rows:
   - measured_results_missing_or_empty
   - missing_required_field:board_configuration
   - missing_required_field:board_revision
-  - missing_required_field:board_serial
   - missing_required_field:completed_at
   - missing_required_field:evidence_role
-  - missing_required_field:fixture_calibration_id
-  - missing_required_field:fixture_id
-  - missing_required_field:limits_file
-  - missing_required_field:measured_results
-  - missing_required_field:operator
-  - missing_required_field:pass_fail_disposition
   - missing_required_field:release_credit
   - missing_required_field:started_at
-  - missing_required_field:supplier_lot_ids
-  - missing_required_field:test_software_revision
-  - missing_required_field:waivers
   - release_credit_must_remain_false_in_contract_gate
-  - supplier_lot_ids_missing_or_empty
   - unexpected_schema
-  - waivers_not_list
   next_unblock_action: Capture the executed first-article JSON bench log with the
     required schema fields, reviewed_lab_record disposition, measured results, limits
     binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
@@ -462,24 +426,12 @@ executed_log_contract_rows:
   - measured_results_missing_or_empty
   - missing_required_field:board_configuration
   - missing_required_field:board_revision
-  - missing_required_field:board_serial
   - missing_required_field:completed_at
   - missing_required_field:evidence_role
-  - missing_required_field:fixture_calibration_id
-  - missing_required_field:fixture_id
-  - missing_required_field:limits_file
-  - missing_required_field:measured_results
-  - missing_required_field:operator
-  - missing_required_field:pass_fail_disposition
   - missing_required_field:release_credit
   - missing_required_field:started_at
-  - missing_required_field:supplier_lot_ids
-  - missing_required_field:test_software_revision
-  - missing_required_field:waivers
   - release_credit_must_remain_false_in_contract_gate
-  - supplier_lot_ids_missing_or_empty
   - unexpected_schema
-  - waivers_not_list
   next_unblock_action: Capture the executed first-article JSON bench log with the
     required schema fields, reviewed_lab_record disposition, measured results, limits
     binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
@@ -500,24 +452,12 @@ executed_log_contract_rows:
   - measured_results_missing_or_empty
   - missing_required_field:board_configuration
   - missing_required_field:board_revision
-  - missing_required_field:board_serial
   - missing_required_field:completed_at
   - missing_required_field:evidence_role
-  - missing_required_field:fixture_calibration_id
-  - missing_required_field:fixture_id
-  - missing_required_field:limits_file
-  - missing_required_field:measured_results
-  - missing_required_field:operator
-  - missing_required_field:pass_fail_disposition
   - missing_required_field:release_credit
   - missing_required_field:started_at
-  - missing_required_field:supplier_lot_ids
-  - missing_required_field:test_software_revision
-  - missing_required_field:waivers
   - release_credit_must_remain_false_in_contract_gate
-  - supplier_lot_ids_missing_or_empty
   - unexpected_schema
-  - waivers_not_list
   next_unblock_action: Capture the executed first-article JSON bench log with the
     required schema fields, reviewed_lab_record disposition, measured results, limits
     binding, board serial, supplier lots, fixture ID, calibration ID, operator, and
@@ -576,24 +516,12 @@ executed_log_contract_rows:
   - measured_results_missing_or_empty
   - missing_required_field:board_configuration
   - missing_required_field:board_revision
-  - missing_required_field:board_serial
   - missing_required_field:completed_at
   - missing_required_field:evidence_role
-  - missing_required_field:fixture_calibration_id
-  - missing_required_field:fixture_id
-  - missing_required_field:limits_file
-  - missing_required_field:measured_results
-  - missing_required_field:operator
-  - missing_required_field:pass_fail_disposition
   - missing_required_field:release_credit
   - missing_required_field:started_at
-  - missing_required_field:supplier_lot_ids
-  - missing_required_field:test_software_revision
-  - missing_required_field:waivers
   - release_credit_must_remain_false_in_contract_gate
-  - supplier_lot_ids_missing_or_empty
   - unexpected_schema
-  - waivers_not_list
   next_unblock_action: Capture the executed first-article JSON bench log with the
     required schema fields, reviewed_lab_record disposition, measured results, limits
     binding, board serial, supplier lots, fixture ID, calibration ID, operator, and

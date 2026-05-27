@@ -44,6 +44,45 @@ class _TinySequentialLearner:
         return base
 
 
+def _motion_eval(
+    *,
+    forward_progress: float = 1.5,
+    passed_obstacle: float = 1.0,
+    collision_rate: float = 0.0,
+) -> dict[str, float | int]:
+    return {
+        "episodes": 2,
+        "success_rate": 1.0,
+        "collision_rate": collision_rate,
+        "passed_obstacle_rate": passed_obstacle,
+        "mean_forward_progress_m": forward_progress,
+        "mean_final_x": forward_progress,
+        "mean_final_y": 0.0,
+        "mean_goal_dist": 0.1,
+        "min_obstacle_clearance_m": 0.05,
+        "mean_return": 1.0,
+        "mean_length": 8.0,
+    }
+
+
+def _motion_matrix(n_tasks: int = 2) -> list[list[dict[str, float | int]]]:
+    return [[_motion_eval() for _ in range(n_tasks)] for _ in range(n_tasks)]
+
+
+def _motion_summary() -> dict[str, dict[str, float | int]]:
+    return {
+        learner: {
+            "seeds": 1,
+            "final_success_rate_mean": 1.0,
+            "final_collision_rate_mean": 0.0,
+            "final_passed_obstacle_rate_mean": 1.0,
+            "final_forward_progress_m_mean": 1.5,
+            "final_min_obstacle_clearance_m_min": 0.05,
+        }
+        for learner in ("alberta", "ppo")
+    }
+
+
 def test_alberta_learner_builds_valid_matrix_and_retains():
     cfg = BenchmarkConfig(
         n_tasks=2,
@@ -55,10 +94,12 @@ def test_alberta_learner_builds_valid_matrix_and_retains():
     )
     env = _build_env(cfg, seed=1234)
     learner = AlbertaSequentialLearner(env, _alberta_controller_config(cfg, env, seed=1234))
-    R, baseline = run_learner(learner, cfg)
+    R, baseline, baseline_motion, motion_matrix = run_learner(learner, cfg)
 
     assert R.shape == (2, 2)
     assert baseline.shape == (2,)
+    assert baseline_motion == [{}, {}]
+    assert motion_matrix == [[{}, {}], [{}, {}]]
     assert np.all(np.isfinite(R))
 
     m = compute_continual_metrics(R, baseline)
@@ -247,6 +288,69 @@ def test_benchmark_artifact_validator_can_require_alberta_delta_gates(tmp_path):
     assert validation["checks"]["alberta_forgetting_lte_ppo"] is False
     assert validation["deltas"]["alberta_acc_minus_ppo"] == -1.0
     assert validation["deltas"]["alberta_forgetting_minus_ppo"] == 0.4
+    assert validation["observed_comparisons"]["alberta_acc_gte_ppo"] is False
+    assert validation["enforced_delta_gates"]["alberta_acc_gte_ppo"] is False
+
+
+def test_benchmark_artifact_validator_separates_observed_and_waived_gates(tmp_path):
+    (tmp_path / "continual_benchmark.md").write_text("# report\n", encoding="utf-8")
+    (tmp_path / "continual_benchmark.png").write_bytes(b"png")
+    (tmp_path / "continual_benchmark.json").write_text(
+        json.dumps(
+            {
+                "config": {
+                    "env_kind": "joint_reach",
+                    "n_tasks": 2,
+                    "seeds": 1,
+                    "steps_per_task": 8,
+                },
+                "summary": {
+                    "alberta": {
+                        "acc": {"mean": 1.0, "std": 0.0},
+                        "bwt": {"mean": 0.0, "std": 0.0},
+                        "forgetting": {"mean": 0.1, "std": 0.0},
+                        "fwt": {"mean": 0.0, "std": 0.0},
+                    },
+                    "ppo": {
+                        "acc": {"mean": 2.0, "std": 0.0},
+                        "bwt": {"mean": 0.0, "std": 0.0},
+                        "forgetting": {"mean": 0.2, "std": 0.0},
+                        "fwt": {"mean": 0.0, "std": 0.0},
+                    },
+                },
+                "results": [
+                    {
+                        "name": "alberta",
+                        "seed": 1000,
+                        "matrix": [[1.0, 0.0], [1.0, 1.0]],
+                        "baseline": [0.0, 0.0],
+                    },
+                    {
+                        "name": "ppo",
+                        "seed": 1000,
+                        "matrix": [[2.0, 0.0], [2.0, 2.0]],
+                        "baseline": [0.0, 0.0],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    validation = validate_alberta_benchmark_artifacts(
+        tmp_path,
+        expected_env="joint_reach",
+        min_seeds=1,
+        min_steps_per_task=8,
+        require_alberta_acc_gte_ppo=False,
+        require_alberta_forgetting_lte_ppo=True,
+    )
+
+    assert validation["ok"] is True
+    assert validation["deltas"]["alberta_acc_minus_ppo"] == -1.0
+    assert validation["observed_comparisons"]["alberta_acc_gte_ppo"] is False
+    assert validation["required_deltas"]["require_alberta_acc_gte_ppo"] is False
+    assert validation["enforced_delta_gates"]["alberta_acc_gte_ppo"] is True
 
 
 def test_benchmark_artifact_validator_can_require_demo_video(tmp_path):
@@ -271,9 +375,24 @@ def test_benchmark_artifact_validator_can_require_demo_video(tmp_path):
                     "steps_per_task": 8,
                 },
                 "summary": summary,
+                "motion": _motion_summary(),
                 "results": [
-                    {"name": "alberta", "seed": 1000, "matrix": matrix, "baseline": baseline},
-                    {"name": "ppo", "seed": 1000, "matrix": matrix, "baseline": baseline},
+                    {
+                        "name": "alberta",
+                        "seed": 1000,
+                        "matrix": matrix,
+                        "baseline": baseline,
+                        "motion_baseline": [_motion_eval(), _motion_eval()],
+                        "motion_matrix": _motion_matrix(),
+                    },
+                    {
+                        "name": "ppo",
+                        "seed": 1000,
+                        "matrix": matrix,
+                        "baseline": baseline,
+                        "motion_baseline": [_motion_eval(), _motion_eval()],
+                        "motion_matrix": _motion_matrix(),
+                    },
                 ],
             }
         ),

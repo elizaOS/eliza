@@ -1057,6 +1057,30 @@ def main() -> int:
                 "blocked_evidence_inventory": [
                     unblock_action(path_text, row, failures) for path_text, row, failures in blocked
                 ],
+                "blocker_dependency_counts": {
+                    "repo_artifact_generation": 0,
+                    "live_device_validation": 0,
+                    "actionable_external_dependency": len(blocked) + missing,
+                },
+                "next_command_by_dependency": {
+                    "actionable_external_dependency": [
+                        VALIDATION_COMMAND,
+                        FACTORY_VALIDATION_COMMAND,
+                    ],
+                },
+                "validation_commands": [VALIDATION_COMMAND, FACTORY_VALIDATION_COMMAND],
+                "primary_blocker": {
+                    "dependency": "actionable_external_dependency",
+                    "blocked_rows": len(blocked),
+                    "template_rows": template_rows,
+                    "required_action": (
+                        "Execute first-article evidence on serialized hardware, replace "
+                        "template/presence-only rows with signed measurements, and rerun "
+                        "the first-article and factory content checks."
+                    ),
+                    "validation_command": VALIDATION_COMMAND,
+                    "release_credit": False,
+                },
                 "first_article_execution_packet_inventory": (
                     first_article_execution_packet_inventory(blocked, bridge)
                 ),

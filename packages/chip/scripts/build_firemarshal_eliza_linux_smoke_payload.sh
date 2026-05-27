@@ -8,6 +8,7 @@ workload_dir="$repo_dir/sw/firemarshal/eliza-e1-linux-smoke"
 image_dir="$firemarshal/images/firechip/eliza-e1-linux-smoke"
 payload="$image_dir/eliza-e1-linux-smoke-bin-nodisk"
 freshness_manifest="$image_dir/payload_freshness_manifest.json"
+linux_config="$image_dir/linux_config"
 wrapper_bin="$repo_dir/build/firemarshal-toolchain-bin"
 deb_tool_bin="$repo_dir/external/riscv64-linux-gnu/usr/bin"
 deb_tool_lib="$repo_dir/external/riscv64-linux-gnu/usr/lib/x86_64-linux-gnu"
@@ -143,14 +144,134 @@ fi
 PATH="$path_value"
 export PATH
 
-cd "$firemarshal"
-./marshal --workdir example-workloads -v -d build "$workload"
-
 export ELIZA_REPO_DIR="$repo_dir"
 export ELIZA_FIREMARSHAL_PAYLOAD="$payload"
 export ELIZA_FIREMARSHAL_FRESHNESS_MANIFEST="$freshness_manifest"
+export ELIZA_FIREMARSHAL_LINUX_CONFIG="$linux_config"
 export ELIZA_FIREMARSHAL_WORKLOAD="$workload"
 export ELIZA_FIREMARSHAL_WORKLOAD_DIR="$workload_dir"
+export ELIZA_FIREMARSHAL_BUILDER="$repo_dir/scripts/build_firemarshal_eliza_linux_smoke_payload.sh"
+export ELIZA_FIREMARSHAL_WLUTIL_BUILD="$firemarshal/wlutil/build.py"
+export FIREMARSHAL_NODISK_BUSYBOX_SH=1
+export FIREMARSHAL_NODISK_BUSYBOX_APPLETS="/bin/cat:/bin/echo:/bin/grep:/bin/hostname:/bin/ln:/bin/ls:/bin/mkdir:/bin/mknod:/bin/mount:/bin/rm:/bin/sh:/bin/sync:/bin/umount:/bin/zcat:/sbin/devmem:/sbin/getty:/sbin/init:/sbin/klogd:/sbin/mdev:/sbin/modprobe:/sbin/poweroff:/sbin/start-stop-daemon:/sbin/swapoff:/sbin/swapon:/sbin/sysctl:/sbin/syslogd:/usr/bin/find:/usr/bin/logger:/usr/bin/od:/usr/bin/readlink:/usr/bin/xargs"
+export FIREMARSHAL_NODISK_PRUNE_PATHS="/bin/bash:/usr/bin/coreutils:/usr/share/vim:/usr/bin/vim:/usr/bin/vimdiff:/usr/bin/rvim:/usr/bin/view:/usr/bin/ex:/usr/bin/less:/usr/bin/lesskey:/usr/bin/lspci:/usr/bin/setpci:/usr/share/pci.ids.gz:/usr/share/terminfo:/etc/init.d/S01syslogd:/etc/init.d/S02klogd:/etc/init.d/S02sysctl:/etc/init.d/S40network:/usr/share/libmemcached-awesome:/usr/bin/memaslap:/usr/bin/memcapable:/usr/bin/memslap:/usr/bin/memstat:/usr/bin/memcp:/usr/bin/memtouch:/usr/bin/memrm:/usr/bin/memping:/usr/bin/memflush:/usr/bin/memexist:/usr/bin/memerror:/usr/bin/memdump:/usr/bin/memcat:/usr/bin/pcre2test:/usr/bin/pcretest:/usr/bin/pcre2grep:/usr/bin/pcregrep:/usr/lib/libzmq.so:/usr/lib/libzmq.so.5:/usr/lib/libzmq.so.5.2.5:/usr/lib/libzmqpp.so:/usr/lib/libzmqpp.so.4:/usr/lib/libzmqpp.so.4.2.0:/usr/lib/libpcre2-8.so:/usr/lib/libpcre2-8.so.0:/usr/lib/libpcre2-8.so.0.12.0:/usr/lib/libpcre.so:/usr/lib/libpcre.so.1:/usr/lib/libpcre.so.1.2.13:/usr/lib/libpcrecpp.so:/usr/lib/libpcrecpp.so.0:/usr/lib/libpcrecpp.so.0.0.2:/usr/lib/libevent-2.1.so.7:/usr/lib/libevent-2.1.so.7.0.1:/usr/lib/libevent_core-2.1.so.7:/usr/lib/libevent_core-2.1.so.7.0.1:/usr/lib/libevent_extra-2.1.so.7:/usr/lib/libevent_extra-2.1.so.7.0.1:/usr/lib/libreadline.so:/usr/lib/libreadline.so.8:/usr/lib/libreadline.so.8.2:/usr/lib/libhistory.so:/usr/lib/libhistory.so.8:/usr/lib/libhistory.so.8.2:/usr/lib/libncurses.so:/usr/lib/libncurses.so.6:/usr/lib/libncurses.so.6.4:/usr/lib/libform.so:/usr/lib/libform.so.6:/usr/lib/libform.so.6.4:/usr/lib/libmenu.so:/usr/lib/libmenu.so.6:/usr/lib/libmenu.so.6.4:/usr/lib/libpanel.so:/usr/lib/libpanel.so.6:/usr/lib/libpanel.so.6.4:/usr/lib/libapr-1.so:/usr/lib/libapr-1.so.0:/usr/lib/libapr-1.so.0.7.2:/usr/lib/libaprutil-1.so:/usr/lib/libaprutil-1.so.0:/usr/lib/libaprutil-1.so.0.6.3:/usr/lib/libmemcached.so:/usr/lib/libmemcached.so.11:/usr/lib/libmemcached.so.11.0.0:/usr/lib/libmemcachedprotocol.so:/usr/lib/libmemcachedprotocol.so.0:/usr/lib/libmemcachedprotocol.so.0.0.0:/usr/lib/libmemcachedutil.so:/usr/lib/libmemcachedutil.so.2:/usr/lib/libmemcachedutil.so.2.0.0:/usr/lib/libhashkit.so:/usr/lib/libhashkit.so.2:/usr/lib/libhashkit.so.2.0.0:/usr/lib/libpci.so:/usr/lib/libpci.so.3:/usr/lib/libpci.so.3.10.0"
+export FIREMARSHAL_NODISK_PRUNE_GLOBS="/lib/*.so*:/usr/lib/*.so*"
+export FIREMARSHAL_NODISK_MINIMAL_ROOT=1
+export FIREMARSHAL_LINUX_DISABLE_CONFIGS="EFI:EFI_STUB:EFI_PARTITION:EFI_ESRT:EFI_RUNTIME_WRAPPERS:EFI_EARLYCON:RCU_STALL_COMMON"
+python3 - <<'PY'
+import os
+from pathlib import Path
+
+repo = Path(os.environ["ELIZA_REPO_DIR"]).resolve()
+payload = Path(os.environ["ELIZA_FIREMARSHAL_PAYLOAD"]).resolve()
+manifest = Path(os.environ["ELIZA_FIREMARSHAL_FRESHNESS_MANIFEST"]).resolve()
+linux_config = Path(os.environ["ELIZA_FIREMARSHAL_LINUX_CONFIG"]).resolve()
+workload = Path(os.environ["ELIZA_FIREMARSHAL_WORKLOAD"]).resolve()
+workload_dir = Path(os.environ["ELIZA_FIREMARSHAL_WORKLOAD_DIR"]).resolve()
+builder = Path(os.environ["ELIZA_FIREMARSHAL_BUILDER"]).resolve()
+wlutil_build = Path(os.environ["ELIZA_FIREMARSHAL_WLUTIL_BUILD"]).resolve()
+
+inputs = [
+    builder,
+    wlutil_build,
+    workload,
+    workload_dir / "eliza-e1-linux-smoke-br-trim",
+    workload_dir / "eliza-e1-linux-smoke-kfrag",
+    workload_dir / "eliza-e1-linux-smoke.sh",
+    workload_dir / "build-hwprobe.sh",
+    workload_dir / "eliza-e1-linux-smoke-overlay/etc/init.d/S00eliza-e1-linux-smoke",
+    workload_dir / "opensbi-eliza_defconfig",
+    workload_dir / "eliza-riscv-hwprobe.c",
+    workload_dir / "eliza-riscv-hwprobe",
+    workload_dir / "e1-npu-ml-smoke",
+    repo / "sw/linux/drivers/e1/Kconfig",
+    repo / "sw/linux/drivers/e1/Makefile",
+    repo / "sw/linux/drivers/e1/e1-dma.c",
+    repo / "sw/linux/drivers/e1/e1-npu.c",
+    repo / "sw/linux/drivers/e1/e1-npu-uapi.h",
+    repo / "sw/linux/drivers/e1/e1_platform_contract.h",
+]
+optional_inputs = [
+    workload_dir / "eliza-skip-unaligned-probe.patch",
+    workload_dir / "opensbi-eliza-platform-fast-final.patch",
+]
+inputs.extend(path for path in optional_inputs if path.exists())
+
+
+def rel(path: Path) -> str:
+    try:
+        return str(path.relative_to(repo))
+    except ValueError:
+        return str(path)
+
+
+def stale_config_reasons():
+    kfrag = workload_dir / "eliza-e1-linux-smoke-kfrag"
+    if not linux_config.is_file() or not kfrag.is_file():
+        return []
+    linux_config_lines = set(linux_config.read_text(encoding="utf-8").splitlines())
+    enforced_disabled = {
+        "CONFIG_EFI",
+        "CONFIG_EFI_STUB",
+        "CONFIG_EFI_ESRT",
+        "CONFIG_EFI_RUNTIME_WRAPPERS",
+        "CONFIG_EFI_EARLYCON",
+        "CONFIG_PORTABLE",
+        "CONFIG_STRICT_KERNEL_RWX",
+        "CONFIG_STRICT_MODULE_RWX",
+    }
+    kfrag_lines = []
+    for line in kfrag.read_text(encoding="utf-8").splitlines():
+        if not line:
+            continue
+        if line.startswith("# CONFIG_") and line.endswith(" is not set"):
+            symbol = line.split()[1]
+            if symbol not in enforced_disabled:
+                continue
+        elif line.startswith("#"):
+            continue
+        kfrag_lines.append(line)
+    missing = [line for line in kfrag_lines if line not in linux_config_lines]
+    if not missing:
+        return []
+    suffix = "" if len(missing) <= 5 else f", +{len(missing) - 5} more"
+    return [f"built linux_config missing {rel(kfrag)} option(s): {', '.join(missing[:5])}{suffix}"]
+
+
+reasons = stale_config_reasons()
+if manifest.is_file() and (not payload.is_file() or not linux_config.is_file()):
+    reasons.append("freshness manifest has no matching payload/config artifact")
+if payload.is_file():
+    payload_mtime = payload.stat().st_mtime
+    newer_inputs = [
+        rel(path)
+        for path in inputs
+        if path.is_file() and path.stat().st_mtime > payload_mtime
+    ]
+    if newer_inputs:
+        suffix = "" if len(newer_inputs) <= 6 else f", +{len(newer_inputs) - 6} more"
+        reasons.append(f"payload predates input(s): {', '.join(newer_inputs[:6])}{suffix}")
+
+if reasons:
+    print("STATUS: STALE firemarshal.eliza_e1_linux_smoke_payload")
+    for reason in reasons:
+        print(f"  - {reason}")
+    for artifact in (
+        payload,
+        payload.with_name(payload.name.replace("-bin-", "-bin-dwarf-", 1)),
+        linux_config,
+        manifest,
+    ):
+        try:
+            artifact.unlink()
+            print(f"  - removed stale generated artifact: {rel(artifact)}")
+        except FileNotFoundError:
+            pass
+PY
+
+cd "$firemarshal"
+./marshal --workdir example-workloads -v -d build "$workload"
+
 python3 - <<'PY'
 import hashlib
 import json
@@ -161,18 +282,37 @@ from pathlib import Path
 repo = Path(os.environ["ELIZA_REPO_DIR"]).resolve()
 payload = Path(os.environ["ELIZA_FIREMARSHAL_PAYLOAD"]).resolve()
 manifest = Path(os.environ["ELIZA_FIREMARSHAL_FRESHNESS_MANIFEST"]).resolve()
+linux_config = Path(os.environ["ELIZA_FIREMARSHAL_LINUX_CONFIG"]).resolve()
 workload = Path(os.environ["ELIZA_FIREMARSHAL_WORKLOAD"]).resolve()
 workload_dir = Path(os.environ["ELIZA_FIREMARSHAL_WORKLOAD_DIR"]).resolve()
+builder = Path(os.environ["ELIZA_FIREMARSHAL_BUILDER"]).resolve()
+wlutil_build = Path(os.environ["ELIZA_FIREMARSHAL_WLUTIL_BUILD"]).resolve()
 
 inputs = [
+    builder,
+    wlutil_build,
     workload,
+    workload_dir / "eliza-e1-linux-smoke-br-trim",
     workload_dir / "eliza-e1-linux-smoke-kfrag",
     workload_dir / "eliza-e1-linux-smoke.sh",
     workload_dir / "build-hwprobe.sh",
+    workload_dir / "eliza-e1-linux-smoke-overlay/etc/init.d/S00eliza-e1-linux-smoke",
+    workload_dir / "opensbi-eliza_defconfig",
     workload_dir / "eliza-riscv-hwprobe.c",
     workload_dir / "eliza-riscv-hwprobe",
     workload_dir / "e1-npu-ml-smoke",
+    repo / "sw/linux/drivers/e1/Kconfig",
+    repo / "sw/linux/drivers/e1/Makefile",
+    repo / "sw/linux/drivers/e1/e1-dma.c",
+    repo / "sw/linux/drivers/e1/e1-npu.c",
+    repo / "sw/linux/drivers/e1/e1-npu-uapi.h",
+    repo / "sw/linux/drivers/e1/e1_platform_contract.h",
 ]
+optional_inputs = [
+    workload_dir / "eliza-skip-unaligned-probe.patch",
+    workload_dir / "opensbi-eliza-platform-fast-final.patch",
+]
+inputs.extend(path for path in optional_inputs if path.exists())
 
 
 def rel(path: Path) -> str:
@@ -190,12 +330,50 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-missing = [rel(path) for path in [payload, *inputs] if not path.is_file()]
+missing = [rel(path) for path in [payload, linux_config, *inputs] if not path.is_file()]
 if missing:
     raise SystemExit(
         "cannot write FireMarshal payload freshness manifest; missing: "
         + ", ".join(missing)
     )
+
+kfrag = workload_dir / "eliza-e1-linux-smoke-kfrag"
+linux_config_lines = set(linux_config.read_text(encoding="utf-8").splitlines())
+kfrag_lines = [
+    line
+    for line in kfrag.read_text(encoding="utf-8").splitlines()
+    if line and not line.startswith("#")
+]
+missing_kfrag_lines = [line for line in kfrag_lines if line not in linux_config_lines]
+if missing_kfrag_lines:
+    print("STATUS: BLOCKED firemarshal.eliza_e1_linux_smoke_payload_freshness")
+    print(
+        "  - built linux_config is missing current "
+        f"{rel(kfrag)} option(s): {', '.join(missing_kfrag_lines[:5])}"
+        + (
+            ""
+            if len(missing_kfrag_lines) <= 5
+            else f", +{len(missing_kfrag_lines) - 5} more"
+        )
+    )
+    print("  - rerun this script after clearing the stale FireMarshal payload/config")
+    raise SystemExit(2)
+
+payload_mtime = payload.stat().st_mtime
+newer_inputs = [
+    rel(path)
+    for path in inputs
+    if path.stat().st_mtime > payload_mtime
+]
+if newer_inputs:
+    print("STATUS: BLOCKED firemarshal.eliza_e1_linux_smoke_payload_freshness")
+    print(
+        "  - payload still predates current input(s): "
+        + ", ".join(newer_inputs[:6])
+        + ("" if len(newer_inputs) <= 6 else f", +{len(newer_inputs) - 6} more")
+    )
+    print("  - FireMarshal did not rebuild the nodisk payload; clear the stale artifact and rerun")
+    raise SystemExit(2)
 
 doc = {
     "schema": "eliza.firemarshal_linux_smoke_payload_freshness.v1",

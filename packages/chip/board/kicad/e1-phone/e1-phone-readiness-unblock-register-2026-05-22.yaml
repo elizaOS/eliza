@@ -18,82 +18,106 @@ summary:
   artifact_presence_complete_blocker_count: 4
   acceptance_artifact_count: 174
   missing_acceptance_artifact_count: 0
-  non_release_acceptance_artifact_count: 170
+  non_release_acceptance_artifact_count: 158
   production_presence_release_output_count: 0
   production_presence_blocked_candidate_output_file_count: 47
   production_presence_has_blocked_candidate_outputs: true
   fabrication_ready: false
   enclosure_ready: false
   end_to_end_phone_ready: false
-  local_development_route_count: 0
-  local_development_segment_count: 0
-  local_development_via_count: 0
-  local_development_required_shared_net_category_count: 0
-  local_development_required_shared_net_count: 0
-  local_development_routed_shared_net_count: 0
+  local_development_route_count: 153
+  local_development_segment_count: 306
+  local_development_via_count: 24
+  local_development_required_shared_net_category_count: 7
+  local_development_required_shared_net_count: 166
+  local_development_routed_shared_net_count: 166
   local_development_missing_required_shared_net_count: 0
-  local_development_route_domain_count: 0
-  local_development_route_domain_required_net_count_total: 0
-  local_development_route_domain_routed_or_aliased_net_count_total: 0
+  local_development_route_domain_count: 7
+  local_development_route_domain_required_net_count_total: 166
+  local_development_route_domain_routed_or_aliased_net_count_total: 181
   local_development_missing_route_domain_net_count: 0
-  local_development_all_route_domains_complete: false
-  local_real_footprint_development_refs: 0
-  local_routed_step_candidate_present: false
+  local_development_all_route_domains_complete: true
+  local_real_footprint_development_refs: 89
+  local_routed_step_candidate_present: true
   local_routed_step_candidate_release_credit: false
-  local_routed_step_candidate_sha256: ''
-  local_routed_step_candidate_matches_development_source: false
-  local_routed_step_candidate_footprint_envelope_count: 0
-  local_routed_step_candidate_pad_contact_visual_count: 0
-  local_routed_step_candidate_route_segment_visual_count: 0
-  local_pinout_captured_file_count: 0
-  local_pinout_declared_pin_count_total: 0
-  local_pinout_record_count_total: 0
-  local_pinout_public_source_count: 0
-  local_pinout_bound_footprint_count: 0
-  local_pinout_exact_public_match_count: 0
-  local_pinout_pending_supplier_pad_map_or_order_count: 0
-  local_pinout_all_bound_footprints_have_terminal_contract: false
-  local_pinout_all_expected_public_pins_present: false
-  local_pattern_explicit_support_pattern_count: 0
-  local_pattern_all_support_patterns_have_explicit_provenance: false
-  local_pattern_all_electrical_pad_counts_match_manifest: false
-  local_cad_connection_passing_count: 0
-  local_cad_connection_terminal_marker_count: 0
-  local_cad_connection_terminal_pair_count: 0
-  local_cad_connection_solid_step_part_count: 0
-  local_cad_connection_solid_step_part_set_count: 0
-  local_cad_connection_solid_step_part_bytes_total: 0
-  local_cad_connection_assembly_manifest_part_count: 0
-  local_cad_connection_assembly_manifest_terminal_marker_count: 0
-  local_cad_connection_assembly_manifest_solid_step_part_count: 0
+  local_routed_step_candidate_sha256: 9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58
+  local_routed_step_candidate_matches_development_source: true
+  local_routed_step_candidate_footprint_envelope_count: 89
+  local_routed_step_candidate_pad_contact_visual_count: 1452
+  local_routed_step_candidate_route_segment_visual_count: 306
+  local_pinout_captured_file_count: 21
+  local_pinout_declared_pin_count_total: 1212
+  local_pinout_record_count_total: 32
+  local_pinout_public_source_count: 21
+  local_pinout_bound_footprint_count: 21
+  local_pinout_exact_public_match_count: 17
+  local_pinout_pending_supplier_pad_map_or_order_count: 13
+  local_pinout_all_bound_footprints_have_terminal_contract: true
+  local_pinout_all_expected_public_pins_present: true
+  local_pattern_explicit_support_pattern_count: 11
+  local_pattern_all_support_patterns_have_explicit_provenance: true
+  local_pattern_all_electrical_pad_counts_match_manifest: true
+  local_cad_connection_passing_count: 24
+  local_cad_connection_terminal_marker_count: 48
+  local_cad_connection_terminal_pair_count: 24
+  local_cad_connection_solid_step_part_count: 72
+  local_cad_connection_solid_step_part_set_count: 24
+  local_cad_connection_solid_step_part_bytes_total: 1125435
+  local_cad_connection_assembly_manifest_part_count: 234
+  local_cad_connection_assembly_manifest_terminal_marker_count: 48
+  local_cad_connection_assembly_manifest_solid_step_part_count: 72
   local_cad_connection_assembly_manifest_missing_solid_step_part_count: 0
-  local_cad_connection_represented_net_count_total: 0
-  local_cad_connection_record_count: 0
-  local_cad_connection_represented_net_list_total: 0
-  local_cad_connection_all_records_have_represented_nets: false
-  local_cad_connection_all_represented_nets_match_routed_nets: false
-  local_cad_connection_controlled_impedance_count: 0
-  local_cad_connection_controlled_impedance_requirement_defined_count: 0
-  local_cad_connection_bend_radius_requirement_defined_count: 0
-  local_cad_connection_supplier_release_required_count: 0
+  local_cad_connection_represented_net_count_total: 112
+  local_cad_connection_record_count: 24
+  local_cad_connection_represented_net_list_total: 112
+  local_cad_connection_all_records_have_represented_nets: true
+  local_cad_connection_all_represented_nets_match_routed_nets: true
+  local_cad_connection_controlled_impedance_count: 14
+  local_cad_connection_controlled_impedance_requirement_defined_count: 24
+  local_cad_connection_bend_radius_requirement_defined_count: 24
+  local_cad_connection_supplier_release_required_count: 24
   local_cad_connection_release_credit: false
-  local_component_model_count: 0
+  local_component_model_count: 89
   local_component_model_supplier_approved_count: 0
   local_component_model_release_allowed: false
-  local_component_model_pinout_bound_model_count: 0
-  local_component_model_support_pattern_model_count: 0
-  local_component_model_terminal_contract_or_no_pad_model_count: 0
-  local_component_model_non_signal_pad_contract_count: 0
-  local_component_model_npth_mechanical_feature_contract_count: 0
-  local_component_model_all_terminal_contract_flags_pass: false
-  local_component_model_directory_record_count: 0
-  local_component_model_directory_terminal_contract_model_record_count: 0
-  local_component_model_directory_terminal_contract_total_count: 0
-  local_component_model_directory_non_signal_pad_contract_total_count: 0
-  local_component_model_directory_npth_mechanical_feature_contract_total_count: 0
-  local_component_model_directory_source_routed_step_bound: false
-  local_component_model_directory_records_release_credit_false: false
-  local_component_model_directory_all_terminal_contract_flags_pass: false
+  local_component_model_pinout_bound_model_count: 22
+  local_component_model_support_pattern_model_count: 67
+  local_component_model_terminal_contract_or_no_pad_model_count: 89
+  local_component_model_non_signal_pad_contract_count: 7
+  local_component_model_npth_mechanical_feature_contract_count: 4
+  local_component_model_all_terminal_contract_flags_pass: true
+  local_component_model_directory_record_count: 89
+  local_component_model_directory_terminal_contract_model_record_count: 85
+  local_component_model_directory_terminal_contract_total_count: 1441
+  local_component_model_directory_non_signal_pad_contract_total_count: 7
+  local_component_model_directory_npth_mechanical_feature_contract_total_count: 4
+  local_component_model_directory_source_routed_step_bound: true
+  local_component_model_directory_records_release_credit_false: true
+  local_component_model_directory_all_terminal_contract_flags_pass: true
+  local_component_model_directory_local_discrete_step_file_count: 89
+  local_component_model_directory_local_discrete_step_imported_solid_count: 89
+  local_component_model_directory_local_discrete_step_bbox_match_count: 89
+  local_component_model_directory_local_discrete_step_bytes_total: 1385932
+  local_component_model_directory_supplier_step_intake_placeholder_count: 0
+  local_component_model_directory_supplier_step_intake_local_surrogate_count: 47
+  local_component_model_directory_supplier_step_intake_missing_count: 0
+  local_component_model_directory_supplier_step_intake_not_applicable_count: 42
+  local_component_model_directory_supplier_step_intake_release_candidate_count: 0
+  local_component_model_directory_supplier_step_intake_lane_counts:
+    audio_speaker_microphone_flexes: 8
+    battery_pack: 2
+    board_support_passives_mechanicals: 42
+    cellular: 8
+    charger_power_path: 1
+    display_touch: 3
+    front_camera: 2
+    pmic: 9
+    rear_camera: 2
+    side_buttons: 3
+    top_bottom_interconnect: 2
+    usb_c_receptacle_evt0: 1
+    usb_pd_controller: 1
+    wifi_bluetooth: 5
   local_component_model_directory_release_allowed: false
 blockers:
 - id: supplier_return_packs
@@ -376,11 +400,6 @@ blockers:
     - placeholder
     - 'release_credit: false'
     - sentinel_small_binary_artifact
-    board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/supplier-model.step:
-    - not supplier evidence
-    - placeholder
-    - 'release_credit: false'
-    - sentinel_small_binary_artifact
     board/kicad/e1-phone/production/sourcing/battery_pack/compliance-pack-index.yaml:
     - blocked_pending_supplier_return
     - local fail-closed
@@ -420,11 +439,6 @@ blockers:
     - placeholder
     - 'release_credit: false'
     board/kicad/e1-phone/production/sourcing/battery_pack/signed-2d-drawing.pdf:
-    - not supplier evidence
-    - placeholder
-    - 'release_credit: false'
-    - sentinel_small_binary_artifact
-    board/kicad/e1-phone/production/sourcing/battery_pack/supplier-model.step:
     - not supplier evidence
     - placeholder
     - 'release_credit: false'
@@ -472,11 +486,6 @@ blockers:
     - placeholder
     - 'release_credit: false'
     - sentinel_small_binary_artifact
-    board/kicad/e1-phone/production/sourcing/cellular/supplier-model.step:
-    - not supplier evidence
-    - placeholder
-    - 'release_credit: false'
-    - sentinel_small_binary_artifact
     board/kicad/e1-phone/production/sourcing/charger_power_path/compliance-pack-index.yaml:
     - blocked_pending_supplier_return
     - local fail-closed
@@ -516,11 +525,6 @@ blockers:
     - placeholder
     - 'release_credit: false'
     board/kicad/e1-phone/production/sourcing/charger_power_path/signed-2d-drawing.pdf:
-    - not supplier evidence
-    - placeholder
-    - 'release_credit: false'
-    - sentinel_small_binary_artifact
-    board/kicad/e1-phone/production/sourcing/charger_power_path/supplier-model.step:
     - not supplier evidence
     - placeholder
     - 'release_credit: false'
@@ -568,11 +572,6 @@ blockers:
     - placeholder
     - 'release_credit: false'
     - sentinel_small_binary_artifact
-    board/kicad/e1-phone/production/sourcing/display_touch/supplier-model.step:
-    - not supplier evidence
-    - placeholder
-    - 'release_credit: false'
-    - sentinel_small_binary_artifact
     board/kicad/e1-phone/production/sourcing/front_camera/compliance-pack-index.yaml:
     - blocked_pending_supplier_return
     - local fail-closed
@@ -612,11 +611,6 @@ blockers:
     - placeholder
     - 'release_credit: false'
     board/kicad/e1-phone/production/sourcing/front_camera/signed-2d-drawing.pdf:
-    - not supplier evidence
-    - placeholder
-    - 'release_credit: false'
-    - sentinel_small_binary_artifact
-    board/kicad/e1-phone/production/sourcing/front_camera/supplier-model.step:
     - not supplier evidence
     - placeholder
     - 'release_credit: false'
@@ -664,11 +658,6 @@ blockers:
     - placeholder
     - 'release_credit: false'
     - sentinel_small_binary_artifact
-    board/kicad/e1-phone/production/sourcing/rear_camera/supplier-model.step:
-    - not supplier evidence
-    - placeholder
-    - 'release_credit: false'
-    - sentinel_small_binary_artifact
     board/kicad/e1-phone/production/sourcing/side_buttons/compliance-pack-index.yaml:
     - blocked_pending_supplier_return
     - local fail-closed
@@ -708,11 +697,6 @@ blockers:
     - placeholder
     - 'release_credit: false'
     board/kicad/e1-phone/production/sourcing/side_buttons/signed-2d-drawing.pdf:
-    - not supplier evidence
-    - placeholder
-    - 'release_credit: false'
-    - sentinel_small_binary_artifact
-    board/kicad/e1-phone/production/sourcing/side_buttons/supplier-model.step:
     - not supplier evidence
     - placeholder
     - 'release_credit: false'
@@ -760,11 +744,6 @@ blockers:
     - placeholder
     - 'release_credit: false'
     - sentinel_small_binary_artifact
-    board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/supplier-model.step:
-    - not supplier evidence
-    - placeholder
-    - 'release_credit: false'
-    - sentinel_small_binary_artifact
     board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/compliance-pack-index.yaml:
     - blocked_pending_supplier_return
     - local fail-closed
@@ -804,11 +783,6 @@ blockers:
     - placeholder
     - 'release_credit: false'
     board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/signed-2d-drawing.pdf:
-    - not supplier evidence
-    - placeholder
-    - 'release_credit: false'
-    - sentinel_small_binary_artifact
-    board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/supplier-model.step:
     - not supplier evidence
     - placeholder
     - 'release_credit: false'
@@ -856,11 +830,6 @@ blockers:
     - placeholder
     - 'release_credit: false'
     - sentinel_small_binary_artifact
-    board/kicad/e1-phone/production/sourcing/usb_pd_controller/supplier-model.step:
-    - not supplier evidence
-    - placeholder
-    - 'release_credit: false'
-    - sentinel_small_binary_artifact
     board/kicad/e1-phone/production/sourcing/wifi_bluetooth/compliance-pack-index.yaml:
     - blocked_pending_supplier_return
     - local fail-closed
@@ -904,12 +873,7 @@ blockers:
     - placeholder
     - 'release_credit: false'
     - sentinel_small_binary_artifact
-    board/kicad/e1-phone/production/sourcing/wifi_bluetooth/supplier-model.step:
-    - not supplier evidence
-    - placeholder
-    - 'release_credit: false'
-    - sentinel_small_binary_artifact
-  non_release_acceptance_artifact_count: 108
+  non_release_acceptance_artifact_count: 96
   acceptance_complete: false
   missing_acceptance_artifact_count: 0
   next_unblock_action: Send/track RFQs and populate returned supplier response packs;
@@ -1073,6 +1037,7 @@ blockers:
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - placeholder
     - 'release_allowed: false'
     - 'release_credit: false'
@@ -1092,7 +1057,6 @@ blockers:
     board/kicad/e1-phone/production/first-article:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - local candidate artifact only
     - not_approved
     - placeholder
     - 'release_allowed: false'
@@ -1103,6 +1067,7 @@ blockers:
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - placeholder
     - 'release_allowed: false'
     - 'release_credit: false'
@@ -1112,6 +1077,7 @@ blockers:
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - placeholder
     - 'release_allowed: false'
     - 'release_credit: false'
@@ -1121,6 +1087,7 @@ blockers:
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - placeholder
     - 'release_allowed: false'
     - 'release_credit: false'
@@ -1139,6 +1106,7 @@ blockers:
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - placeholder
     - 'release_allowed: false'
     - 'release_credit: false'
@@ -1149,19 +1117,20 @@ blockers:
     - fail_closed
     - local candidate artifact only
     - not_approved
+    - not_measured
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/camera-capture-log.json:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - local candidate artifact only
+    - not release evidence
     - not_approved
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - local candidate artifact only
+    - not release evidence
     - not_approved
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml:
@@ -1170,13 +1139,14 @@ blockers:
     - fail_closed
     - local candidate artifact only
     - not_approved
+    - not_measured
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/display-touch-bringup-log.json:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - local candidate artifact only
+    - not release evidence
     - not_approved
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/drc.json:
@@ -1184,12 +1154,14 @@ blockers:
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/erc.json:
     - blocked_candidate_not_approved
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/escape-density-via-count.yaml:
     - blocked_candidate_not_approved
@@ -1204,6 +1176,7 @@ blockers:
     - fail_closed
     - local candidate artifact only
     - not_approved
+    - not_measured
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
@@ -1213,6 +1186,7 @@ blockers:
     - fail_closed
     - local candidate artifact only
     - not_approved
+    - not_measured
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
@@ -1222,6 +1196,7 @@ blockers:
     - fail_closed
     - local candidate artifact only
     - not_approved
+    - not_measured
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
@@ -1230,12 +1205,14 @@ blockers:
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/radio-module-integration.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
@@ -1253,6 +1230,7 @@ blockers:
     - fail_closed
     - local candidate artifact only
     - not_approved
+    - not_measured
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
@@ -1261,6 +1239,7 @@ blockers:
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json:
     - blocked_candidate_not_approved
@@ -1279,6 +1258,7 @@ blockers:
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/route-feasibility-density.yaml:
     - blocked_candidate_not_approved
@@ -1286,6 +1266,7 @@ blockers:
     - fail_closed
     - local candidate artifact only
     - not_approved
+    - not_measured
     - placeholder
     - 'release_allowed: false'
     - 'release_credit: false'
@@ -1295,6 +1276,7 @@ blockers:
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
@@ -1310,6 +1292,7 @@ blockers:
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - placeholder
     - 'release_allowed: false'
     - 'release_credit: false'
@@ -1325,13 +1308,13 @@ blockers:
     board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - local candidate artifact only
+    - not release evidence
     - not_approved
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - local candidate artifact only
+    - not release evidence
     - not_approved
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml:
@@ -1340,6 +1323,7 @@ blockers:
     - fail_closed
     - local candidate artifact only
     - not_approved
+    - not_measured
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
@@ -1348,17 +1332,18 @@ blockers:
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json:
     - blocked_candidate_not_approved
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/zone-fill.json:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - not release evidence
     - not_approved
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/stackup/coupon-geometry.pdf:
@@ -1369,7 +1354,6 @@ blockers:
     - sentinel_small_binary_artifact
     board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv:
     - candidate_not_release
-    - not_approved
     board/kicad/e1-phone/production/step:
     - blocked_candidate_not_approved
     - candidate_not_release
@@ -1381,7 +1365,6 @@ blockers:
     board/kicad/e1-phone/production/test/factory-test-limits.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - local candidate artifact only
     - not_approved
     - 'release_allowed: false'
     - 'release_credit: false'
@@ -1391,6 +1374,7 @@ blockers:
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf:
     - not release evidence
@@ -1406,6 +1390,7 @@ blockers:
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - placeholder
     - 'release_allowed: false'
     - 'release_credit: false'
@@ -1452,6 +1437,7 @@ blockers:
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
@@ -1493,7 +1479,6 @@ blockers:
     board/kicad/e1-phone/production/first-article:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - local candidate artifact only
     - not_approved
     - placeholder
     - 'release_allowed: false'
@@ -1502,19 +1487,19 @@ blockers:
     board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - local candidate artifact only
+    - not release evidence
     - not_approved
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - local candidate artifact only
+    - not release evidence
     - not_approved
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json:
     - blocked_candidate_not_approved
     - candidate_not_release
-    - local candidate artifact only
+    - not release evidence
     - not_approved
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json:
@@ -1522,12 +1507,14 @@ blockers:
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/test/first-article-test-transcript.json:
     - blocked_candidate_not_approved
     - candidate_not_release
     - local candidate artifact only
     - not_approved
+    - not_measured
     - unreviewed_local_candidate
   non_release_acceptance_artifact_count: 6
   acceptance_complete: false

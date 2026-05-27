@@ -25,13 +25,13 @@ def write_json(path: Path, data: dict) -> None:
 
 
 class LinuxMultiarchGuiParityTests(unittest.TestCase):
-    def test_current_report_blocks_until_arm64_gui_and_boot_evidence_pass(self) -> None:
+    def test_current_report_passes_with_arm64_and_riscv64_gui_boot_evidence(self) -> None:
         report = gate.build_report()
         self.assertEqual(report["schema"], gate.SCHEMA)
-        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["status"], "pass")
         self.assertEqual(report["arches"]["riscv64"]["proof_state"], "proven")
-        self.assertEqual(report["arches"]["arm64"]["proof_state"], "blocked")
-        self.assertGreaterEqual(len(report["findings"]), 1)
+        self.assertEqual(report["arches"]["arm64"]["proof_state"], "proven")
+        self.assertEqual(report["findings"], [])
 
     def test_all_arches_pass_when_gui_reports_and_matrix_are_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

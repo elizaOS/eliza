@@ -123,6 +123,9 @@ package bpu_pkg;
     localparam int unsigned TAGE_ALT_ON_NA_ENTRIES = 1024;
     localparam int unsigned TAGE_ALT_ON_NA_CTR_W = 4;
     localparam int unsigned TAGE_ALT_ON_NA_THRESHOLD = 1;
+    localparam int unsigned TAGE_PATH_HISTORY_BITS = 64;
+    localparam int unsigned TAGE_PATH_HISTORY_TOKEN_BITS = 8;
+    localparam int unsigned TAGE_PATH_HISTORY_SHIFT = 2;
     // Base bimodal predictor sized to match KMH bimodal floor.
     localparam int unsigned BIM_ENTRIES = 16384;
     localparam int unsigned BIM_IDX_W   = $clog2(BIM_ENTRIES);
@@ -485,6 +488,7 @@ package bpu_pkg;
         logic                     ras_restore_valid;
         logic [VADDR_W-1:0]       ras_restore_addr;
         logic [TAGE_HIST_LEN_MAX-1:0] ghist_snapshot;
+        logic [TAGE_HIST_LEN_MAX-1:0] tage_path_hist_snapshot;
         logic [TAGE_HIST_LEN_MAX-1:0] ittage_hist_snapshot;
         logic [TAGE_HIST_LEN_MAX-1:0] ittage_target_hist_snapshot;
         logic [TAGE_HIST_LEN_MAX-1:0] ittage_path_hist_snapshot;

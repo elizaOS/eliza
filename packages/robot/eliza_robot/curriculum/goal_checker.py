@@ -134,6 +134,8 @@ class GoalChecker:
             or "torso_z_max_m" in crit
             or "torso_z_min_ratio" in crit
             or "torso_z_max_ratio" in crit
+            or "torso_z_delta_min_m" in crit
+            or "torso_z_delta_min_ratio" in crit
         ):
             matched = True
             if sample.torso_z_m is None:
@@ -151,15 +153,34 @@ class GoalChecker:
             if not lo <= sample.torso_z_m <= hi:
                 return fail()
             reasons.append(f"torso_z={sample.torso_z_m:.3f}m in [{lo:.3f}, {hi:.3f}]")
+            delta_min = float(crit.get("torso_z_delta_min_m", 0.0))
+            if "torso_z_delta_min_ratio" in crit:
+                if stand_height_m is None:
+                    return fail()
+                delta_min = max(
+                    delta_min,
+                    stand_height_m * float(crit["torso_z_delta_min_ratio"]),
+                )
+            if delta_min > 0.0:
+                if self._init_torso_z_m is None:
+                    return fail()
+                dz = sample.torso_z_m - self._init_torso_z_m
+                if dz < delta_min:
+                    return fail()
+                reasons.append(f"Δz={dz:.3f}m ≥ {delta_min:.3f}")
 
         window_s = float(crit.get("window_s", self.task.max_episode_s))
+
+        def inside_window() -> bool:
+            return elapsed <= window_s + 0.5
+
         if "delta_x_m_min" in crit and self._init_x_m is not None:
             matched = True
             min_delta = float(crit["delta_x_m_min"])
             if sample.torso_x_m is None:
                 return fail()
             dx = sample.torso_x_m - self._init_x_m
-            if not (dx >= min_delta and elapsed <= window_s + 0.5):
+            if not (dx >= min_delta and inside_window()):
                 return fail()
             reasons.append(f"Δx={dx:.3f}m ≥ {min_delta}")
 
@@ -169,7 +190,7 @@ class GoalChecker:
             if sample.torso_x_m is None:
                 return fail()
             dx = sample.torso_x_m - self._init_x_m
-            if not dx <= max_delta:
+            if not (dx <= max_delta and inside_window()):
                 return fail()
             reasons.append(f"Δx={dx:.3f}m ≤ {max_delta}")
 
@@ -179,7 +200,7 @@ class GoalChecker:
                 return fail()
             dy = sample.torso_y_m - self._init_y_m
             min_delta = float(crit["delta_y_m_min"])
-            if not dy >= min_delta:
+            if not (dy >= min_delta and inside_window()):
                 return fail()
             reasons.append(f"Δy={dy:.3f}m ≥ {min_delta}")
 
@@ -189,9 +210,29 @@ class GoalChecker:
                 return fail()
             dy = sample.torso_y_m - self._init_y_m
             max_delta = float(crit["delta_y_m_max"])
-            if not dy <= max_delta:
+            if not (dy <= max_delta and inside_window()):
                 return fail()
             reasons.append(f"Δy={dy:.3f}m ≤ {max_delta}")
+
+        if "max_abs_delta_x_m" in crit and self._init_x_m is not None:
+            matched = True
+            if sample.torso_x_m is None:
+                return fail()
+            dx = sample.torso_x_m - self._init_x_m
+            limit = float(crit["max_abs_delta_x_m"])
+            if abs(dx) > limit:
+                return fail()
+            reasons.append(f"|Δx|={abs(dx):.3f}m ≤ {limit}")
+
+        if "max_abs_delta_y_m" in crit and self._init_y_m is not None:
+            matched = True
+            if sample.torso_y_m is None:
+                return fail()
+            dy = sample.torso_y_m - self._init_y_m
+            limit = float(crit["max_abs_delta_y_m"])
+            if abs(dy) > limit:
+                return fail()
+            reasons.append(f"|Δy|={abs(dy):.3f}m ≤ {limit}")
 
         if "max_lateral_drift_m" in crit and self._init_y_m is not None:
             matched = True
@@ -203,12 +244,38 @@ class GoalChecker:
                 return fail()
             reasons.append(f"|Δy|={abs(dy):.3f}m ≤ {limit}")
 
+        if "max_forward_drift_m" in crit and self._init_x_m is not None:
+            matched = True
+            if sample.torso_x_m is None:
+                return fail()
+            dx = sample.torso_x_m - self._init_x_m
+            limit = float(crit["max_forward_drift_m"])
+            if abs(dx) > limit:
+                return fail()
+            reasons.append(f"|Δx|={abs(dx):.3f}m ≤ {limit}")
+
+        if (
+            "max_translation_drift_m" in crit
+            and self._init_x_m is not None
+            and self._init_y_m is not None
+        ):
+            matched = True
+            if sample.torso_x_m is None or sample.torso_y_m is None:
+                return fail()
+            dx = sample.torso_x_m - self._init_x_m
+            dy = sample.torso_y_m - self._init_y_m
+            drift = math.hypot(dx, dy)
+            limit = float(crit["max_translation_drift_m"])
+            if drift > limit:
+                return fail()
+            reasons.append(f"xy_drift={drift:.3f}m ≤ {limit}")
+
         if "delta_yaw_rad_min" in crit and self._init_yaw_rad is not None:
             matched = True
             if sample.yaw_rad is None:
                 return fail()
             dyaw = _wrap_pi(sample.yaw_rad - self._init_yaw_rad)
-            if not dyaw >= float(crit["delta_yaw_rad_min"]):
+            if not (dyaw >= float(crit["delta_yaw_rad_min"]) and inside_window()):
                 return fail()
             reasons.append(f"Δyaw={math.degrees(dyaw):.1f}°")
 
@@ -217,7 +284,7 @@ class GoalChecker:
             if sample.yaw_rad is None:
                 return fail()
             dyaw = _wrap_pi(sample.yaw_rad - self._init_yaw_rad)
-            if not dyaw <= float(crit["delta_yaw_rad_max"]):
+            if not (dyaw <= float(crit["delta_yaw_rad_max"]) and inside_window()):
                 return fail()
             reasons.append(f"Δyaw={math.degrees(dyaw):.1f}°")
 
@@ -226,9 +293,22 @@ class GoalChecker:
             if sample.yaw_rad is None:
                 return fail()
             adyaw = abs(_wrap_pi(sample.yaw_rad - self._init_yaw_rad))
-            if not adyaw >= float(crit["abs_delta_yaw_rad_min"]):
+            if not (adyaw >= float(crit["abs_delta_yaw_rad_min"]) and inside_window()):
                 return fail()
             reasons.append(f"|Δyaw|={math.degrees(adyaw):.1f}°")
+
+        if "max_abs_delta_yaw_rad" in crit and self._init_yaw_rad is not None:
+            matched = True
+            if sample.yaw_rad is None:
+                return fail()
+            adyaw = abs(_wrap_pi(sample.yaw_rad - self._init_yaw_rad))
+            limit = float(crit["max_abs_delta_yaw_rad"])
+            if adyaw > limit:
+                return fail()
+            reasons.append(
+                f"|Δyaw|={math.degrees(adyaw):.1f}° "
+                f"≤ {math.degrees(limit):.1f}°"
+            )
 
         if "head_tilt_min_rad" in crit:
             matched = True

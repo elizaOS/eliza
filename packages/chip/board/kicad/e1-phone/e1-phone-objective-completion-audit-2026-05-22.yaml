@@ -12,6 +12,8 @@ source_artifacts:
 - board/kicad/e1-phone/production/sourcing/supplier-evidence-outbound-intake-manifest-2026-05-22.yaml
 - board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml
 - board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml
+- board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+- board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
 - board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
 - board/kicad/e1-phone/production/test/bench-first-article-template-manifest-2026-05-22.yaml
 summary:
@@ -33,6 +35,120 @@ live_pcb_evidence:
   via_count: 0
   filled_zone_count: 0
   release_state: blocked_fail_closed
+local_routed_kicad_candidate_evidence:
+  board_file: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  present: true
+  footprint_count: 89
+  placeholder_marker_count: 0
+  segment_count: 306
+  via_count: 24
+  filled_zone_count: 6
+  zone_count: 13
+  release_credit: false
+  release_state: blocked_local_candidate_not_release
+  candidate_metadata: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb.metadata.yaml
+local_non_release_progress_evidence:
+  development_route_count: 153
+  development_segment_count: 306
+  development_via_count: 24
+  development_required_shared_net_category_count: 7
+  development_required_shared_net_count: 166
+  development_routed_shared_net_count: 166
+  development_missing_required_shared_net_count: 0
+  development_route_domain_count: 7
+  development_route_domain_required_net_count_total: 166
+  development_route_domain_routed_or_aliased_net_count_total: 181
+  development_missing_route_domain_net_count: 0
+  development_all_route_domains_complete: true
+  real_footprint_development_refs: 89
+  real_footprint_remaining_placeholder_markers: 0
+  routed_step_candidate_present: true
+  routed_step_candidate_path: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+  routed_step_candidate_release_credit: false
+  routed_step_candidate_sha256: 9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58
+  routed_step_candidate_matches_development_source: true
+  routed_step_candidate_footprint_envelope_count: 89
+  routed_step_candidate_pad_contact_visual_count: 1452
+  routed_step_candidate_route_segment_visual_count: 306
+  pinout_captured_file_count: 21
+  pinout_declared_pin_count_total: 1212
+  pinout_record_count_total: 32
+  pinout_public_source_count: 21
+  pinout_bound_footprint_count: 21
+  pinout_exact_public_match_count: 17
+  pinout_pending_supplier_pad_map_or_order_count: 13
+  pinout_all_bound_footprints_have_terminal_contract: true
+  pinout_all_expected_public_pins_present: true
+  pattern_explicit_support_pattern_count: 11
+  pattern_all_support_patterns_have_explicit_provenance: true
+  pattern_all_electrical_pad_counts_match_manifest: true
+  cad_connection_passing_count: 24
+  cad_connection_terminal_marker_count: 48
+  cad_connection_terminal_pair_count: 24
+  cad_connection_solid_step_part_count: 72
+  cad_connection_solid_step_part_set_count: 24
+  cad_connection_solid_step_part_bytes_total: 1125435
+  cad_connection_assembly_manifest_part_count: 234
+  cad_connection_assembly_manifest_terminal_marker_count: 48
+  cad_connection_assembly_manifest_solid_step_part_count: 72
+  cad_connection_assembly_manifest_missing_solid_step_part_count: 0
+  cad_connection_represented_net_count_total: 112
+  cad_connection_record_count: 24
+  cad_connection_represented_net_list_total: 112
+  cad_connection_all_records_have_represented_nets: true
+  cad_connection_all_represented_nets_match_routed_nets: true
+  cad_connection_controlled_impedance_count: 14
+  cad_connection_controlled_impedance_requirement_defined_count: 24
+  cad_connection_bend_radius_requirement_defined_count: 24
+  cad_connection_supplier_release_required_count: 24
+  cad_connection_release_credit: false
+  component_model_count: 89
+  component_model_supplier_approved_count: 0
+  component_model_release_allowed: false
+  component_model_pinout_bound_model_count: 22
+  component_model_support_pattern_model_count: 67
+  component_model_terminal_contract_or_no_pad_model_count: 89
+  component_model_non_signal_pad_contract_count: 7
+  component_model_npth_mechanical_feature_contract_count: 4
+  component_model_local_discrete_step_file_count: 89
+  component_model_local_discrete_step_imported_solid_count: 89
+  component_model_local_discrete_step_bbox_match_count: 89
+  component_model_local_discrete_step_bytes_total: 1385932
+  component_model_all_terminal_contract_flags_pass: true
+  component_model_all_local_discrete_step_flags_pass: true
+  component_model_directory_record_count: 89
+  component_model_directory_terminal_contract_model_record_count: 85
+  component_model_directory_terminal_contract_total_count: 1441
+  component_model_directory_non_signal_pad_contract_total_count: 7
+  component_model_directory_npth_mechanical_feature_contract_total_count: 4
+  component_model_directory_source_routed_step_bound: true
+  component_model_directory_records_release_credit_false: true
+  component_model_directory_all_terminal_contract_flags_pass: true
+  component_model_directory_local_discrete_step_file_count: 89
+  component_model_directory_local_discrete_step_imported_solid_count: 89
+  component_model_directory_local_discrete_step_bbox_match_count: 89
+  component_model_directory_local_discrete_step_bytes_total: 1385932
+  component_model_directory_supplier_step_intake_placeholder_count: 0
+  component_model_directory_supplier_step_intake_local_surrogate_count: 47
+  component_model_directory_supplier_step_intake_missing_count: 0
+  component_model_directory_supplier_step_intake_not_applicable_count: 42
+  component_model_directory_supplier_step_intake_release_candidate_count: 0
+  component_model_directory_supplier_step_intake_lane_counts:
+    audio_speaker_microphone_flexes: 8
+    battery_pack: 2
+    board_support_passives_mechanicals: 42
+    cellular: 8
+    charger_power_path: 1
+    display_touch: 3
+    front_camera: 2
+    pmic: 9
+    rear_camera: 2
+    side_buttons: 3
+    top_bottom_interconnect: 2
+    usb_c_receptacle_evt0: 1
+    usb_pd_controller: 1
+    wifi_bluetooth: 5
+  component_model_directory_release_allowed: false
 production_output_presence:
   required_count: 56
   present_count: 56
@@ -111,8 +227,10 @@ objective_requirements:
   evidence_state: contradicts_completion
   blocking_facts:
   - artifact manifest routed_pcb gate is missing
-  - live PCB has 87 placeholder footprints
-  - live PCB has 0 routed segments and 0 filled zones
+  - production concept source has 87 placeholder footprints
+  - production concept source has 0 routed segments and 0 filled zones
+  - local routed KiCad candidate has 306 segments, 24 vias, and 0 placeholder markers,
+    but release_credit remains false
   - manufacturing closure reports zero release outputs
   - 'blocked candidate output files present but release_credit remains false: 47'
   complete: false

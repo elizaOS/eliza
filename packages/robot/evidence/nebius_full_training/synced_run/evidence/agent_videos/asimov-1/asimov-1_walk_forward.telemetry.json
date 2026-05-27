@@ -2,55 +2,55 @@
   "profile": "asimov-1",
   "label": "walk forward",
   "task_id": "walk_forward",
-  "policy_source": "checkpoint:checkpoints/asimov_1_alberta_full",
-  "steps_requested": 40,
+  "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
+  "steps_requested": 80,
   "steps_executed": 40,
   "terminated": true,
-  "truncated": true,
+  "truncated": false,
   "first_done_step": 40,
   "done_reason": "terminated",
   "fall_threshold": 0.378,
   "torso_z": {
-    "min": 0.3738106430427468,
-    "max": 0.6315822707223933,
-    "final": 0.3738106430427468,
-    "mean": 0.5723513729430852
+    "min": 0.36653029061892345,
+    "max": 0.6318427938039592,
+    "final": 0.36653029061892345,
+    "mean": 0.5723778366429565
   },
   "upright_proj": {
-    "min": 0.5911163271315334,
-    "max": 0.9999983228024675,
-    "final": 0.5911163271315334,
-    "mean": 0.9225498654082565
+    "min": 0.5866641222529728,
+    "max": 0.9999297897567547,
+    "final": 0.5866641222529728,
+    "mean": 0.9223180677506004
   },
   "reward": {
-    "min": -7.496835579658297,
-    "max": 3.377287540717252,
-    "final": -7.496835579658297,
-    "mean": 2.9012124247855353
+    "min": -8.097931896787749,
+    "max": 3.735426813114801,
+    "final": -8.097931896787749,
+    "mean": 3.12714247651988
   },
   "delta_x_m": {
-    "min": null,
-    "max": null,
-    "final": null,
-    "mean": null
+    "min": -0.5679627335693459,
+    "max": -0.00357233171709087,
+    "final": -0.5679627335693459,
+    "mean": -0.21170846903907758
   },
   "delta_y_m": {
-    "min": null,
-    "max": null,
-    "final": null,
-    "mean": null
+    "min": -0.004682631225845117,
+    "max": 0.04164642283795571,
+    "final": 0.02976952664199108,
+    "mean": 0.021544663194286433
   },
   "delta_yaw_rad": {
-    "min": null,
-    "max": null,
-    "final": null,
-    "mean": null
+    "min": -0.04473306224983208,
+    "max": 0.05344726104789619,
+    "final": -0.04473306224983208,
+    "mean": 0.013509517246326024
   },
   "action_norm": {
-    "min": 3.1463751792907715,
-    "max": 3.3059046268463135,
-    "final": 3.180175304412842,
-    "mean": 3.2053697884082792
+    "min": 3.057800054550171,
+    "max": 3.2348248958587646,
+    "final": 3.1697723865509033,
+    "mean": 3.200134593248367
   },
   "nonzero_action_steps": 40,
   "attempted_action": true,

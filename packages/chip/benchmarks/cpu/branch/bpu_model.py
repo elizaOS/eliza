@@ -56,6 +56,9 @@ DEFAULT_GEOMETRY: dict[str, Any] = {
     "TAGE_ALT_ON_NA_ENTRIES": 1024,
     "TAGE_ALT_ON_NA_CTR_W": 4,
     "TAGE_ALT_ON_NA_THRESHOLD": 1,
+    "TAGE_PATH_HISTORY_BITS": 64,
+    "TAGE_PATH_HISTORY_TOKEN_BITS": 8,
+    "TAGE_PATH_HISTORY_SHIFT": 2,
     # Allocation/aging policy. Useful-bit aging mirrors bpu_pkg.sv
     # TAGE_USEFUL_RESET_PERIOD; allocation decrement mirrors tage.sv aging of
     # occupied candidate victims while walking the allocation stack.
@@ -942,6 +945,7 @@ class BPUSimulator:
     h2p_meta: _LocalDirMeta = field(init=False)
     ittage: _ITTAGE = field(init=False)
     hist: int = 0
+    tage_path_hist: int = 0
     target_hist: int = 0
     path_hist: int = 0
     fetch_block: int | None = None
@@ -998,6 +1002,7 @@ class BPUSimulator:
         ftb_entry = self.ftb.lookup(pc)
         l2_entry = self.l2_ftb.lookup(pc)
         ittage_hist = self._ittage_history()
+        tage_hist = self._tage_history()
         if event.kind == BR_RET:
             top = self.ras.pop()
             if top is None and self.ras.arch:
@@ -1085,7 +1090,7 @@ class BPUSimulator:
             return False, event.pc + self.geometry["FETCH_BLOCK_BYTES"]
         if event.kind == BR_COND:
             loop_conf, loop_taken = self.loop.predict(pc, self._loop_path_sig())
-            tage_taken, provider, low_conf = self.tage.predict(pc, self.hist)
+            tage_taken, provider, low_conf = self.tage.predict(pc, tage_hist)
             sc_override, sc_taken = self.sc.predict(pc, self.hist, low_conf)
             if loop_conf:
                 taken = loop_taken
@@ -1145,6 +1150,7 @@ class BPUSimulator:
     def _step(self, event: BranchEvent) -> None:
         pc = self._context_pc(event)
         ittage_hist = self._ittage_history()
+        tage_hist = self._tage_history()
         pred_taken, pred_target = self._predict(event)
         pred_taken, pred_target = self._apply_fetch_block_slot_limit(event, pred_taken, pred_target)
         actual_taken = event.taken
@@ -1176,12 +1182,12 @@ class BPUSimulator:
 
         # Train tables.
         if event.kind == BR_COND:
-            _, provider, low_conf = self.tage.predict(pc, self.hist)
+            _, provider, low_conf = self.tage.predict(pc, tage_hist)
             sc_override, _ = self.sc.predict(pc, self.hist, low_conf)
             if sc_override:
                 self.counters["sc_override"] += 1
             loop_conf, loop_taken = self.loop.predict(pc, self._loop_path_sig())
-            tage_taken, _, _ = self.tage.predict(pc, self.hist)
+            tage_taken, _, _ = self.tage.predict(pc, tage_hist)
             base_taken = loop_taken if loop_conf else tage_taken
             if sc_override:
                 _, sc_taken = self.sc.predict(pc, self.hist, low_conf)
@@ -1192,7 +1198,7 @@ class BPUSimulator:
             )
             if h2p_conf and bool(self.geometry.get("H2P_LOWCONF_ONLY", False)) and not low_conf:
                 h2p_conf = False
-            self.tage.update(pc, self.hist, self.hist, actual_taken, provider, misp)
+            self.tage.update(pc, tage_hist, tage_hist, actual_taken, provider, misp)
             self.sc.update(pc, self.hist, actual_taken, low_conf)
             self.loop.update(pc, actual_target, actual_taken, path_sig=self._loop_path_sig())
             if bool(self.geometry.get("H2P_ENABLE", False)):
@@ -1245,6 +1251,7 @@ class BPUSimulator:
             )
         elif event.kind in (BR_CALL, BR_IND, BR_DIRECT):
             self._update_target_history(actual_target)
+        self._update_tage_path_history(event.pc)
         self._update_path_history(event.pc)
 
         self._advance_fetch_block_slot_state(event)
@@ -1255,6 +1262,12 @@ class BPUSimulator:
             hist ^= self.target_hist
         if int(self.geometry.get("ITTAGE_PATH_HISTORY_BITS", 0)) > 0:
             hist ^= self.path_hist
+        return hist
+
+    def _tage_history(self) -> int:
+        hist = self.hist
+        if int(self.geometry.get("TAGE_PATH_HISTORY_BITS", 0)) > 0:
+            hist ^= self.tage_path_hist
         return hist
 
     def _l2_same_event_enabled(self) -> bool:
@@ -1352,6 +1365,15 @@ class BPUSimulator:
         shift = int(self.geometry.get("ITTAGE_TARGET_HISTORY_SHIFT", 5))
         token = (target >> shift) & _mask(token_bits)
         self.target_hist = ((self.target_hist << token_bits) ^ token) & _mask(bits)
+
+    def _update_tage_path_history(self, pc: int) -> None:
+        bits = int(self.geometry.get("TAGE_PATH_HISTORY_BITS", 0))
+        if bits <= 0:
+            return
+        token_bits = int(self.geometry.get("TAGE_PATH_HISTORY_TOKEN_BITS", 8))
+        shift = int(self.geometry.get("TAGE_PATH_HISTORY_SHIFT", 2))
+        token = _fold(pc >> shift, token_bits)
+        self.tage_path_hist = ((self.tage_path_hist << token_bits) ^ token) & _mask(bits)
 
     def _update_path_history(self, pc: int) -> None:
         bits = int(self.geometry.get("ITTAGE_PATH_HISTORY_BITS", 0))

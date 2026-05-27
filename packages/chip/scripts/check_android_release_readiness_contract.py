@@ -1397,6 +1397,18 @@ def android_archive_source_member_inventory(umbrella: dict[str, Any]) -> dict[st
     }
 
 
+def android_archive_source_dependency(source_inventory: dict[str, Any]) -> str:
+    records = source_inventory.get("records")
+    if not isinstance(records, list):
+        return "repo_artifact_generation"
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        if record.get("readyToArchive") is False:
+            return "actionable_external_dependency"
+    return "repo_artifact_generation"
+
+
 def live_launcher_agent_capture_commands() -> dict[str, Any]:
     release_manifest = repo_rel(ANDROID_MANIFEST)
     evidence_dir = repo_rel(RELEASE_DIR / "evidence/android")
@@ -1435,8 +1447,8 @@ def live_launcher_agent_capture_commands() -> dict[str, Any]:
             (
                 "packages/os/android/installer/scripts/validate-post-flash.sh "
                 f'--device "$ADB_SERIAL" --manifest {release_manifest} '
-                "--launcher-package ai.milady.milady "
-                "--launcher-activity ai.milady.milady/.MainActivity --execute"
+                "--launcher-package ai.elizaos.app "
+                "--launcher-activity ai.elizaos.app/.MainActivity --execute"
             ),
             (
                 "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py "
@@ -1944,6 +1956,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         umbrella_manifest
     )
     archive_source_inventory = android_archive_source_member_inventory(umbrella_manifest)
+    archive_source_dependency = android_archive_source_dependency(archive_source_inventory)
     live_launcher_missing_inventory = live_launcher_agent_missing_evidence(umbrella_manifest)
     aosp_chip_inventory = aosp_chip_build_artifact_inventory()
 
@@ -2012,7 +2025,8 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "umbrella_android_artifacts_missing_integrity",
         "umbrella release manifest Android artifacts lack hash or size metadata",
         f"missing_hashes={umbrella_missing_hashes} missing_sizes={umbrella_missing_sizes}",
-        "Populate hash and size fields for every Android image in the umbrella release manifest.",
+        "Populate hash and size fields only from staged Android archives built from complete target product_out directories.",
+        archive_source_dependency,
     )
     add_if(
         findings,
@@ -2021,6 +2035,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "Android release artifacts are absent from the expected publish staging paths",
         f"missing={artifact_inventory['missing']}",
         "Build and stage the exact partition images and Android archives listed in evidence.android_release_artifact_inventory.commands, then populate real byte sizes and SHA-256 values.",
+        archive_source_dependency,
     )
     add_if(
         findings,

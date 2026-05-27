@@ -77,6 +77,7 @@ class ObstacleCourseEnv(gym.Env):
         self._task = self.task_pool[0]
         self._forced_task: int | None = None
         self._pos = np.zeros(2, dtype=np.float32)
+        self._start_pos = np.zeros(2, dtype=np.float32)
         self._vel = np.zeros(2, dtype=np.float32)
         self._step = 0
         self._prev_goal_dist = 0.0
@@ -114,6 +115,7 @@ class ObstacleCourseEnv(gym.Env):
             ],
             dtype=np.float32,
         )
+        self._start_pos = self._pos.copy()
         self._vel = np.zeros(2, dtype=np.float32)
         self._step = 0
         self._prev_goal_dist = self._goal_dist()
@@ -141,12 +143,17 @@ class ObstacleCourseEnv(gym.Env):
 
         obstacle_dist = self._obstacle_dist()
         collision = obstacle_dist < cfg.obstacle_radius_m
+        obstacle_clearance = obstacle_dist - cfg.obstacle_radius_m
         collision_penalty = 1.5 if collision else 0.0
-        goal_bonus = 3.0 if goal_dist < cfg.goal_tolerance_m else 0.0
+        goal_reached = goal_dist < cfg.goal_tolerance_m
+        goal_bonus = 3.0 if goal_reached else 0.0
+        forward_progress = float(self._pos[0] - self._start_pos[0])
+        lane_err_signed = float(self._pos[1] - self.target_lane_y)
+        passed_obstacle = bool(self._pos[0] > cfg.obstacle_x_m + cfg.obstacle_radius_m)
 
         reward = forward_reward + 0.08 * lane_reward + goal_bonus - control_penalty - collision_penalty
         truncated = self._step >= cfg.episode_steps
-        terminated = bool(collision or goal_bonus > 0.0)
+        terminated = bool(collision or goal_reached)
         return (
             self._obs(),
             float(reward),
@@ -155,9 +162,21 @@ class ObstacleCourseEnv(gym.Env):
             {
                 "task_id": self._task,
                 "lane_y": self.target_lane_y,
+                "x": float(self._pos[0]),
+                "y": float(self._pos[1]),
+                "vx": float(self._vel[0]),
+                "vy": float(self._vel[1]),
+                "start_x": float(self._start_pos[0]),
+                "start_y": float(self._start_pos[1]),
+                "forward_progress_m": forward_progress,
+                "lane_error_m": abs(lane_err_signed),
+                "lane_error_signed_m": lane_err_signed,
                 "goal_dist": goal_dist,
                 "obstacle_dist": obstacle_dist,
+                "obstacle_clearance_m": obstacle_clearance,
                 "collision": collision,
+                "goal_reached": goal_reached,
+                "passed_obstacle": passed_obstacle,
             },
         )
 

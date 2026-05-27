@@ -62,8 +62,11 @@ evidence_inventory:
   evidence_keys_per_function: 12
   required_evidence_path_count: 120
   present_evidence_path_count: 0
+  blocked_or_local_candidate_evidence_path_count: 110
+  local_surrogate_step_path_count: 10
   missing_evidence_path_count: 120
-  every_required_production_path_absent: true
+  every_required_production_path_absent: false
+  every_required_production_path_absent_or_blocked: true
 
 handoff_records:
   - function: display_touch
@@ -208,14 +211,15 @@ cross_checks:
   upstream_statuses_match_current_sources: true
   handoff_records_match_supplier_to_kicad_map: true
   handoff_records_match_supplier_drawing_intake: true
-  every_required_evidence_path_is_absent: true
+  every_required_evidence_path_is_absent: false
+  every_required_evidence_path_is_absent_or_blocked: true
   no_record_allows_layout_without_samples: true
   release_coupling_remains_fail_closed: true
   alternate_display_sample_release_gate_fail_closed: true
 
 release_blockers:
   - RFQ transmittals are drafts and have not been sent or archived as production evidence
-  - supplier response packs, signed drawings, exact pinouts, land patterns, STEP models, and samples are missing
+  - supplier response packs, signed drawings, exact pinouts, land patterns, supplier-approved STEP models, and samples are missing
   - incoming sample inspection and compliance packs are missing
   - parseable 055WU01 and E549/RM67191 display alternates cannot enter layout release until RFQ response packs, samples, inspection, reviews, and promotion evidence exist
   - pinout, symbol, footprint, and 3D binding reviews are missing

@@ -127,6 +127,56 @@ class GaitParams(BaseModel):
     controller: GaitController
 
 
+class ContactGeoms(BaseModel):
+    """Explicit MuJoCo contact geometry declarations for locomotion rewards."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    floor_geom_names: list[str] = Field(
+        default_factory=list,
+        description="MuJoCo geom names treated as the floor/ground contact surface.",
+    )
+    left_foot_geom_names: list[str] = Field(
+        default_factory=list,
+        description="MuJoCo geom names treated as left foot contact patches.",
+    )
+    right_foot_geom_names: list[str] = Field(
+        default_factory=list,
+        description="MuJoCo geom names treated as right foot contact patches.",
+    )
+    left_foot_body_names: list[str] = Field(
+        default_factory=list,
+        description=(
+            "MuJoCo body names whose collision-enabled geoms are treated as "
+            "left foot contact patches. Useful for unnamed vendor geoms."
+        ),
+    )
+    right_foot_body_names: list[str] = Field(
+        default_factory=list,
+        description=(
+            "MuJoCo body names whose collision-enabled geoms are treated as "
+            "right foot contact patches. Useful for unnamed vendor geoms."
+        ),
+    )
+
+    @field_validator("floor_geom_names")
+    @classmethod
+    def _floor_declared(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("contact.floor_geom_names must list at least one floor geom")
+        return v
+
+    @field_validator("right_foot_body_names")
+    @classmethod
+    def _some_foot_contact_declared(cls, v: list[str], info) -> list[str]:
+        left_geoms = info.data.get("left_foot_geom_names") or []
+        right_geoms = info.data.get("right_foot_geom_names") or []
+        left_bodies = info.data.get("left_foot_body_names") or []
+        if not (left_geoms or right_geoms or left_bodies or v):
+            raise ValueError("contact must declare foot geoms or foot body names")
+        return v
+
+
 class CameraSpec(BaseModel):
     """One on-robot camera. Extrinsics expressed as roll/pitch/yaw (rad) plus
     x/y/z translation (m) in the mount link frame.
@@ -277,6 +327,7 @@ class RobotProfile(BaseModel):
 
     kinematics: Kinematics
     gait: GaitParams
+    contact: ContactGeoms | None = None
     sensors: SensorSpecs
     control: ControlSpec
     assets: AssetPaths

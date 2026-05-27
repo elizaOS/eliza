@@ -334,14 +334,14 @@ def main() -> int:
                 "routed_step_candidate_matches_development_source", False
             ),
             "local_routed_step_candidate_footprint_envelope_count": local_progress.get(
-                "routed_step_visual_detail", {}
-            ).get("footprint_envelope_count", 0),
+                "routed_step_candidate_footprint_envelope_count", 0
+            ),
             "local_routed_step_candidate_pad_contact_visual_count": local_progress.get(
-                "routed_step_visual_detail", {}
-            ).get("pad_contact_visual_count", 0),
+                "routed_step_candidate_pad_contact_visual_count", 0
+            ),
             "local_routed_step_candidate_route_segment_visual_count": local_progress.get(
-                "routed_step_visual_detail", {}
-            ).get("route_segment_visual_count", 0),
+                "routed_step_candidate_route_segment_visual_count", 0
+            ),
             "local_pinout_captured_file_count": local_progress.get("pinout_captured_file_count", 0),
             "local_pinout_declared_pin_count_total": local_progress.get(
                 "pinout_declared_pin_count_total", 0
@@ -489,6 +489,50 @@ def main() -> int:
             "local_component_model_directory_all_terminal_contract_flags_pass": (
                 local_progress.get(
                     "component_model_directory_all_terminal_contract_flags_pass", False
+                )
+            ),
+            "local_component_model_directory_local_discrete_step_file_count": (
+                local_progress.get("component_model_directory_local_discrete_step_file_count", 0)
+            ),
+            "local_component_model_directory_local_discrete_step_imported_solid_count": (
+                local_progress.get(
+                    "component_model_directory_local_discrete_step_imported_solid_count", 0
+                )
+            ),
+            "local_component_model_directory_local_discrete_step_bbox_match_count": (
+                local_progress.get("component_model_directory_local_discrete_step_bbox_match_count", 0)
+            ),
+            "local_component_model_directory_local_discrete_step_bytes_total": (
+                local_progress.get("component_model_directory_local_discrete_step_bytes_total", 0)
+            ),
+            "local_component_model_directory_supplier_step_intake_placeholder_count": (
+                local_progress.get(
+                    "component_model_directory_supplier_step_intake_placeholder_count", 0
+                )
+            ),
+            "local_component_model_directory_supplier_step_intake_local_surrogate_count": (
+                local_progress.get(
+                    "component_model_directory_supplier_step_intake_local_surrogate_count", 0
+                )
+            ),
+            "local_component_model_directory_supplier_step_intake_missing_count": (
+                local_progress.get(
+                    "component_model_directory_supplier_step_intake_missing_count", 0
+                )
+            ),
+            "local_component_model_directory_supplier_step_intake_not_applicable_count": (
+                local_progress.get(
+                    "component_model_directory_supplier_step_intake_not_applicable_count", 0
+                )
+            ),
+            "local_component_model_directory_supplier_step_intake_release_candidate_count": (
+                local_progress.get(
+                    "component_model_directory_supplier_step_intake_release_candidate_count", 0
+                )
+            ),
+            "local_component_model_directory_supplier_step_intake_lane_counts": (
+                local_progress.get(
+                    "component_model_directory_supplier_step_intake_lane_counts", {}
                 )
             ),
             "local_component_model_directory_release_allowed": local_progress.get(

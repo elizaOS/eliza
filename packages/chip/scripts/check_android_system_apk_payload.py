@@ -29,6 +29,8 @@ OUTER_WORKSPACE = ROOT.parents[2] if len(ROOT.parents) > 2 else ELIZA_ROOT
 
 def resolve_default_apk() -> Path:
     upstream_apk = WORKSPACE / "os/android/vendor/eliza/apps/Eliza/Eliza.apk"
+    if upstream_apk.is_file():
+        return upstream_apk
     outer_app_config = OUTER_WORKSPACE / "apps/app/app.config.ts"
     outer_vendor_root = OUTER_WORKSPACE / "os/android/vendor"
     if outer_app_config.is_file() and outer_vendor_root.is_dir():

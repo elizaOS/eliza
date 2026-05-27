@@ -33,10 +33,13 @@ DEFAULT_PROFILES = (
 DEFAULT_COMMANDS = (
     "stand up",
     "walk forward",
+    "walk backward",
+    "sidestep left",
+    "sidestep right",
     "turn left",
     "turn right",
-    "walk backward",
 )
+PRODUCTION_REQUIRED_COMMANDS = DEFAULT_COMMANDS
 
 
 def _safe_label(label: str) -> str:
@@ -71,6 +74,37 @@ def expected_telemetry_names(
     ]
 
 
+def expected_contact_sheet_names(
+    profile: str,
+    commands: list[str],
+    *,
+    record_combined: bool,
+) -> list[str]:
+    return [
+        f"{profile}_{Path(name).with_suffix('').name}_contact.jpg"
+        for name in expected_video_names(
+            profile,
+            commands,
+            record_combined=record_combined,
+        )
+    ]
+
+
+def production_command_coverage(commands: list[str]) -> dict[str, object]:
+    normalized = [str(command) for command in commands]
+    missing = [
+        command
+        for command in PRODUCTION_REQUIRED_COMMANDS
+        if command not in normalized
+    ]
+    return {
+        "ok": not missing,
+        "required": list(PRODUCTION_REQUIRED_COMMANDS),
+        "present": normalized,
+        "missing": missing,
+    }
+
+
 def _viewer_cmd(
     profile: str,
     commands: list[str],
@@ -83,6 +117,7 @@ def _viewer_cmd(
     policy_checkpoint: Path | None = None,
     preserve_state_between_commands: bool = False,
     scripted_smoke: bool = False,
+    allow_zero_action_fallback: bool = False,
 ) -> list[str]:
     args = [
         sys.executable,
@@ -111,6 +146,8 @@ def _viewer_cmd(
         args.append("--preserve-state-between-commands")
     if scripted_smoke:
         args.append("--scripted-smoke")
+    if allow_zero_action_fallback:
+        args.append("--allow-zero-action-fallback")
     return args
 
 
@@ -163,9 +200,44 @@ def main(argv: list[str] | None = None) -> int:
             "multi-profile interface evidence, not trained-policy evidence."
         ),
     )
+    parser.add_argument(
+        "--allow-zero-action-fallback",
+        action="store_true",
+        help=(
+            "Allow zero-action renderer/debug recordings when no checkpoint "
+            "is available. Not valid trained-policy evidence."
+        ),
+    )
+    parser.add_argument(
+        "--allow-existing-files",
+        action="store_true",
+        help=(
+            "Allow manifest entries backed only by files that already existed "
+            "before this run. By default stale files do not make the run ok."
+        ),
+    )
     args = parser.parse_args(argv)
     if args.scripted_smoke and args.policy_checkpoint is not None:
         parser.error("--scripted-smoke and --policy-checkpoint are mutually exclusive")
+    if (
+        not args.scripted_smoke
+        and args.policy_checkpoint is None
+        and not args.allow_zero_action_fallback
+    ):
+        parser.error(
+            "trained-policy recordings require --policy-checkpoint. Use "
+            "--scripted-smoke for wiring evidence or --allow-zero-action-fallback "
+            "for renderer/debug smoke."
+        )
+    coverage = production_command_coverage(list(args.commands))
+    if args.policy_checkpoint is not None and not coverage["ok"]:
+        missing_commands = [str(command) for command in coverage.get("missing", [])]
+        parser.error(
+            "production checkpoint video recordings require all launch commands: "
+            + ", ".join(PRODUCTION_REQUIRED_COMMANDS)
+            + ". Missing: "
+            + ", ".join(missing_commands)
+        )
     record_combined = not args.no_record_combined
 
     args.out = args.out.resolve()
@@ -191,6 +263,7 @@ def main(argv: list[str] | None = None) -> int:
     manifest: dict = {
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "commands": list(args.commands),
+        "production_command_coverage": coverage,
         "record_combined": record_combined,
         "preserve_state_between_commands": args.preserve_state_between_commands,
         "policy_checkpoint": (
@@ -220,6 +293,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.policy_checkpoint,
                 args.preserve_state_between_commands,
                 args.scripted_smoke,
+                args.allow_zero_action_fallback,
             ),
             env=env,
             cwd=str(PKG_ROOT),
@@ -238,6 +312,11 @@ def main(argv: list[str] | None = None) -> int:
             list(args.commands),
             record_combined=record_combined,
         )
+        expected_contact_sheets = expected_contact_sheet_names(
+            profile,
+            list(args.commands),
+            record_combined=record_combined,
+        )
         missing = [name for name in expected if not (profile_dir / name).is_file()]
         missing_telemetry = [
             name for name in expected_telemetry if not (profile_dir / name).is_file()
@@ -252,6 +331,7 @@ def main(argv: list[str] | None = None) -> int:
                 "telemetry": telemetry,
                 "expected_videos": expected,
                 "expected_telemetry": expected_telemetry,
+                "expected_contact_sheets": expected_contact_sheets,
                 "missing_videos": missing,
                 "missing_telemetry": missing_telemetry,
                 "combined_video": combined_video if record_combined else None,
@@ -294,6 +374,11 @@ def main(argv: list[str] | None = None) -> int:
             list(args.commands),
             record_combined=record_combined,
         )
+        expected_contact_sheets = expected_contact_sheet_names(
+            profile,
+            list(args.commands),
+            record_combined=record_combined,
+        )
         missing_telemetry = [
             name for name in expected_telemetry if not (profile_dir / name).is_file()
         ]
@@ -304,7 +389,7 @@ def main(argv: list[str] | None = None) -> int:
             if isinstance(previous_entry.get("policy_checkpoint"), str)
             else None
         )
-        profile_ok = not missing_telemetry
+        profile_ok = bool(args.allow_existing_files and not missing_telemetry)
         ok = ok and profile_ok
         manifest["profiles"].append(
             {
@@ -313,6 +398,7 @@ def main(argv: list[str] | None = None) -> int:
                 "telemetry": telemetry,
                 "expected_videos": expected,
                 "expected_telemetry": expected_telemetry,
+                "expected_contact_sheets": expected_contact_sheets,
                 "missing_videos": [],
                 "missing_telemetry": missing_telemetry,
                 "combined_video": combined_video if record_combined else None,

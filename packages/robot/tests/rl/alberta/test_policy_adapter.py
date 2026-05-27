@@ -114,6 +114,23 @@ def test_alberta_streaming_policy_adapter_pads_to_full_robot_output(tmp_path: Pa
     assert np.allclose(action[2:], 0.0)
 
 
+def test_strict_policy_manifest_rejects_missing_production_fields(
+    tmp_path: Path,
+) -> None:
+    _write_tiny_alberta_checkpoint(tmp_path, profile_id="test-robot", output_dim=5)
+    manifest_path = tmp_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    del manifest["profile_id"]
+    del manifest["output_dim"]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    policy = TextConditionedPolicy(tmp_path)
+    assert policy.manifest.profile_id == "hiwonder-ainex"
+
+    with pytest.raises(ValueError, match="profile_id, output_dim"):
+        TextConditionedPolicy(tmp_path, strict_manifest=True)
+
+
 def test_alberta_policy_adapter_fallback_matches_free_form_task_text(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

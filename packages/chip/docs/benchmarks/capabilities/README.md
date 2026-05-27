@@ -141,6 +141,50 @@ Target capture job command set:
 scripts/android/capture_e1_npu_nnapi_evidence.sh
 ```
 
+Complete Android e1-NPU closure command set:
+
+```sh
+AOSP_TREE=/home/shaw/aosp \
+E1_NPU_WRITE_PROOF_JSON=1 \
+E1_NPU_MACS_PER_INFERENCE=<measured> \
+E1_NPU_CYCLES=<measured> \
+E1_NPU_HZ=<measured> \
+E1_NPU_DMA_BYTES_READ=<measured> \
+E1_NPU_DMA_BYTES_WRITTEN=<measured> \
+E1_NPU_NNAPI_DELEGATED_NODE_COUNT=<measured> \
+E1_NPU_NNAPI_TOTAL_NODE_COUNT=<measured> \
+E1_NPU_DATAFLOW_NAME=<measured-dataflow> \
+E1_NPU_GENERATED_BY=<job-id> \
+E1_NPU_TARGET=<target-name> \
+scripts/android/capture_e1_npu_android_proof_bundle.sh
+```
+
+The bundle runs the absent-device probe, VINTF capture, NNAPI transcripts,
+CTS smoke, VTS smoke, manifest assembly, NNAPI proof check, and Android proof
+manifest check in order. It fails closed if ADB, AOSP Tradefed tooling, target
+boot, NNAPI `e1-npu`, or any measured counter input is missing.
+Run `python3 scripts/check_e1_npu_android_proof_bundle_preflight.py --json`
+first for a machine-readable readiness report without starting the long target
+capture sequence.
+When the preflight blocks only on missing CTS/VTS Tradefed bundles, run
+`AOSP_TREE=/path/to/aosp scripts/android/build_cts_vts_tradefed.sh` first. The
+helper builds `m cts vts`, verifies `cts-tradefed` and `vts-tradefed`, and
+records `docs/evidence/android/e1-npu/cts-vts-tradefed-build.log`; pass
+`--verify-only` to check an already built tree.
+
+To let the hardware validation job emit the validator-ready proof JSON in the
+same run, set `E1_NPU_WRITE_PROOF_JSON=1` and provide the measured counters:
+`E1_NPU_MACS_PER_INFERENCE`, `E1_NPU_CYCLES`, `E1_NPU_HZ`,
+`E1_NPU_DMA_BYTES_READ`, `E1_NPU_DMA_BYTES_WRITTEN`,
+`E1_NPU_NNAPI_DELEGATED_NODE_COUNT`, `E1_NPU_NNAPI_TOTAL_NODE_COUNT`,
+`E1_NPU_DATAFLOW_NAME`, `E1_NPU_GENERATED_BY`, and `E1_NPU_TARGET`. The script
+refuses to write `benchmarks/capabilities/e1_npu_nnapi.proof.json` unless the
+four transcripts contain the required NNAPI/e1-npu/DMA markers and the command
+paths match the proof contract. By default the capture also refreshes
+`docs/evidence/android/e1-npu/android-proof-manifest.json`; set
+`E1_NPU_REFRESH_ANDROID_MANIFEST=0` only when intentionally staging artifacts
+without updating the assembled Android proof manifest.
+
 Equivalent manual command set:
 
 ```sh

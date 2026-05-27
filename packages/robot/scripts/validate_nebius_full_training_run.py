@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
@@ -68,6 +69,14 @@ DEFAULT_TASKS = (
     "turn_left",
     "turn_right",
 )
+TEXT_POLICY_EVAL_SCHEMA = "robot-text-policy-eval-v1"
+CURRICULUM_EVAL_SCHEMA = "robot-policy-curriculum-eval-v1"
+CURRICULUM_EVAL_REPORT_REL = Path("evidence/curriculum_eval/report.json")
+CURRICULUM_EVAL_NATIVE_REL = Path("evidence/curriculum_eval/eval_text_policy.json")
+PRODUCTION_MIN_ALBERTA_STEPS = 150_000_000
+PRODUCTION_MIN_BACKEND_COMPARE_STEPS = 30_000
+PRODUCTION_MIN_BENCHMARK_STEPS_PER_TASK = 16_000
+PRODUCTION_MIN_BENCHMARK_SEEDS = 3
 
 
 def _read_text(path: Path) -> str:
@@ -348,6 +357,13 @@ def _validate_production_policy_videos(
     checkpoint_path = str(checkpoint.resolve())
     manifest_checkpoint = manifest.get("policy_checkpoint")
     profile_checkpoints = [entry.get("policy_checkpoint") for entry in entries]
+    checkpoint_name = checkpoint.name
+    def _checkpoint_matches(value: Any) -> bool:
+        if value == checkpoint_path:
+            return True
+        if isinstance(value, str):
+            return Path(value).name == checkpoint_name
+        return False
     profile_dir = evidence_dir / profile_id
     expected = [
         f"{profile_id}_{command.replace(' ', '_').replace('/', '_')[:48]}.mp4"
@@ -370,18 +386,43 @@ def _validate_production_policy_videos(
     }
     undersized = [name for name, size in sizes.items() if size < min_video_bytes]
     undersized_telemetry = [name for name, size in telemetry_sizes.items() if size <= 0]
+    telemetry_reports = {
+        name: _validate_policy_video_telemetry(
+            profile_dir / name,
+            expected_profile=profile_id,
+            expected_task=_task_id_for_command(command),
+            checkpoint_name=checkpoint_name,
+            combined=False,
+        )
+        for command, name in zip(commands, expected_telemetry[:-1], strict=True)
+    }
+    combined_name = expected_telemetry[-1]
+    telemetry_reports[combined_name] = _validate_policy_video_telemetry(
+        profile_dir / combined_name,
+        expected_profile=profile_id,
+        expected_task=None,
+        checkpoint_name=checkpoint_name,
+        combined=True,
+        expected_tasks=[_task_id_for_command(command) for command in commands],
+    )
+    telemetry_semantics_ok = all(
+        report.get("ok") is True for report in telemetry_reports.values()
+    )
     checks = {
         "manifest": manifest_path.is_file(),
         "manifest_ok": manifest.get("ok") is True,
         "checkpoint_exists": _has_alberta_checkpoint(checkpoint),
-        "manifest_policy_checkpoint": manifest_checkpoint == checkpoint_path,
+        "manifest_policy_checkpoint": _checkpoint_matches(manifest_checkpoint),
         "profile_entry": bool(entries),
-        "profile_policy_checkpoint": any(value == checkpoint_path for value in profile_checkpoints),
+        "profile_policy_checkpoint": any(
+            _checkpoint_matches(value) for value in profile_checkpoints
+        ),
         "expected_videos": not missing,
         "expected_telemetry": not missing_telemetry,
         "video_sizes": not undersized and len(sizes) == len(expected),
         "telemetry_sizes": not undersized_telemetry
         and len(telemetry_sizes) == len(expected_telemetry),
+        "telemetry_semantics": telemetry_semantics_ok,
         "combined_video": (profile_dir / f"{profile_id}_combined_actions.mp4").is_file(),
     }
     return {
@@ -398,11 +439,189 @@ def _validate_production_policy_videos(
         "present_telemetry": present_telemetry,
         "sizes": sizes,
         "telemetry_sizes": telemetry_sizes,
+        "telemetry_reports": telemetry_reports,
         "min_video_bytes": int(min_video_bytes),
         "undersized": undersized,
         "undersized_telemetry": undersized_telemetry,
         "missing": missing,
         "missing_telemetry": missing_telemetry,
+    }
+
+
+def _task_id_for_command(command: str) -> str:
+    mapping = {
+        "stand up": "stand_up",
+        "walk forward": "walk_forward",
+        "walk backward": "walk_backward",
+        "sidestep left": "sidestep_left",
+        "sidestep right": "sidestep_right",
+        "turn left": "turn_left",
+        "turn right": "turn_right",
+        "turn around": "turn_around",
+    }
+    return mapping.get(command.strip().lower(), command.strip().lower().replace(" ", "_"))
+
+
+def _load_json_dict(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _policy_source_is_checkpoint(value: Any, checkpoint_name: str) -> bool:
+    if not isinstance(value, str):
+        return False
+    if not value.startswith("checkpoint:"):
+        return False
+    raw_path = value.removeprefix("checkpoint:")
+    return Path(raw_path).name == checkpoint_name or value.endswith(checkpoint_name)
+
+
+def _series_has_finite_value(series: Any, key: str = "final") -> bool:
+    if not isinstance(series, dict):
+        return False
+    value = series.get(key)
+    if isinstance(value, bool):
+        return False
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(number)
+
+
+def _series_finite_number(series: Any, key: str = "final") -> float | None:
+    if not isinstance(series, dict):
+        return None
+    value = series.get(key)
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _policy_video_motion_checks(payload: dict[str, Any], expected_task: str | None) -> dict[str, bool]:
+    checks: dict[str, bool] = {}
+    if expected_task == "walk_forward":
+        final = _series_finite_number(payload.get("delta_x_m"))
+        checks["delta_x_forward"] = final is not None and final >= 0.30
+    elif expected_task == "walk_backward":
+        final = _series_finite_number(payload.get("delta_x_m"))
+        checks["delta_x_backward"] = final is not None and final <= -0.20
+    elif expected_task == "sidestep_left":
+        final_y = _series_finite_number(payload.get("delta_y_m"))
+        final_x = _series_finite_number(payload.get("delta_x_m"))
+        checks["delta_y_left"] = final_y is not None and final_y >= 0.20
+        checks["forward_drift_bound"] = final_x is not None and abs(final_x) <= 0.20
+    elif expected_task == "sidestep_right":
+        final_y = _series_finite_number(payload.get("delta_y_m"))
+        final_x = _series_finite_number(payload.get("delta_x_m"))
+        checks["delta_y_right"] = final_y is not None and final_y <= -0.20
+        checks["forward_drift_bound"] = final_x is not None and abs(final_x) <= 0.20
+    elif expected_task == "turn_left":
+        final_yaw = _series_finite_number(payload.get("delta_yaw_rad"))
+        checks["delta_yaw_left"] = final_yaw is not None and final_yaw >= 0.70
+    elif expected_task == "turn_right":
+        final_yaw = _series_finite_number(payload.get("delta_yaw_rad"))
+        checks["delta_yaw_right"] = final_yaw is not None and final_yaw <= -0.70
+    elif expected_task == "turn_around":
+        final_yaw = _series_finite_number(payload.get("delta_yaw_rad"))
+        checks["delta_yaw_turn_around"] = (
+            final_yaw is not None and abs(final_yaw) >= 2.60
+        )
+    return checks
+
+
+def _validate_policy_video_telemetry(
+    path: Path,
+    *,
+    expected_profile: str,
+    expected_task: str | None,
+    checkpoint_name: str,
+    combined: bool,
+    expected_tasks: list[str] | None = None,
+) -> dict[str, Any]:
+    payload = _load_json_dict(path)
+    checks: dict[str, bool] = {
+        "present": path.is_file(),
+        "valid_json_object": bool(payload),
+        "profile": payload.get("profile") == expected_profile,
+        "policy_source_checkpoint": _policy_source_is_checkpoint(
+            payload.get("policy_source"),
+            checkpoint_name,
+        ),
+        "not_scripted_smoke": payload.get("policy_source") != "scripted_smoke",
+        "rollout_ok": payload.get("rollout_ok") is True,
+    }
+    if combined:
+        commands = payload.get("commands") if isinstance(payload.get("commands"), list) else []
+        command_tasks = [
+            item.get("task_id") for item in commands if isinstance(item, dict)
+        ]
+        command_motion_checks = [
+            _policy_video_motion_checks(item, expected_task)
+            for item, expected_task in zip(commands, expected_tasks or [], strict=False)
+            if isinstance(item, dict)
+        ]
+        checks.update(
+            {
+                "commands_present": bool(commands),
+                "expected_tasks": command_tasks == list(expected_tasks or []),
+                "all_goal_success": bool(commands)
+                and all(
+                    isinstance(item, dict) and item.get("goal_success") is True
+                    for item in commands
+                ),
+                "all_attempted_action": bool(commands)
+                and all(
+                    isinstance(item, dict) and item.get("attempted_action") is True
+                    for item in commands
+                ),
+                "all_command_motion": bool(command_motion_checks)
+                and all(
+                    all(command_check.values())
+                    for command_check in command_motion_checks
+                ),
+                "any_goal_success": payload.get("any_goal_success") is True,
+            }
+        )
+    else:
+        checks.update(
+            {
+                "task_id": payload.get("task_id") == expected_task,
+                "goal_success": payload.get("goal_success") is True,
+                "attempted_action": payload.get("attempted_action") is True,
+                "nonzero_action_steps": int(payload.get("nonzero_action_steps") or 0) > 0
+                or expected_task == "stand_up",
+                "torso_series": _series_has_finite_value(payload.get("torso_z")),
+                "action_norm_series": _series_has_finite_value(payload.get("action_norm")),
+            }
+        )
+        if expected_task in {"walk_forward", "walk_backward"}:
+            checks["delta_x_series"] = _series_has_finite_value(payload.get("delta_x_m"))
+            checks.update(_policy_video_motion_checks(payload, expected_task))
+        if expected_task in {"sidestep_left", "sidestep_right"}:
+            checks["delta_y_series"] = _series_has_finite_value(payload.get("delta_y_m"))
+            checks["delta_x_series"] = _series_has_finite_value(payload.get("delta_x_m"))
+            checks.update(_policy_video_motion_checks(payload, expected_task))
+        if expected_task in {"turn_left", "turn_right", "turn_around"}:
+            checks["delta_yaw_series"] = _series_has_finite_value(
+                payload.get("delta_yaw_rad")
+            )
+            checks.update(_policy_video_motion_checks(payload, expected_task))
+    return {
+        "ok": all(checks.values()),
+        "telemetry": str(path),
+        "checks": checks,
+        "policy_source": payload.get("policy_source"),
+        "task_id": payload.get("task_id"),
+        "goal_success": payload.get("goal_success"),
+        "rollout_ok": payload.get("rollout_ok"),
     }
 
 
@@ -440,12 +659,282 @@ def _validate_training_inputs_report(path: Path, tasks: tuple[str, ...]) -> dict
     }
 
 
+def _validate_production_contract(
+    *,
+    checkpoint_manifest: Path,
+    require_success: bool,
+    run_deep_validators: bool,
+    min_alberta_steps: int,
+    min_backend_compare_steps: int,
+    min_benchmark_steps_per_task: int,
+    min_benchmark_seeds: int,
+) -> dict[str, Any]:
+    manifest = _load_json_dict(checkpoint_manifest)
+    actual_total_steps = manifest.get("total_steps")
+    actual_requested_total_steps = manifest.get("requested_total_steps")
+
+    def _step_count_meets(value: Any, minimum: int) -> bool:
+        if isinstance(value, bool):
+            return False
+        try:
+            count = int(value)
+        except (TypeError, ValueError):
+            return False
+        return count >= minimum
+
+    checks = {
+        "require_success": bool(require_success),
+        "deep_validators_enabled": bool(run_deep_validators),
+        "min_alberta_steps": min_alberta_steps >= PRODUCTION_MIN_ALBERTA_STEPS,
+        "checkpoint_manifest_present": checkpoint_manifest.is_file(),
+        "checkpoint_total_steps": _step_count_meets(
+            actual_total_steps,
+            PRODUCTION_MIN_ALBERTA_STEPS,
+        ),
+        "checkpoint_requested_total_steps": _step_count_meets(
+            actual_requested_total_steps,
+            PRODUCTION_MIN_ALBERTA_STEPS,
+        ),
+        "min_backend_compare_steps": min_backend_compare_steps
+        >= PRODUCTION_MIN_BACKEND_COMPARE_STEPS,
+        "min_benchmark_steps_per_task": min_benchmark_steps_per_task
+        >= PRODUCTION_MIN_BENCHMARK_STEPS_PER_TASK,
+        "min_benchmark_seeds": min_benchmark_seeds
+        >= PRODUCTION_MIN_BENCHMARK_SEEDS,
+    }
+    return {
+        "ok": all(checks.values()),
+        "checks": checks,
+        "required": {
+            "min_alberta_steps": PRODUCTION_MIN_ALBERTA_STEPS,
+            "min_backend_compare_steps": PRODUCTION_MIN_BACKEND_COMPARE_STEPS,
+            "min_benchmark_steps_per_task": PRODUCTION_MIN_BENCHMARK_STEPS_PER_TASK,
+            "min_benchmark_seeds": PRODUCTION_MIN_BENCHMARK_SEEDS,
+        },
+        "actual": {
+            "require_success": bool(require_success),
+            "run_deep_validators": bool(run_deep_validators),
+            "min_alberta_steps": int(min_alberta_steps),
+            "checkpoint_manifest": str(checkpoint_manifest),
+            "checkpoint_total_steps": actual_total_steps,
+            "checkpoint_requested_total_steps": actual_requested_total_steps,
+            "min_backend_compare_steps": int(min_backend_compare_steps),
+            "min_benchmark_steps_per_task": int(min_benchmark_steps_per_task),
+            "min_benchmark_seeds": int(min_benchmark_seeds),
+        },
+    }
+
+
+def _validate_curriculum_eval_report(
+    path: Path,
+    *,
+    checkpoint: Path,
+    profile_id: str,
+    tasks: tuple[str, ...],
+    min_programmatic_pass_rate: float = 1.0,
+) -> dict[str, Any]:
+    report = _load_json_dict(path)
+    task_rows = report.get("tasks") if isinstance(report.get("tasks"), list) else []
+    task_by_id = {
+        row.get("task_id"): row for row in task_rows if isinstance(row, dict)
+    }
+    expected_tasks = set(tasks)
+    actual_tasks = {task_id for task_id in task_by_id if isinstance(task_id, str)}
+    checkpoint_raw = report.get("checkpoint")
+    checkpoint_matches = _checkpoint_path_matches_report(
+        checkpoint_raw,
+        report_path=path,
+        checkpoint=checkpoint,
+    )
+    try:
+        pass_rate = float(report.get("programmatic_pass_rate"))
+    except (TypeError, ValueError):
+        pass_rate = -1.0
+    requested_rows = [task_by_id.get(task) for task in tasks]
+
+    def _finite_float(value: Any) -> float | None:
+        if isinstance(value, bool):
+            return None
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return number if math.isfinite(number) else None
+
+    def _positive_int(value: Any) -> bool:
+        return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+    def _error_absent(row: dict[str, Any]) -> bool:
+        return row.get("error") in (None, "")
+
+    success_rates = {
+        task: _finite_float(task_by_id[task].get("success_rate"))
+        for task in tasks
+        if isinstance(task_by_id.get(task), dict)
+    }
+    mean_success_rate = _finite_float(report.get("mean_success_rate_overall"))
+    n_successful_rows = sum(
+        1
+        for task in tasks
+        if isinstance(task_by_id.get(task), dict)
+        and task_by_id[task].get("success_programmatic") is True
+        and success_rates.get(task) is not None
+        and float(success_rates[task]) >= 1.0
+        and _positive_int(task_by_id[task].get("episodes"))
+        and _error_absent(task_by_id[task])
+    )
+    recomputed_pass_rate = (
+        n_successful_rows / len(tasks) if len(tasks) > 0 else 0.0
+    )
+    policy_raw = report.get("policy")
+    task_checks = {
+        task: bool(
+            isinstance(task_by_id.get(task), dict)
+            and task_by_id[task].get("success_programmatic") is True
+            and success_rates.get(task) is not None
+            and float(success_rates[task]) >= 1.0
+            and _positive_int(task_by_id[task].get("episodes"))
+            and _error_absent(task_by_id[task])
+        )
+        for task in tasks
+    }
+    checks = {
+        "present": path.is_file(),
+        "valid_json_object": bool(report),
+        "schema": report.get("schema") == CURRICULUM_EVAL_SCHEMA,
+        "source": report.get("source") == "eval_text_policy",
+        "profile": report.get("profile_id") == profile_id,
+        "policy_checkpoint": isinstance(policy_raw, str)
+        and policy_raw not in ("", "untrained_zero"),
+        "checkpoint_matches": checkpoint_matches,
+        "checkpoint_bound": checkpoint_matches,
+        "task_set_exact": actual_tasks == expected_tasks,
+        "task_count_covers_requested": all(task in task_by_id for task in tasks),
+        "n_tasks": report.get("n_tasks") == len(tasks),
+        "n_programmatic_pass": report.get("n_programmatic_pass") == len(tasks),
+        "all_requested_tasks_programmatic_success": all(task_checks.values()),
+        "task_success_rates": all(
+            success_rates.get(task) is not None
+            and float(success_rates[task]) >= 1.0
+            for task in tasks
+        ),
+        "task_episodes": all(
+            isinstance(row, dict) and _positive_int(row.get("episodes"))
+            for row in requested_rows
+        ),
+        "task_errors_absent": all(
+            isinstance(row, dict) and _error_absent(row) for row in requested_rows
+        ),
+        "programmatic_pass_rate": math.isfinite(pass_rate)
+        and pass_rate >= min_programmatic_pass_rate,
+        "programmatic_pass_rate_recomputed": math.isfinite(pass_rate)
+        and math.isclose(pass_rate, recomputed_pass_rate, abs_tol=1e-9),
+        "mean_success_rate_overall": mean_success_rate is not None
+        and mean_success_rate >= min_programmatic_pass_rate,
+    }
+    return {
+        "ok": all(checks.values()),
+        "report": str(path),
+        "checks": checks,
+        "checkpoint": checkpoint_raw,
+        "profile_id": report.get("profile_id"),
+        "policy": policy_raw,
+        "programmatic_pass_rate": pass_rate,
+        "min_programmatic_pass_rate": float(min_programmatic_pass_rate),
+        "recomputed_programmatic_pass_rate": recomputed_pass_rate,
+        "task_checks": task_checks,
+    }
+
+
+def _checkpoint_path_matches_report(
+    value: Any,
+    *,
+    report_path: Path,
+    checkpoint: Path,
+) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    raw = Path(value).expanduser()
+    if raw.is_absolute():
+        return raw.resolve(strict=False) == checkpoint.resolve()
+    if len(raw.parts) <= 1:
+        return False
+    try:
+        run_root = report_path.resolve().parents[2]
+    except IndexError:
+        return False
+    return (run_root / raw).resolve(strict=False) == checkpoint.resolve()
+
+
+def _validate_text_policy_eval_report(
+    path: Path,
+    *,
+    checkpoint: Path,
+    profile_id: str,
+    tasks: tuple[str, ...],
+) -> dict[str, Any]:
+    report = _load_json_dict(path)
+    task_metrics = report.get("tasks") if isinstance(report.get("tasks"), dict) else {}
+    actual_tasks = set(task_metrics)
+    checkpoint_raw = report.get("checkpoint")
+    checkpoint_matches = _checkpoint_path_matches_report(
+        checkpoint_raw,
+        report_path=path,
+        checkpoint=checkpoint,
+    )
+    def _finite_metric(task: str, key: str) -> bool:
+        return (
+            _series_finite_number({"final": task_metrics[task].get(key)})
+            is not None
+        )
+
+    per_task_checks = {
+        task: bool(
+            isinstance(task_metrics.get(task), dict)
+            and isinstance(task_metrics[task].get("episodes"), int)
+            and not isinstance(task_metrics[task].get("episodes"), bool)
+            and task_metrics[task].get("episodes") > 0
+            and _finite_metric(task, "success_rate")
+            and _finite_metric(task, "failure_rate")
+        )
+        for task in tasks
+    }
+    checks = {
+        "present": path.is_file(),
+        "valid_json_object": bool(report),
+        "schema": report.get("schema") == TEXT_POLICY_EVAL_SCHEMA,
+        "profile": report.get("profile_id") == profile_id,
+        "checkpoint_matches": checkpoint_matches,
+        "task_set_exact": actual_tasks == set(tasks),
+        "task_count_covers_requested": all(task in task_metrics for task in tasks),
+        "per_task_success_fields": all(per_task_checks.values()),
+    }
+    return {
+        "ok": all(checks.values()),
+        "report": str(path),
+        "checks": checks,
+        "checkpoint": checkpoint_raw,
+        "profile_id": report.get("profile_id"),
+        "task_checks": per_task_checks,
+    }
+
+
 def _validate_instance_launch_hygiene(run_root: Path) -> dict[str, Any]:
     path = run_root / "instance_launch_hygiene.json"
     report = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    if not report:
+        preflight = _read_json_object(
+            run_root / "evidence" / "full_training_preflight" / "preflight_report.json"
+        )
+        launch_hygiene = preflight.get("launch_hygiene")
+        if not isinstance(launch_hygiene, dict):
+            launch_template = preflight.get("launch_template")
+            if isinstance(launch_template, dict):
+                launch_hygiene = launch_template.get("hygiene")
+        report = launch_hygiene if isinstance(launch_hygiene, dict) else {}
     checks = report.get("checks") if isinstance(report.get("checks"), dict) else {}
     required = {
-        "present": path.is_file(),
+        "present": bool(report),
         "ok": report.get("ok") is True,
         "no_inline_object_storage_credentials": checks.get(
             "no_inline_object_storage_credentials"
@@ -461,10 +950,110 @@ def _validate_instance_launch_hygiene(run_root: Path) -> dict[str, Any]:
     }
     return {
         "ok": all(required.values()),
-        "report": str(path),
+        "report": str(path if path.is_file() else run_root / "evidence" / "full_training_preflight" / "preflight_report.json"),
         "checks": required,
         "secret_fields_embedded": report.get("secret_fields_embedded", []),
         "recommendations": report.get("recommendations", []),
+    }
+
+
+def _validate_status_consistency(
+    run_root: Path,
+    current_checks: dict[str, bool],
+) -> dict[str, Any]:
+    monitor = _read_json_object(run_root / "monitor_status.json")
+    closeout = _read_json_object(run_root / "closeout_status.json")
+    finalization = _read_json_object(run_root / "finalization_report.json")
+    inventory = _read_json_object(run_root / "artifact_inventory.json")
+    contradictions: list[dict[str, Any]] = []
+
+    monitor_checks = monitor.get("checks") if isinstance(monitor.get("checks"), dict) else {}
+    for gate, monitor_value in sorted(monitor_checks.items()):
+        if gate not in current_checks:
+            continue
+        current_value = bool(current_checks[gate])
+        if bool(monitor_value) and not current_value:
+            contradictions.append(
+                {
+                    "source": "monitor_status",
+                    "gate": gate,
+                    "stale_value": bool(monitor_value),
+                    "current_value": current_value,
+                }
+            )
+
+    closeout_monitor = (
+        closeout.get("monitor") if isinstance(closeout.get("monitor"), dict) else {}
+    )
+    closeout_monitor_summary = (
+        closeout_monitor.get("summary")
+        if isinstance(closeout_monitor.get("summary"), dict)
+        else {}
+    )
+    for gate in closeout_monitor_summary.get("passed_gates", []) or []:
+        if gate in current_checks and not bool(current_checks[gate]):
+            contradictions.append(
+                {
+                    "source": "closeout_status.monitor.summary",
+                    "gate": gate,
+                    "stale_value": True,
+                    "current_value": False,
+                }
+            )
+
+    closeout_finalization = (
+        closeout.get("finalization")
+        if isinstance(closeout.get("finalization"), dict)
+        else {}
+    )
+    if closeout_finalization.get("ok") is True and finalization.get("ok") is False:
+        contradictions.append(
+            {
+                "source": "closeout_status.finalization",
+                "gate": "finalization_report",
+                "stale_value": True,
+                "current_value": False,
+            }
+        )
+    closeout_inventory = (
+        closeout.get("artifact_inventory")
+        if isinstance(closeout.get("artifact_inventory"), dict)
+        else {}
+    )
+    if closeout_inventory.get("ok") is True and inventory.get("ok") is False:
+        contradictions.append(
+            {
+                "source": "closeout_status.artifact_inventory",
+                "gate": "artifact_inventory",
+                "stale_value": True,
+                "current_value": False,
+                "stale_present_count": closeout_inventory.get("present_count"),
+                "current_present_count": inventory.get("present_count"),
+                "stale_required_count": closeout_inventory.get("required_count"),
+                "current_required_count": inventory.get("required_count"),
+            }
+        )
+
+    return {
+        "ok": not contradictions,
+        "checks": {
+            "monitor_status_consistent": not any(
+                item["source"] == "monitor_status" for item in contradictions
+            ),
+            "closeout_monitor_consistent": not any(
+                item["source"] == "closeout_status.monitor.summary"
+                for item in contradictions
+            ),
+            "closeout_finalization_consistent": not any(
+                item["source"] == "closeout_status.finalization"
+                for item in contradictions
+            ),
+            "closeout_inventory_consistent": not any(
+                item["source"] == "closeout_status.artifact_inventory"
+                for item in contradictions
+            ),
+        },
+        "contradictions": contradictions,
     }
 
 
@@ -503,6 +1092,19 @@ def validate_nebius_full_training_run(
         "stage_status": stage_status_report,
     }
 
+    reports["production_contract"] = _validate_production_contract(
+        checkpoint_manifest=checkpoints_dir / "asimov_1_alberta_full" / "manifest.json",
+        require_success=require_success,
+        run_deep_validators=run_deep_validators,
+        min_alberta_steps=min_alberta_steps,
+        min_backend_compare_steps=min_backend_compare_steps,
+        min_benchmark_steps_per_task=min_benchmark_steps_per_task,
+        min_benchmark_seeds=min_benchmark_seeds,
+    )
+    checks["production_contract"] = bool(
+        reports["production_contract"].get("ok")
+    )
+
     reports["instance_launch_hygiene"] = _validate_instance_launch_hygiene(run_root)
     checks["instance_launch_hygiene"] = bool(
         reports["instance_launch_hygiene"].get("ok")
@@ -513,10 +1115,12 @@ def validate_nebius_full_training_run(
         tasks,
     )
     checks["training_inputs"] = bool(reports["training_inputs"].get("ok"))
+    multi_robot_smoke_videos_dir = evidence_dir / "multi_robot_smoke_videos"
+    production_videos_dir = evidence_dir / "agent_videos"
     reports["multi_robot_readiness"] = validate_multi_robot_training_readiness(
         profiles=list(DEFAULT_MULTI_ROBOT_PROFILES),
         commands=list(DEFAULT_MULTI_ROBOT_COMMANDS),
-        video_evidence=evidence_dir / "agent_videos",
+        video_evidence=multi_robot_smoke_videos_dir,
         pca_dim=32,
         min_video_bytes=1024,
         require_combined_videos=True,
@@ -534,6 +1138,7 @@ def validate_nebius_full_training_run(
             min_steps=min_alberta_steps,
             require_domain_rand=True,
             require_inference=True,
+            require_phase_promotion=True,
         )
         reports["asimov1_alberta_production"] = validate_asimov1_production_checkpoint(
             alberta_ckpt,
@@ -616,9 +1221,8 @@ def validate_nebius_full_training_run(
             "skipped_deep_validation": not run_deep_validators,
         }
 
-    videos_dir = evidence_dir / "agent_videos"
     reports["video_review"] = review_videos(
-        videos_dir,
+        production_videos_dir,
         out_dir=evidence_dir / "video_review_production",
         samples=5,
         min_frames=5,
@@ -629,7 +1233,7 @@ def validate_nebius_full_training_run(
     )
     checks["video_review"] = bool(reports["video_review"].get("ok"))
     reports["production_policy_videos"] = _validate_production_policy_videos(
-        videos_dir,
+        production_videos_dir,
         checkpoint=alberta_ckpt,
         profile_id=profile_id,
         commands=tuple(DEFAULT_MULTI_ROBOT_COMMANDS),
@@ -637,6 +1241,28 @@ def validate_nebius_full_training_run(
     checks["production_policy_videos"] = bool(
         reports["production_policy_videos"].get("ok")
     )
+    curriculum_eval_path = run_root / CURRICULUM_EVAL_REPORT_REL
+    curriculum_eval_native_path = run_root / CURRICULUM_EVAL_NATIVE_REL
+    reports["curriculum_eval_native"] = _validate_text_policy_eval_report(
+        curriculum_eval_native_path,
+        checkpoint=alberta_ckpt,
+        profile_id=profile_id,
+        tasks=tasks,
+    )
+    checks["curriculum_eval_native"] = bool(
+        reports["curriculum_eval_native"].get("ok")
+    )
+    reports["curriculum_eval"] = _validate_curriculum_eval_report(
+        curriculum_eval_path,
+        checkpoint=alberta_ckpt,
+        profile_id=profile_id,
+        tasks=tasks,
+        min_programmatic_pass_rate=1.0,
+    )
+    checks["curriculum_eval"] = bool(reports["curriculum_eval"].get("ok"))
+
+    reports["status_consistency"] = _validate_status_consistency(run_root, checks)
+    checks["status_consistency"] = bool(reports["status_consistency"].get("ok"))
 
     report = {
         "schema": "robot-nebius-full-training-validation-v1",

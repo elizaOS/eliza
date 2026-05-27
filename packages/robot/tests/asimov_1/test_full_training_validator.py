@@ -14,6 +14,45 @@ from scripts import run_asimov1_full_training as full_training_runner
 from scripts.validate_asimov1_full_training_job import validate_full_training_job
 from scripts.validate_asimov1_full_training_run import validate_asimov1_full_training_run
 
+CURRICULUM_EVAL_TASKS = (
+    "stand_up",
+    "walk_forward",
+    "walk_backward",
+    "sidestep_left",
+    "sidestep_right",
+    "turn_left",
+    "turn_right",
+)
+
+
+def _eval_command(
+    job_dir: Path,
+    *,
+    backend: bool = True,
+    curriculum: bool = True,
+    native_out: bool = True,
+    tasks: tuple[str, ...] = CURRICULUM_EVAL_TASKS,
+) -> str:
+    parts = [
+        "python3 scripts/eval_text_policy.py --profile asimov-1",
+    ]
+    if backend:
+        parts.append("--backend mjx")
+    parts.extend(
+        [
+            f"--ckpt {job_dir}",
+            f"--tasks {' '.join(tasks)} --episodes 1 --max-steps 1",
+        ]
+    )
+    if native_out:
+        parts.append("--out evidence/curriculum_eval/eval_text_policy.json")
+    if curriculum:
+        parts.append(
+            "--curriculum-report-out evidence/curriculum_eval/report.json "
+            "--fail-under-success-rate 1.0"
+        )
+    return " ".join(parts)
+
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -78,7 +117,7 @@ def _write_minimal_job(job_dir: Path, *, eval_command: str) -> None:
         "    python3 scripts/run_asimov1_full_training.py --job-dir \"$JOB_DIR\"\n"
         "    python3 scripts/verify_brax_text_policy.py --ckpt \"$JOB_DIR\" --profile asimov-1 --require-proprio-dim 45 --require-action-dim 12 --require-output-dim 25 --require-critic-obs-dim 86 --require-policy-obs-key state --require-value-obs-key privileged_state\n"
         "    python3 scripts/validate_asimov1_production_checkpoint.py \"$JOB_DIR\" --min-steps 8 --require-inference-check\n"
-        "    python3 scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt \"$JOB_DIR\" --tasks stand_up --episodes 1 --max-steps 1\n"
+        "    python3 scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt \"$JOB_DIR\" --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes 1 --max-steps 1 --out evidence/curriculum_eval/eval_text_policy.json --curriculum-report-out evidence/curriculum_eval/report.json --fail-under-success-rate 1.0\n"
         "    python3 scripts/sim_validation_gate.py --profile asimov-1 --checkpoint \"$JOB_DIR\" --require-asimov-model-provenance\n"
         "    ;;\n"
         "esac\n",
@@ -93,10 +132,7 @@ def test_full_training_validator_requires_asimov_mjx_eval_backend(tmp_path: Path
     stale = tmp_path / "stale"
     _write_minimal_job(
         stale,
-        eval_command=(
-            f"python3 scripts/eval_text_policy.py --profile asimov-1 --ckpt {stale} "
-            "--tasks stand_up --episodes 1 --max-steps 1"
-        ),
+        eval_command=_eval_command(stale, backend=False, curriculum=True),
     )
     stale_report = validate_full_training_job(stale)
     assert stale_report["checks"]["validation_commands"] is False
@@ -105,10 +141,7 @@ def test_full_training_validator_requires_asimov_mjx_eval_backend(tmp_path: Path
     current = tmp_path / "current"
     _write_minimal_job(
         current,
-        eval_command=(
-            f"python3 scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt {current} "
-            "--tasks stand_up --episodes 1 --max-steps 1"
-        ),
+        eval_command=_eval_command(current),
     )
     current_report = validate_full_training_job(current)
     assert current_report["checks"]["validation_commands"] is True
@@ -120,6 +153,29 @@ def test_full_training_validator_requires_asimov_mjx_eval_backend(tmp_path: Path
     assert current_report["checks"]["mjcf_asset_hash"] is True
     assert current_report["checks"]["asset_manifest_hash"] is True
     assert current_report["ok"] is True
+
+
+def test_full_training_validator_requires_eval_native_and_curriculum_outputs(
+    tmp_path: Path,
+) -> None:
+    _write_minimal_job(
+        tmp_path,
+        eval_command=_eval_command(tmp_path, native_out=False),
+    )
+    script = tmp_path / "run_full_training.sh"
+    script.write_text(
+        script.read_text(encoding="utf-8").replace(
+            " --out evidence/curriculum_eval/eval_text_policy.json",
+            "",
+        ),
+        encoding="utf-8",
+    )
+
+    report = validate_full_training_job(tmp_path)
+
+    assert report["ok"] is False
+    assert report["checks"]["validation_commands"] is False
+    assert report["checks"]["run_script_train_mode"] is False
 
 
 def test_full_training_job_export_writes_trainable_runner(tmp_path: Path) -> None:
@@ -148,6 +204,10 @@ def test_full_training_job_export_writes_trainable_runner(tmp_path: Path) -> Non
     assert "--require-inference-check" in script
     assert "--min-steps 150000000" in script
     assert "eval_text_policy.py --profile asimov-1 --backend mjx" in script
+    assert "--tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right" in script
+    assert "--out evidence/curriculum_eval/eval_text_policy.json" in script
+    assert "--curriculum-report-out evidence/curriculum_eval/report.json" in script
+    assert "--fail-under-success-rate 1.0" in script
     assert "sim_validation_gate.py --profile asimov-1" in script
     assert "--require-asimov-model-provenance" in script
     assert "inference_check.json" in report["expected_artifacts"]
@@ -158,10 +218,7 @@ def test_full_training_job_export_writes_trainable_runner(tmp_path: Path) -> Non
 def test_full_training_validator_rejects_stale_model_asset_hash(tmp_path: Path) -> None:
     _write_minimal_job(
         tmp_path,
-        eval_command=(
-            f"python3 scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt {tmp_path} "
-            "--tasks stand_up --episodes 1 --max-steps 1"
-        ),
+        eval_command=_eval_command(tmp_path),
     )
     job_path = tmp_path / "training_job.json"
     job = json.loads(job_path.read_text(encoding="utf-8"))
@@ -179,10 +236,7 @@ def test_full_training_validator_rejects_stale_verifier_dimension(
 ) -> None:
     _write_minimal_job(
         tmp_path,
-        eval_command=(
-            f"python3 scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt {tmp_path} "
-            "--tasks stand_up --episodes 1 --max-steps 1"
-        ),
+        eval_command=_eval_command(tmp_path),
     )
     job_path = tmp_path / "training_job.json"
     job = json.loads(job_path.read_text(encoding="utf-8"))
