@@ -23,12 +23,24 @@ function parseArgs(argv: string[]): Args {
     if (a === "--strict-fail") args.strictFail = true;
     else if (a === "--help" || a === "-h") args.help = true;
     else if (a === "--out") {
-      const v = argv[++i];
-      if (v !== undefined) args.out = v;
-    } else if (a.startsWith("--out=")) args.out = a.slice("--out=".length);
-    else if (a === "--include") args.include.push(argv[++i] ?? "");
-    else if (a.startsWith("--include="))
-      args.include.push(a.slice("--include=".length));
+      const v = argv[i + 1];
+      if (v !== undefined && v.length > 0 && !v.startsWith("-")) {
+        args.out = v;
+        i++;
+      }
+    } else if (a.startsWith("--out=")) {
+      const v = a.slice("--out=".length);
+      if (v.length > 0) args.out = v;
+    } else if (a === "--include") {
+      const v = argv[i + 1];
+      if (v !== undefined && v.length > 0 && !v.startsWith("-")) {
+        args.include.push(v);
+        i++;
+      }
+    } else if (a.startsWith("--include=")) {
+      const v = a.slice("--include=".length);
+      if (v.length > 0) args.include.push(v);
+    }
   }
   return args;
 }
