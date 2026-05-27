@@ -10,10 +10,9 @@ name: Training Stack
 #                 packages/training/**.
 #   - gpu-build:  Self-hosted runner with `gpu-cuda-12.6` label. Builds
 #                 the full GPU Dockerfile (which exercises QJL nvcc end
-#                 to end) and runs CUDA-dependent tests. The job parses
-#                 even if no runner with that label is online — GitHub
-#                 will simply queue the job until one appears, so we
-#                 keep the queue short with a short timeout.
+#                 to end) and runs CUDA-dependent tests. Pull requests
+#                 opt in with the `gpu-ci` label; push/manual runs keep
+#                 exercising the self-hosted lane.
 #
 # CUDA / torch alignment lives in packages/training/Dockerfile and
 # packages/training/pyproject.toml — keep the runner label and the
@@ -46,16 +45,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: false
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5
 
       - name: Build CPU image
         id: build_cpu
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
         with:
           context: packages/training
           file: packages/training/Dockerfile.cpu
@@ -115,7 +114,7 @@ jobs:
 
       - name: Upload logs on failure
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: cpu-smoke-logs
           path: |
@@ -126,15 +125,12 @@ jobs:
 
   gpu-build:
     name: GPU build (QJL nvcc + Triton JIT)
-    # Self-hosted GPU runner. If no runner with this label is online,
-    # GitHub queues the job until one appears or the workflow times out
-    # — it does not fail the run. That matches the operator note in
-    # packages/training/CI.md: "GPU jobs are skipped, not failed."
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'gpu-ci')
     runs-on: [self-hosted, gpu-cuda-12.6]
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: false
 
@@ -169,7 +165,7 @@ jobs:
 
       - name: Upload logs on failure
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: gpu-build-logs
           path: |

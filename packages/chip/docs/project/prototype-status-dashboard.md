@@ -8,7 +8,7 @@ Snapshot: updated 2026-05-22 from a source-only checkout; volatile generated-art
 | --- | --- | --- | --- |
 | docs-and-project-plan | `PASS` | `command_pass` | `none` |
 | architecture-docs | `PASS` | `command_pass` | `none` |
-| toolchain-fast-path | `PASS` | `tool_available` | `none` |
+| toolchain-fast-path | `BLOCK` | `tool_blocker` | `scripts/check_tools.sh && scripts/tool_versions.sh` |
 | platform-contract | `PASS` | `command_pass` | `none` |
 | linux-boot-prerequisites | `PASS` | `command_pass` | `none` |
 | software-bsp | `PASS` | `command_pass` | `none` |

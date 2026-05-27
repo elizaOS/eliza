@@ -84,10 +84,10 @@ def _build_ratio_merged(
     distill_train = distill_dir / "train_list.txt"
     distill_val = distill_dir / "val_list.txt"
     distill_train_lines = [
-        l for l in distill_train.read_text(encoding="utf-8").splitlines() if l.strip()
+        line for line in distill_train.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
     distill_val_lines = (
-        [l for l in distill_val.read_text(encoding="utf-8").splitlines() if l.strip()]
+        [line for line in distill_val.read_text(encoding="utf-8").splitlines() if line.strip()]
         if distill_val.exists() else []
     )
 
@@ -106,7 +106,7 @@ def _build_ratio_merged(
     if real_dir is not None and real_dir.exists():
         real_train_path = real_dir / "train_list.txt"
         all_real = (
-            [l for l in real_train_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+            [line for line in real_train_path.read_text(encoding="utf-8").splitlines() if line.strip()]
             if real_train_path.exists() else []
         )
         # Target: real clips ≤ (1 - distilled_ratio) / distilled_ratio × distilled clips

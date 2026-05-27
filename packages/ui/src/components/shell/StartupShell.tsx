@@ -42,26 +42,12 @@ function StartupLoading(props: { phase: string; status: string }) {
       role="status"
       aria-live="polite"
       aria-busy="true"
-      className="fixed inset-0 flex items-center justify-center overflow-hidden text-white"
+      className="fixed inset-0 flex items-center justify-center overflow-hidden bg-[#F7F9FF] text-[#0B35F1]"
       style={{ fontFamily: FONT }}
     >
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 bg-black/25 backdrop-blur-[18px]"
-      />
-      <div
-        aria-hidden="true"
-        className="absolute inset-0"
-        style={{
-          background:
-            "linear-gradient(180deg, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.34) 100%)",
-        }}
-      />
-      <div
-        className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-5 px-6 text-center"
-      >
+      <div className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-5 px-6 text-center">
         <div className="flex items-center justify-center gap-3">
-          <span className="grid h-14 w-14 place-items-center rounded-full bg-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] ring-1 ring-white/25 backdrop-blur-xl">
+          <span className="grid h-14 w-14 place-items-center rounded-full bg-white shadow-[0_18px_48px_rgba(11,53,241,0.14)] ring-1 ring-[#0B35F1]/15">
             <img
               src="./brand/favicons/favicon.svg"
               alt=""
@@ -76,14 +62,14 @@ function StartupLoading(props: { phase: string; status: string }) {
 
         <p
           style={{ fontFamily: FONT }}
-          className="min-h-5 text-sm text-white/75 animate-pulse motion-reduce:animate-none"
+          className="min-h-5 text-sm text-[#0B35F1]/75 animate-pulse motion-reduce:animate-none"
         >
           {props.status}
         </p>
         <div className="flex w-full max-w-[18rem] flex-col gap-2" aria-hidden>
-          <div className="h-2.5 w-full rounded-sm bg-white/20 animate-pulse motion-reduce:animate-none" />
-          <div className="h-2.5 w-3/4 self-center rounded-sm bg-white/15 animate-pulse motion-reduce:animate-none" />
-          <div className="h-2.5 w-1/2 self-center rounded-sm bg-white/10 animate-pulse motion-reduce:animate-none" />
+          <div className="h-2.5 w-full rounded-sm bg-[#0B35F1]/20 animate-pulse motion-reduce:animate-none" />
+          <div className="h-2.5 w-3/4 self-center rounded-sm bg-[#0B35F1]/15 animate-pulse motion-reduce:animate-none" />
+          <div className="h-2.5 w-1/2 self-center rounded-sm bg-[#0B35F1]/10 animate-pulse motion-reduce:animate-none" />
         </div>
       </div>
     </div>

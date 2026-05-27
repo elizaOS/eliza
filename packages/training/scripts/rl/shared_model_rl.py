@@ -31,7 +31,7 @@ import re
 import shutil
 import time
 from dataclasses import dataclass, field
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar, List, Literal, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -1362,7 +1362,6 @@ def resolve_counterparty(
     In the simulation, we can look up the target NPC's team from our
     agent_assignments registry to get ground truth.
     """
-    action_type = action.get("action", "wait")
     target_id = action.get("target") or action.get("recipient") or action.get("to")
 
     if target_id is None:

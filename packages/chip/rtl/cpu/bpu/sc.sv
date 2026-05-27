@@ -150,19 +150,21 @@ module sc
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
+            /* verilator lint_off BLKSEQ */
             for (int unsigned t = 0; t < SC_TABLES; t++) begin
                 for (int unsigned i = 0; i < SC_ENTRIES_TABLE; i++) begin
-                    storage_q[t][i] <= '0;
+                    storage_q[t][i] = '0;
                 end
             end
             for (int unsigned i = 0; i < SC_LOCAL_HISTORY_ENTRIES; i++) begin
-                local_history_q[i] <= '0;
+                local_history_q[i] = '0;
             end
             if (SC_BIAS_ENABLE != 0) begin
                 for (int unsigned i = 0; i < SC_BIAS_ENTRIES; i++) begin
-                    bias_q[i] <= '0;
+                    bias_q[i] = '0;
                 end
             end
+            /* verilator lint_on BLKSEQ */
             threshold_q <= $signed(SC_THRESH_INIT[7:0]);
             threshold_ctrl_q <= '0;
         end else if (upd_valid) begin

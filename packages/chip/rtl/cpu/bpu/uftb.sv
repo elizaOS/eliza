@@ -252,14 +252,16 @@ module uftb
                 storage_q[lkp_i][lkp_corrupt_way].valid <= 1'b0;
             end
             if (flush_valid) begin
+                /* verilator lint_off BLKSEQ */
                 for (int unsigned s = 0; s < UFTB_SETS; s++) begin
                     for (int unsigned w = 0; w < UFTB_WAYS; w++) begin
                         if (!flush_context_valid ||
                             storage_q[s][w].ctx == flush_context) begin
-                            storage_q[s][w].valid <= 1'b0;
+                            storage_q[s][w].valid = 1'b0;
                         end
                     end
                 end
+                /* verilator lint_on BLKSEQ */
             end else begin
             if (lkp_valid && lkp_hit) begin
                 for (int unsigned w = 0; w < UFTB_WAYS; w++) begin

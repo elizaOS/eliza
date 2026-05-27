@@ -184,6 +184,12 @@ def check_decode_against_rtl(contract: dict, errors: list[str]) -> None:
     ):
         if rtl_name in REGION_RTL_NAMES:
             decoded[REGION_RTL_NAMES[rtl_name]] = h(value) << 12
+    for rtl_name, value in re.findall(
+        r"assign\s+(\w+)_sel\s*=.*?mmio_addr\[31:16\]\s*==\s*16'h([0-9A-Fa-f_]+)",
+        decode,
+    ):
+        if rtl_name in REGION_RTL_NAMES:
+            decoded[REGION_RTL_NAMES[rtl_name]] = h(value) << 16
 
     checked_regions = set(REGION_RTL_NAMES.values())
     for name, region in regions_by_name(contract).items():

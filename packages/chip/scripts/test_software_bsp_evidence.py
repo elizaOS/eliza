@@ -131,13 +131,16 @@ class SoftwareBspEvidenceTest(unittest.TestCase):
         # while targets with missing or invalid external evidence must fail
         # closed.
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("buildroot BSP scaffold and evidence checks passed.", result.stdout)
-        self.assertIn("linux BSP scaffold and evidence checks passed.", result.stdout)
-        self.assertIn("opensbi BSP scaffold and evidence checks passed.", result.stdout)
+        self.assertIn("buildroot BSP check failed", result.stdout)
+        self.assertIn("linux BSP check failed", result.stdout)
+        self.assertIn("opensbi BSP check failed", result.stdout)
         self.assertIn("u-boot BSP check failed", result.stdout)
         self.assertIn("aosp BSP check failed", result.stdout)
+        self.assertIn("buildroot BSP BLOCKED: missing evidence", result.stdout)
+        self.assertIn("linux BSP BLOCKED: missing evidence", result.stdout)
+        self.assertIn("opensbi BSP BLOCKED: missing evidence", result.stdout)
         self.assertIn("u-boot BSP BLOCKED: missing evidence", result.stdout)
-        self.assertIn("aosp BSP BLOCKED: external evidence", result.stdout)
+        self.assertIn("aosp BSP BLOCKED: missing evidence", result.stdout)
 
     def test_status_helper_reports_missing_external_logs(self) -> None:
         result = subprocess.run(

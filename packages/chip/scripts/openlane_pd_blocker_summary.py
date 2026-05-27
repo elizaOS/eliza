@@ -14,7 +14,13 @@ from typing import Any, cast
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = ROOT.parents[1]
+
+
+def repo_root_for(chip_root: Path) -> Path:
+    return chip_root.parents[1] if len(chip_root.parents) > 1 else chip_root
+
+
+REPO_ROOT = repo_root_for(ROOT)
 RUN_ROOT = ROOT / "pd/openlane/runs"
 DEFAULT_REPORT = ROOT / "build/reports/openlane_pd_blocker_summary.json"
 SCHEMA = "eliza.openlane_pd_blocker_summary.v1"

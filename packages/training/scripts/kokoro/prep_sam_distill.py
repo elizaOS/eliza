@@ -26,7 +26,6 @@ import argparse
 import json
 import logging
 import os
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -87,8 +86,8 @@ def main(argv: list[str] | None = None) -> int:
             rec = json.loads(line)
             by_id[rec["id"]] = rec
 
-    train_lines = [l for l in train_in.read_text().splitlines() if l.strip()]
-    val_lines = [l for l in val_in.read_text().splitlines() if l.strip()]
+    train_lines = [line for line in train_in.read_text().splitlines() if line.strip()]
+    val_lines = [line for line in val_in.read_text().splitlines() if line.strip()]
     log.info("loaded %d train / %d val lines, %d manifest records",
              len(train_lines), len(val_lines), len(by_id))
 

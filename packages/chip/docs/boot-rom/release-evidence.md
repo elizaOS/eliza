@@ -20,9 +20,10 @@ linker, RTL contract, and artifact bounds.
 ## RTL wiring
 
 `rtl/bootrom/e1_bootrom.sv` loads the generated executable image via
-`$readmemh` (default `build/boot-rom/e1_secure_boot_rom.hex`, overridable with
-the `BOOT_ROM_HEX` plusarg). The first four words remain the debug-visible
-identity/version header (magic `OSO`, `CHIP`, format version, and the
+`$readmemh` (default `build/boot-rom/e1_secure_boot_rom.hex`, overridable via
+the `ROM_HEX` parameter) into the 64 KiB mask-ROM aperture. The first four
+words remain the debug-visible identity/version header (magic `OSO`, `CHIP`,
+format version, and the
 `32'h0000_1000` handoff word) so external bring-up tooling and the static
 boot-chain contract can fingerprint the ROM independent of the loaded image.
 
