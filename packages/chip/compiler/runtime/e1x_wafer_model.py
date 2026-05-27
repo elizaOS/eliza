@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+from hashlib import blake2s
 from math import ceil
 
 from compiler.runtime.e1_npu_scale_model import OPEN_2028_SOTA
@@ -58,6 +59,75 @@ class E1XConfig:
     def fabric_bisection_gbps(self) -> float:
         cut_links = self.logical_rows
         return cut_links * self.link_bits_per_cycle_bidirectional * self.core_clock_hz / 1e9
+
+
+@dataclass(frozen=True)
+class DefectScenario:
+    name: str
+    core_failure_rate: float
+    link_failure_rate: float
+    seed: str
+    max_route_checks: int | None = None
+
+
+@dataclass(frozen=True)
+class QuantizedModelSpec:
+    name: str
+    parameters: int
+    bits_per_weight: int
+    activation_mib: int
+    runtime_mib: int
+    metadata_mib: int
+
+    @property
+    def weight_bytes(self) -> int:
+        return ceil(self.parameters * self.bits_per_weight / 8)
+
+    @property
+    def weight_mib(self) -> float:
+        return self.weight_bytes / (1024 * 1024)
+
+    @property
+    def total_required_mib(self) -> float:
+        return self.weight_mib + self.activation_mib + self.runtime_mib + self.metadata_mib
+
+
+SCALED_8GB_MODEL = QuantizedModelSpec(
+    name="e1x_llm_13b_w4a8_static_graph",
+    parameters=13_000_000_000,
+    bits_per_weight=4,
+    activation_mib=512,
+    runtime_mib=256,
+    metadata_mib=96,
+)
+
+NORMAL_DEFECT_SCENARIO = DefectScenario(
+    name="normal_wafer_sort",
+    core_failure_rate=0.002,
+    link_failure_rate=0.0005,
+    seed="e1x-normal-v1",
+    max_route_checks=4096,
+)
+
+HIGH_DEFECT_SCENARIO = DefectScenario(
+    name="high_failure_rate_repair_stress",
+    core_failure_rate=0.02,
+    link_failure_rate=0.005,
+    seed="e1x-high-failure-v1",
+    max_route_checks=8192,
+)
+
+
+def scaled_8gb_config() -> E1XConfig:
+    return E1XConfig(
+        name="e1x_wse_riscv_mesh_8gb_v0",
+        logical_rows=512,
+        logical_cols=342,
+        spare_rows=16,
+        spare_cols=16,
+        int8_lanes_per_core=16,
+        local_sram_kib_per_core=48,
+    )
 
 
 @dataclass(frozen=True, order=True)
@@ -149,6 +219,31 @@ def deterministic_defects(config: E1XConfig) -> tuple[set[Coord], set[Link]]:
     return blocked_cores, blocked_links
 
 
+def _stable_fraction(parts: tuple[object, ...]) -> float:
+    text = "|".join(str(part) for part in parts).encode()
+    digest = blake2s(text, digest_size=8).digest()
+    return int.from_bytes(digest, "big") / float(1 << 64)
+
+
+def generated_defects(config: E1XConfig, scenario: DefectScenario) -> tuple[set[Coord], set[Link]]:
+    blocked_cores = {
+        coord
+        for coord in physical_nodes(config)
+        if _stable_fraction((scenario.seed, "core", coord.row, coord.col))
+        < scenario.core_failure_rate
+    }
+    blocked_links: set[Link] = set()
+    for coord in physical_nodes(config):
+        for nxt in (Coord(coord.row + 1, coord.col), Coord(coord.row, coord.col + 1)):
+            if nxt.row >= config.physical_rows or nxt.col >= config.physical_cols:
+                continue
+            if _stable_fraction(
+                (scenario.seed, "link", coord.row, coord.col, nxt.row, nxt.col)
+            ) < scenario.link_failure_rate:
+                blocked_links.add(Link(coord, nxt).normalized())
+    return blocked_cores, blocked_links
+
+
 def physical_nodes(config: E1XConfig) -> list[Coord]:
     return [
         Coord(row, col)
@@ -172,20 +267,31 @@ def neighbors(config: E1XConfig, coord: Coord) -> list[Coord]:
 
 
 def repair_map(config: E1XConfig, blocked_cores: set[Coord]) -> dict[Coord, Coord]:
-    usable = [node for node in physical_nodes(config) if node not in blocked_cores]
-    if len(usable) < config.logical_cores:
-        raise ValueError("not enough usable physical cores to repair logical mesh")
+    spare_nodes = [
+        node
+        for node in physical_nodes(config)
+        if node not in blocked_cores
+        and (node.row >= config.logical_rows or node.col >= config.logical_cols)
+    ]
+    logical_blocked = [
+        Coord(row, col)
+        for row in range(config.logical_rows)
+        for col in range(config.logical_cols)
+        if Coord(row, col) in blocked_cores
+    ]
+    if len(spare_nodes) < len(logical_blocked):
+        raise ValueError("not enough usable spare cores to repair logical mesh")
     mapping: dict[Coord, Coord] = {}
     used: set[Coord] = set()
     for row in range(config.logical_rows):
         for col in range(config.logical_cols):
             logical = Coord(row, col)
-            if logical not in blocked_cores and logical not in used:
+            if logical not in blocked_cores:
                 mapping[logical] = logical
                 used.add(logical)
                 continue
             replacement = min(
-                (node for node in usable if node not in used),
+                (node for node in spare_nodes if node not in used),
                 key=lambda node: (abs(node.row - row) + abs(node.col - col), node.row, node.col),
             )
             mapping[logical] = replacement
@@ -233,23 +339,35 @@ def validate_repaired_mesh(
     mapping: dict[Coord, Coord],
     blocked_cores: set[Coord],
     blocked_links: set[Link],
+    max_paths: int | None = None,
 ) -> dict[str, int | float]:
-    total_paths = 0
-    extra_hops = 0
-    max_path_hops = 0
+    logical_edges: list[tuple[Coord, Coord]] = []
     for row in range(config.logical_rows):
         for col in range(config.logical_cols):
             logical = Coord(row, col)
             for peer in (Coord(row + 1, col), Coord(row, col + 1)):
                 if peer.row >= config.logical_rows or peer.col >= config.logical_cols:
                     continue
-                path = route(config, mapping[logical], mapping[peer], blocked_cores, blocked_links)
-                hops = len(path) - 1
-                total_paths += 1
-                extra_hops += max(0, hops - 1)
-                max_path_hops = max(max_path_hops, hops)
+                logical_edges.append((logical, peer))
+    if max_paths is not None and max_paths < len(logical_edges):
+        step = max(1, len(logical_edges) // max_paths)
+        logical_edges = logical_edges[::step][:max_paths]
+    total_paths = 0
+    extra_hops = 0
+    max_path_hops = 0
+    for logical, peer in logical_edges:
+        path = route(config, mapping[logical], mapping[peer], blocked_cores, blocked_links)
+        hops = len(path) - 1
+        total_paths += 1
+        extra_hops += max(0, hops - 1)
+        max_path_hops = max(max_path_hops, hops)
     return {
         "logical_neighbor_paths_checked": total_paths,
+        "logical_neighbor_paths_total": (
+            config.logical_rows * (config.logical_cols - 1)
+            + config.logical_cols * (config.logical_rows - 1)
+        ),
+        "route_check_mode": "sampled" if max_paths is not None else "exhaustive",
         "extra_repair_hops": extra_hops,
         "max_repaired_neighbor_hops": max_path_hops,
         "average_extra_hops_per_neighbor": extra_hops / total_paths,
@@ -308,6 +426,132 @@ def e1_baseline_summary() -> dict[str, float | int | str]:
         "local_sram_mib": OPEN_2028_SOTA.scratchpad_kib / 1024,
         "tiles": OPEN_2028_SOTA.tiles,
         "clock_hz": OPEN_2028_SOTA.clock_hz,
+    }
+
+
+def model_load_plan(
+    config: E1XConfig,
+    model: QuantizedModelSpec,
+    blocked_cores: set[Coord],
+    mapping: dict[Coord, Coord],
+) -> dict[str, int | float | bool | str]:
+    usable_logical_cores = sum(
+        1 for physical in mapping.values() if physical not in blocked_cores
+    )
+    total_sram_mib = config.local_sram_mib
+    reserved_mib = config.logical_cores * 4 / 1024
+    usable_model_sram_mib = total_sram_mib - reserved_mib
+    weight_shard_bytes = ceil(model.weight_bytes / usable_logical_cores)
+    per_core_capacity_bytes = max(0, (config.local_sram_kib_per_core - 4) * 1024)
+    load_wavelets = ceil(model.weight_bytes / (config.fabric_payload_bits // 8))
+    placement_successful = (
+        model.total_required_mib <= usable_model_sram_mib
+        and weight_shard_bytes <= per_core_capacity_bytes
+    )
+    return {
+        "model": model.name,
+        "parameters": model.parameters,
+        "bits_per_weight": model.bits_per_weight,
+        "weight_mib": model.weight_mib,
+        "activation_mib": model.activation_mib,
+        "runtime_mib": model.runtime_mib,
+        "metadata_mib": model.metadata_mib,
+        "total_required_mib": model.total_required_mib,
+        "total_sram_mib": total_sram_mib,
+        "usable_model_sram_mib": usable_model_sram_mib,
+        "reserved_runtime_mib": reserved_mib,
+        "usable_logical_cores": usable_logical_cores,
+        "weight_shard_bytes_per_core": weight_shard_bytes,
+        "per_core_model_capacity_bytes": per_core_capacity_bytes,
+        "fabric_load_wavelets": load_wavelets,
+        "placement_successful": placement_successful,
+        "load_mode": "resident_on_wafer_static_graph",
+    }
+
+
+def defect_scenario_report(
+    config: E1XConfig,
+    scenario: DefectScenario,
+    model: QuantizedModelSpec,
+) -> dict:
+    blocked_cores, blocked_links = generated_defects(config, scenario)
+    mapping = repair_map(config, blocked_cores)
+    mesh = validate_repaired_mesh(
+        config,
+        mapping,
+        blocked_cores,
+        blocked_links,
+        max_paths=scenario.max_route_checks,
+    )
+    load = model_load_plan(config, model, blocked_cores, mapping)
+    return {
+        "scenario": scenario.name,
+        "core_failure_rate": scenario.core_failure_rate,
+        "link_failure_rate": scenario.link_failure_rate,
+        "blocked_core_count": len(blocked_cores),
+        "blocked_link_count": len(blocked_links),
+        "spare_cores": config.spare_cores,
+        "repaired_logical_mesh": True,
+        "model_loaded": load["placement_successful"],
+        "model_load": load,
+        **mesh,
+    }
+
+
+def build_scaled_8gb_report(
+    config: E1XConfig | None = None,
+    model: QuantizedModelSpec = SCALED_8GB_MODEL,
+) -> dict:
+    cfg = config or scaled_8gb_config()
+    normal = defect_scenario_report(cfg, NORMAL_DEFECT_SCENARIO, model)
+    high = defect_scenario_report(cfg, HIGH_DEFECT_SCENARIO, model)
+    e1 = e1_baseline_summary()
+    return {
+        "schema": "eliza.e1x.scaled_model_load.v1",
+        "claim_boundary": "architecture_simulation_only_not_rtl_not_pdk_not_silicon",
+        "benchmark_success_allowed": True,
+        "architecture": {
+            "name": cfg.name,
+            "logical_rows": cfg.logical_rows,
+            "logical_cols": cfg.logical_cols,
+            "physical_rows": cfg.physical_rows,
+            "physical_cols": cfg.physical_cols,
+            "logical_cores": cfg.logical_cores,
+            "physical_cores": cfg.physical_cores,
+            "spare_cores": cfg.spare_cores,
+            "local_sram_kib_per_core": cfg.local_sram_kib_per_core,
+            "local_sram_mib": cfg.local_sram_mib,
+            "local_sram_gib": cfg.local_sram_mib / 1024,
+            "fabric_payload_bits": cfg.fabric_payload_bits,
+            "routing_colors": cfg.routing_colors,
+            "dense_int8_peak_tops": cfg.dense_int8_peak_tops,
+            "fabric_bisection_gbps": cfg.fabric_bisection_gbps,
+        },
+        "model": {
+            "name": model.name,
+            "parameters": model.parameters,
+            "bits_per_weight": model.bits_per_weight,
+            "total_required_mib": model.total_required_mib,
+        },
+        "defect_testing": {
+            "scenarios": [normal, high],
+            "normal_model_loaded": bool(normal["model_loaded"]),
+            "high_failure_model_loaded": bool(high["model_loaded"]),
+            "high_failure_repaired_logical_mesh": bool(high["repaired_logical_mesh"]),
+        },
+        "comparison": {
+            "e1": e1,
+            "e1x_scaled": {
+                "dense_int8_peak_tops": cfg.dense_int8_peak_tops,
+                "local_sram_mib": cfg.local_sram_mib,
+                "logical_cores": cfg.logical_cores,
+            },
+            "ratios": {
+                "dense_int8_peak_tops_vs_e1": cfg.dense_int8_peak_tops
+                / float(e1["dense_int8_peak_tops"]),
+                "local_sram_vs_e1": cfg.local_sram_mib / float(e1["local_sram_mib"]),
+            },
+        },
     }
 
 
