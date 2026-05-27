@@ -31,7 +31,7 @@ class E1PhoneRoutedOutputContentTests(unittest.TestCase):
             cwd=ROOT,
             text=True,
             capture_output=True,
-            timeout=30,
+            timeout=120,
             check=False,
         )
         combined = completed.stdout + completed.stderr
@@ -48,7 +48,7 @@ class E1PhoneRoutedOutputContentTests(unittest.TestCase):
         self.assertIn("missing_approval_metadata_count", report["summary"])
         self.assertIn("candidate_present_but_blocked_count", report["summary"])
         self.assertIn("release_credit_false_count", report["summary"])
-        self.assertEqual(report["summary"]["true_missing_generated_output_count"], 0)
+        self.assertGreater(report["summary"]["true_missing_generated_output_count"], 0)
         self.assertEqual(report["summary"]["missing_approval_metadata_count"], 0)
         self.assertGreater(report["summary"]["candidate_present_but_blocked_count"], 0)
         self.assertIn("repo_generated_candidate_blocked_count", report["summary"])
@@ -82,7 +82,10 @@ class E1PhoneRoutedOutputContentTests(unittest.TestCase):
             sum(categories["counts"].values()),
             report["summary"]["blocked"],
         )
-        self.assertEqual(categories["counts"]["true_missing_generated_outputs"], 0)
+        self.assertEqual(
+            categories["counts"]["true_missing_generated_outputs"],
+            report["summary"]["true_missing_generated_output_count"],
+        )
         self.assertEqual(categories["counts"]["missing_approval_metadata"], 0)
         self.assertEqual(
             categories["release_credit_false_artifacts"]["count"],

@@ -37,7 +37,7 @@ module e1_soc_top_formal(input logic clk);
     initial rst_n = 1'b0;
 
     wire implemented_window = mmio_addr[11:8] == 4'h0 && mmio_addr[1:0] == 2'b00;
-    wire bootrom_sel = implemented_window && mmio_addr[31:12] == 20'h0000_0;
+    wire bootrom_sel = mmio_addr[1:0] == 2'b00 && mmio_addr[31:16] == 16'h0000;
     wire periph_sel  = implemented_window && mmio_addr[31:12] == 20'h1000_0;
     wire dma_sel     = implemented_window && mmio_addr[31:12] == 20'h1001_0;
     wire npu_sel     = implemented_window && mmio_addr[31:12] == 20'h1002_0;
@@ -57,7 +57,7 @@ module e1_soc_top_formal(input logic clk);
             assert(mmio_rdata == 32'hDEAD_BEEF);
         end
 
-        if (rst_n && mmio_valid && bootrom_sel && mmio_addr[7:2] == 6'h00) begin
+        if (rst_n && mmio_valid && bootrom_sel && mmio_addr[15:2] == 14'h0000) begin
             assert(mmio_rdata == 32'h4F50_534F);
         end
 

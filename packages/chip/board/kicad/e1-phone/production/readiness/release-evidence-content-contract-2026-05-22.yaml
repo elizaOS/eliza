@@ -51,10 +51,10 @@ summary:
   local_kicad_cad_incomplete_pinout_detail_count: 0
   local_kicad_cad_release_credit: false
   artifact_content_requirement_count: 212
-  local_candidate_content_requirement_count: 157
+  local_candidate_content_requirement_count: 186
   local_candidate_manifest_artifact_path_count: 77
-  local_candidate_matched_artifact_path_count: 68
-  local_candidate_unmatched_artifact_path_count: 9
+  local_candidate_matched_artifact_path_count: 74
+  local_candidate_unmatched_artifact_path_count: 3
   template_content_requirement_count: 6
   validated_artifact_content_requirement_count: 0
   content_contract_only: true
@@ -324,7 +324,7 @@ content_contracts:
   - step_validation
   - supplier_evidence
   missing_release_ready_evidence_count: 5
-  cad_output_file_count: 1293
+  cad_output_file_count: 909
   required_content_fields:
   - artifact_id
   - source_requirement_id
@@ -809,7 +809,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/erc/production-root.json
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -822,8 +822,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -841,7 +841,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-3d-binding/audio_speaker_microphone_flexes.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -854,8 +854,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -873,7 +873,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-review/audio_speaker_microphone_flexes.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -886,8 +886,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -1001,7 +1001,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/pinout-review/audio_speaker_microphone_flexes.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -1014,8 +1014,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -1129,7 +1129,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/audio-haptic-functional-measurements.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -1142,8 +1142,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -1257,7 +1257,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/symbol-review/audio_speaker_microphone_flexes.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -1270,8 +1270,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -1321,7 +1321,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/erc/production-root.json
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -1334,8 +1334,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -1353,7 +1353,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-3d-binding/battery_pack.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -1366,8 +1366,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -1385,7 +1385,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-review/battery_pack.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -1398,8 +1398,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -1513,7 +1513,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/pinout-review/battery_pack.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -1526,8 +1526,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -1641,7 +1641,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/power/battery-pack-inspection-and-charge-limits.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -1654,8 +1654,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -1769,7 +1769,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/symbol-review/battery_pack.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -1782,8 +1782,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -1833,7 +1833,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/erc/production-root.json
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -1846,8 +1846,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -1865,7 +1865,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-3d-binding/cellular.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -1878,8 +1878,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -1897,7 +1897,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-review/cellular.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -1910,8 +1910,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -2025,7 +2025,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/pinout-review/cellular.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -2038,8 +2038,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -2249,7 +2249,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/symbol-review/cellular.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -2262,8 +2262,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -2313,7 +2313,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/erc/production-root.json
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -2326,8 +2326,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -2345,7 +2345,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-3d-binding/charger_power_path.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -2358,8 +2358,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -2377,7 +2377,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-review/charger_power_path.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -2390,8 +2390,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -2505,7 +2505,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/pinout-review/charger_power_path.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -2518,8 +2518,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -2729,7 +2729,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/symbol-review/charger_power_path.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -2742,8 +2742,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -2793,7 +2793,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/erc/production-root.json
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -2806,8 +2806,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -2825,7 +2825,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-3d-binding/display_touch.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -2838,8 +2838,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -2857,7 +2857,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-review/display_touch.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -2870,8 +2870,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -2985,7 +2985,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/pinout-review/display_touch.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -2998,8 +2998,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -3209,7 +3209,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/symbol-review/display_touch.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -3222,8 +3222,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -3273,7 +3273,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/erc/production-root.json
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -3286,8 +3286,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -3305,7 +3305,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-3d-binding/front_camera.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -3318,8 +3318,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -3337,7 +3337,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-review/front_camera.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -3350,8 +3350,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -3465,7 +3465,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/pinout-review/front_camera.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -3478,8 +3478,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -3689,7 +3689,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/symbol-review/front_camera.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -3702,8 +3702,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -3753,7 +3753,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/erc/production-root.json
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -3766,8 +3766,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -3785,7 +3785,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-3d-binding/pmic.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -3798,8 +3798,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -3817,7 +3817,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-review/pmic.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -3830,8 +3830,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -3945,7 +3945,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/pinout-review/pmic.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -3958,8 +3958,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -4073,7 +4073,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/power/rail-bringup-sequence.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -4086,8 +4086,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -4201,7 +4201,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/symbol-review/pmic.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -4214,8 +4214,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -4265,7 +4265,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/erc/production-root.json
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -4278,8 +4278,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -4297,7 +4297,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-3d-binding/rear_camera.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -4310,8 +4310,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -4329,7 +4329,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-review/rear_camera.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -4342,8 +4342,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -4457,7 +4457,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/pinout-review/rear_camera.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -4470,8 +4470,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -4681,7 +4681,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/symbol-review/rear_camera.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -4694,8 +4694,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -4745,7 +4745,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/erc/production-root.json
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -4758,8 +4758,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -4777,7 +4777,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-3d-binding/side_buttons.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -4790,8 +4790,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -4809,7 +4809,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-review/side_buttons.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -4822,8 +4822,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -4937,7 +4937,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/pinout-review/side_buttons.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -4950,8 +4950,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -5161,7 +5161,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/symbol-review/side_buttons.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -5174,8 +5174,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -5225,7 +5225,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/erc/production-root.json
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -5238,8 +5238,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -5257,7 +5257,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-3d-binding/top_bottom_interconnect.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -5270,8 +5270,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -5289,7 +5289,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-review/top_bottom_interconnect.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -5302,8 +5302,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -5417,7 +5417,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/pinout-review/top_bottom_interconnect.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -5430,8 +5430,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -5545,7 +5545,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/split-interconnect-continuity-si.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -5558,8 +5558,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -5673,7 +5673,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/symbol-review/top_bottom_interconnect.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -5686,8 +5686,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -5737,7 +5737,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/erc/production-root.json
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -5750,8 +5750,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -5769,7 +5769,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-3d-binding/usb_c_receptacle_evt0.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -5782,8 +5782,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -5801,7 +5801,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-review/usb_c_receptacle_evt0.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -5814,8 +5814,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -5929,7 +5929,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/pinout-review/usb_c_receptacle_evt0.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -5942,8 +5942,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -6153,7 +6153,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/symbol-review/usb_c_receptacle_evt0.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -6166,8 +6166,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -6217,7 +6217,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/erc/production-root.json
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -6230,8 +6230,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -6249,7 +6249,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-3d-binding/usb_pd_controller.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -6262,8 +6262,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -6281,7 +6281,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-review/usb_pd_controller.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -6294,8 +6294,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -6409,7 +6409,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/pinout-review/usb_pd_controller.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -6422,8 +6422,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -6633,7 +6633,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/symbol-review/usb_pd_controller.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -6646,8 +6646,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -6697,7 +6697,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/erc/production-root.json
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -6710,8 +6710,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -6729,7 +6729,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-3d-binding/wifi_bluetooth.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -6742,8 +6742,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -6761,7 +6761,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/footprint-review/wifi_bluetooth.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -6774,8 +6774,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -6889,7 +6889,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/pinout-review/wifi_bluetooth.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -6902,8 +6902,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -7113,7 +7113,7 @@ artifact_content_requirements:
   path: board/kicad/e1-phone/production/reports/symbol-review/wifi_bluetooth.yaml
   source_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
   schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
-  status: blocked_present_but_unvalidated_fail_closed
+  status: blocked_missing_required_supplier_return
   release_allowed: false
   template_only: false
   presence_only: true
@@ -7126,8 +7126,8 @@ artifact_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -7159,8 +7159,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -7229,8 +7229,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -7264,8 +7264,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -7299,8 +7299,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -7334,8 +7334,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -7369,8 +7369,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -7404,8 +7404,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -7439,8 +7439,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -7474,8 +7474,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -7509,8 +7509,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -7544,8 +7544,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -7579,8 +7579,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -7614,8 +7614,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -7649,8 +7649,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -8489,8 +8489,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -8664,8 +8664,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: directory
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -8769,8 +8769,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -8839,8 +8839,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: directory
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -8874,8 +8874,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -9049,8 +9049,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -9084,8 +9084,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -9119,8 +9119,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -9154,8 +9154,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -9784,8 +9784,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -9819,8 +9819,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -9889,8 +9889,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -9924,8 +9924,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -9959,8 +9959,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -9994,8 +9994,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -10134,8 +10134,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -10204,8 +10204,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: directory
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -10274,8 +10274,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -10309,8 +10309,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -10344,8 +10344,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -10379,8 +10379,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -10449,8 +10449,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -10484,8 +10484,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -10519,8 +10519,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -10554,8 +10554,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: directory
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -10589,8 +10589,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -10624,8 +10624,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -10659,8 +10659,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -10694,8 +10694,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -10729,8 +10729,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -10764,8 +10764,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11219,8 +11219,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11254,8 +11254,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11289,8 +11289,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11324,8 +11324,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11394,8 +11394,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11429,8 +11429,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11464,8 +11464,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11499,8 +11499,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11534,8 +11534,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11569,8 +11569,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11604,8 +11604,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11639,8 +11639,1023 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/camera-capture-log.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/camera-capture-log.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/drc.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/drc.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/erc.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/erc.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/length-skew.csv
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/length-skew.csv
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/memory-training-log.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/memory-training-log.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/power-thermal
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/power-thermal
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/rf
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/rf
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/si-pi
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/si-pi
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/ufs-link-training-log.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/ufs-link-training-log.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/usb2-length-skew.csv
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/usb2-length-skew.csv
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
+  required_before_release:
+  - non-template executed or supplier-returned artifact
+  - content hash bound to the source requirement
+  - revision, lot, serial, or tool version traceability
+  - owner and reviewer disposition
+  - explicit pass/fail or acceptance result where applicable
+  forbidden_claims:
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  artifact_origin: local_generated_candidate
+  approval_eligible: false
+  release_credit: false
+- evidence_id: routed_output:board/kicad/e1-phone/production/reports/zone-fill.json
+  category: routed_board_release_evidence
+  path: board/kicad/e1-phone/production/reports/zone-fill.json
+  source_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  schema: eliza.e1_phone_release_evidence_artifact_content_requirement.v1
+  status: blocked_local_candidate_not_release_evidence
+  release_allowed: false
+  template_only: false
+  presence_only: true
+  validated: false
+  approval_status: missing_or_unvalidated
+  reviewer: null
+  owner: null
+  captured_at: null
+  revision_or_lot: null
+  sha256: null
+  traceability_ids: []
+  current_presence:
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11674,8 +12689,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11709,8 +12724,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11744,8 +12759,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11779,8 +12794,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11814,8 +12829,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11849,8 +12864,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11884,8 +12899,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11919,8 +12934,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11954,8 +12969,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -11989,8 +13004,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12024,8 +13039,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12059,8 +13074,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12094,8 +13109,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12129,8 +13144,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12164,8 +13179,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12199,8 +13214,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12234,8 +13249,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12269,8 +13284,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12304,8 +13319,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12339,8 +13354,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12374,8 +13389,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12409,8 +13424,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12444,8 +13459,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12479,8 +13494,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12514,8 +13529,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12549,8 +13564,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12584,8 +13599,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12619,8 +13634,8 @@ local_candidate_content_requirements:
   sha256: null
   traceability_ids: []
   current_presence:
-    present: true
-    artifact_kind: file
+    present: false
+    artifact_kind: missing
   required_before_release:
   - non-template executed or supplier-returned artifact
   - content hash bound to the source requirement
@@ -12731,6 +13746,7 @@ local_candidate_manifest_coverage:
   - board/kicad/e1-phone/production/pdf/assembly.pdf
   - board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
   - board/kicad/e1-phone/production/pos
+  - board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json
   - board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml
   - board/kicad/e1-phone/production/reports/camera-capture-log.json
   - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
@@ -12740,8 +13756,11 @@ local_candidate_manifest_coverage:
   - board/kicad/e1-phone/production/reports/erc.json
   - board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
   - board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
+  - board/kicad/e1-phone/production/reports/length-skew.csv
+  - board/kicad/e1-phone/production/reports/memory-training-log.json
   - board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml
   - board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
+  - board/kicad/e1-phone/production/reports/power-thermal
   - board/kicad/e1-phone/production/reports/power-thermal/load-step.json
   - board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
   - board/kicad/e1-phone/production/reports/radio-module-integration.yaml
@@ -12766,9 +13785,11 @@ local_candidate_manifest_coverage:
   - board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
   - board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
   - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  - board/kicad/e1-phone/production/reports/ufs-link-training-log.json
   - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
   - board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
   - board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+  - board/kicad/e1-phone/production/reports/usb2-length-skew.csv
   - board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
   - board/kicad/e1-phone/production/reports/zone-fill.json
   - board/kicad/e1-phone/production/stackup/coupon-geometry.pdf
@@ -12785,12 +13806,6 @@ local_candidate_manifest_coverage:
   - board/kicad/e1-phone/production/test/probe-coordinates.csv
   - board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
   unmatched_artifact_paths:
-  - board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json
-  - board/kicad/e1-phone/production/reports/length-skew.csv
-  - board/kicad/e1-phone/production/reports/memory-training-log.json
-  - board/kicad/e1-phone/production/reports/power-thermal
-  - board/kicad/e1-phone/production/reports/ufs-link-training-log.json
-  - board/kicad/e1-phone/production/reports/usb2-length-skew.csv
   - board/kicad/e1-phone/production/stackup/impedance-coupon-drawing.pdf
   - board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
   - board/kicad/e1-phone/production/step/component-models

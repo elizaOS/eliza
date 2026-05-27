@@ -3,6 +3,8 @@ ENTRY(_start)
 
 MEMORY
 {
+  /* Legacy reset-only scaffold image. The current RTL contract ROM has a
+     64 KiB aperture and is checked through fw/boot-rom/check_boot_rom.py. */
   rom (rx) : ORIGIN = 0x00000000, LENGTH = 4K
 }
 
@@ -28,4 +30,4 @@ SECTIONS
   }
 }
 
-ASSERT(SIZEOF(.text) + SIZEOF(.rodata) <= LENGTH(rom), "boot ROM exceeds 4 KiB")
+ASSERT(SIZEOF(.text) + SIZEOF(.rodata) <= LENGTH(rom), "legacy reset-only ROM exceeds 4 KiB")

@@ -44,6 +44,16 @@ VALID_CLAIM_LEVELS = {
 VALID_VERDICTS = {"win", "parity", "loss", "unproven"}
 
 
+def iter_evidence_paths(evidence: Any) -> Iterator[str]:
+    """Yield evidence paths from either a scalar path or a list of paths."""
+    if isinstance(evidence, str):
+        yield evidence
+    elif isinstance(evidence, list):
+        for item in evidence:
+            if isinstance(item, str):
+                yield item
+
+
 def iter_cells(node: Any, path: str = "") -> Iterator[tuple[str, dict[str, Any]]]:
     """Yield (path, cell) for every mapping that carries a ``value`` key."""
     if isinstance(node, dict):
@@ -67,8 +77,13 @@ def check_cell(path: str, cell: dict[str, Any]) -> list[str]:
         evidence = cell.get("evidence")
         if not evidence:
             errors.append(f"{path}: measured cell missing 'evidence'")
-        elif not (ROOT / evidence).exists():
-            errors.append(f"{path}: evidence file not found: {evidence}")
+        else:
+            evidence_paths = list(iter_evidence_paths(evidence))
+            if not evidence_paths:
+                errors.append(f"{path}: evidence must be a path or list of paths")
+            for evidence_path in evidence_paths:
+                if not (ROOT / evidence_path).exists():
+                    errors.append(f"{path}: evidence file not found: {evidence_path}")
     elif claim == "published":
         if not str(cell.get("source", "")).strip():
             errors.append(f"{path}: published cell missing non-empty 'source'")

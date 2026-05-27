@@ -12,11 +12,11 @@ Fail-closed acceptance matrix generated from routed-board source inventories. Th
 | --- | ---: |
 | `route_domain_count` | `7` |
 | `domains_with_missing_exact_nets` | `0` |
-| `domains_with_missing_production_outputs` | `0` |
+| `domains_with_missing_production_outputs` | `6` |
 | `required_output_path_count` | `46` |
-| `missing_required_output_path_count` | `0` |
-| `candidate_present_blocked_required_output_path_count` | `37` |
-| `truly_missing_required_output_path_count` | `0` |
+| `missing_required_output_path_count` | `29` |
+| `candidate_present_blocked_required_output_path_count` | `11` |
+| `truly_missing_required_output_path_count` | `29` |
 | `candidate_step_size_bytes` | `32959460` |
 | `candidate_step_component_model_count` | `89` |
 | `candidate_step_pinout_bound_model_count` | `22` |
@@ -24,7 +24,7 @@ Fail-closed acceptance matrix generated from routed-board source inventories. Th
 | `candidate_step_cad_connection_terminal_marker_count` | `42` |
 | `candidate_step_cad_connection_terminal_pair_count` | `21` |
 | `validation_evidence_category_count` | `5` |
-| `missing_validation_evidence_category_count` | `0` |
+| `missing_validation_evidence_category_count` | `5` |
 | `release_state` | `blocked_fail_closed` |
 | `acceptance_allowed` | `False` |
 
@@ -85,23 +85,23 @@ Local routed-output candidate has routed development tracks, visible component e
 
 | Domain | Missing nets | Missing outputs | Next unblock action |
 | --- | ---: | ---: | --- |
-| `usb_c_power_sidekey_spine` | 0 | 0 | USB_DP_DN concept Manhattan path is 122.5 mm, 32.5 mm over the current 90 mm target |
-| `display_touch_mipi_dsi` | 0 | 0 | selected display connector land pattern, pinout, STEP, FPC bend, and stiffener data are not supplier signed |
-| `front_rear_camera_mipi_csi` | 0 | 0 | camera module FPC pinouts, connector footprints, lens-axis datums, and STEP models are missing |
-| `cellular_wifi_bt_rf_host` | 0 | 0 | cellular and Wi-Fi module pad maps, reference layouts, exact SKU constraints, RF keepouts, and STEP models are missing |
-| `compute_memory_storage_escape` | 0 | 0 | SoC, LPDDR, UFS, PMIC pin maps and layout guides are not captured as release footprints |
-| `split_interconnect_and_audio_haptics` | 0 | 0 | exact flex or board-to-board connector family, pinout, stack height, and STEP are missing |
+| `usb_c_power_sidekey_spine` | 0 | 5 | USB_DP_DN concept Manhattan path is 122.5 mm, 32.5 mm over the current 90 mm target |
+| `display_touch_mipi_dsi` | 0 | 3 | selected display connector land pattern, pinout, STEP, FPC bend, and stiffener data are not supplier signed |
+| `front_rear_camera_mipi_csi` | 0 | 3 | camera module FPC pinouts, connector footprints, lens-axis datums, and STEP models are missing |
+| `cellular_wifi_bt_rf_host` | 0 | 4 | cellular and Wi-Fi module pad maps, reference layouts, exact SKU constraints, RF keepouts, and STEP models are missing |
+| `compute_memory_storage_escape` | 0 | 4 | SoC, LPDDR, UFS, PMIC pin maps and layout guides are not captured as release footprints |
+| `split_interconnect_and_audio_haptics` | 0 | 2 | exact flex or board-to-board connector family, pinout, stack height, and STEP are missing |
 | `factory_test_fiducials_and_manufacturing_coupons` | 0 | 0 | no routed probe coordinates, local fiducials, panel rails, tooling holes, or coupon drawings exist |
 
 ## Required Acceptance Evidence
 
 | Evidence | Present | Missing artifacts | Acceptance rule |
 | --- | --- | ---: | --- |
-| `drc_erc` | `True` | 0 | clean_or_every_violation_has_signed_release_waiver |
-| `signal_integrity` | `True` | 0 | post_route_length_skew_impedance_return_path_and_channel_checks_present |
-| `power_integrity` | `True` | 0 | high_current_loops_current_density_decoupling_return_path_and_thermal_limits_closed |
-| `rf_validation` | `True` | 0 | matching_conducted_access_coexistence_gnss_desense_and_sar_prescan_ready |
-| `enclosure_validation` | `True` | 0 | routed_step_with_supplier_models_passes_clearance_against_display_battery_usb_buttons_cameras_antennas_acoustics_and_split_interconnect |
+| `drc_erc` | `False` | 3 | clean_or_every_violation_has_signed_release_waiver |
+| `signal_integrity` | `False` | 6 | post_route_length_skew_impedance_return_path_and_channel_checks_present |
+| `power_integrity` | `False` | 4 | high_current_loops_current_density_decoupling_return_path_and_thermal_limits_closed |
+| `rf_validation` | `False` | 4 | matching_conducted_access_coexistence_gnss_desense_and_sar_prescan_ready |
+| `enclosure_validation` | `False` | 1 | routed_step_with_supplier_models_passes_clearance_against_display_battery_usb_buttons_cameras_antennas_acoustics_and_split_interconnect |
 
 ## Fail-Closed Claims
 

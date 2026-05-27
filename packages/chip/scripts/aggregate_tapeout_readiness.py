@@ -1100,6 +1100,20 @@ def blocker_phase_plan(results: list[GateResult]) -> list[dict[str, object]]:
         if not matched:
             continue
         next_actions = [blocker_action(result) for result in matched]
+        if len(matched) != len(next_actions):
+            raise RuntimeError(f"{phase['phase']}: gate/action count mismatch")
+        blocked_gate_details = []
+        for index, result in enumerate(matched):
+            action = next_actions[index]
+            blocked_gate_details.append(
+                {
+                    "name": result.name,
+                    "blocker_dependency": result.blocker_dependency,
+                    "validation_command": action["validation_command"],
+                    "next_action": action["next_action"],
+                    "evidence": result.evidence,
+                }
+            )
         rows.append(
             {
                 "phase": phase["phase"],
@@ -1139,16 +1153,7 @@ def blocker_phase_plan(results: list[GateResult]) -> list[dict[str, object]]:
                     if any(action["dependency"] == dependency for action in next_actions)
                 },
                 "blocked_gates": [result.name for result in matched],
-                "blocked_gate_details": [
-                    {
-                        "name": result.name,
-                        "blocker_dependency": result.blocker_dependency,
-                        "validation_command": action["validation_command"],
-                        "next_action": action["next_action"],
-                        "evidence": result.evidence,
-                    }
-                    for result, action in zip(matched, next_actions, strict=True)
-                ],
+                "blocked_gate_details": blocked_gate_details,
                 "validation_commands": [action["validation_command"] for action in next_actions],
                 "acceptance_commands": phase["acceptance_commands"],
                 "sample_evidence": [result.evidence for result in matched[:5]],

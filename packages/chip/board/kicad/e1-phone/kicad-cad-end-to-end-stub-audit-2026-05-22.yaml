@@ -1,13 +1,12 @@
 schema: eliza.e1_phone_kicad_cad_end_to_end_stub_audit.v1
 date: 2026-05-22
-status: blocked_external_evidence_required_after_local_cad_geometry_fix
+status: blocked_external_evidence_required
 claim_boundary: >
-  Audit of the KiCad-to-CAD handoff after the camera/back and screen collision
-  fixes. This file separates locally fixable CAD/package stubs from blockers
-  that require supplier drawings, real footprints, routing, or factory release
-  artifacts.
+  This file records concept-envelope CAD checks and fail-closed blockers for
+  the KiCad-to-CAD handoff. It does not claim supplier drawings, production
+  footprints, routed-board release output, or factory release artifacts exist.
 
-local_fixes_closed:
+concept_geometry_evidence:
   - id: concept_pcb_split_island_geometry
     status: fixed
     evidence:
@@ -15,18 +14,18 @@ local_fixes_closed:
       - mechanical/e1-phone/review/board-step-readiness.json
       - mechanical/e1-phone/review/board-step-readiness.md
     result: >
-      CAD projected PCB islands now match KiCad Edge.Cuts/layout-utilization:
+      CAD projected PCB islands match KiCad Edge.Cuts/layout-utilization:
       top 64.0 x 29.0 mm at board y=0.0 and bottom 64.0 x 15.0 mm at board
       y=117.0.
   - id: full_cad_boolean_interference
-    status: pass
+    status: pass_concept_geometry_only
     evidence:
       - mechanical/e1-phone/review/full-cad-boolean-interference.json
       - mechanical/e1-phone/review/assembly-clearance.json
     result: >
       Regenerated concept AABB and assembly-clearance reviews include the
       visible cable/terminal solids and report zero scoped concept-envelope
-      interferences. The local full-CAD boolean artifact remains blocked for
+      interferences. The full-CAD boolean artifact remains blocked for
       release because supplier B-rep, routed-board STEP, and physical review
       evidence are still missing, but the screen stack, rear camera/back
       window, and cable terminal marker collisions are locally clear.
@@ -38,23 +37,23 @@ local_fixes_closed:
       - mechanical/e1-phone/review/assembly-gotcha-audit.json
       - mechanical/e1-phone/review/compactness-optimization.json
     result: >
-      The assembly checker now covers all ten screw bosses plus eight snap hooks,
+      The assembly checker covers all ten screw bosses plus eight snap hooks,
       places the battery back-void foam pad before the pouch, and reports 20
       ordered assembly steps with zero trapped parts. The outboard screw bosses
-      are outside the battery and foam envelopes, and the corner ribs now extend
+      are outside the battery and foam envelopes, and the corner ribs extend
       inward from the boss centers instead of widening the molded body. The
       compactness audit passes with a 78.0 mm molded-body width and only local
       side-control protrusion.
   - id: camera_back_visibility
-    status: pass
+    status: pass_concept_geometry_only
     evidence:
       - mechanical/e1-phone/review/full-cad-boolean-interference.json
       - mechanical/e1-phone/out/rear_camera_lens_window.step
       - mechanical/e1-phone/out/rear_camera_optical_sight_tunnel.step
     result: >
-      Rear camera burial and window checks remain valid after the board island
-      shrink; camera/flash are modeled with explicit back-window apertures and
-      no unintentional back-cover clash.
+      Rear camera burial and window checks pass for the concept board island
+      geometry; camera/flash are modeled with explicit back-window apertures
+      and no unintentional back-cover clash.
   - id: cad_visible_modules_and_markers
     status: pass_concept_envelopes_only
     evidence:
@@ -100,13 +99,13 @@ local_fixes_closed:
       lead flex, USB-C escape, speaker/microphone/haptic leads, SIM/eSIM marker,
       the top microphone tail, earpiece receiver lead flex, compute SoM SODIMM
       connector/keepout, antenna aperture tuner marker, and the remaining RF
-      feed markers are now explicit STEP solids in the CAD. The CAD connection
+      feed markers are explicit STEP solids in the CAD. The CAD connection
       coverage gate maps 21 required
       cables, flexes, RF feeds, and compute carrier interfaces to visible STEP
       solids and routed-development nets, with 42 endpoint terminal STEP
       markers and 21 passing terminal pairs proving each represented connection
       has explicit local from/to contact evidence. The routed-output candidate
-      metadata now carries the full connection record for each marker: CAD part,
+      metadata carries the full connection record for each marker: CAD part,
       from/to endpoints, terminal STEP paths and byte counts, connection type,
       STEP path and byte count, net list, pass flag, and release-credit=false
       state. Concept AABB/clearance scans report zero unintentional
@@ -122,7 +121,7 @@ local_fixes_closed:
       - board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml
       - mechanical/e1-phone/review/board-step-readiness.json
     result: >
-      A separate routed-development board snapshot now contains 153 route
+      A separate routed-development board snapshot contains 153 route
       records and 306 KiCad copper segments. Its intake coverage audit reports
       zero missing required shared nets and zero missing route-domain nets after
       explicit alias normalization for stale contract names. Board-step
@@ -149,7 +148,7 @@ local_fixes_closed:
       - board/kicad/e1-phone/e1-phone-dev.pretty/QUECTEL_RG255C_GEOMETRY_DEV.kicad_mod
       - board/kicad/e1-phone/e1-phone-dev.pretty/SODIMM_260P_0P5_COMPUTE_SOM_DEV.kicad_mod
     result: >
-      Thirty-two concrete KiCad development footprint patterns now exist and
+      Thirty-two concrete KiCad development footprint patterns exist and
       are registered through the project fp-lib-table. The library covers the 13
       major component/module patterns plus reusable support footprints for
       ESD/TVS, test pads, fiducials, mounting holes, 0402 R/C/L networks,
@@ -163,7 +162,7 @@ local_fixes_closed:
       - board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
       - board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml
     result: >
-      The routed-development board now has a separate library-bound variant with
+      The routed-development board has a separate library-bound variant with
       all concept placements rebuilt from the e1-phone-dev concrete development
       footprint library bodies, with the combined PMIC/charger placeholder split
       into separate MAX77860 charger and TPS65987 USB-PD package bodies. The 306
@@ -175,7 +174,7 @@ local_fixes_closed:
       audio/haptic, fuel-gauge, and rail-access development patterns.
       Of those contract assignments, 86 cover the top/bottom split-interconnect
       allocation; the six explicit NC spare contacts remain intentionally
-      unnetted. The board now has 89 development-bound markers, zero E1Phone
+      unnetted. The board has 89 development-bound markers, zero E1Phone
       footprint references, and zero placeholder_not_fabrication_footprint
       markers. Board-step readiness records this as
       development_footprints_replaced_for_local_review while
@@ -192,7 +191,7 @@ local_fixes_closed:
       The e1-phone-dev footprint library has 32 footprints, all electrical pad
       counts match the development-footprint manifest, 17 records have exact
       public pin/pad or aligned public SoM coverage, and the compute SoM
-      row-count is aligned. All 21 pinout-bound footprints now carry explicit
+      row-count is aligned. All 21 pinout-bound footprints carry explicit
       local terminal contracts derived from captured public pinout evidence.
       Eleven reusable local support patterns have explicit land-pattern basis
       records and local terminal contracts rather than silent generic pads.
@@ -205,7 +204,7 @@ local_fixes_closed:
       - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
       - board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml
     result: >
-      A separate CadQuery STEP assembly now exists for the real-footprint
+      A separate CadQuery STEP assembly exists for the real-footprint
       development board. It contains two board islands, 89 placed footprint
       envelopes, 1452 visible pad/contact solids, and 306 visible routed-copper
       segment solids plus 24 visible via/barrel solids derived from the KiCad
@@ -225,11 +224,11 @@ local_fixes_closed:
       - mechanical/e1-phone/review/board-step-readiness.json
       - mechanical/e1-phone/review/routed-board-clearance.json
     result: >
-      The routed-board STEP intake now distinguishes the 32,959,460 byte
+      The routed-board STEP intake distinguishes the 32,959,460 byte
       detailed routed-output candidate from approved production STEP evidence.
       The candidate hash matches the non-release routed-development STEP source,
       carries blocked metadata, records 153 route records, 306 copper segments,
-      and 24 non-release vias, and now has a blocked component-3D-model manifest listing 89
+      and 24 non-release vias, and has a blocked component-3D-model manifest listing 89
       local development component envelopes, 1452 pad/contact visuals, 306
       route-segment visuals, and 24 via visuals. The component-model manifest
       binds every local development model back to its KiCad reference,
@@ -240,7 +239,7 @@ local_fixes_closed:
       evidence_class=blocked_local_candidate_outputs_not_release with DRC/ERC,
       supplier-model approval, physical clearance, and release approval still
       blocked. The routed-output candidate manifest and component-model manifest
-      now also bind the KiCad/CAD traceability matrix summary, covering 32
+      also bind the KiCad/CAD traceability matrix summary, covering 32
       development footprint patterns, 89 board-bound instances, 89 STEP
       footprint instances, 21 captured public pinout files, and 21 visible CAD
       connection records with zero local traceability gaps and release_credit=false.

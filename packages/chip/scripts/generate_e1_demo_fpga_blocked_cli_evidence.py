@@ -129,7 +129,23 @@ def bounded_synthesis_diagnostic_lines() -> list[str]:
         largest = profile.get("largest_modules_by_cells") or []
         memory_pressure = profile.get("memory_rom_synthesis_pressure", {})
         pressure_modules = memory_pressure.get("modules") or []
-        next_actions = memory_pressure.get("next_actions") or []
+        next_actions = memory_pressure.get("next_actions") or [
+            {
+                "action_id": "fpga-memory-001",
+                "module": "e1_behavioral_dram",
+                "priority": "required_before_release_synthesis",
+                "task_type": "external_sram_or_bram_model",
+                "release_credit": False,
+                "remediation_target": (
+                    "Replace register-inferred behavioral memory pressure with an explicit "
+                    "external SRAM or FPGA BRAM-backed model for the release top."
+                ),
+                "acceptance_check": (
+                    "bounded synthesis profile records no ROM/DRAM register explosion and "
+                    "the e1_chip_top release build reaches place/route."
+                ),
+            }
+        ]
         top_pressure = pressure_modules[0] if pressure_modules else {}
         lines.extend(
             [

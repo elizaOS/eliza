@@ -983,20 +983,39 @@ def main() -> int:
         write_report(
             {
                 "schema": "eliza.e1_phone_factory_output_content_report.v1",
-                "status": "fail",
-                "summary": {"release_ready": False},
+                "status": "blocked",
+                "release_credit": False,
+                "summary": {
+                    "release_ready": False,
+                    "release_credit": False,
+                    "blocked": 1,
+                    "contract_error_count": 1,
+                },
                 "findings": [
                     {
                         "code": "factory_output_contract_invalid",
-                        "severity": "error",
+                        "severity": "blocker",
                         "message": str(exc),
                         "evidence": rel(INVENTORY),
+                        "release_credit": False,
                     }
                 ],
+                "blocked_evidence_inventory": [],
+                "factory_execution_packet_inventory": [],
+                "factory_output_blocker_categories": {
+                    "release_credit": False,
+                    "counts": {
+                        "contract_error": 1,
+                        "true_missing_factory_outputs": 0,
+                        "missing_approval_metadata": 0,
+                        "candidate_present_but_blocked": 0,
+                        "present_unapproved_or_placeholder": 0,
+                    },
+                },
             }
         )
-        print(f"FAIL: E1 phone factory-output content contract invalid: {exc}")
-        return 1
+        print(f"STATUS: BLOCKED E1 phone factory-output content contract invalid: {exc}")
+        return 2
 
     if blocked or missing:
         write_report(

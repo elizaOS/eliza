@@ -17,6 +17,7 @@ SCHEMA = "eliza.fpga_release.v1"
 CLAIM_BOUNDARY = "fpga_release_validation_only_not_board_fabrication_evidence"
 DIAGNOSTIC_REPORT_DIR = ROOT / "board/fpga/reports/diagnostics"
 FPGA_BUILD_ARCHIVE_DIR = ROOT / "build/fpga/e1_demo/archive"
+OSS_CAD_SUITE_BIN = ROOT / "external/oss-cad-suite/bin"
 BOUNDED_SYNTH_DIAGNOSTIC_LOGS = [
     {
         "id": "preabc_profile",
@@ -25,7 +26,7 @@ BOUNDED_SYNTH_DIAGNOSTIC_LOGS = [
         "exact_command": (
             "python3 scripts/run_with_timeout.py --timeout-seconds 120 "
             "--label fpga-e1-chip-top-preabc-profile -- bash -lc "
-            "'PATH=/home/shaw/milady/eliza/packages/chip/external/oss-cad-suite/bin:$PATH "
+            f"'PATH={OSS_CAD_SUITE_BIN}:$PATH "
             "TOP=e1_chip_top "
             "BUILD_DIR=build/fpga/e1_demo_profile "
             "PROFILE_LOG=build/fpga/e1_demo_profile/yosys_profile.log "
@@ -43,7 +44,7 @@ BOUNDED_SYNTH_DIAGNOSTIC_LOGS = [
         "exact_command": (
             "python3 scripts/run_with_timeout.py --timeout-seconds 300 "
             "--label fpga-e1-chip-top-noabc9-diagnostic -- bash -lc "
-            "'PATH=/home/shaw/milady/eliza/packages/chip/external/oss-cad-suite/bin:$PATH "
+            f"'PATH={OSS_CAD_SUITE_BIN}:$PATH "
             "SYNTH_ECP5_FLAGS=-noabc9 TOP=e1_chip_top "
             "BUILD_DIR=build/fpga/e1_demo_noabc9 "
             "SYNTH_LOG=build/fpga/e1_demo_noabc9/yosys_noabc9.log "
@@ -52,7 +53,7 @@ BOUNDED_SYNTH_DIAGNOSTIC_LOGS = [
     },
 ]
 LOCAL_TOOL_DIRS = [
-    ROOT / "external/oss-cad-suite/bin",
+    OSS_CAD_SUITE_BIN,
 ]
 
 REQUIRED_RELEASE_EVIDENCE = {

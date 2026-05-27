@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Fail closed when SBY engines disagree on a formal proof.
+"""Fail closed when an SBY proof lacks conclusive engine-level PASS evidence.
 
 SymbiYosys reports a task as ``DONE (PASS)`` as soon as *any* configured
 engine returns ``pass`` — even if a second engine errored, timed out, or was
-terminated without a conclusive result. Dossier item §5.6.1 records that the
-``e1_npu`` and ``e1_dma`` proofs hit exactly this: z3 logs "did not return a
-status" while bitwuzla passes, and the disagreement is silently accepted.
+terminated without a conclusive result. Single-engine tasks can also leave a
+stale or partial workdir behind if the overall SBY status is trusted without
+checking the per-engine summary lines.
 
 This gate re-reads the per-task SBY ``logfile.txt`` and requires that, for any
 task whose overall result is PASS, *every* configured engine also returned
 ``pass``. An engine that errored, timed out, or was terminated mid-solve is
-treated as a disagreement and fails the gate. A genuine multi-engine PASS (all
-engines agree) is accepted.
+treated as failed evidence. A genuine PASS is accepted only when the overall
+task and all configured engines agree.
 
 Usage::
 
@@ -94,10 +94,12 @@ def parse_logfile(path: Path) -> TaskResult:
 def evaluate(result: TaskResult) -> list[str]:
     """Return a list of disagreement messages (empty == agreement)."""
     problems: list[str] = []
+    if result.overall in {"ERROR", "UNKNOWN", "TIMEOUT"}:
+        return [f"{result.name}: overall {result.overall} is not valid formal evidence"]
+    if result.overall == "FAIL":
+        return [f"{result.name}: overall FAIL"]
     if result.overall != "PASS":
-        # Non-PASS overall results are surfaced by SBY's own exit code; this
-        # gate only polices silent disagreement under an overall PASS.
-        return problems
+        return [f"{result.name}: missing overall PASS/FAIL/ERROR/UNKNOWN/TIMEOUT status"]
     if not result.engines:
         return [f"{result.name}: overall PASS but no engine verdicts parsed"]
     for ev in result.engines:

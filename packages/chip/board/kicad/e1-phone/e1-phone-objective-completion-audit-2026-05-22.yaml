@@ -35,8 +35,8 @@ live_pcb_evidence:
   release_state: blocked_fail_closed
 production_output_presence:
   required_count: 56
-  present_count: 56
-  missing_count: 0
+  present_count: 49
+  missing_count: 7
   present:
   - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
   - board/kicad/e1-phone/production/bom
@@ -59,7 +59,6 @@ production_output_presence:
   - board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
   - board/kicad/e1-phone/production/reports/drc.json
   - board/kicad/e1-phone/production/reports/erc.json
-  - board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
   - board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
   - board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml
   - board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
@@ -68,20 +67,14 @@ production_output_presence:
   - board/kicad/e1-phone/production/reports/rf
   - board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
   - board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
-  - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-  - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
   - board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
   - board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
-  - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-  - board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
   - board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
-  - board/kicad/e1-phone/production/reports/si-pi
   - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
   - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
   - board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
   - board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
   - board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
-  - board/kicad/e1-phone/production/reports/zone-fill.json
   - board/kicad/e1-phone/production/stackup/coupon-geometry.pdf
   - board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf
   - board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv
@@ -94,7 +87,14 @@ production_output_presence:
   - board/kicad/e1-phone/production/test/ict-or-flying-probe-program
   - board/kicad/e1-phone/production/test/probe-coordinates.csv
   - board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
-  missing: []
+  missing:
+  - board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+  - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  - board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+  - board/kicad/e1-phone/production/reports/si-pi
+  - board/kicad/e1-phone/production/reports/zone-fill.json
 objective_requirements:
 - id: fabrication_ready
   required_evidence:

@@ -835,7 +835,7 @@ product-check: pinout-check fpga-check wifi-interface-check padframe-check board
 product-check-status-test:
 	@$(PYTHON) scripts/test_product_check_status.py
 
-product-release-check: pinout-check fpga-check wifi-interface-check padframe-check board-package-evidence-check e1-phone-board-package-check package-cross-probe-check kicad-artifact-check openlane-run-preflight-check physical-closure-work-order-check pd-signoff-manifest-check manufacturing-artifacts-check real-world-gates-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check product-feature-gates-check
+product-release-check: pinout-check fpga-release-check wifi-interface-check padframe-check board-package-evidence-check e1-phone-board-package-check package-cross-probe-release-check kicad-artifact-release-check openlane-run-preflight-release-check physical-closure-work-order-check pd-signoff-manifest-check antenna-metadata-release-check manufacturing-artifacts-release-check real-world-gates-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check product-feature-gates-check
 	@$(PYTHON) scripts/product_check.py --release
 
 product-evidence-commands:
@@ -1011,11 +1011,20 @@ board-package-evidence-check:
 package-cross-probe-check:
 	@$(PYTHON) scripts/check_package_cross_probe.py
 
+package-cross-probe-release-check:
+	@$(PYTHON) scripts/check_package_cross_probe.py --release
+
 kicad-artifact-check:
 	@$(PYTHON) scripts/check_kicad_artifacts.py
 
+kicad-artifact-release-check:
+	@$(PYTHON) scripts/check_kicad_artifacts.py --release
+
 openlane-run-preflight-check:
 	@$(PYTHON) scripts/check_openlane_run_preflight.py
+
+openlane-run-preflight-release-check:
+	@$(PYTHON) scripts/check_openlane_run_preflight.py --release
 
 physical-closure-work-order-check:
 	@$(PYTHON) scripts/check_physical_closure_work_order.py

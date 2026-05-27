@@ -195,10 +195,12 @@ cross_checks:
   fail_closed_until_routed_pcb_drc_si_pi_rf_factory_outputs_and_enclosure_clearance_exist: true
 
 release_blockers:
+  - routed KiCad PCB source is missing
   - production routed KiCad PCB source is present only as non-release local candidate evidence
   - current KiCad PCB is a concept placeholder scaffold
   - no routed copper segments or filled zones are present in the KiCad PCB
   - PCB has no routed copper, filled zones, or DRC evidence
+  - production STEP export is missing
   - candidate routed board STEP exists for review only; supplier-approved production STEP export is missing
   - supplier component STEP/B-rep models are missing
   - selected supplier response packs for display, camera, USB-C/side-key, cellular, and Wi-Fi/Bluetooth are missing

@@ -266,10 +266,6 @@ def generate() -> dict[str, Any]:
             "power_thermal_rail_efficiency_soak_candidate",
         ),
         (
-            "board/kicad/e1-phone/production/reports/power-thermal/load-step.json",
-            "power_thermal_load_step_candidate",
-        ),
-        (
             "board/kicad/e1-phone/production/reports/rf/cellular-conducted.json",
             "rf_cellular_conducted_candidate",
         ),

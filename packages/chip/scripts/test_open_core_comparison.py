@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-from check_open_core_comparison import COMPARISON_PATH, check
+from check_open_core_comparison import COMPARISON_PATH, check, iter_evidence_paths
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -28,8 +28,12 @@ def test_little_core_is_cva6() -> None:
 def test_bpu_axis_is_a_measured_win() -> None:
     verdict = _data()["e1_vs_ariane_verdict"]["branch_prediction"]
     assert verdict["verdict"] == "win"
-    assert verdict["evidence"] == "docs/evidence/cpu_ap/bpu-vs-cva6-mpki.json"
-    assert (ROOT / verdict["evidence"]).exists()
+    evidence = list(iter_evidence_paths(verdict["evidence"]))
+    assert evidence == [
+        "docs/evidence/cpu_ap/bpu-vs-cva6-mpki.json",
+        "docs/evidence/cpu_ap/bpu-vs-cva6-mpki-rtl.json",
+    ]
+    assert all((ROOT / path).exists() for path in evidence)
 
 
 def test_silicon_axis_stays_an_honest_loss() -> None:
@@ -51,7 +55,8 @@ def test_improved_axes_cite_measured_evidence() -> None:
         v = verdicts[axis]
         if v["verdict"] in ("win", "parity"):
             assert v.get("evidence"), f"{axis} claims {v['verdict']} without evidence"
-            assert (ROOT / v["evidence"]).exists(), f"{axis} evidence missing: {v['evidence']}"
+            for evidence in iter_evidence_paths(v["evidence"]):
+                assert (ROOT / evidence).exists(), f"{axis} evidence missing: {evidence}"
 
 
 def test_cohort_has_the_open_ceiling_core() -> None:
@@ -71,6 +76,28 @@ def test_checker_rejects_unbacked_measured_claim(tmp_path: Path) -> None:
     bad.write_text(yaml.safe_dump(data))
     errors = check(bad)
     assert any("evidence file not found" in e for e in errors)
+
+
+def test_checker_validates_list_evidence_for_measured_cells(tmp_path: Path) -> None:
+    present = tmp_path / "present.json"
+    present.write_text("{}", encoding="utf-8")
+    data = _data()
+    data["cores"]["cva6"]["metrics"]["coremark_per_mhz"] = {
+        "value": 2.83,
+        "claim": "measured",
+        "evidence": [
+            present.relative_to(ROOT).as_posix() if present.is_relative_to(ROOT) else str(present),
+            "docs/evidence/cpu_ap/does-not-exist.json",
+        ],
+    }
+    bad = tmp_path / "bad-list.yaml"
+    bad.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+    errors = check(bad)
+    assert any(
+        "evidence file not found: docs/evidence/cpu_ap/does-not-exist.json" in error
+        for error in errors
+    )
 
 
 if __name__ == "__main__":

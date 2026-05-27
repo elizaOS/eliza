@@ -1015,7 +1015,7 @@ def main() -> int:
                     "release_ready": False,
                     "rows": len(rows),
                     "required": required,
-                    "present": content_valid_count,
+                    "present": path_exists_count,
                     "path_exists_count": path_exists_count,
                     "content_valid_count": content_valid_count,
                     "blocked_present_count": blocked_present_count,

@@ -15,10 +15,10 @@ summary:
   blocker_count: 5
   complete_blocker_count: 0
   open_blocker_count: 5
-  artifact_presence_complete_blocker_count: 4
-  acceptance_artifact_count: 174
-  missing_acceptance_artifact_count: 0
-  non_release_acceptance_artifact_count: 170
+  artifact_presence_complete_blocker_count: 3
+  acceptance_artifact_count: 200
+  missing_acceptance_artifact_count: 24
+  non_release_acceptance_artifact_count: 172
   production_presence_release_output_count: 0
   production_presence_blocked_candidate_output_file_count: 47
   production_presence_has_blocked_candidate_outputs: true
@@ -927,20 +927,122 @@ blockers:
   - supplier footprints replace all placeholders
   - routed KiCad PCB with tracks, vias, filled zones, net classes, and DRC/ERC reports
   - SI/PI/RF reports and routed-board STEP export using production component models
-  acceptance_artifacts: []
-  present_acceptance_artifacts: []
-  missing_acceptance_artifacts: []
+  acceptance_artifacts:
+  - board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json
+  - board/kicad/e1-phone/production/reports/camera-capture-log.json
+  - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  - board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+  - board/kicad/e1-phone/production/reports/length-skew.csv
+  - board/kicad/e1-phone/production/reports/memory-training-log.json
+  - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  - board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
+  - board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
+  - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  - board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+  - board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
+  - board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
+  - board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
+  - board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
+  - board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
+  - board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
+  - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  - board/kicad/e1-phone/production/reports/ufs-link-training-log.json
+  - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  - board/kicad/e1-phone/production/reports/usb2-length-skew.csv
+  - board/kicad/e1-phone/production/reports/zone-fill.json
+  present_acceptance_artifacts:
+  - board/kicad/e1-phone/production/reports/camera-capture-log.json
+  - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  - board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  missing_acceptance_artifacts:
+  - board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json
+  - board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+  - board/kicad/e1-phone/production/reports/length-skew.csv
+  - board/kicad/e1-phone/production/reports/memory-training-log.json
+  - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  - board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
+  - board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
+  - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  - board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+  - board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
+  - board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
+  - board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
+  - board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
+  - board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
+  - board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
+  - board/kicad/e1-phone/production/reports/ufs-link-training-log.json
+  - board/kicad/e1-phone/production/reports/usb2-length-skew.csv
+  - board/kicad/e1-phone/production/reports/zone-fill.json
   artifact_presence_complete: false
-  non_release_acceptance_artifacts: {}
-  non_release_acceptance_artifact_count: 0
+  non_release_acceptance_artifacts:
+    board/kicad/e1-phone/production/reports/camera-capture-log.json:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/display-touch-bringup-log.json:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/drc.json:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/erc.json:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - 'release_allowed: false'
+    - 'release_credit: false'
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - unreviewed_local_candidate
+    board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json:
+    - blocked_candidate_not_approved
+    - candidate_not_release
+    - local candidate artifact only
+    - not_approved
+    - unreviewed_local_candidate
+  non_release_acceptance_artifact_count: 8
   acceptance_complete: false
-  missing_acceptance_artifact_count: 0
+  missing_acceptance_artifact_count: 18
   next_unblock_action: Complete supplier footprint capture, route EVT1 board, run
     ERC/DRC/SI/PI/RF, and export release outputs.
 - id: production_factory_outputs
   domain: production
   owner: manufacturing_ops
-  status: blocked_fail_closed_source_burndown_still_blocks_release
+  status: blocked_fail_closed_required_outputs_missing
   evidence_class: local_generated_outputs_plus_external_review
   source_artifacts:
   - board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml
@@ -1030,7 +1132,6 @@ blockers:
   - board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
   - board/kicad/e1-phone/production/reports/drc.json
   - board/kicad/e1-phone/production/reports/erc.json
-  - board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
   - board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
   - board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml
   - board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
@@ -1039,20 +1140,15 @@ blockers:
   - board/kicad/e1-phone/production/reports/rf
   - board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
   - board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
-  - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-  - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
   - board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
   - board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
   - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-  - board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
   - board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
-  - board/kicad/e1-phone/production/reports/si-pi
   - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
   - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
   - board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
   - board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
   - board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
-  - board/kicad/e1-phone/production/reports/zone-fill.json
   - board/kicad/e1-phone/production/stackup/coupon-geometry.pdf
   - board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf
   - board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv
@@ -1065,8 +1161,14 @@ blockers:
   - board/kicad/e1-phone/production/test/ict-or-flying-probe-program
   - board/kicad/e1-phone/production/test/probe-coordinates.csv
   - board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
-  missing_acceptance_artifacts: []
-  artifact_presence_complete: true
+  missing_acceptance_artifacts:
+  - board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+  - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  - board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+  - board/kicad/e1-phone/production/reports/si-pi
+  - board/kicad/e1-phone/production/reports/zone-fill.json
+  artifact_presence_complete: false
   non_release_acceptance_artifacts:
     board/kicad/e1-phone/production/bom:
     - blocked_candidate_not_approved
@@ -1191,13 +1293,6 @@ blockers:
     - local candidate artifact only
     - not_approved
     - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/escape-density-via-count.yaml:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - not_approved
-    - 'release_allowed: false'
-    - 'release_credit: false'
-    - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/external-interface-design-review.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
@@ -1240,13 +1335,7 @@ blockers:
     - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/rf:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - not_approved
-    - placeholder
-    - 'release_allowed: false'
-    - 'release_credit: false'
-    - unreviewed_local_candidate
+    - directory_without_release_manifest
     board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
@@ -1260,18 +1349,6 @@ blockers:
     - blocked_candidate_not_approved
     - candidate_not_release
     - local candidate artifact only
-    - not_approved
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - not release evidence
-    - not_approved
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - not release evidence
     - not_approved
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json:
@@ -1298,25 +1375,10 @@ blockers:
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - not_approved
-    - 'release_allowed: false'
-    - 'release_credit: false'
-    - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
     - local candidate artifact only
-    - not_approved
-    - placeholder
-    - 'release_allowed: false'
-    - 'release_credit: false'
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/si-pi:
-    - blocked_candidate_not_approved
-    - candidate_not_release
     - not_approved
     - placeholder
     - 'release_allowed: false'
@@ -1353,12 +1415,6 @@ blockers:
     - blocked_candidate_not_approved
     - candidate_not_release
     - local candidate artifact only
-    - not_approved
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/zone-fill.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - not release evidence
     - not_approved
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/stackup/coupon-geometry.pdf:
@@ -1416,9 +1472,9 @@ blockers:
     board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf:
     - not release evidence
     - sentinel_small_binary_artifact
-  non_release_acceptance_artifact_count: 55
+  non_release_acceptance_artifact_count: 49
   acceptance_complete: false
-  missing_acceptance_artifact_count: 0
+  missing_acceptance_artifact_count: 6
   next_unblock_action: Generate production/factory outputs from routed board package
     and selected factory quote workflow.
 - id: enclosure_release_evidence

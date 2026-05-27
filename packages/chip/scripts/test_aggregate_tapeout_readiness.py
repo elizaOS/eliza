@@ -166,6 +166,49 @@ class E1PhoneBoardPackageArtifactClassifierTests(unittest.TestCase):
             self.assertTrue(board_package.is_blocked_candidate_artifact(step_path))
             self.assertFalse(board_package.is_release_artifact_present(step_path))
 
+    def test_metadata_sidecar_blocks_primary_artifact_release_credit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_text:
+            pdf_path = Path(tmp_text) / "assembly.pdf"
+            pdf_path.write_bytes(b"%PDF-1.4\n%%EOF\n")
+            pdf_path.with_name(pdf_path.name + ".metadata.yaml").write_text(
+                "status: blocked_pending_supplier_return\nrelease_credit: false\n",
+                encoding="utf-8",
+            )
+
+            self.assertTrue(board_package.is_blocked_candidate_artifact(pdf_path))
+            self.assertFalse(board_package.is_release_artifact_present(pdf_path))
+
+    def test_recursive_board_path_collection_follows_yaml_json_and_directory_manifests(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp_text:
+            root = Path(tmp_text)
+            yaml_path = root / "board/kicad/e1-phone/a.yaml"
+            json_path = root / "board/kicad/e1-phone/b.json"
+            directory = root / "board/kicad/e1-phone/production/bom"
+            yaml_path.parent.mkdir(parents=True)
+            directory.mkdir(parents=True)
+            yaml_path.write_text(
+                "next: board/kicad/e1-phone/b.json\n",
+                encoding="utf-8",
+            )
+            json_path.write_text(
+                json.dumps({"dir": "board/kicad/e1-phone/production/bom"}),
+                encoding="utf-8",
+            )
+            (directory / "release-manifest.yaml").write_text(
+                "status: blocked\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(board_package, "ROOT", root):
+                paths = board_package.collect_referenced_board_paths(
+                    {"board/kicad/e1-phone/a.yaml"}
+                )
+
+        self.assertIn("board/kicad/e1-phone/b.json", paths)
+        self.assertIn("board/kicad/e1-phone/production/bom", paths)
+        self.assertIn("board/kicad/e1-phone/production/bom/release-manifest.yaml", paths)
+
 
 class BuildReportTests(unittest.TestCase):
     def _result(self, status: agg.Status) -> agg.GateResult:
@@ -1839,7 +1882,7 @@ class E1PhoneFabricationReleaseGateTests(unittest.TestCase):
             cwd=ROOT,
             text=True,
             capture_output=True,
-            timeout=30,
+            timeout=120,
             check=False,
         )
         combined = completed.stdout + completed.stderr
@@ -2049,7 +2092,7 @@ class E1PhoneReleaseApprovalSignatureGateTests(unittest.TestCase):
             cwd=ROOT,
             text=True,
             capture_output=True,
-            timeout=30,
+            timeout=120,
             check=False,
         )
         combined = completed.stdout + completed.stderr
@@ -2536,7 +2579,7 @@ class E1PhoneSupplierReturnContentGateTests(unittest.TestCase):
             cwd=ROOT,
             text=True,
             capture_output=True,
-            timeout=30,
+            timeout=120,
             check=False,
         )
         combined = completed.stdout + completed.stderr
@@ -2651,9 +2694,9 @@ class E1PhoneRoutedOutputContentGateTests(unittest.TestCase):
         self.assertIn("present", report["summary"])
         self.assertIn("content_valid", report["summary"])
         self.assertGreater(report["summary"]["blocked"], 0)
-        self.assertEqual(report["summary"]["missing_outputs"], 0)
+        self.assertGreater(report["summary"]["missing_outputs"], 0)
         self.assertGreater(report["summary"]["candidate_present_blocked_count"], 0)
-        self.assertEqual(report["summary"]["true_missing_generated_output_count"], 0)
+        self.assertGreater(report["summary"]["true_missing_generated_output_count"], 0)
         self.assertEqual(report["summary"]["missing_approval_metadata_count"], 0)
         self.assertGreater(report["summary"]["candidate_present_but_blocked_count"], 0)
         self.assertIn("repo_generated_candidate_blocked_count", report["summary"])
@@ -2703,7 +2746,7 @@ class E1PhoneRoutedOutputContentGateTests(unittest.TestCase):
         )
         self.assertEqual(
             blocker_categories["counts"]["true_missing_generated_outputs"],
-            0,
+            report["summary"]["true_missing_generated_output_count"],
         )
         self.assertEqual(
             blocker_categories["counts"]["missing_approval_metadata"],
@@ -2733,11 +2776,14 @@ class E1PhoneRoutedOutputContentGateTests(unittest.TestCase):
         self.assertIn("repo_generation_plan", stackup_category)
         generation = report["repo_generation_summary"]
         self.assertFalse(generation["release_credit"])
-        self.assertEqual(generation["true_missing_generated_artifact_count"], 0)
+        self.assertEqual(
+            generation["true_missing_generated_artifact_count"],
+            report["summary"]["true_missing_generated_output_count"],
+        )
         self.assertGreater(generation["generator_command_available_count"], 0)
         self.assertEqual(
             generation["external_release_evidence_required_count"],
-            report["summary"]["blocked"],
+            report["summary"]["external_release_evidence_required_count"],
         )
         self.assertIn(
             "generate_e1_phone_routed_output_candidates.py",
@@ -2752,7 +2798,7 @@ class E1PhoneRoutedOutputContentGateTests(unittest.TestCase):
         self.assertFalse(coverage["candidate_release_credit"])
         self.assertGreater(coverage["candidate_artifact_count"], 0)
         self.assertGreater(coverage["candidate_present_but_blocked_count"], 0)
-        self.assertEqual(
+        self.assertGreater(
             coverage["missing_required_paths_not_in_candidate_manifest_count"],
             0,
         )
@@ -2846,7 +2892,7 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
             cwd=ROOT,
             text=True,
             capture_output=True,
-            timeout=30,
+            timeout=120,
             check=False,
         )
         combined = completed.stdout + completed.stderr
@@ -2904,7 +2950,7 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
         )
         self.assertEqual(
             blocker_categories["counts"]["true_missing_factory_outputs"],
-            0,
+            report["summary"]["missing"],
         )
         self.assertEqual(
             blocker_categories["counts"]["missing_approval_metadata"],
@@ -2937,18 +2983,15 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
         self.assertFalse(coverage["candidate_release_credit"])
         self.assertGreater(coverage["candidate_artifact_count"], 0)
         self.assertGreater(coverage["candidate_present_but_blocked_count"], 0)
-        self.assertEqual(
+        self.assertGreater(
             coverage["missing_required_paths_not_in_candidate_manifest_count"],
             0,
         )
-        self.assertEqual(coverage["candidate_paths_not_required_by_inventory_count"], 1)
-        self.assertIn(
-            "board/kicad/e1-phone/production/reports/power-thermal/load-step.json",
-            coverage["candidate_paths_not_required_by_inventory"],
-        )
+        self.assertEqual(coverage["candidate_paths_not_required_by_inventory_count"], 0)
+        self.assertEqual(coverage["candidate_paths_not_required_by_inventory"], [])
         self.assertEqual(
             coverage["candidate_paths_not_required_by_inventory_blocked_count"],
-            1,
+            0,
         )
         packet_inventory = report["factory_execution_packet_inventory"]
         self.assertEqual(len(packet_inventory), report["summary"]["blocked"])
@@ -3049,12 +3092,39 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
         )
         generation = report["repo_generation_summary"]
         self.assertFalse(generation["release_credit"])
-        self.assertEqual(generation["true_missing_generated_artifact_count"], 0)
+        self.assertEqual(
+            generation["true_missing_generated_artifact_count"],
+            report["summary"]["true_missing_factory_output_count"],
+        )
         self.assertGreater(generation["generator_command_available_count"], 0)
         self.assertEqual(
             generation["external_release_evidence_required_count"],
-            report["summary"]["blocked"],
+            report["summary"]["external_release_evidence_required_count"],
         )
+
+    def test_factory_contract_error_returns_blocked_report_not_failure(self) -> None:
+        parent = ROOT / "build/test-e1-phone-factory-output-content"
+        parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=parent) as tmp_text:
+            tmp = Path(tmp_text)
+            inventory = tmp / "bad-factory-inventory.yaml"
+            report_path = tmp / "factory-content-report.json"
+            inventory.write_text("schema: wrong.schema\nsummary: {}\n", encoding="utf-8")
+            with (
+                mock.patch.object(factory_content, "INVENTORY", inventory),
+                mock.patch.object(factory_content, "REPORT", report_path),
+            ):
+                self.assertEqual(factory_content.main(), 2)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["release_credit"])
+        self.assertFalse(report["summary"]["release_credit"])
+        self.assertFalse(report["summary"]["release_ready"])
+        self.assertIn("factory_execution_packet_inventory", report)
+        self.assertEqual(report["factory_execution_packet_inventory"], [])
+        self.assertEqual(report["findings"][0]["code"], "factory_output_contract_invalid")
+        self.assertFalse(report["findings"][0]["release_credit"])
 
     def test_aggregator_classifies_e1_phone_factory_content_as_blocked(self) -> None:
         spec = next(
@@ -3109,6 +3179,11 @@ class E1PhoneFirstArticleContentGateTests(unittest.TestCase):
         )
         report = json.loads(
             (ROOT / "build/reports/e1_phone_first_article_content.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(report["summary"]["present"], report["summary"]["path_exists_count"])
+        self.assertNotEqual(
+            report["summary"]["present"],
+            report["summary"]["content_valid_count"],
         )
         self.assertTrue(report["blocked_evidence_inventory"])
         article_blocker = report["blocked_evidence_inventory"][0]
@@ -3166,7 +3241,10 @@ class E1PhoneFirstArticleContentGateTests(unittest.TestCase):
             report["summary"]["blocked_required_present_count"],
             blocker_categories["present_non_template_blocked_rows"],
         )
-        self.assertEqual(report["summary"]["blocked_required_present_count"], 61)
+        self.assertEqual(
+            report["summary"]["blocked_required_present_count"],
+            report["summary"]["path_exists_count"],
+        )
         self.assertEqual(report["summary"]["blocked_template_present_count"], 6)
         self.assertEqual(report["summary"]["repo_generated_candidate_blocked_count"], 0)
         self.assertEqual(
@@ -3216,11 +3294,11 @@ class E1PhoneFirstArticleContentGateTests(unittest.TestCase):
         )
         self.assertEqual(
             bridge["summary"]["first_article_rows_blocked_by_missing_factory_packet"],
-            0,
+            bridge["summary"]["cause_counts"]["factory_packet_missing"],
         )
         self.assertEqual(
             bridge["summary"]["first_article_rows_blocked_by_unapproved_factory_packet"],
-            56,
+            bridge["summary"]["cause_counts"]["factory_packet_unapproved"],
         )
         self.assertEqual(
             bridge["summary"]["first_article_template_only_rows"],

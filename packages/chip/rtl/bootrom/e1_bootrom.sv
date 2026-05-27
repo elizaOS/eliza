@@ -17,8 +17,8 @@
 // overlaid after the image load and are part of the published ROM contract.
 //
 // ROM_HEX selects the image. It defaults to the generated secure-boot ROM hex
-// under build/boot-rom; testbenches can override the parameter without editing
-// RTL.
+// under build/boot-rom; testbenches can override the parameter at elaboration
+// to point at an alternate build-staged image without editing RTL.
 
 module e1_bootrom #(
     parameter ROM_HEX = "build/boot-rom/e1_secure_boot_rom.hex"
@@ -26,7 +26,7 @@ module e1_bootrom #(
     input  logic [13:0] addr,
     output logic [31:0] rdata
 );
-    localparam int unsigned WORDS = 16_384;
+    localparam int unsigned WORDS = 16384;
 
     logic [31:0] mem [WORDS];
 

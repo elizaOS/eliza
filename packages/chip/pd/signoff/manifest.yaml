@@ -8,7 +8,6 @@ next_commands:
   local_input_preflight: python3 scripts/check_pd_preflight.py --dry-run-commands --config pd/openlane/config.sky130.json
   local_exploratory_run: scripts/run_openlane.sh --exploratory
   local_release_run: scripts/run_openlane.sh --release
-  latest_closure_metrics: python3 scripts/check_pd_closure.py --run pd/openlane/runs/RUN_2026-05-18_05-41-42
   antenna_metadata_gate: python3 scripts/check_antenna_metadata.py --release
   release_gate: python3 scripts/check_pd_signoff.py
   product_release_gate: python3 scripts/product_check.py --release
@@ -29,8 +28,10 @@ blocked_gates:
   pd_release:
     blocked: true
     evidence_manifest: pd/signoff/manifest.yaml
-    reason: Latest completed OpenLane run has archived the required artifact classes, but antenna and post-route timing/DRV reports are still waived rather than release-clean.
+    reason: No selected OpenLane/OpenROAD run archive is present; release requires one selected run with complete artifacts plus clean antenna and post-route timing/DRV reports.
     unblock_requires:
+      - Archive a selected OpenLane/OpenROAD run under pd/openlane/runs/* or runs/* with a signoff-run manifest.
+      - Run python3 scripts/check_pd_closure.py --run <selected-run-dir> against the archived selected run.
       - Close or formally disposition all antenna violations in the selected run.
       - Clear top-level antenna metadata warnings for JTAG_TCK, JTAG_TDI, JTAG_TMS, TEST_MODE, DBG_READY, and JTAG_TDO through real logic/pad-cell evidence, not hand-edited LEF claims.
       - Close post-route hold, max-slew, and max-cap violations across selected signoff corners.

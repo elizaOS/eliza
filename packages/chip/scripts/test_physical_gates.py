@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import yaml
 
@@ -12,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
+import check_openlane_run_preflight as openlane_preflight  # noqa: E402
 import openlane_pd_blocker_summary  # noqa: E402
 
 
@@ -77,6 +79,49 @@ class PhysicalGateTests(unittest.TestCase):
                 gate.get("release_credit")
                 for gate in release_payload["diagnostics"]["blocked_release_gates"]
             )
+        )
+
+    def test_openlane_release_rejects_cross_run_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            run_a = root / "runs/RUN_A/final/gds"
+            run_b = root / "runs/RUN_B/final/def"
+            run_a.mkdir(parents=True)
+            run_b.mkdir(parents=True)
+            (run_a / "e1_chip_top.gds").write_text("gds\n", encoding="utf-8")
+            (run_b / "e1_chip_top.def").write_text("def\n", encoding="utf-8")
+            manifest = {
+                "run_roots": ["runs"],
+                "required_artifacts": {
+                    "gds": {"globs": ["runs/*/final/gds/*.gds"]},
+                    "def": {"globs": ["runs/*/final/def/*.def"]},
+                },
+            }
+            with mock.patch.object(openlane_preflight, "ROOT", root):
+                blockers = openlane_preflight.release_artifact_blockers(manifest)
+
+        self.assertIn(
+            "release artifacts must come from one selected OpenLane/OpenROAD run directory",
+            blockers,
+        )
+        categories = {openlane_preflight.blocker_category(blocker) for blocker in blockers}
+        self.assertIn("release_artifacts_cross_run", categories)
+
+    def test_openlane_release_requires_native_runner_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            with (
+                mock.patch.object(openlane_preflight, "ROOT", root),
+                mock.patch.object(
+                    openlane_preflight.shutil, "which", return_value="/usr/bin/openlane"
+                ),
+            ):
+                blockers = openlane_preflight.native_openlane_release_blockers()
+
+        self.assertEqual(len(blockers), 1)
+        self.assertEqual(
+            openlane_preflight.blocker_category(blockers[0]),
+            "runner_provenance_missing",
         )
 
     def test_openlane_preflight_custom_report_path(self) -> None:

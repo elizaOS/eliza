@@ -1122,7 +1122,7 @@ module e1_soc_integrated
     // TB's read/write handling.  CVA6 cv64a6 issues at most one outstanding
     // AR/AW; the width converter is single-inflight, so a single-FSM model
     // matches the actual traffic shape.
-    localparam int unsigned SLOT0_ROM_BYTES = 4096;   // 4 KiB
+    localparam int unsigned SLOT0_ROM_BYTES = 65536;  // 64 KiB
     localparam int unsigned SLOT0_DRAM_BYTES = 16384; // 16 KiB
     localparam int unsigned SLOT0_ROM_WORDS_128  = SLOT0_ROM_BYTES / 16;
     localparam int unsigned SLOT0_DRAM_WORDS_128 = SLOT0_DRAM_BYTES / 16;
