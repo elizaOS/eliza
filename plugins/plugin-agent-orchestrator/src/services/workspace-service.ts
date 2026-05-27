@@ -160,6 +160,13 @@ export function _clearDefaultBranchCache(): void {
   defaultBranchCache.clear();
 }
 
+function isGitHubRepository(repo: string): boolean {
+  const trimmed = repo.trim();
+  if (/^https?:\/\/github\.com\//i.test(trimmed)) return true;
+  if (/^[^@\s]+@github\.com:/i.test(trimmed)) return true;
+  return false;
+}
+
 /**
  * Resolve the default base directory for coding workspaces.
  *
@@ -354,13 +361,10 @@ export class CodingWorkspaceService {
         role: options.task?.role ?? "coding-agent",
         slug: options.task?.slug,
       },
-      userCredentials: options.userCredentials
-        ? {
-            type: options.userCredentials.type,
-            token: options.userCredentials.token ?? "",
-            provider: "github",
-          }
-        : undefined,
+      userCredentials: this.resolveUserCredentials(
+        repo,
+        options.userCredentials,
+      ),
     };
 
     const workspace = await this.workspaceService.provision(workspaceConfig);
@@ -764,6 +768,31 @@ export class CodingWorkspaceService {
     if (this.serviceConfig.debug) {
       logger.debug(`[CodingWorkspaceService] ${message}`);
     }
+  }
+
+  private resolveUserCredentials(
+    repo: string,
+    userCredentials: ProvisionWorkspaceOptions["userCredentials"],
+  ): WorkspaceConfig["userCredentials"] {
+    if (userCredentials) {
+      return {
+        type: userCredentials.type,
+        token: userCredentials.token ?? "",
+        provider: "github",
+      };
+    }
+
+    if (!isGitHubRepository(repo)) {
+      return undefined;
+    }
+
+    const githubToken = this.runtime.getSetting("GITHUB_TOKEN") as
+      | string
+      | undefined;
+    if (githubToken && githubToken.length > 0) {
+      return { type: "pat", token: githubToken, provider: "github" };
+    }
+    return undefined;
   }
 
   /** Read a key from the config file's env section (live, no restart needed). */
