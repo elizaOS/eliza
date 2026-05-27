@@ -36,6 +36,7 @@ FIXTURE_LABELS = {
     "tr_single_notch.def": "LEGAL",
     "tr_multi_notch.def": "LEGAL",
 }
+RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def rel(path: Path) -> str:
@@ -64,6 +65,20 @@ def file_record(path: Path) -> dict[str, Any]:
 
 def safe_id(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-").lower()
+
+
+def validate_run_id(value: str) -> str:
+    if not RUN_ID_PATTERN.fullmatch(value):
+        raise SystemExit(f"invalid run id: {value!r}")
+    return value
+
+
+def run_path(out_root: Path, run_id: str, *parts: str) -> Path:
+    root = out_root.resolve()
+    path = (root / run_id / Path(*parts)).resolve()
+    if not path.is_relative_to(root):
+        raise SystemExit(f"run output path escapes out root: {path}")
+    return path
 
 
 def read_text(path: Path) -> str:
@@ -372,16 +387,17 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    run_id = validate_run_id(str(args.run_id))
     payload = args.payload
     payload_source = "external_payload"
     labels = parse_legality_labels(payload / "for_evaluation/README.md")
     if not labels:
         if (payload / "for_evaluation").is_dir():
             raise SystemExit(f"R-Zoo evaluation labels are missing in {rel(payload)}")
-        payload = args.out_root / args.run_id / "source-fixtures"
+        payload = run_path(args.out_root, run_id, "source-fixtures")
         labels = materialize_fixture_payload(payload)
         payload_source = FIXTURE_SOURCE
-    out_dir = args.out_root / args.run_id / "records"
+    out_dir = run_path(args.out_root, run_id, "records")
     out_dir.mkdir(parents=True, exist_ok=True)
     converted: list[dict[str, Any]] = []
     for def_path in sorted((payload / "for_evaluation").glob("*.def")):
@@ -403,7 +419,7 @@ def main() -> int:
     report = {
         "schema": "eliza.ai_eda.r_zoo_rectilinear_floorplan_conversion_report.v1",
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
-        "run_id": args.run_id,
+        "run_id": run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "source_revision": REVISION,
         "payload_source": payload_source,
@@ -420,7 +436,7 @@ def main() -> int:
             "deterministic_replay_required_for_optimization_claims": True,
         },
     }
-    out_report_dir = args.out_root / args.run_id
+    out_report_dir = run_path(args.out_root, run_id)
     out_report_dir.mkdir(parents=True, exist_ok=True)
     report_path = out_report_dir / "conversion_report.json"
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
