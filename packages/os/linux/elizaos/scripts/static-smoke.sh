@@ -54,6 +54,14 @@ for f in $(find config/includes.chroot/etc/systemd -name "*.service" 2>/dev/null
     grep -q '^\[Unit\]' "${f}" || { echo "BAD UNIT: ${f}"; fail=1; }
 done
 
+# mkosi tree shape — reuses includes/hooks, so it must stay consistent.
+if [ -d mkosi ]; then
+    if ! bash scripts/mkosi-lint.sh >/dev/null; then
+        echo "BAD MKOSI TREE: scripts/mkosi-lint.sh failed; run it directly to see details"
+        fail=1
+    fi
+fi
+
 if [ "${fail}" -eq 0 ]; then
     echo "OK: static smoke passed"
 else

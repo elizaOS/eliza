@@ -47,10 +47,12 @@ UEFI removable-media loader path `EFI/boot/bootriscv64.efi`. The checked
 evidence matrix records the Debian package/wiki references that establish
 that contract.
 
-`make qemu-boot ARCH=<arch>` opens an interactive GNOME desktop window for
-every arch via `scripts/boot-qemu.sh`. riscv64 reaches GUI parity with
-amd64/arm64 by adding `-device virtio-gpu-pci` plus USB input to the
-`qemu-system-riscv64 -M virt` invocation (riscv64 `virt` has no default
+`PROFILE=default` is the headless Debian live image. `PROFILE=gui` composes
+the kiosk/GUI overlay and makes `graphical.target -> seatd -> elizaos-kiosk`
+the default boot path. `make qemu-boot ARCH=<arch>` opens an interactive GUI
+window for GUI-profile ISOs via `scripts/boot-qemu.sh`. riscv64 reaches GUI
+parity with amd64/arm64 by adding `-device virtio-gpu-pci` plus USB input to
+the `qemu-system-riscv64 -M virt` invocation (riscv64 `virt` has no default
 GPU). Headless, fail-closed boot-marker evidence for riscv64 is a separate
 path: `scripts/qemu_virt_boot_riscv64.sh` (driven by
 `scripts/qemu_virt_smoke.py`), which runs `-nographic` and emits the
@@ -60,14 +62,32 @@ path: `scripts/qemu_virt_boot_riscv64.sh` (driven by
 
 `ELIZAOS_PROFILE` selects a hardening profile:
 
-- `default` — plain Debian live desktop with the elizaOS app as the home
-  surface.
+- `default` — plain Debian live image with the elizaOS agent and console/TUI
+  path, no GUI packages installed by default.
+- `gui` — kiosk GUI overlay for the elizaOS app home surface. Installs the
+  WebKitGTK/Epiphany/cage/seatd/Xorg/GNOME fallback payload and switches boot
+  to `graphical.target`.
 - `secure` — elizaOS hardening profile: Tor routing, AppArmor enforcement,
   MAC randomization, amnesic tmpfs home, and hardening sysctls. Works on
   all arches. Built entirely from standard Debian privacy packages and
   elizaOS-authored chroot hooks — not derived from any third-party live-OS.
   The overlay is composed in by `build.sh` from `config/profiles/secure/`;
   see `config/profiles/secure/README.md`.
+- `secure-gui` — secure plus GUI overlays.
+
+## Build paths
+
+Two build orchestrators ship in this tree, sharing one source of truth for
+the rootfs skeleton, chroot hooks, systemd units, and kiosk wiring:
+
+- **live-build (current default; documented below).** Source-of-truth for
+  release artifacts today. Multi-arch ISO via `lb config` / `lb build`.
+- **mkosi (additive, in active bring-up).** See `mkosi/README.md`. Produces
+  bootable `*.raw[.zst]` disk images (systemd-repart partitioned) and an
+  optional hybrid `*.iso` wrap. Targets: `make mkosi-build ARCH=… PROFILE=…`,
+  `make mkosi-summary`, `make mkosi-lint`. Reuses the live-build hooks
+  unchanged. The live-build path stays canonical until mkosi has equivalent
+  QEMU boot evidence on all three arches.
 
 ## Build
 
@@ -76,7 +96,8 @@ The only host requirement is Docker.
 ```sh
 make build ARCH=amd64                       # x86_64 ISO
 make build ARCH=arm64                        # arm64 ISO
-make build ARCH=riscv64                       # riscv64 ISO
+make build ARCH=riscv64                       # riscv64 headless/default ISO
+make build ARCH=riscv64 PROFILE=gui           # riscv64 GUI/kiosk ISO
 make build ARCH=amd64 PROFILE=secure          # hardened build
 make riscv64-agent-runtime-smoke               # preflight staged riscv64 runtime + agent bundle
 make qemu-boot ARCH=riscv64                    # boot newest ISO in QEMU
@@ -114,17 +135,17 @@ run `--version` and `-e`, but fails script-file entrypoints before it can load
 `agent-bundle.js`. The current `evidence/riscv64_agent_runtime_smoke.json`
 records the Node-mode staged artifact check; it is not full ISO boot evidence.
 
-GUI/kiosk payload checks are per-arch and fail closed until an ISO is recorded
-in `evidence/multiarch_boot_matrix.json`:
+GUI/kiosk payload checks are per-arch and are intended for `PROFILE=gui` ISOs.
+They fail closed until a GUI ISO is recorded in
+`evidence/multiarch_boot_matrix.json` or passed explicitly with `ISO=...`:
 
 ```sh
 make -C packages/os/linux/elizaos riscv64-gui-kiosk-iso-check
 make -C packages/os/linux/elizaos arm64-gui-kiosk-iso-check
 ```
 
-The current riscv64 report passes as a static squashfs payload check. The arm64
-report is intentionally blocked until a real arm64 ISO and boot evidence are
-produced.
+The current riscv64 and arm64 GUI reports pass as static squashfs payload
+checks for previously built GUI-capable ISOs.
 
 `make build` runs `lb config` → `lb build` → verify → checksum → manifest
 inside the builder container (`Dockerfile`). A clean build pulls multi-GB

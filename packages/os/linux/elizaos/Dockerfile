@@ -45,6 +45,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         ca-certificates \
         sudo \
+        mkosi \
+        systemd-container \
+        systemd-boot \
+        systemd-repart \
+        debian-archive-keyring \
+        zstd \
     && if apt-cache show grub-efi-arm64-bin >/dev/null 2>&1; then \
         apt-get install -y --no-install-recommends grub-efi-arm64-bin; \
     else \

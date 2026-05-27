@@ -1,0 +1,51 @@
+#!/bin/bash
+# elizaOS Linux — mkosi post-install hook.
+#
+# mkosi runs this script inside the assembled rootfs after package install.
+# We reuse the live-build chroot hooks unmodified — same ordering, same
+# bodies — so the kiosk wiring, agent units, branding, and grub branding
+# stay in exactly one place (../config/hooks/normal/*.hook.chroot).
+#
+# The live-build hooks were authored to run inside a chroot with no live
+# systemd / dbus, manipulating only symlinks under /etc/systemd/system —
+# which is exactly what `mkosi build` provides. They are safe to run as-is.
+#
+# Profile filtering is performed by the hook bodies themselves (e.g. the
+# 0025 kiosk hook exits cleanly if cage/seatd are absent, which is how
+# default-profile builds skip the kiosk wiring).
+set -euo pipefail
+
+HOOK_DIR=/work/src/config/hooks/normal
+if [ ! -d "$HOOK_DIR" ]; then
+    # mkosi BuildSources mount point convention; fall back to no-op
+    # gracefully (a developer running `mkosi build` without BuildSources will
+    # still see why).
+    echo "[mkosi.postinst] WARNING: $HOOK_DIR not present; skipping live-build hook reuse." >&2
+    echo "[mkosi.postinst] Pass --build-sources=..:src to mount the variant tree." >&2
+    exit 0
+fi
+
+# Run only chroot hooks here; binary hooks run later in mkosi.finalize.
+shopt -s nullglob
+for hook in "$HOOK_DIR"/*.hook.chroot; do
+    name="$(basename "$hook")"
+    echo "[mkosi.postinst] running $name"
+    bash "$hook"
+done
+
+# Active profile is exposed by mkosi via $PROFILES (comma-separated). If the
+# kiosk hook detected no GUI packages and left the default target at
+# multi-user.target, that's correct for the default profile. The GUI profile
+# must end up on graphical.target; assert it loudly to fail closed.
+if [[ ",${PROFILES:-}," == *",gui,"* ]]; then
+    default="$(readlink -f /etc/systemd/system/default.target || true)"
+    case "$default" in
+        */graphical.target) ;;
+        *)
+            echo "[mkosi.postinst] ERROR: profile=gui but default.target is $default (expected graphical.target)" >&2
+            exit 1
+            ;;
+    esac
+fi
+
+echo "[mkosi.postinst] hooks complete"

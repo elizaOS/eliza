@@ -34,6 +34,12 @@ config/hooks/normal/9*.hook.chroot
 # Build output ISOs — never commit; reference by sha256 in manifest.json.
 out/
 
+# mkosi build state — same policy as live-build's cache/chroot: never check in.
+mkosi/mkosi.cache/
+mkosi/mkosi.builddir/
+mkosi/mkosi.output/
+mkosi/.mkosi-*/
+
 # Generated raster branding (produced from assets/*.svg at build time).
 config/includes.chroot/usr/share/backgrounds/elizaos/*.png
 config/includes.chroot/usr/share/icons/hicolor/*/apps/elizaos.png
