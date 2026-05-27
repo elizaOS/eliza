@@ -317,6 +317,7 @@ def ensure_dram_controller_report() -> None:
     )
     if completed.returncode != 0:
         print(completed.stdout, end="")
+        raise SystemExit(completed.returncode)
 
 
 def ensure_generated_ap_memory_sources() -> None:
