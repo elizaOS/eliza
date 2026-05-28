@@ -70,6 +70,17 @@ function toToolSet(rawTools) {
   return Object.keys(set).length ? set : undefined;
 }
 
+function asText(content) {
+  if (content == null) return "";
+  if (typeof content === "string") return content;
+  return JSON.stringify(content);
+}
+
+// Flatten an arbitrary benchmark message list into strictly-valid ai SDK
+// ModelMessage[] (roles system/user/assistant with non-empty string content).
+// `tool` results and assistant tool-call turns are rendered as text so the
+// model still sees the conversation history without tripping the SDK's schema
+// validation (which requires structured tool/tool-result parts + ids).
 function buildMessages(payload) {
   const ctx = payload.context && typeof payload.context === "object" ? payload.context : {};
   const messages = [];
@@ -85,19 +96,35 @@ function buildMessages(payload) {
     for (const m of raw) {
       if (!m || typeof m !== "object") continue;
       const role = m.role;
-      if (!["system", "user", "assistant", "tool"].includes(role)) continue;
-      const content = m.content == null ? "" : typeof m.content === "string" ? m.content : JSON.stringify(m.content);
-      messages.push({ role, content });
+      let content = asText(m.content);
+      if (role === "system") {
+        if (!content.trim()) continue;
+        messages.push({ role: "system", content });
+      } else if (role === "user") {
+        messages.push({ role: "user", content: content || "(empty)" });
+      } else if (role === "assistant") {
+        if (!content.trim() && Array.isArray(m.tool_calls) && m.tool_calls.length) {
+          content = "Tool calls: " + JSON.stringify(m.tool_calls);
+        }
+        messages.push({ role: "assistant", content: content || "(no content)" });
+      } else if (role === "tool") {
+        const name = typeof m.name === "string" ? m.name : "";
+        messages.push({ role: "user", content: `Tool result${name ? ` (${name})` : ""}: ${content}` });
+      } else {
+        continue;
+      }
       hadRaw = true;
     }
   }
   if (sysPrompt && !messages.some((m) => m.role === "system" && m.content === sysPrompt)) {
     messages.unshift({ role: "system", content: sysPrompt });
   }
+  const text = String(payload.text ?? "");
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
   if (!hadRaw) {
-    messages.push({ role: "user", content: String(payload.text ?? "") });
-  } else if (payload.text) {
-    messages.push({ role: "user", content: String(payload.text) });
+    messages.push({ role: "user", content: text || "(empty)" });
+  } else if (text && (!lastUser || lastUser.content !== text)) {
+    messages.push({ role: "user", content: text });
   }
   return messages;
 }

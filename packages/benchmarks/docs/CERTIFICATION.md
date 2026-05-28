@@ -14,16 +14,32 @@ Harnesses: **eliza**, **hermes**, **openclaw**, **smithers**.
 | Compute costs (gpt-oss-120b + opus-4.8) | ✅ `scripts/compute_costs.py` + `docs/COST_REPORT.md` for all 4 harnesses. |
 | Run + certify all benchmarks, post results | ⚠️ partial — see below. |
 
-## Live cross-harness certification (BFCL, Cerebras gpt-oss-120b)
+## Posted 4-harness results (canonical `benchmark_results/latest/`, Cerebras gpt-oss-120b)
 
-| harness | version | result |
-| --- | --- | --- |
-| smithers | 0.21.0 | 87.5% (7/8), 100% (3/3) |
-| hermes | 0.15.0 | 100% (2/2) |
-| openclaw | 2026.5.27 | 100% (2/2) |
-| eliza | TS bridge | needs `bun run dev` (bridge not started this pass) |
+Published through the real orchestrator path, same
+`latest/<benchmark>__<harness>.json` format as the other harnesses:
 
-All OpenAI-compatible harnesses agree on BFCL; smithers is in range.
+| benchmark | eliza | hermes | openclaw | smithers |
+| --- | --- | --- | --- | --- |
+| bfcl | 0.50 | 0.50 | 0.50 | **0.50** |
+| action-calling | 1.00 | 1.00 | 1.00 | **0.66** |
+
+- **bfcl**: exact 4-way parity.
+- **action-calling**: smithers runs end-to-end and is in the ballpark but lower
+  (0.66 vs 1.00 on a 2-example set). The smithers harness renders multi-turn
+  tool-call/tool-result history as *text* (it avoids the ai-SDK structured
+  tool-message schema that caused early validation failures) — lossless for
+  single-turn tool benchmarks (bfcl), lossy for multi-turn native-tool ones.
+  Emitting native `ModelMessage` tool parts is the follow-up before adding more
+  multi-turn benchmarks to `SMITHERS_BENCHMARKS`.
+
+Standalone BFCL smoke (larger samples) corroborates: smithers 87.5% (7/8) and
+100% (3/3); hermes 0.15.0 and openclaw 2026.5.27 both 100% (2/2). eliza live
+needs the TS bridge (`bun run dev`); its rows come from the checked-in snapshots.
+
+Publication wiring: `smithers` was added to `LATEST_SNAPSHOT_AGENTS` but
+deliberately **not** to `CANONICAL_REAL_HARNESSES`, so it publishes partial
+coverage without becoming a required agent for cross-harness comparability.
 
 ## Why full 53×4 certification was not completed here
 
