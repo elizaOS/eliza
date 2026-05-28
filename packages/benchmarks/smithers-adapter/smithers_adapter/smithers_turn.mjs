@@ -76,11 +76,41 @@ function asText(content) {
   return JSON.stringify(content);
 }
 
-// Flatten an arbitrary benchmark message list into strictly-valid ai SDK
-// ModelMessage[] (roles system/user/assistant with non-empty string content).
-// `tool` results and assistant tool-call turns are rendered as text so the
-// model still sees the conversation history without tripping the SDK's schema
-// validation (which requires structured tool/tool-result parts + ids).
+function parseArgs(raw) {
+  if (raw == null) return {};
+  if (typeof raw === "object") return raw;
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return { _raw: raw };
+    }
+  }
+  return {};
+}
+
+// Convert OpenAI-shape assistant tool_calls into ai-SDK ToolCallPart[].
+function toToolCallParts(toolCalls) {
+  const parts = [];
+  for (const tc of toolCalls) {
+    if (!tc || typeof tc !== "object") continue;
+    const fn = tc.function && typeof tc.function === "object" ? tc.function : tc;
+    const name = fn.name ?? tc.name;
+    if (typeof name !== "string" || !name) continue;
+    parts.push({
+      type: "tool-call",
+      toolCallId: String(tc.id ?? tc.tool_call_id ?? `call_${parts.length}`),
+      toolName: name,
+      input: parseArgs(fn.arguments ?? fn.input ?? tc.arguments),
+    });
+  }
+  return parts;
+}
+
+// Convert an arbitrary benchmark message list into valid ai-SDK ModelMessage[],
+// preserving NATIVE structured tool calls / tool results (rather than
+// flattening to text) so multi-turn function-calling benchmarks keep fidelity.
+// Falls back to text only for shapes that can't be represented structurally.
 function buildMessages(payload) {
   const ctx = payload.context && typeof payload.context === "object" ? payload.context : {};
   const messages = [];
@@ -91,25 +121,45 @@ function buildMessages(payload) {
         ? ctx.system_prompt
         : null;
   const raw = Array.isArray(ctx.messages) ? ctx.messages : null;
+  // Track tool names by call id so tool-result parts can carry the toolName.
+  const toolNameById = {};
   let hadRaw = false;
   if (raw) {
     for (const m of raw) {
       if (!m || typeof m !== "object") continue;
       const role = m.role;
-      let content = asText(m.content);
+      const content = asText(m.content);
       if (role === "system") {
         if (!content.trim()) continue;
         messages.push({ role: "system", content });
       } else if (role === "user") {
         messages.push({ role: "user", content: content || "(empty)" });
       } else if (role === "assistant") {
-        if (!content.trim() && Array.isArray(m.tool_calls) && m.tool_calls.length) {
-          content = "Tool calls: " + JSON.stringify(m.tool_calls);
+        const toolCalls = Array.isArray(m.tool_calls) ? m.tool_calls : [];
+        if (toolCalls.length) {
+          const parts = toToolCallParts(toolCalls);
+          for (const p of parts) toolNameById[p.toolCallId] = p.toolName;
+          const arr = [];
+          if (content.trim()) arr.push({ type: "text", text: content });
+          arr.push(...parts);
+          messages.push({ role: "assistant", content: arr });
+        } else {
+          messages.push({ role: "assistant", content: content || "(no content)" });
         }
-        messages.push({ role: "assistant", content: content || "(no content)" });
       } else if (role === "tool") {
-        const name = typeof m.name === "string" ? m.name : "";
-        messages.push({ role: "user", content: `Tool result${name ? ` (${name})` : ""}: ${content}` });
+        const callId = String(m.tool_call_id ?? m.id ?? `call_${messages.length}`);
+        const name = (typeof m.name === "string" && m.name) || toolNameById[callId] || "tool";
+        messages.push({
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: callId,
+              toolName: name,
+              output: { type: "json", value: parseArgs(m.content) },
+            },
+          ],
+        });
       } else {
         continue;
       }

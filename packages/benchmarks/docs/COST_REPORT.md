@@ -12,7 +12,7 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | benchmark | eliza | hermes | openclaw | smithers |
 |---|---|---|---|---|
 | abliteration_robustness | $0.0024 | $0.0002 | $0.0002 | $0.0002* |
-| action_calling | $0.0017 | $0.0015 | $0.0015 | $0.0018† |
+| action_calling | $0.0017 | $0.0015 | $0.0015 | $0.0015† |
 | adhdbench | $0.0095 | $0.0005 | $0.0005 | $0.0005* |
 | agentbench | $0.0048 | $0.0002 | $0.0311 | $0.0002* |
 | app_eval | $0.0017 | $0.0012 | $0.0014 | $0.0012* |
@@ -64,7 +64,7 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | benchmark | eliza | hermes | openclaw | smithers |
 |---|---|---|---|---|
 | abliteration_robustness | $0.1360 | $0.0216 | $0.0216 | $0.0216* |
-| action_calling | $0.0982 | $0.0764 | $0.0766 | $0.0900† |
+| action_calling | $0.0982 | $0.0764 | $0.0766 | $0.0754† |
 | adhdbench | $0.5159 | $0.0251 | $0.0283 | $0.0251* |
 | agentbench | $0.2463 | $0.0101 | $1.3308 | $0.0101* |
 | app_eval | $0.1168 | $0.1197 | $0.1335 | $0.1197* |
@@ -107,6 +107,6 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | visualwebbench | $0.0477 | $0.0345 | $0.0365 | $0.0345* |
 | webshop | $0.1236 | $0.1219 | $0.1224 | $0.1219* |
 | woobench | $1.8356 | $1.5618 | $2.3336 | $1.5618* |
-| **TOTAL** | **$30.93** | **$23.88** | **$32.02** | **$25.42** |
-| **AVG/bench** | $0.7192 | $0.5552 | $0.7277 | $0.5778 |
+| **TOTAL** | **$30.93** | **$23.88** | **$32.02** | **$25.41** |
+| **AVG/bench** | $0.7192 | $0.5552 | $0.7277 | $0.5775 |
 | benchmarks counted | 43 | 43 | 44 | 44 |
