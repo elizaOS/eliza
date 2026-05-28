@@ -4,10 +4,6 @@
  * Layout: `<stateDir>/auth/{providerId}/{accountId}.json` (mode 0600,
  * atomic writes). Multiple accounts per provider are supported.
  *
- * Migration: on first read of a provider, if the legacy single-file
- * `<stateDir>/auth/{providerId}.json` exists and the per-account
- * directory does not, the legacy file is moved to
- * `<dir>/default.json` and the legacy file is removed.
  */
 
 import fs from "node:fs";
@@ -17,10 +13,7 @@ import { writeJsonAtomicSync } from "../utils/atomic-json.ts";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
   type AccountCredentialProvider,
-  isSubscriptionProvider,
   type OAuthCredentials,
-  SUBSCRIPTION_PROVIDER_IDS,
-  type SubscriptionProvider,
 } from "./types.ts";
 
 export interface AccountCredentialRecord {
@@ -53,10 +46,6 @@ function providerDir(provider: AccountCredentialProvider): string {
   return path.join(authRoot(), provider);
 }
 
-function legacyProviderFile(provider: SubscriptionProvider): string {
-  return path.join(authRoot(), `${provider}.json`);
-}
-
 function accountFile(
   provider: AccountCredentialProvider,
   accountId: string,
@@ -69,13 +58,6 @@ function ensureProviderDir(provider: AccountCredentialProvider): void {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
-}
-
-interface LegacyStoredCredentials {
-  provider: SubscriptionProvider;
-  credentials: OAuthCredentials;
-  createdAt: number;
-  updatedAt: number;
 }
 
 function isAccountCredentialRecord(
@@ -99,111 +81,9 @@ function isAccountCredentialRecord(
   );
 }
 
-const migratedProviders = new Set<SubscriptionProvider>();
-let migrationRunAtLeastOnce = false;
-
-function migrateProvider(provider: SubscriptionProvider): boolean {
-  if (migratedProviders.has(provider)) return false;
-  migratedProviders.add(provider);
-
-  const dir = providerDir(provider);
-  const legacy = legacyProviderFile(provider);
-
-  if (!fs.existsSync(legacy)) return false;
-  if (fs.existsSync(dir)) {
-    // Per-account directory already exists — leave the legacy file
-    // alone (operator may be mid-migration). Don't auto-delete.
-    return false;
-  }
-
-  let parsed: LegacyStoredCredentials | null = null;
-  try {
-    const raw = fs.readFileSync(legacy, "utf-8");
-    parsed = JSON.parse(raw) as LegacyStoredCredentials;
-  } catch (err) {
-    logger.warn(
-      `[auth] Failed to read legacy credential file for migration ${legacy}: ${String(err)}`,
-    );
-    return false;
-  }
-
-  if (
-    !parsed ||
-    typeof parsed !== "object" ||
-    !parsed.credentials ||
-    typeof parsed.credentials.access !== "string"
-  ) {
-    logger.warn(
-      `[auth] Legacy credential file ${legacy} is malformed — skipping migration`,
-    );
-    return false;
-  }
-
-  const now = Date.now();
-  const record: AccountCredentialRecord = {
-    id: "default",
-    providerId: provider,
-    label: "Default",
-    source: "oauth",
-    credentials: parsed.credentials,
-    createdAt: typeof parsed.createdAt === "number" ? parsed.createdAt : now,
-    updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : now,
-  };
-
-  ensureProviderDir(provider);
-  writeJsonAtomicSync(accountFile(provider, "default"), record);
-
-  // Atomic-ish delete: rename to a side path first so a concurrent
-  // reader sees either the legacy file or nothing — then unlink.
-  const removed = `${legacy}.migrated-${now}`;
-  try {
-    fs.renameSync(legacy, removed);
-    fs.unlinkSync(removed);
-  } catch (err) {
-    logger.warn(
-      `[auth] Failed to remove legacy credential file ${legacy} after migration: ${String(err)}`,
-    );
-  }
-
-  logger.info(
-    `[auth] Migrated legacy ${provider} credentials to per-account store as "default"`,
-  );
-  return true;
-}
-
-/**
- * Run the legacy → per-account migration for both known subscription
- * providers. Idempotent: each provider migrates at most once per
- * process. Returns the providers that were actually migrated this
- * call.
- */
-export function migrateLegacySingleAccount(): {
-  migrated: SubscriptionProvider[];
-} {
-  migrationRunAtLeastOnce = true;
-  const migrated: SubscriptionProvider[] = [];
-  for (const p of SUBSCRIPTION_PROVIDER_IDS) {
-    if (migrateProvider(p)) migrated.push(p);
-  }
-  return { migrated };
-}
-
-function ensureMigrationOnce(): void {
-  if (!migrationRunAtLeastOnce) {
-    migrateLegacySingleAccount();
-  }
-}
-
 export function listAccounts(
   provider: AccountCredentialProvider,
 ): AccountCredentialRecord[] {
-  ensureMigrationOnce();
-  // Run provider-specific migration too in case a new provider was
-  // added after the first global pass.
-  if (isSubscriptionProvider(provider)) {
-    migrateProvider(provider);
-  }
-
   const dir = providerDir(provider);
   if (!fs.existsSync(dir)) return [];
 
@@ -243,11 +123,6 @@ export function loadAccount(
   provider: AccountCredentialProvider,
   accountId: string,
 ): AccountCredentialRecord | null {
-  ensureMigrationOnce();
-  if (isSubscriptionProvider(provider)) {
-    migrateProvider(provider);
-  }
-
   const file = accountFile(provider, accountId);
   let raw: string;
   try {

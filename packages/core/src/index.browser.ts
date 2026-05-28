@@ -152,10 +152,6 @@ export function resolveOAuthDir(): string {
 	return "/.local/state/eliza/credentials";
 }
 
-export function migrateLegacyStateDir(): { migrated: false } {
-	return { migrated: false };
-}
-
 export async function runPluginMigrations(): Promise<void> {}
 
 // Browser-specific exports or stubs for Node-only features

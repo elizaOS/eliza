@@ -90,11 +90,7 @@ export class ResearchTaskExecutor implements TaskExecutor {
         if (lines.length >= 2) {
           subQuestions = lines;
         } else {
-          // Fallback: try JSON array parse for backwards compat
-          const jsonParsed: unknown = JSON.parse(raw.trim());
-          subQuestions = Array.isArray(jsonParsed)
-            ? (jsonParsed.filter((q) => typeof q === "string") as string[])
-            : [spec.description];
+          subQuestions = [spec.description];
         }
         if (subQuestions.length === 0) subQuestions = [spec.description];
       } catch {
