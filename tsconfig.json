@@ -195,6 +195,9 @@
       "@elizaos/plugin-worker-runtime": [
         "./packages/plugin-worker-runtime/src/index.ts"
       ],
+      "@elizaos/plugin-worker-runtime/*": [
+        "./packages/plugin-worker-runtime/src/*"
+      ],
       "@elizaos/plugin-workflow": ["./plugins/plugin-workflow/src/index.ts"],
       "@elizaos/plugin-x402": ["./plugins/plugin-x402/src/index.ts"],
       "@elizaos/security": ["./packages/security/src/index.ts"],
