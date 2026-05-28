@@ -33,6 +33,18 @@ const compatibilityFiles = [
     )}\n`,
   },
   {
+    file: path.join(tempDistDir, "server", "server-reference-manifest.json"),
+    content: `${JSON.stringify(
+      {
+        node: {},
+        edge: {},
+        encryptionKey: "process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY",
+      },
+      null,
+      2,
+    )}\n`,
+  },
+  {
     file: path.join(tempDistDir, "server", "app-paths-manifest.json"),
     content: `${JSON.stringify(
       {
