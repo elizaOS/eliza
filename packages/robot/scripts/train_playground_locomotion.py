@@ -49,10 +49,22 @@ def _force_cpu_jax_impl() -> None:
     os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
 
 
-def load_env(env_name: str, *, impl: str = "jax"):
+def load_env(env_name: str, *, impl: str = "jax", reward_overrides: dict | None = None):
     from mujoco_playground import registry
 
-    return registry.load(env_name, config_overrides={"impl": impl})
+    overrides: dict = {"impl": impl}
+    if reward_overrides:
+        # MERGE into the default scales — passing a bare {scales: {...}} would
+        # REPLACE the whole dict and drop feet_phase/tracking_lin_vel. We read
+        # the default, copy it, and override only the named terms so we just
+        # enable the env's own anti-skating terms (foot_slip / feet_air_time)
+        # that the H1 default zeroes out while keeping everything else intact.
+        default = registry.get_default_config(env_name)
+        merged = {k: float(v) for k, v in dict(default.reward_config.scales).items()}
+        for k, v in reward_overrides.items():
+            merged[k] = float(v)
+        overrides["reward_config"] = {"scales": merged}
+    return registry.load(env_name, config_overrides=overrides)
 
 
 def _ppo_config(env_name: str, num_timesteps: int, num_envs: int, num_evals: int) -> dict:
@@ -93,6 +105,7 @@ def train(
     num_evals: int,
     seed: int,
     out_dir: Path,
+    reward_overrides: dict | None = None,
 ) -> Path:
     import jax
     from brax.training.agents.ppo import train as ppo_train_module
@@ -105,7 +118,9 @@ def train(
     except Exception:  # pragma: no cover - import path varies by version
         from mujoco_playground._src.wrapper import wrap_for_brax_training as wrap_fn
 
-    env = load_env(env_name)
+    env = load_env(env_name, reward_overrides=reward_overrides)
+    if reward_overrides:
+        print(f"reward overrides: {reward_overrides}", flush=True)
     cfg = _ppo_config(env_name, num_timesteps, num_envs, num_evals)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -322,7 +337,19 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--command", type=float, nargs=3, default=[1.0, 0.0, 0.0])
     p.add_argument("--eval-steps", type=int, default=500)
     p.add_argument("--render", action="store_true")
+    p.add_argument(
+        "--reward-scale",
+        nargs="*",
+        default=[],
+        metavar="TERM=VALUE",
+        help="Override reward_config.scales terms, e.g. foot_slip=-0.5 feet_air_time=2.0",
+    )
     args = p.parse_args(argv)
+
+    reward_overrides = {}
+    for item in args.reward_scale:
+        term, _, value = item.partition("=")
+        reward_overrides[term.strip()] = float(value)
 
     if not args.eval_only:
         train(
@@ -332,6 +359,7 @@ def main(argv: list[str] | None = None) -> int:
             num_evals=args.num_evals,
             seed=args.seed,
             out_dir=args.out,
+            reward_overrides=reward_overrides or None,
         )
     evaluate_and_render(
         args.env,
