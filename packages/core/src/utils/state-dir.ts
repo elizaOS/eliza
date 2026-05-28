@@ -2,7 +2,7 @@
  * Eliza state-dir resolution.
  *
  * Canonical precedence (highest first):
- *   1. `ELIZA_STATE_DIR` (`MILADY_STATE_DIR` alias in branded builds)
+ *   1. `ELIZA_STATE_DIR`
  *   2. `$XDG_STATE_HOME/${ELIZA_NAMESPACE ?? "eliza"}`
  *   3. `<homedir>/.local/state/${ELIZA_NAMESPACE ?? "eliza"}`
  *
@@ -44,15 +44,13 @@ export function getElizaNamespace(
 
 /**
  * Resolve the per-user state directory, honoring the documented precedence:
- * `ELIZA_STATE_DIR`/`MILADY_STATE_DIR` > `$XDG_STATE_HOME/<namespace>` >
- * `~/.local/state/<namespace>`.
+ * `ELIZA_STATE_DIR` > `$XDG_STATE_HOME/<namespace>` > `~/.local/state/<namespace>`.
  */
 export function resolveStateDir(
 	env: NodeJS.ProcessEnv = process.env,
 	getHome: () => string = homedir,
 ): string {
-	const explicit =
-		readEnv("ELIZA_STATE_DIR", { env }) ?? readEnv("MILADY_STATE_DIR", { env });
+	const explicit = readEnv("ELIZA_STATE_DIR", { env });
 	if (explicit) return resolveUserPath(explicit);
 	const namespace = getElizaNamespace(env);
 	const xdgStateHome = readEnv("XDG_STATE_HOME", { env });

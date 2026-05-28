@@ -11,10 +11,7 @@ import {
 const CONFIG_PATH_CANONICAL_KEY = "ELIZA_CONFIG_PATH";
 
 function readEnvOverride(env: NodeJS.ProcessEnv): string | undefined {
-  return (
-    readEnv(CONFIG_PATH_CANONICAL_KEY, { env }) ??
-    readEnv("MILADY_CONFIG_PATH", { env })
-  );
+  return readEnv(CONFIG_PATH_CANONICAL_KEY, { env });
 }
 
 export { getElizaNamespace, resolveOAuthDir, resolveStateDir, resolveUserPath };
