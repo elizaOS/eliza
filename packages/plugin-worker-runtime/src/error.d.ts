@@ -8,11 +8,11 @@
  */
 import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 export interface WireError {
-  name: string;
-  message: string;
-  stack?: string;
-  cause?: JsonValue;
-  code?: string;
+    name: string;
+    message: string;
+    stack?: string;
+    cause?: JsonValue;
+    code?: string;
 }
 /** Convert an unknown thrown value into a wire-safe descriptor. */
 export declare function toWireError(value: unknown): WireError;
