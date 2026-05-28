@@ -1097,6 +1097,35 @@ function patchCopiedAiSdkProviderRuntimeSurface(packageDir: string): void {
   }
 }
 
+function writeRuntimeShimIfMissing(filePath: string, source: string): void {
+  if (fs.existsSync(filePath)) {
+    return;
+  }
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, source);
+}
+
+function patchCopiedPluginSqlRuntimeSurface(packageDir: string): void {
+  const srcDist = path.join(packageDir, "src", "dist");
+  const nodeEntry = path.join(srcDist, "node", "index.node.js");
+  if (!fs.existsSync(nodeEntry)) {
+    return;
+  }
+
+  writeRuntimeShimIfMissing(
+    path.join(srcDist, "index.js"),
+    "export * from './node/index.node.js';\nexport { default } from './node/index.node.js';\n",
+  );
+  writeRuntimeShimIfMissing(
+    path.join(srcDist, "drizzle", "index.js"),
+    "export { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';\n",
+  );
+  writeRuntimeShimIfMissing(
+    path.join(srcDist, "schema", "index.js"),
+    "export * from '../node/index.node.js';\n",
+  );
+}
+
 function patchCopiedPackageRuntimeSurface(
   name: string,
   packageDir: string,
@@ -1108,6 +1137,10 @@ function patchCopiedPackageRuntimeSurface(
   }
   if (name === "@ai-sdk/provider") {
     patchCopiedAiSdkProviderRuntimeSurface(packageDir);
+    return;
+  }
+  if (name === "@elizaos/plugin-sql") {
+    patchCopiedPluginSqlRuntimeSurface(packageDir);
     return;
   }
   if (name === "@elevenlabs/elevenlabs-js") {

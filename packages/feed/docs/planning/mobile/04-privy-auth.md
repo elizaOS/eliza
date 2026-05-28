@@ -74,7 +74,7 @@ Capacitor's WebView sends requests from `capacitor://localhost` (iOS) or `https:
 
 `apiFetch()` sends `credentials: 'include'` to include the `privy-token` httpOnly cookie. In a cross-origin context (Capacitor WebView → Vercel API), SameSite cookies won't be sent.
 
-**Fallback:** `apiFetch()` also sends `Authorization: Bearer <token>` via `getPrivyAccessToken()`. The API middleware (`packages/api/src/auth-middleware.ts`) checks both cookie and header — cookie first, then Authorization header.
+**Fallback:** `apiFetch()` also sends `Authorization: Bearer <token>` via `getAccessToken()`. The API middleware (`packages/api/src/auth-middleware.ts`) checks both cookie and header — cookie first, then Authorization header.
 
 **Status:** Likely OK because of the Bearer token fallback, but needs explicit production testing.
 
@@ -94,4 +94,3 @@ All of these use either:
 - **Email:** OTP code entry within the Privy modal (works in WebView, no external redirect)
 - **OAuth:** External browser redirect via Capacitor's `@capacitor/browser` plugin (Farcaster, Twitter, Discord, Telegram)
 - **Wallet:** WalletConnect deep links or browser extension detection (MetaMask, Phantom, etc.)
-
