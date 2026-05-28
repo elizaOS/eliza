@@ -2,11 +2,9 @@
  * GIT_PATHOLOGY action — single multiplex Action that dispatches to the
  * GitPathologyService. Pattern mirrors plugin-agent-orchestrator's TASKS.
  *
- * Operations:
+ * Actions:
  *   report (default) — full pathology report for a surface
  *   list             — list cached reports for the repo root
- *   trace            — v2: walk back to find introduction of a symptom (returns NOT_IMPLEMENTED)
- *   diff             — v2: compare two surfaces or two timeframes (returns NOT_IMPLEMENTED)
  */
 
 import path from "node:path";
@@ -26,7 +24,7 @@ import {
 } from "../services/git-pathology-service.ts";
 import type { AnalysisOptions, Operation, PathologyReport, SurfaceSpec } from "../types.ts";
 
-const VALID_OPS: ReadonlySet<Operation> = new Set(["report", "trace", "diff", "list"]);
+const VALID_ACTIONS: ReadonlySet<Operation> = new Set(["report", "list"]);
 const SURFACE_HINT_RE =
   /\b(pathology|git\s+history|code\s+health|drift|rot|inflection|when\s+did\s+(?:this\s+)?(?:code|file|module|package|plugin|service|component|path|repo|repository|branch|commit))\b/i;
 
@@ -43,9 +41,9 @@ function paramsRecord(
   return options as Record<string, unknown>;
 }
 
-function readOp(params: Record<string, unknown>): Operation {
-  const raw = typeof params.operation === "string" ? params.operation.toLowerCase() : "report";
-  return VALID_OPS.has(raw as Operation) ? (raw as Operation) : "report";
+function readAction(params: Record<string, unknown>): Operation {
+  const raw = typeof params.action === "string" ? params.action.toLowerCase() : "report";
+  return VALID_ACTIONS.has(raw as Operation) ? (raw as Operation) : "report";
 }
 
 function readString(params: Record<string, unknown>, key: string): string | undefined {
@@ -78,11 +76,6 @@ function resolveRepoRoot(): string {
   const fromEnv = process.env.MILADY_WORKSPACE_DIR ?? process.env.ELIZA_WORKSPACE_DIR;
   const cwd = fromEnv?.trim() ? fromEnv.trim() : process.cwd();
   return path.resolve(cwd);
-}
-
-function notImplementedResult(operation: Operation): ActionResult {
-  const text = `Operation "${operation}" is not implemented in gitpathologist v1. Use operation="report" or operation="list".`;
-  return { success: false, text, error: "NOT_IMPLEMENTED" };
 }
 
 function listResult(service: GitPathologyService, repoRoot: string): ActionResult {
@@ -124,21 +117,21 @@ export const gitPathologyAction: Action & { suppressPostActionContinuation: true
     "WHERE_DID_ROT_START",
   ],
   description:
-    "Forensic git-history analysis for a path/glob surface. Returns peaks (peak quality moments), drift inflections (where rot started), and a post-mortem narrative. Use when the user asks 'when did this code get bad', 'where did rot start in X', or 'analyze git pathology for Y'. Operations (via `operation` param): report (default), list (show cached reports), trace (v2), diff (v2).",
+    "Forensic git-history analysis for a path/glob surface. Returns peaks (peak quality moments), drift inflections (where rot started), and a post-mortem narrative. Use when the user asks 'when did this code get bad', 'where did rot start in X', or 'analyze git pathology for Y'. Actions: report (default), list (show cached reports).",
   contexts: ["code", "git", "general"],
   suppressPostActionContinuation: true,
   parameters: [
     {
-      name: "operation",
+      name: "action",
       description:
-        "Which gitpathologist operation: report, list, trace (v2), diff (v2). Default: report.",
+        "Which gitpathologist action: report or list. Default: report.",
       required: false,
-      schema: { type: "string" as const, enum: ["report", "trace", "diff", "list"] },
+      schema: { type: "string" as const, enum: ["report", "list"] },
     },
     {
       name: "surface",
       description:
-        "Path or glob to analyze (relative to repo root). Required for operation=report|trace|diff.",
+        "Path or glob to analyze (relative to repo root). Required for action=report.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -160,18 +153,6 @@ export const gitPathologyAction: Action & { suppressPostActionContinuation: true
       required: false,
       schema: { type: "string" as const, enum: ["auto", "force", "read-only"] },
     },
-    {
-      name: "symptom",
-      description: "Optional symptom/bug description for operation=trace (v2).",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "compareTo",
-      description: "Comparison target for operation=diff (v2). Surface or time window.",
-      required: false,
-      schema: { type: "string" as const },
-    },
   ],
   validate: async (runtime: IAgentRuntime, message: Memory) => {
     if (!getService(runtime)) return false;
@@ -180,7 +161,7 @@ export const gitPathologyAction: Action & { suppressPostActionContinuation: true
       content.params && typeof content.params === "object"
         ? (content.params as Record<string, unknown>)
         : null;
-    if (params && typeof params.operation === "string") return true;
+    if (params && typeof params.action === "string") return true;
     if (params && typeof params.surface === "string") return true;
     const text = typeof content.text === "string" ? content.text : "";
     return SURFACE_HINT_RE.test(text);
@@ -198,19 +179,11 @@ export const gitPathologyAction: Action & { suppressPostActionContinuation: true
       return { success: false, text, error: "SERVICE_UNAVAILABLE" };
     }
     const params = paramsRecord(options);
-    const op = readOp(params);
+    const action = readAction(params);
     const repoRoot = resolveRepoRoot();
 
-    if (op === "list") {
+    if (action === "list") {
       const result = listResult(service, repoRoot);
-      if (callback && typeof result.text === "string") {
-        await callback({ text: result.text });
-      }
-      return result;
-    }
-
-    if (op === "trace" || op === "diff") {
-      const result = notImplementedResult(op);
       if (callback && typeof result.text === "string") {
         await callback({ text: result.text });
       }
@@ -220,7 +193,7 @@ export const gitPathologyAction: Action & { suppressPostActionContinuation: true
     const surfacePath = readString(params, "surface");
     if (!surfacePath) {
       const text =
-        "operation=report requires a `surface` param (path or glob relative to repo root).";
+        "action=report requires a `surface` param (path or glob relative to repo root).";
       if (callback) await callback({ text });
       return { success: false, text, error: "MISSING_SURFACE" };
     }

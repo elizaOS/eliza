@@ -13,19 +13,15 @@ export { maskSecretValue, secretsAction } from "./actions/index.ts";
 
 // Crypto
 export {
-	ALGORITHM_CBC,
 	ALGORITHM_GCM,
 	createKeyDerivationParams,
 	DEFAULT_PBKDF2_ITERATIONS,
 	DEFAULT_SALT_LENGTH,
 	decrypt,
-	decryptCbc,
 	decryptGcm,
-	deriveKeyFromAgentId,
 	deriveKeyPbkdf2,
 	deriveKeyScrypt,
 	encrypt,
-	encryptCbc,
 	encryptGcm,
 	generateKey,
 	generateSalt,

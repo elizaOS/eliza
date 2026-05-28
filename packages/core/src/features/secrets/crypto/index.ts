@@ -3,7 +3,6 @@
  */
 
 export {
-	ALGORITHM_CBC,
 	// Constants
 	ALGORITHM_GCM,
 	createKeyDerivationParams,
@@ -11,14 +10,11 @@ export {
 	DEFAULT_SALT_LENGTH,
 	// Decryption
 	decrypt,
-	decryptCbc,
 	decryptGcm,
-	deriveKeyFromAgentId,
 	deriveKeyPbkdf2,
 	deriveKeyScrypt,
 	// Encryption
 	encrypt,
-	encryptCbc,
 	encryptGcm,
 	generateKey,
 	// Key derivation

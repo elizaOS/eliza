@@ -60,7 +60,6 @@ export interface SecretsManagerPluginConfig {
  * - Natural language secret management via actions
  * - Plugin activation when required secrets become available
  * - Access logging and auditing
- * - Backward compatibility with ENV_ prefixed settings
  *
  * **Usage:**
  * ```typescript

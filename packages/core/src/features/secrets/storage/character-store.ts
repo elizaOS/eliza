@@ -85,12 +85,6 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 			return null;
 		}
 
-		// Handle different storage formats
-		if (typeof stored === "string") {
-			// Plain string value
-			return stored;
-		}
-
 		if (typeof stored === "object") {
 			const storedSecret = stored as StoredSecret;
 
@@ -125,7 +119,7 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 	): Promise<boolean> {
 		this.ensureSettingsStructure();
 		const secrets = this.getSecretsObject();
-		const existingStored = secrets[key] as StoredSecret | string | undefined;
+		const existingStored = secrets[key];
 		const existingConfig =
 			typeof existingStored === "object" ? existingStored.config : undefined;
 
@@ -216,8 +210,7 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 			return { ...(stored as StoredSecret).config };
 		}
 
-		// Legacy format - create default config
-		return this.createDefaultConfig(key, context);
+		return null;
 	}
 
 	async updateConfig(
@@ -233,25 +226,16 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 			return false;
 		}
 
-		if (typeof stored === "object" && "config" in stored) {
-			const storedSecret = stored as StoredSecret;
-			storedSecret.config = {
-				...storedSecret.config,
-				...config,
-			};
-			secrets[key] = storedSecret;
-		} else {
-			// Upgrade legacy format
-			const defaultConfig = this.createDefaultConfig(key, {
-				level: "global",
-				agentId: this.runtime.agentId,
-			});
-			const storedSecret: StoredSecret = {
-				value: stored as string,
-				config: { ...defaultConfig, ...config },
-			};
-			secrets[key] = storedSecret;
+		if (!(typeof stored === "object" && "config" in stored)) {
+			return false;
 		}
+
+		const storedSecret = stored as StoredSecret;
+		storedSecret.config = {
+			...storedSecret.config,
+			...config,
+		};
+		secrets[key] = storedSecret;
 
 		return true;
 	}
@@ -262,7 +246,7 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 	 * Accesses character.settings.secrets directly instead of using getSetting()
 	 * because getSetting() only returns primitives, not objects.
 	 */
-	private getSecretsObject(): Record<string, StoredSecret | string> {
+	private getSecretsObject(): Record<string, StoredSecret> {
 		this.ensureSettingsStructure();
 		const settings = this.runtime.character.settings as Record<string, unknown>;
 		const secrets = settings[SECRETS_KEY];
@@ -271,82 +255,7 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 			return {};
 		}
 
-		return secrets as Record<string, StoredSecret | string>;
+		return secrets as Record<string, StoredSecret>;
 	}
 
-	/**
-	 * Migrate legacy environment variable format to new format
-	 */
-	async migrateFromEnvVars(envVarPrefix: string = "ENV_"): Promise<number> {
-		let migrated = 0;
-		const settings = this.runtime.character.settings ?? {};
-
-		for (const [key, value] of Object.entries(settings)) {
-			if (key.startsWith(envVarPrefix) && typeof value === "string") {
-				const secretKey = key.slice(envVarPrefix.length);
-				const exists = await this.exists(secretKey, {
-					level: "global",
-					agentId: this.runtime.agentId,
-				});
-
-				if (!exists) {
-					await this.set(
-						secretKey,
-						value,
-						{ level: "global", agentId: this.runtime.agentId },
-						{
-							description: `Migrated from ${key}`,
-							encrypted: true,
-						},
-					);
-					migrated++;
-				}
-			}
-		}
-
-		logger.info(
-			`[CharacterSettingsStorage] Migrated ${migrated} env vars to secrets`,
-		);
-		return migrated;
-	}
-
-	/**
-	 * Get a secret as an environment variable (for backward compatibility)
-	 */
-	async getAsEnvVar(key: string): Promise<string | null> {
-		return this.get(key, { level: "global", agentId: this.runtime.agentId });
-	}
-
-	/**
-	 * Sync a secret to process.env (for plugins that read env vars directly)
-	 */
-	async syncToEnv(key: string, envVarName?: string): Promise<boolean> {
-		const value = await this.getAsEnvVar(key);
-		if (value === null) {
-			return false;
-		}
-
-		const envKey = envVarName ?? key;
-		process.env[envKey] = value;
-		return true;
-	}
-
-	/**
-	 * Sync all secrets to process.env
-	 */
-	async syncAllToEnv(): Promise<number> {
-		const metadata = await this.list({
-			level: "global",
-			agentId: this.runtime.agentId,
-		});
-		let synced = 0;
-
-		for (const key of Object.keys(metadata)) {
-			if (await this.syncToEnv(key)) {
-				synced++;
-			}
-		}
-
-		return synced;
-	}
 }

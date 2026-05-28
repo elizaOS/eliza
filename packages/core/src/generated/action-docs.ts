@@ -5169,30 +5169,30 @@ export const allActionsSpec = {
 		{
 			name: "GIT_PATHOLOGY",
 			description:
-				"Forensic git-history analysis for a path/glob surface. Returns peaks (peak quality moments), drift inflections (where rot started), and a post-mortem narrative. Use when the user asks 'when did this code get bad', 'where did rot start in X', or 'analyze git pathology for Y'. Operations (via `operation` param): report (default), list (show cached reports), trace (v2), diff (v2).",
+				"Forensic git-history analysis for a path/glob surface. Returns peaks (peak quality moments), drift inflections (where rot started), and a post-mortem narrative. Use when the user asks 'when did this code get bad', 'where did rot start in X', or 'analyze git pathology for Y'. Actions: report (default), list (show cached reports).",
 			parameters: [
 				{
-					name: "operation",
+					name: "action",
 					description:
-						"Which gitpathologist operation: report, list, trace (v2), diff (v2). Default: report.",
+						"Which gitpathologist action: report or list. Default: report.",
 					required: false,
 					schema: {
 						type: "string",
-						enum: ["report", "trace", "diff", "list"],
+						enum: ["report", "list"],
 					},
 					descriptionCompressed:
-						"Which gitpathologist operation: report, list, trace (v2), diff (v2). Default: report.",
+						"Which gitpathologist action: report or list. Default: report.",
 				},
 				{
 					name: "surface",
 					description:
-						"Path or glob to analyze (relative to repo root). Required for operation=report|trace|diff.",
+						"Path or glob to analyze (relative to repo root). Required for action=report.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Path or glob to analyze (relative to repo root). Required for operation=report|trace|diff.",
+						"Path or glob to analyze (relative to repo root). Required for action=report.",
 				},
 				{
 					name: "since",
@@ -5228,28 +5228,6 @@ export const allActionsSpec = {
 					descriptionCompressed:
 						"Cache policy: auto (default), force (recompute), read-only (fail on miss).",
 				},
-				{
-					name: "symptom",
-					description:
-						"Optional symptom/bug description for operation=trace (v2).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional symptom/bug description for operation=trace (v2).",
-				},
-				{
-					name: "compareTo",
-					description:
-						"Comparison target for operation=diff (v2). Surface or time window.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Comparison target for operation=diff (v2). Surface or time window.",
-				},
 			],
 			similes: [
 				"ANALYZE_GIT_PATHOLOGY",
@@ -5265,13 +5243,11 @@ export const allActionsSpec = {
 					actions: ["GIT_PATHOLOGY"],
 					params: {
 						GIT_PATHOLOGY: {
-							operation: "report",
+							action: "report",
 							surface: "example",
 							since: "example",
 							budget: "example",
 							cache: "auto",
-							symptom: "example",
-							compareTo: "example",
 						},
 					},
 				},
