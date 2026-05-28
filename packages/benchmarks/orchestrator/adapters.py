@@ -104,7 +104,7 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {}
 # Benchmarks for which a smithers-adapter per-benchmark factory exists. The
 # smithers harness is added to a benchmark's compatibility tuple only when it
 # appears here, so the runner never tries to import a missing smithers factory.
-SMITHERS_BENCHMARKS: frozenset[str] = frozenset({"bfcl", "action-calling"})
+SMITHERS_BENCHMARKS: frozenset[str] = frozenset({"bfcl", "action-calling", "humaneval"})
 HYPERLIQUID_LIVE_UNAVAILABLE_REASON = (
     "Hyperliquid live execution unavailable "
     "(set HL_PRIVATE_KEY and run with --no-demo); harness not run"

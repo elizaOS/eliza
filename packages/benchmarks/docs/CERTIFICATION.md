@@ -23,8 +23,9 @@ Published through the real orchestrator path, same
 | --- | --- | --- | --- | --- |
 | bfcl | 0.50 | 0.50 | 0.50 | **0.50** |
 | action-calling | 1.00 | 1.00 | 1.00 | **0.66** |
+| humaneval | 1.00 | 1.00 | 1.00 | **1.00** |
 
-- **bfcl**: exact 4-way parity.
+- **bfcl, humaneval**: exact 4-way parity.
 - **action-calling**: smithers runs end-to-end and is in the ballpark but lower
   (0.66 vs 1.00 on a 2-example set). The smithers harness renders multi-turn
   tool-call/tool-result history as *text* (it avoids the ai-SDK structured

@@ -290,6 +290,21 @@ class HarnessClient:
                 or None,
                 direct_openai_compatible=True,
             )
+        elif harness == "smithers":
+            from smithers_adapter.client import SmithersClient  # noqa: WPS433
+
+            self._client = SmithersClient(
+                provider=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"),
+                model=os.environ.get("BENCHMARK_MODEL_NAME", "gpt-oss-120b"),
+                base_url=os.environ.get("BENCHMARK_BASE_URL")
+                or os.environ.get("OPENAI_BASE_URL")
+                or os.environ.get("CEREBRAS_BASE_URL")
+                or None,
+                timeout_s=float(os.environ.get("SMITHERS_TIMEOUT_S", "120")),
+                reasoning_effort=os.environ.get("BENCHMARK_REASONING_EFFORT")
+                or os.environ.get("CEREBRAS_REASONING_EFFORT")
+                or None,
+            )
         else:
             from eliza_adapter.client import ElizaClient  # noqa: WPS433
 
@@ -410,7 +425,7 @@ def make_client(
         or os.environ.get("BENCHMARK_HARNESS")
         or ""
     ).strip().lower()
-    if harness in {"eliza", "hermes", "openclaw"}:
+    if harness in {"eliza", "hermes", "openclaw", "smithers"}:
         return HarnessClient(harness=harness, endpoint=endpoint, api_key=api_key)
     return HTTPOpenAICompatibleClient(endpoint=endpoint, api_key=api_key)
 
