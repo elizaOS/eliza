@@ -11,7 +11,6 @@ import { compressPromptDescription } from "./utils/prompt-compression.ts";
 type CompressedDescriptionFields = {
 	description?: string;
 	descriptionCompressed?: string;
-	compressedDescription?: string;
 };
 
 function resolveCompressedDescription(
@@ -21,9 +20,7 @@ function resolveCompressedDescription(
 ): string {
 	return (
 		source.descriptionCompressed ??
-		source.compressedDescription ??
 		canonical?.descriptionCompressed ??
-		canonical?.compressedDescription ??
 		compressPromptDescription(fallbackDescription)
 	);
 }
