@@ -811,9 +811,6 @@ export async function runFirstTimeSetup(
     if (process.env.SKILLS_REGISTRY) {
       envBucket.SKILLS_REGISTRY = process.env.SKILLS_REGISTRY;
     }
-    if (process.env.SKILLSMP_API_KEY) {
-      envBucket.SKILLSMP_API_KEY = process.env.SKILLSMP_API_KEY;
-    }
     if (process.env.GITHUB_TOKEN) {
       envBucket.GITHUB_TOKEN = process.env.GITHUB_TOKEN;
     }
