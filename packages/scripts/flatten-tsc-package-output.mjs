@@ -94,5 +94,9 @@ for (const entry of entries) {
   }
 }
 
-await fs.rm(path.join(distDir, "packages"), { recursive: true, force: true });
-await fs.rm(path.join(distDir, "plugins"), { recursive: true, force: true });
+await retryTransientFsOperation(() =>
+  fs.rm(path.join(distDir, "packages"), { recursive: true, force: true }),
+);
+await retryTransientFsOperation(() =>
+  fs.rm(path.join(distDir, "plugins"), { recursive: true, force: true }),
+);
