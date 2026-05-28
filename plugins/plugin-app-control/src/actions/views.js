@@ -26,6 +26,7 @@ import { runViewsEdit } from "./views-edit.js";
 import { runViewsList } from "./views-list.js";
 import { runViewsSearch } from "./views-search.js";
 import { runViewsShow } from "./views-show.js";
+
 const MODES = [
 	"list",
 	"current",
