@@ -140,6 +140,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
 
+      - name: Generate shared i18n assets
+        run: bun run --cwd packages/shared build:i18n
+
       - name: Boot dev agent
         env:
           ELIZA_API_PORT: "31337"
