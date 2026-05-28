@@ -92,6 +92,9 @@ pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-q"
 asyncio_mode = "auto"
+markers = [
+  "slow: opt-in integration benchmark (loads JAX/MJX, needs a trained checkpoint)",
+]
 
 [tool.ruff]
 line-length = 100
