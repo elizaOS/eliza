@@ -4373,6 +4373,78 @@
           }
         },
         {
+          "name": "op",
+          "description": "Planner alias for action.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "create",
+              "spawn_agent",
+              "send",
+              "stop_agent",
+              "list_agents",
+              "cancel",
+              "history",
+              "control",
+              "share",
+              "provision_workspace",
+              "submit_workspace",
+              "manage_issues",
+              "archive",
+              "reopen"
+            ]
+          }
+        },
+        {
+          "name": "subaction",
+          "description": "Planner alias for action.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "create",
+              "spawn_agent",
+              "send",
+              "stop_agent",
+              "list_agents",
+              "cancel",
+              "history",
+              "control",
+              "share",
+              "provision_workspace",
+              "submit_workspace",
+              "manage_issues",
+              "archive",
+              "reopen"
+            ]
+          }
+        },
+        {
+          "name": "operation",
+          "description": "Planner alias for action.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "create",
+              "spawn_agent",
+              "send",
+              "stop_agent",
+              "list_agents",
+              "cancel",
+              "history",
+              "control",
+              "share",
+              "provision_workspace",
+              "submit_workspace",
+              "manage_issues",
+              "archive",
+              "reopen"
+            ]
+          }
+        },
+        {
           "name": "task",
           "description": "Task prompt for create / spawn_agent / send (as new task).",
           "required": false,
@@ -4866,6 +4938,9 @@
           "params": {
             "TASKS": {
               "action": "create",
+              "op": "create",
+              "subaction": "create",
+              "operation": "create",
               "task": "example",
               "agentType": "example",
               "agents": "example",
