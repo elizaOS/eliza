@@ -2164,7 +2164,6 @@ async function handleRequest(
         readJsonBody,
         readBody,
         discoverSkills,
-        saveElizaConfig: coerce<(config: unknown) => void>(saveElizaConfig),
       })
     ) {
       return;
