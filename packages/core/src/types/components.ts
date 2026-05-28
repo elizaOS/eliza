@@ -65,6 +65,8 @@ export interface ActionParameter {
 	description: string;
 	/** Compressed description for prompt-optimized rendering */
 	descriptionCompressed?: string;
+	/** Alias accepted for plugin compatibility; canonical output uses descriptionCompressed */
+	compressedDescription?: string;
 	/** Whether this parameter is required (default: false) */
 	required?: boolean;
 	/** JSON Schema for parameter validation */
@@ -272,6 +274,8 @@ export interface Action {
 
 	/** Compressed description for prompt-optimized action selection */
 	descriptionCompressed?: string;
+	/** Alias accepted for plugin compatibility; canonical output uses descriptionCompressed */
+	compressedDescription?: string;
 
 	/** Handler function */
 	handler: Handler;
@@ -534,6 +538,8 @@ export interface Provider {
 
 	/** Compressed description for prompt-optimized rendering */
 	descriptionCompressed?: string;
+	/** Alias accepted for plugin compatibility; canonical output uses descriptionCompressed */
+	compressedDescription?: string;
 
 	/** Whether the provider is dynamic */
 	dynamic?: boolean;
