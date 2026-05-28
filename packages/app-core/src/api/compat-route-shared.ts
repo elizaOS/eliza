@@ -207,6 +207,12 @@ function isCloudProvisionedByEnv(): boolean {
 }
 
 function isLocalAuthRequiredByEnv(): boolean {
+  if (
+    process.env.ELIZA_DEV_AUTH_BYPASS === "1" &&
+    (process.env.NODE_ENV === "development" || process.env.NODE_ENV === "dev")
+  ) {
+    return false;
+  }
   return process.env.ELIZA_REQUIRE_LOCAL_AUTH === "1";
 }
 

@@ -29,6 +29,11 @@
 		"./package.json": "./package.json",
 		".": {
 			"types": "./dist/index.d.ts",
+			"eliza-source": {
+				"types": "./src/index.ts",
+				"import": "./src/index.ts",
+				"default": "./src/index.ts"
+			},
 			"browser": {
 				"types": "./dist/index.browser.d.ts",
 				"import": "./dist/browser/index.browser.js",
@@ -48,11 +53,21 @@
 		},
 		"./node": {
 			"types": "./dist/index.node.d.ts",
+			"eliza-source": {
+				"types": "./src/index.node.ts",
+				"import": "./src/index.node.ts",
+				"default": "./src/index.node.ts"
+			},
 			"import": "./dist/node/index.node.js",
 			"default": "./dist/node/index.node.js"
 		},
 		"./browser": {
 			"types": "./dist/index.browser.d.ts",
+			"eliza-source": {
+				"types": "./src/index.browser.ts",
+				"import": "./src/index.browser.ts",
+				"default": "./src/index.browser.ts"
+			},
 			"import": "./dist/browser/index.browser.js",
 			"default": "./dist/browser/index.browser.js"
 		},

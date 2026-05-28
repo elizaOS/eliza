@@ -3,9 +3,7 @@ import { readEnv, readEnvBool } from "./read-env.ts";
 
 describe("readEnv", () => {
 	it("reads the canonical key", () => {
-		expect(readEnv("ELIZA_FOO", { env: { ELIZA_FOO: "canon" } })).toBe(
-			"canon",
-		);
+		expect(readEnv("ELIZA_FOO", { env: { ELIZA_FOO: "canon" } })).toBe("canon");
 	});
 
 	it("returns the default when nothing is set", () => {

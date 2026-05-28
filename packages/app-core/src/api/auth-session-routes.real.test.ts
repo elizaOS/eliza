@@ -195,6 +195,7 @@ describe("P1 session routes (real pglite)", () => {
     delete process.env.ELIZA_API_TOKEN;
     delete process.env.ELIZA_CLOUD_PROVISIONED;
     delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
+    delete process.env.ELIZA_DEV_AUTH_BYPASS;
   }, HARNESS_HOOK_TIMEOUT_MS);
 
   afterEach(async () => {
@@ -202,6 +203,7 @@ describe("P1 session routes (real pglite)", () => {
     delete process.env.ELIZA_API_TOKEN;
     delete process.env.ELIZA_CLOUD_PROVISIONED;
     delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
+    delete process.env.ELIZA_DEV_AUTH_BYPASS;
   });
 
   it("setup -> me -> logout flow", async () => {
@@ -547,6 +549,25 @@ describe("P1 session routes (real pglite)", () => {
       { store: harness.store },
     );
     expect(requiredLocalAuthWithTokenOk).toBe(true);
+
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.ELIZA_DEV_AUTH_BYPASS = "1";
+    process.env.NODE_ENV = "development";
+    reset();
+    const devBypassLocalAuth = fakeRes();
+    const devBypassLocalAuthOk = await ensureCompatApiAuthorizedAsync(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/secure",
+        headers: { host: "localhost:31337" },
+      }),
+      devBypassLocalAuth.res,
+      { store: harness.store },
+    );
+    expect(devBypassLocalAuthOk).toBe(true);
+    delete process.env.ELIZA_DEV_AUTH_BYPASS;
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
   });
 
   it("route auth rejects localhost trust when proxy headers report remote clients", async () => {

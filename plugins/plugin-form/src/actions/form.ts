@@ -290,9 +290,4 @@ export const formAction: Action = {
   ],
 };
 
-// Back-compat alias for prior canonical export name. Code that already
-// imports `formRestoreAction` keeps working; new code should import
-// `formAction`.
-export const formRestoreAction = formAction;
-
 export default formAction;

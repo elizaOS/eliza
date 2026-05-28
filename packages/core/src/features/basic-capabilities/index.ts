@@ -1381,7 +1381,7 @@ const autonomyCapabilities = {
 	routes: autonomyRoutes,
 };
 
-// Legacy alias exports for backwards compatibility
+// Legacy alias export for backwards compatibility.
 export { advancedCapabilities as extendedCapabilities, autonomyCapabilities };
 
 /**

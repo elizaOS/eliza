@@ -11,7 +11,7 @@ import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { formEvaluator } from "./evaluators/extractor";
 import { FormService } from "./service";
 
-export { formAction, formRestoreAction } from "./actions/form";
+export { formAction } from "./actions/form";
 export { C, ControlBuilder, Form, FormBuilder } from "./builder";
 export {
   BUILTIN_TYPE_MAP,
