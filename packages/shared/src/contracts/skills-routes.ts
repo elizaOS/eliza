@@ -19,12 +19,10 @@
  *     body: { content: string }
  *   POST /api/skills/marketplace/install
  *     body: { slug?, githubUrl?, repository?, path?, name?,
- *             description?, source?: 'clawhub'|'skillsmp'|'manual' }
+ *             description?, source?: 'clawhub'|'manual' }
  *     (refine: at least one of slug/githubUrl/repository required)
  *   POST /api/skills/marketplace/uninstall
  *     body: { id: string }
- *   PUT  /api/skills/marketplace/config
- *     body: { apiKey: string }
  */
 
 import z from "zod";
@@ -74,11 +72,7 @@ export const PutSkillSourceRequestSchema = z
   })
   .strict();
 
-const MarketplaceInstallSourceSchema = z.enum([
-  "clawhub",
-  "skillsmp",
-  "manual",
-]);
+const MarketplaceInstallSourceSchema = z.enum(["clawhub", "manual"]);
 
 /**
  * Marketplace install accepts three mutually-exclusive identifying
@@ -132,15 +126,6 @@ export const PostMarketplaceUninstallRequestSchema = z
     id: value.id.trim(),
   }));
 
-export const PutMarketplaceConfigRequestSchema = z
-  .object({
-    apiKey: z.string().regex(/\S/, "apiKey is required"),
-  })
-  .strict()
-  .transform((value) => ({
-    apiKey: value.apiKey.trim(),
-  }));
-
 export type PostSkillCatalogInstallRequest = z.infer<
   typeof PostSkillCatalogInstallRequestSchema
 >;
@@ -159,9 +144,6 @@ export type PostMarketplaceInstallRequest = z.infer<
 >;
 export type PostMarketplaceUninstallRequest = z.infer<
   typeof PostMarketplaceUninstallRequestSchema
->;
-export type PutMarketplaceConfigRequest = z.infer<
-  typeof PutMarketplaceConfigRequestSchema
 >;
 export type MarketplaceInstallSource = z.infer<
   typeof MarketplaceInstallSourceSchema
