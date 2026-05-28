@@ -1210,11 +1210,11 @@ function SmartFeaturesCard() {
     })();
     void (async () => {
       try {
-        const opts = await client.getOnboardingOptions();
+        const opts = await client.getFirstRunOptions();
         if (cancelled) return;
         setModelOptions(flattenModelOptions(opts.models));
       } catch {
-        // Onboarding options can fail on first boot; the dropdown then falls
+        // First-run options can fail on first boot; the dropdown then falls
         // back to a free-text input. No need to surface this as an error.
       } finally {
         if (!cancelled) setOptionsLoading(false);
@@ -1391,11 +1391,11 @@ function EmailIntelligenceCard() {
     })();
     void (async () => {
       try {
-        const opts = await client.getOnboardingOptions();
+        const opts = await client.getFirstRunOptions();
         if (cancelled) return;
         setModelOptions(flattenModelOptions(opts.models));
       } catch {
-        // Onboarding options can fail before the backend has discovered any
+        // First-run options can fail before the backend has discovered any
         // providers — UI then falls back to a free-text input.
       } finally {
         if (!cancelled) setOptionsLoading(false);

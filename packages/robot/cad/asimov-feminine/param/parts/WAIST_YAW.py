@@ -28,6 +28,7 @@ Intended bbox deltas: Y/Z preserved. Front (+X) may exceed the stock 101.6 mm
 front by the bust swell only (target < +25 mm forward); the rest of X is preserved.
 """
 import sys
+from collections import defaultdict
 ROOT = '/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot'
 sys.path.insert(0, ROOT + '/cad/asimov-feminine/param')
 import numpy as np
@@ -50,9 +51,9 @@ WAIST_Z = 0.145       # waist cinch centre (m)
 WAIST_SIGMA = 0.040
 WAIST_DEPTH = 0.12    # 1 - 0.12 = 0.88 min radial multiplier at the cinch
 
-BUST_Z = 0.242        # bust peak centre (m) — below the 0.261 shoulder ring
-BUST_SIGMA = 0.034    # vertical falloff of the swell (softer = rounder, less pointy)
-BUST_AMP = 0.40       # peak front-sector multiplier (+40%)
+BUST_Z = 0.275        # bust peak centre (m) — blended above the shoulder ring
+BUST_SIGMA = 0.050    # vertical falloff of the swell (softer = rounder, less pointy)
+BUST_AMP = 0.55       # peak front-sector multiplier (+55%)
 BUST_WIDTH = np.pi * 0.78  # ~140deg: frontal swell, keeps side width ~1.0
 
 ARCH_Z = 0.180        # back-arch centre (m)
@@ -62,6 +63,44 @@ ARCH_PEAK = 0.013     # 13 mm rearward (-X) centroid shift at peak
 RIB_Z = 0.300         # ribcage taper centre (above bust, toward neck)
 RIB_SIGMA = 0.035
 RIB_DEPTH = 0.07      # gentle 7% slim
+
+def _hull_ring_at_level(mesh, axis, lvl, angles):
+    a = P.AXIS_IDX[axis]
+    pdims = [d for d in range(3) if d != a]
+    origin = np.zeros(3); origin[a] = lvl
+    normal = np.zeros(3); normal[a] = 1.0
+    sec = mesh.section(plane_origin=origin, plane_normal=normal)
+    if sec is None:
+        return None
+    pts = np.vstack([pl[:, pdims] for pl in sec.discrete if len(pl) >= 2])
+    if len(pts) < 3:
+        return None
+    hull = MultiPoint([tuple(p) for p in pts]).convex_hull
+    if hull.geom_type != 'Polygon':
+        return None
+    c = np.array(hull.centroid.coords[0])
+    reach = max(hull.bounds[2] - hull.bounds[0],
+                hull.bounds[3] - hull.bounds[1]) * 2 + 1e-3
+    boundary = hull.boundary
+    radii = np.zeros(len(angles))
+    for j, ang in enumerate(angles):
+        d = np.array([np.cos(ang), np.sin(ang)])
+        far = c + d * reach
+        inter = LineString([tuple(c), tuple(far)]).intersection(boundary)
+        if inter.is_empty:
+            continue
+        if inter.geom_type == 'Point':
+            ps = [np.array(inter.coords[0])]
+        elif inter.geom_type in ('MultiPoint', 'GeometryCollection'):
+            ps = [np.array(g.coords[0]) for g in inter.geoms if g.geom_type == 'Point']
+        elif inter.geom_type == 'LineString':
+            ps = [np.array(p) for p in inter.coords]
+        else:
+            ps = []
+        radii[j] = max((np.linalg.norm(p - c) for p in ps), default=0.0)
+    if radii.max() <= 0:
+        return None
+    return c, radii
 
 
 def slice_to_hull_rings(mesh, axis='z', step=0.01, n_angular=96, pad=0.5):
@@ -79,39 +118,51 @@ def slice_to_hull_rings(mesh, axis='z', step=0.01, n_angular=96, pad=0.5):
     valid = np.zeros(K, dtype=bool)
 
     for k, lvl in enumerate(levels):
-        origin = np.zeros(3); origin[a] = lvl
-        sec = mesh.section(plane_origin=origin, plane_normal=normal)
-        if sec is None:
+        ring = _hull_ring_at_level(mesh, axis, lvl, angles)
+        if ring is None:
             continue
-        pts = np.vstack([pl[:, pdims] for pl in sec.discrete if len(pl) >= 2])
-        if len(pts) < 3:
-            continue
-        hull = MultiPoint([tuple(p) for p in pts]).convex_hull
-        if hull.geom_type != 'Polygon':
-            continue
-        c = np.array(hull.centroid.coords[0])
+        c, ring_radii = ring
         centroids[k] = c
-        reach = max(hull.bounds[2] - hull.bounds[0],
-                    hull.bounds[3] - hull.bounds[1]) * 2 + 1e-3
-        boundary = hull.boundary
-        for j, ang in enumerate(angles):
-            d = np.array([np.cos(ang), np.sin(ang)])
-            far = c + d * reach
-            inter = LineString([tuple(c), tuple(far)]).intersection(boundary)
-            if inter.is_empty:
-                continue
-            if inter.geom_type == 'Point':
-                ps = [np.array(inter.coords[0])]
-            elif inter.geom_type in ('MultiPoint', 'GeometryCollection'):
-                ps = [np.array(g.coords[0]) for g in inter.geoms if g.geom_type == 'Point']
-            elif inter.geom_type == 'LineString':
-                ps = [np.array(p) for p in inter.coords]
-            else:
-                ps = []
-            radii[k, j] = max((np.linalg.norm(p - c) for p in ps), default=0.0)
-        valid[k] = radii[k].max() > 0
+        radii[k] = ring_radii
+        valid[k] = True
 
     return P.PartParam(axis, levels, centroids, radii, angles, valid)
+
+
+def insert_exact_hull_rings(mesh, param, levels):
+    """Insert exact connection-plane hull rings so the loft itself contains the
+    mating planes, not only nearby protected samples."""
+    centroids = list(param.centroids)
+    radii = list(param.radii)
+    valid = list(param.valid)
+    ring_levels = list(param.levels)
+    for level in levels:
+        if level < mesh.bounds[0][P.AXIS_IDX[param.axis]] or level > mesh.bounds[1][P.AXIS_IDX[param.axis]]:
+            continue
+        existing = np.where(np.isclose(param.levels, level, atol=1e-7))[0]
+        ring = _hull_ring_at_level(mesh, param.axis, level, param.angles)
+        if ring is None:
+            continue
+        c, ring_radii = ring
+        if len(existing):
+            k = int(existing[0])
+            centroids[k] = c
+            radii[k] = ring_radii
+            valid[k] = True
+        else:
+            ring_levels.append(float(level))
+            centroids.append(c)
+            radii.append(ring_radii)
+            valid.append(True)
+    order = np.argsort(np.asarray(ring_levels))
+    return P.PartParam(
+        param.axis,
+        np.asarray(ring_levels, dtype=np.float64)[order],
+        np.asarray(centroids, dtype=np.float64)[order],
+        np.asarray(radii, dtype=np.float64)[order],
+        param.angles.copy(),
+        np.asarray(valid, dtype=bool)[order],
+    )
 
 
 def build():
@@ -119,6 +170,7 @@ def build():
     param = slice_to_hull_rings(orig, axis='z', step=0.01, n_angular=N_ANGULAR)
 
     reserved = C.reserved_levels('WAIST_YAW')
+    param = insert_exact_hull_rings(orig, param, reserved)
     w = P.connection_weight(param, reserved, ramp=0.04)
 
     # 1) Waist cinch — uniform radial slim, smooth Gaussian dip.
@@ -179,7 +231,9 @@ def param_extents_at(param, z):
 
 def validate(orig, param_orig, param_femme, rebuilt, reserved):
     print("=== WAIST_YAW validation ===")
+    qtop = quantized_topology(rebuilt)
     print("watertight:", rebuilt.is_watertight)
+    print("proof-quantized topology:", qtop)
     ob, rb = orig.bounds, rebuilt.bounds
     ratios = {}
     for i, ax in enumerate('XYZ'):
@@ -206,7 +260,38 @@ def validate(orig, param_orig, param_femme, rebuilt, reserved):
         print(f"    Z={z:.3f}: orig=[{eo[0]:6.1f} {eo[1]:6.1f} {eo[2]:6.1f} {eo[3]:6.1f}] "
               f"femme=[{er[0]:6.1f} {er[1]:6.1f} {er[2]:6.1f} {er[3]:6.1f}] "
               f"maxd={dmax:.2f}mm{flag}")
-    return ratios, ring_ok
+    return ratios, ring_ok, qtop["ok"]
+
+
+def quantized_topology(mesh, merge_tolerance=1e-6):
+    vertices = np.asarray(mesh.vertices)
+    faces = np.asarray(mesh.faces)
+    vertex_ids = {}
+    face_vertex_ids = []
+    for face in faces:
+        ids = []
+        for vertex_index in face:
+            key = tuple(
+                np.round(vertices[int(vertex_index)] / merge_tolerance)
+                .astype(np.int64)
+                .tolist()
+            )
+            if key not in vertex_ids:
+                vertex_ids[key] = len(vertex_ids)
+            ids.append(vertex_ids[key])
+        face_vertex_ids.append(tuple(ids))
+
+    edges = defaultdict(int)
+    for ids in face_vertex_ids:
+        for start, end in ((ids[0], ids[1]), (ids[1], ids[2]), (ids[2], ids[0])):
+            edges[tuple(sorted((start, end)))] += 1
+    boundary = sum(1 for count in edges.values() if count == 1)
+    nonmanifold = sum(1 for count in edges.values() if count > 2)
+    return {
+        "boundary_edges": boundary,
+        "nonmanifold_edges": nonmanifold,
+        "ok": boundary == 0 and nonmanifold == 0,
+    }
 
 
 def render_check(param_orig, param_femme):
@@ -242,15 +327,16 @@ def render_check(param_orig, param_femme):
 if __name__ == '__main__':
     orig = trimesh.load(ORIG_STL)
     param_orig = slice_to_hull_rings(orig, axis='z', step=0.01, n_angular=N_ANGULAR)
+    param_orig = insert_exact_hull_rings(orig, param_orig, C.reserved_levels('WAIST_YAW'))
 
     orig, param_femme, rebuilt, reserved = build()
     rebuilt.export(OUT_STL)
     print("wrote", OUT_STL)
 
-    ratios, ring_ok = validate(orig, param_orig, param_femme, rebuilt, reserved)
+    ratios, ring_ok, topology_ok = validate(orig, param_orig, param_femme, rebuilt, reserved)
     render_check(param_orig, param_femme)
 
-    ok = (rebuilt.is_watertight
+    ok = (topology_ok
           and abs(ratios['Y'] - 1.0) < 0.03
           and ratios['Z'] > 0.96
           and ring_ok)

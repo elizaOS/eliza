@@ -1,2 +1,1 @@
 *.patch whitespace=-blank-at-eol
-packages/native/bun-runtime/artifacts/ElizaBunEngine.xcframework/** filter=lfs diff=lfs merge=lfs -text

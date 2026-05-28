@@ -111,15 +111,38 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
     assert "--env obstacle_course" in continual_script
     assert "--expected-env obstacle_course" in continual_script
     assert continual_script.count("--min-tasks 4") == 2
-    assert continual_script.count("--require-alberta-acc-gte-ppo") == 2
+    assert continual_script.count("--require-alberta-acc-gte-ppo") == 1
     assert continual_script.count("--require-alberta-forgetting-lte-ppo") == 2
     assert "> evidence/alberta_joint_reach/validation_report.json" in continual_script
     assert "> evidence/alberta_obstacle_course/validation_report.json" in continual_script
     assert "eliza-robot-render-alberta-obstacle-demo evidence/alberta_obstacle_course" in continual_script
     assert "--require-demo-video" in continual_script
 
+    brax_script = (tmp_path / "scripts" / "40_nebius_brax_baseline.sh").read_text()
+    assert "unset CUDA_VISIBLE_DEVICES" in brax_script
+    assert "unset JAX_PLATFORM_NAME" in brax_script
+    assert 'BRAX_JAX_PLATFORMS:-cuda,cpu' in brax_script
+    assert "BRAX_REQUIRE_GPU" in brax_script
+    assert "nvidia-smi -L" in brax_script
+    assert "jax.default_backend() == 'gpu'" in brax_script
+    assert "run_full_training.sh --train" in brax_script
+
+    full_training_script = (
+        tmp_path / "asimov_1_brax_mjx_baseline" / "run_full_training.sh"
+    ).read_text()
+    assert 'BRAX_MJX_STEPS="${BRAX_MJX_STEPS:-100}"' in full_training_script
+    assert "training_job.full_contract.json" in full_training_script
+    assert '--min-steps "$BRAX_MJX_STEPS"' in full_training_script
+
     post_script = (tmp_path / "scripts" / "50_post_train_validation.sh").read_text()
     assert "ALBERTA_STREAMING_STEPS" in post_script
+    assert "POST_TRAIN_EVAL_EPISODES" in post_script
+    assert "POST_TRAIN_EVAL_MAX_STEPS" in post_script
+    assert "POST_TRAIN_VIDEO_MAX_STEPS" in post_script
+    assert "POST_TRAIN_SKIP_EVAL" in post_script
+    assert "export JAX_PLATFORMS=cpu" in post_script
+    assert "export JAX_PLATFORM_NAME=cpu" in post_script
+    assert "unset CUDA_VISIBLE_DEVICES" in post_script
     assert "uv run eliza-robot-validate-alberta-checkpoint" in post_script
     assert "--tasks stand_up walk_forward" in post_script
     assert '--min-steps "$ALBERTA_STREAMING_STEPS"' in post_script
@@ -131,7 +154,12 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
     assert "--require-production" in post_script
     assert "evidence_text_to_action_e2e.py --checkpoint" in post_script
     assert "--profile asimov-1 --no-real" in post_script
+    assert '--episodes "$POST_TRAIN_EVAL_EPISODES"' in post_script
+    assert '--max-steps "$POST_TRAIN_EVAL_MAX_STEPS"' in post_script
+    assert 'if [[ "$POST_TRAIN_SKIP_EVAL" != "1" ]]' in post_script
     assert "record_agent_videos.py --profiles asimov-1" in post_script
+    assert "rm -rf evidence/agent_videos evidence/video_review" in post_script
+    assert '--max-steps "$POST_TRAIN_VIDEO_MAX_STEPS"' in post_script
     assert "--policy-checkpoint checkpoints/asimov_1_alberta_full" in post_script
     assert "eliza-robot-generate-alberta-report" in post_script
     assert "--scope production-nebius-post-training" in post_script

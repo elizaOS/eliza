@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -eu
+set -o pipefail
+
+TMP_GNUPG_HOME=$(mktemp -d)
+trap 'rm -rf "${TMP_GNUPG_HOME:?}"' EXIT
+
+gpg --homedir "${TMP_GNUPG_HOME:?}" --import wiki/src/tails-signing.key
+gpg --homedir "${TMP_GNUPG_HOME:?}" \
+    --export-filter drop-subkey="revoked == 1" \
+    --export-options export-minimal \
+    --armor --export "${TAILS_SIGNATURE_KEY:?}" \
+    >wiki/src/tails-signing-minimal.key
+git commit wiki/src/tails-signing-minimal.key \
+    -m "Update signing key used by the Upgrader" || :

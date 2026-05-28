@@ -45,6 +45,13 @@ export interface PostContext {
   id: string;
   authorId: string;
   authorName: string;
+  /**
+   * True when authorId is a live DB user that FOLLOW/DM can target.
+   * Posts from stale users, static actors, or organizations can still be
+   * liked/commented on, but their authorId must not be advertised as a
+   * contact target.
+   */
+  authorCanContact?: boolean;
   content: string;
   commentCount: number;
   likeCount: number;
@@ -795,6 +802,11 @@ ${characterVoiceSection}${characterExamplesSection}
   const canEngage = context.enabledFeatures.includes(Features.ENGAGING);
   const canPost = context.enabledFeatures.includes(Features.POSTING);
   const canGroupChat = context.enabledFeatures.includes(Features.GROUP_CHATS);
+  const hasContactableRecentPost = context.recentPosts.some(
+    (post) => post.authorCanContact === true,
+  );
+  const canFollowFromRecentPosts = canEngage && hasContactableRecentPost;
+  const canDmFromRecentPosts = canRespondDMs && hasContactableRecentPost;
   const justCoordinatedInGroup = traceActionResults.some(
     (r) => r.actionType === Actions.GROUP_MESSAGE && r.success,
   );
@@ -974,11 +986,13 @@ ${formatPerpMarkets(context.perpMarkets)}`
 
   // Show recent posts if commenting, engaging, or DMs enabled (used to discover users)
   const showRecentPosts = canComment || canRespondDMs || canEngage;
-  const recentPostsHeader = canComment
-    ? "# Recent Posts (can comment on, follow, or DM authors)"
-    : canRespondDMs
-      ? "# Recent Posts (can follow or DM authors)"
-      : "# Recent Posts (can follow authors)";
+  const recentPostActions = [
+    canComment ? "comment on" : "",
+    canEngage ? "like/repost" : "",
+    canFollowFromRecentPosts ? "follow contactable authors" : "",
+    canDmFromRecentPosts ? "DM contactable authors" : "",
+  ].filter(Boolean);
+  const recentPostsHeader = `# Recent Posts (can ${recentPostActions.join(", ") || "review"})`;
   const commentingSection = showRecentPosts
     ? `
 ${recentPostsHeader}
@@ -1188,7 +1202,7 @@ ${context.diversityInstructions ? `${context.diversityInstructions}` : ""}
 3. **One Action Per Iteration**: Choose ONE action, then you'll get fresh context for the next.
 4. **No Duplicates**: Don't repeat the same action on the same target.
 5. **VARY YOUR ACTIONS**: Each iteration, try a DIFFERENT action type. If you just traded, now like a post. If you commented, now DM someone. Mix it up naturally.
-6. **CHAIN REACTIONS**: See something interesting? React to it: LIKE it → COMMENT on it → TRADE based on it → DM the author. Real people chain actions naturally.
+6. **CHAIN REACTIONS**: See something interesting? React to it: LIKE it → COMMENT on it → TRADE based on it${canDmFromRecentPosts ? " → DM a contactable author" : ""}. Real people chain actions naturally.
 7. **Keep Going**: Don't set isFinish=true until you've done at least 5 different things. There's always something to react to.
 8. **PRIVACY**: NEVER use POST to reply to a private message (DM). Use REPLY_CHAT for DMs.
 ${hasPostedThisTick ? `9. **NO MORE POSTS**: You already posted this tick. Choose other actions (comment, like, trade, DM, group message, follow).` : tradeCount >= 3 ? `9. **TIME TO POST**: You've made ${tradeCount} trades but haven't shared your thoughts yet. POST something — a hot take, a reaction to news, your thesis. Then keep going with more actions.` : ""}`,
@@ -1202,18 +1216,18 @@ ${canPost ? "- **POST**: Share your take on events, markets, or anything on your
 ${canComment ? "- **COMMENT**: Reply to someone's post from the feed" : ""}
 ${canEngage ? "- **LIKE**: Show appreciation for a post (costs nothing, builds connections!)" : ""}
 ${canEngage ? "- **REPOST**: Share someone else's post with your take added" : ""}
-${canEngage ? "- **FOLLOW**: Follow a user/agent whose posts you find interesting (use userId from Recent Posts)" : ""}
+${canFollowFromRecentPosts ? "- **FOLLOW**: Follow a contactable user/agent whose posts you find interesting (use contactUserId from Recent Posts)" : ""}
 ${canEngage ? "- **UNFOLLOW**: Unfollow users/agents that are no longer relevant" : ""}
 ${canComment ? "- **REPLY_COMMENT**: Reply to a pending comment on your post or thread" : ""}
 ${canRespondDMs || canGroupChat ? "- **REPLY_CHAT**: Reply to a pending DM/group message" : ""}
-${canRespondDMs ? "- **DM**: Start a NEW private conversation with someone interesting (use their userId from Recent Posts)" : ""}
+${canDmFromRecentPosts ? "- **DM**: Start a NEW private conversation with someone interesting (use contactUserId from Recent Posts)" : ""}
 ${canGroupChat ? "- **GROUP_MESSAGE**: Share thoughts or intel with your group chat" : ""}
 ${canGroupChat ? "- **CREATE_GROUP**: Start a new group chat and invite people" : ""}
 ${canGroupChat ? "- **INVITE_TO_GROUP**: Add someone interesting to your group (use groupId + userId)" : ""}
 ${canGroupChat ? "- **KICK_FROM_GROUP**: Remove a member from one of your groups (use groupId + userId)" : ""}
 ${canGroupChat ? "- **LEAVE_GROUP**: Leave a group you no longer care about (use groupId)" : ""}
 
-**BE ACTIVE AND SOCIAL**: A great tick looks like: browse feed → like 2-3 posts → comment on something interesting → trade on a market that caught your eye → DM someone about their take → post your own thought → follow someone new. Do at least 5-8 actions before finishing. You have up to 12 iterations — USE THEM.`,
+**BE ACTIVE AND SOCIAL**: A great tick looks like: browse feed → like 2-3 posts → comment on something interesting → trade on a market that caught your eye${canDmFromRecentPosts ? " → DM someone about their take" : ""} → post your own thought${canFollowFromRecentPosts ? " → follow someone new" : ""}. Do at least 5-8 actions before finishing. You have up to 12 iterations — USE THEM.`,
     },
     {
       name: "style",
@@ -1431,7 +1445,10 @@ function formatRecentPosts(posts: PostContext[]): string {
     .map((p, idx) => {
       // Use short index for display, store real ID for parameters
       const engagementStats = `💬${p.commentCount} ❤️${p.likeCount ?? 0} 🔁${p.repostCount ?? 0}`;
-      const baseInfo = `- Post #${idx + 1} (id: ${p.id}) @${p.authorName} (userId: ${p.authorId}) (${p.timeAgo}): "${p.content.substring(0, 80)}${p.content.length > 80 ? "..." : ""}" [${engagementStats}]`;
+      const authorTarget = p.authorCanContact
+        ? `(contactUserId: ${p.authorId})`
+        : "(author not available for FOLLOW/DM)";
+      const baseInfo = `- Post #${idx + 1} (id: ${p.id}) @${p.authorName} ${authorTarget} (${p.timeAgo}): "${p.content.substring(0, 80)}${p.content.length > 80 ? "..." : ""}" [${engagementStats}]`;
 
       // Show agent's existing engagement
       const engagementNotes: string[] = [];

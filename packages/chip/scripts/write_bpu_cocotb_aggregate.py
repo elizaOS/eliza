@@ -13,6 +13,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,7 +29,10 @@ TARGET_RESULTS = {
     "tage": ("test_tage.py", "tage_tb_test_tage.xml"),
     "ittage": ("test_ittage.py", "ittage_tb_test_ittage.xml"),
     "sc": ("test_sc.py", "sc_tb_test_sc.xml"),
-    "l1i_frontend": ("test_bpu_l1i_frontend.py", "e1_bpu_l1i_frontend_tb_test_bpu_l1i_frontend.xml"),
+    "l1i_frontend": (
+        "test_bpu_l1i_frontend.py",
+        "e1_bpu_l1i_frontend_tb_test_bpu_l1i_frontend.xml",
+    ),
     "bpu_top": ("test_bpu_top.py", "bpu_top_tb_test_bpu_top.xml"),
 }
 
@@ -44,7 +48,14 @@ def rel(path: Path) -> str:
 
 def count_result(path: Path) -> dict[str, object]:
     if not path.exists():
-        return {"status": "missing", "path": rel(path), "tests": 0, "failures": 0, "errors": 0, "skipped": 0}
+        return {
+            "status": "missing",
+            "path": rel(path),
+            "tests": 0,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0,
+        }
 
     try:
         root = ElementTree.parse(path).getroot()
@@ -114,15 +125,18 @@ def build_report() -> dict[str, object]:
         for path in RESULT_DIR.glob("*.xml")
         if path.name not in {result for _source, result in TARGET_RESULTS.values()}
     )
-    total_tests = sum(int(item["tests"]) for item in modules.values())
-    total_failures = sum(int(item["failures"]) for item in modules.values())
-    total_errors = sum(int(item["errors"]) for item in modules.values())
+    total_tests = sum(int(cast(int, item["tests"])) for item in modules.values())
+    total_failures = sum(int(cast(int, item["failures"])) for item in modules.values())
+    total_errors = sum(int(cast(int, item["errors"])) for item in modules.values())
     missing = [name for name, item in modules.items() if item["status"] == "missing"]
     status = (
         "PASS"
         if not missing
         and total_tests == expected_total
-        and all(int(item["tests"]) == int(item["expected_tests"]) for item in modules.values())
+        and all(
+            int(cast(int, item["tests"])) == int(cast(int, item["expected_tests"]))
+            for item in modules.values()
+        )
         and total_failures == 0
         and total_errors == 0
         else "BLOCKED"

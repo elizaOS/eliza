@@ -10,6 +10,8 @@
  * preference survives enabling the plugin later.
  */
 
+import { existsSync } from "node:fs";
+import { join as pathJoin } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import {
   ELIZA_1_PLACEHOLDER_IDS,
@@ -18,7 +20,7 @@ import {
 } from "./catalog";
 import { localInferenceEngine } from "./engine";
 import { recommendForFirstRun } from "./recommendation";
-import { listInstalledModels, touchElizaModel } from "./registry";
+import { touchElizaModel } from "./registry";
 import type { ActiveModelState, CatalogModel, InstalledModel } from "./types";
 
 export type { KvOffloadMode, LocalInferenceLoadArgs } from "./load-args.js";
@@ -209,8 +211,7 @@ export interface LocalInferenceLoader {
 
 /**
  * Per-load override fields the caller can set. Subset of `LocalInferenceLoadArgs`
- * minus `modelPath` (which the coordinator owns) and minus dflash-only
- * fields (which the catalog `runtime.dflash` block owns end-to-end). The
+ * minus `modelPath` (which the coordinator owns). The
  * route layer accepts this shape on `POST /api/local-inference/active`.
  */
 export interface LocalInferenceLoadOverrides {
@@ -300,6 +301,34 @@ function mergeOverrides(
     args.maxThreads = overrides.maxThreads;
 }
 
+function stripBundlePrefix(catalogFile: string, modelId: string): string {
+  const slug = modelId.startsWith("eliza-1-")
+    ? modelId.slice("eliza-1-".length)
+    : modelId;
+  const prefix = `bundles/${slug}/`;
+  if (catalogFile.startsWith(prefix)) {
+    return catalogFile.slice(prefix.length);
+  }
+  return catalogFile;
+}
+
+function resolveMtpDrafterPath(
+  installed: InstalledModel,
+  catalog: CatalogModel | undefined,
+): string | undefined {
+  const bundleRoot = installed.bundleRoot;
+  if (!bundleRoot) return undefined;
+
+  const catalogFile =
+    catalog?.runtime?.mtp?.drafterFile ??
+    catalog?.sourceModel?.components?.mtp?.file;
+  if (!catalogFile) return undefined;
+
+  const localPath = stripBundlePrefix(catalogFile, installed.id);
+  const candidate = pathJoin(bundleRoot, localPath);
+  return existsSync(candidate) ? candidate : undefined;
+}
+
 export async function resolveLocalInferenceLoadArgs(
   installed: InstalledModel,
   overrides?: LocalInferenceLoadOverrides,
@@ -310,27 +339,22 @@ export async function resolveLocalInferenceLoadArgs(
 
   applyCatalogDefaults(args, catalog);
 
-  const dflash = runtime?.dflash;
-  if (dflash) {
-    // DFlash launch defaults — per-load overrides for contextSize still win
-    // (and are layered in by `mergeOverrides` below). Do NOT replace the
-    // catalog `contextLength` here for the chat-side context; that belongs
-    // to `applyCatalogDefaults`. The dflash block owns the spec-decode
-    // launch settings only.
-    if (args.contextSize === undefined) args.contextSize = dflash.contextSize;
+  const mtp = runtime?.mtp;
+  if (mtp) {
+    const drafterPath = resolveMtpDrafterPath(installed, catalog);
+    if (installed.bundleRoot && !drafterPath) {
+      throw new Error(
+        `[local-inference] ${installed.id} declares mandatory MTP but no bundled drafter GGUF was found under ${installed.bundleRoot}`,
+      );
+    }
     args.useGpu = true;
-    args.draftContextSize = dflash.draftContextSize;
-    args.draftMin = dflash.draftMin;
-    args.draftMax = dflash.draftMax;
-    args.speculativeSamples = dflash.draftMax;
+    args.draftModelPath = drafterPath;
+    args.draftContextSize = args.contextSize;
+    args.draftMin = mtp.draftMin;
+    args.draftMax = mtp.draftMax;
+    args.speculativeSamples = mtp.draftMax;
     args.mobileSpeculative = true;
-    args.disableThinking = dflash.disableThinking;
-
-    const installedModels = await listInstalledModels();
-    const drafter = installedModels.find(
-      (model) => model.id === dflash.drafterModelId,
-    );
-    if (drafter) args.draftModelPath = drafter.path;
+    args.disableThinking = true;
   }
 
   mergeOverrides(args, overrides);

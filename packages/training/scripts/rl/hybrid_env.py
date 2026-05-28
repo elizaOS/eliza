@@ -20,13 +20,16 @@ import copy
 import logging
 import os
 import random
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from atroposlib.envs.base import APIServerConfig, BaseEnv, ScoredDataGroup
 from pydantic import Field
 
 from .online_env import FeedOnlineEnvConfig, Scenario
 from .simulation_bridge import SimulationBridge
+
+if TYPE_CHECKING:
+    from .scenario_pool import Scenario as PoolScenario
 
 logger = logging.getLogger(__name__)
 

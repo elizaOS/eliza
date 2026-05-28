@@ -46,7 +46,7 @@ describe("LLM Provider Configuration", () => {
       openaiApiKey: "test-key",
     });
 
-    expect(maker.getProvider()).toContain("OpenAGI");
+    expect(maker.getProvider()).toContain("OpenAI");
   });
 
   it("should prefer Groq over Claude and OpenAGI", () => {

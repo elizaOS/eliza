@@ -1,18 +1,18 @@
 {
   "schema": "robot-alberta-end-to-end-report-v1",
   "ok": true,
-  "generated_at": "2026-05-24T02:23:01.054464Z",
-  "scope": "local-multi-backend-rootfix-telemetry-reviewed-obstacle-demo-sac-video-adaptation-proof-training-inputs-checkpoint-inference-method-deltas-all-profile-local-validation-nebius-retry-interpretation-gated-checkpoint-video-provenance-proof-brax-contract-audit-strengthened-review-artifacts-file-proof-task-signal-proof-demo-artifacts-integration-surfaces-sac-deltas-post-auth-retry",
+  "generated_at": "2026-05-24T07:20:29.899784Z",
+  "scope": "production-nebius-post-training",
   "sources": {
-    "backend_dir": "evidence/backend_compare_local/hiwonder-ainex-4k-rootfix",
-    "backend_validation": "evidence/backend_compare_local/hiwonder-ainex-4k-rootfix/validation_report.json",
-    "obstacle_dir": "evidence/alberta_obstacle_course_local_4task",
-    "obstacle_validation": "evidence/alberta_obstacle_course_local_4task/validation_report.json",
+    "backend_dir": "evidence/backend_compare/asimov-1",
+    "backend_validation": "evidence/backend_compare/asimov-1/validation_report.json",
+    "obstacle_dir": "evidence/alberta_obstacle_course",
+    "obstacle_validation": "evidence/alberta_obstacle_course/validation_report.json",
     "video_review": "evidence/video_review/video_review.json",
     "video_manifest": "evidence/agent_videos/manifest.json"
   },
   "production_complete": false,
-  "production_blocker": "nebius_cli_auth_required",
+  "production_blocker": null,
   "objective_requirements": {
     "alberta_framework_integrated": {
       "status": "proved",
@@ -38,11 +38,7 @@
       "evidence": {
         "objective_audit_passed": true,
         "video_profiles": [
-          "asimov-1",
-          "hiwonder-ainex",
-          "unitree-g1",
-          "unitree-h1",
-          "unitree-r1"
+          "asimov-1"
         ],
         "manifest_review_consistent": true
       },
@@ -56,7 +52,7 @@
         "stable_baselines3_sac_artifact": true,
         "stable_baselines3_sac_ok": true,
         "brax_mjx_ppo_preflight_ok": true,
-        "brax_mjx_ppo_manifest_present": false,
+        "brax_mjx_ppo_manifest_present": true,
         "brax_mjx_ppo_contract_artifact_ok": true,
         "brax_mjx_ppo_contract_only": true,
         "brax_mjx_ppo_production_training": false
@@ -122,9 +118,10 @@
       "status": "proved",
       "ok": true,
       "evidence": {
-        "backend_comparison_count": 3,
-        "green_backend_comparison_count": 2,
+        "backend_comparison_count": 4,
+        "green_backend_comparison_count": 3,
         "green_backend_profiles": [
+          "asimov-1",
           "asimov-1",
           "hiwonder-ainex"
         ],
@@ -141,32 +138,28 @@
       "ok": true,
       "evidence": {
         "obstacle_validation_ok": true,
-        "alberta_acc_minus_ppo": 1.2029613193762168,
-        "alberta_forgetting_minus_ppo": -0.03360498752375892,
+        "alberta_acc_minus_ppo": -2.0374369344015757,
+        "alberta_forgetting_minus_ppo": -2.7992106749268646,
         "obstacle_demo_ok": true,
         "sac_demo_ok": true,
-        "alberta_new_task_gain": 3.506465335172088,
+        "alberta_new_task_gain": 1.704786537907286,
         "sac_alberta_new_task_gain": 0.37373728675706264
       },
       "gaps": []
     },
     "robot_action_videos_self_reviewed": {
-      "status": "proved",
-      "ok": true,
+      "status": "partial",
+      "ok": false,
       "evidence": {
         "video_review_ok": true,
-        "video_count": 25,
+        "video_count": 5,
         "profiles": [
-          "asimov-1",
-          "hiwonder-ainex",
-          "unitree-g1",
-          "unitree-h1",
-          "unitree-r1"
+          "asimov-1"
         ],
         "all_videos_reviewed_good": true,
         "manifest_review_consistent": true,
         "failed_review_count": 0,
-        "checkpoint_bound_local_policy_videos_ok": true,
+        "checkpoint_bound_local_policy_videos_ok": false,
         "checkpoint_bound_video_count": 15,
         "checkpoint_bound_profiles": [
           "asimov-1",
@@ -176,14 +169,16 @@
           "unitree-r1"
         ]
       },
-      "gaps": []
+      "gaps": [
+        "video review, manifest consistency, or checkpoint-bound local policy videos are incomplete"
+      ]
     },
     "checkpoint_bound_local_policy_videos_reviewed": {
-      "status": "proved",
-      "ok": true,
+      "status": "missing",
+      "ok": false,
       "evidence": {
         "checkpoint_video_validation_ok": true,
-        "checkpoint_bound_local_policy_videos_ok": true,
+        "checkpoint_bound_local_policy_videos_ok": false,
         "checkpoint_bound_video_count": 15,
         "checkpoint_bound_expected_video_count": 15,
         "checkpoint_bound_profiles": [
@@ -203,7 +198,9 @@
         "all_expected_reviewed": true,
         "telemetry_failed_count": 0
       },
-      "gaps": []
+      "gaps": [
+        "checkpoint-bound local policy videos are missing or failed validation"
+      ]
     },
     "detailed_report_generated": {
       "status": "proved",
@@ -222,7 +219,7 @@
       "ok": false,
       "evidence": {
         "objective_audit_failed": true,
-        "production_blocker": "nebius_cli_auth_required"
+        "production_blocker": null
       },
       "gaps": [
         "Nebius production training is still gated by CLI auth or missing production artifacts"
@@ -231,24 +228,24 @@
   },
   "comparison_interpretation": {
     "robot_backend_mean_reward": {
-      "ok_comparison_count": 2,
+      "ok_comparison_count": 3,
       "profiles": [
         "asimov-1",
         "hiwonder-ainex"
       ],
       "alberta_gte_ppo_count": 0,
-      "ppo_gt_alberta_count": 2,
+      "ppo_gt_alberta_count": 3,
       "conclusion": "Local robot-backend mean-reward evidence does not show an Alberta advantage over PPO."
     },
     "continual_obstacle_course": {
-      "alberta_acc_minus_ppo": 1.2029613193762168,
-      "alberta_forgetting_minus_ppo": -0.03360498752375892,
-      "alberta_new_task_gain": 3.506465335172088,
-      "ppo_new_task_gain": 1.875531163785622,
+      "alberta_acc_minus_ppo": -2.0374369344015757,
+      "alberta_forgetting_minus_ppo": -2.7992106749268646,
+      "alberta_new_task_gain": 1.704786537907286,
+      "ppo_new_task_gain": 5.814190304791019,
       "alberta_first_task_retention_delta": 0.0,
-      "ppo_first_task_retention_delta": 1.7851606646128912,
-      "advantage_supported": true,
-      "conclusion": "Continual obstacle-course evidence supports Alberta over PPO on adaptation/retention."
+      "ppo_first_task_retention_delta": -4.995251798484392,
+      "advantage_supported": false,
+      "conclusion": "Continual obstacle-course evidence does not currently support an Alberta advantage."
     },
     "sota_methods_compared": {
       "methods": [
@@ -263,7 +260,7 @@
         "ppo",
         "sac"
       ],
-      "brax_mjx_manifest_present": false,
+      "brax_mjx_manifest_present": true,
       "brax_mjx_contract_artifact_ok": true,
       "brax_mjx_contract_only": true,
       "brax_mjx_production_training": false,
@@ -327,28 +324,31 @@
   },
   "backend_comparison": {
     "ok": true,
-    "profile_id": "hiwonder-ainex",
+    "profile_id": "asimov-1",
     "tasks": [
       "stand_up",
       "walk_forward",
+      "walk_backward",
+      "sidestep_left",
+      "sidestep_right",
       "turn_left",
       "turn_right"
     ],
-    "steps": 4000,
+    "steps": 30000,
     "winner_by_mean_reward": "ppo",
-    "alberta_minus_ppo_mean_reward": -0.06154194317656447,
+    "alberta_minus_ppo_mean_reward": -29.02255766396962,
     "alberta_gte_ppo_by_mean_reward": false,
-    "baseline_mean_reward": 409.25531545628087,
-    "alberta_mean_reward": 409.19330845781934,
-    "ppo_mean_reward": 409.2548504009959,
-    "alberta_minus_untrained_mean_reward": -0.06200699846152702,
-    "ppo_minus_untrained_mean_reward": -0.00046505528496254556,
+    "baseline_mean_reward": 251.5049904876888,
+    "alberta_mean_reward": 165.82098109095026,
+    "ppo_mean_reward": 194.84353875491988,
+    "alberta_minus_untrained_mean_reward": -85.68400939673853,
+    "ppo_minus_untrained_mean_reward": -56.66145173276891,
     "survival": {
-      "baseline_min_mean_steps_survived": 120.0,
-      "alberta_min_mean_steps_survived": 120.0,
-      "ppo_min_mean_steps_survived": 120.0,
-      "min_mean_steps_survived": 120.0,
-      "mean_mean_steps_survived": 120.0,
+      "baseline_min_mean_steps_survived": 79.0,
+      "alberta_min_mean_steps_survived": 56.0,
+      "ppo_min_mean_steps_survived": 65.0,
+      "min_mean_steps_survived": 56.0,
+      "mean_mean_steps_survived": 67.61904761904762,
       "survival_values_present": true
     },
     "checks": {
@@ -375,8 +375,8 @@
     }
   },
   "robot_backend_comparisons": {
-    "count": 3,
-    "ok_count": 2,
+    "count": 4,
+    "ok_count": 3,
     "profiles": [
       "asimov-1",
       "hiwonder-ainex"
@@ -386,7 +386,7 @@
     "comparisons": [
       {
         "name": "asimov-1-profile-4k",
-        "path": "/home/shaw/milady/eliza/packages/robot/evidence/backend_compare_local/asimov-1-profile-4k",
+        "path": "/root/robot/evidence/backend_compare_local/asimov-1-profile-4k",
         "ok": true,
         "profile_id": "asimov-1",
         "tasks": [
@@ -437,7 +437,7 @@
       },
       {
         "name": "hiwonder-ainex-4k",
-        "path": "/home/shaw/milady/eliza/packages/robot/evidence/backend_compare_local/hiwonder-ainex-4k",
+        "path": "/root/robot/evidence/backend_compare_local/hiwonder-ainex-4k",
         "ok": false,
         "profile_id": "hiwonder-ainex",
         "tasks": [
@@ -488,7 +488,7 @@
       },
       {
         "name": "hiwonder-ainex-4k-rootfix",
-        "path": "/home/shaw/milady/eliza/packages/robot/evidence/backend_compare_local/hiwonder-ainex-4k-rootfix",
+        "path": "/root/robot/evidence/backend_compare_local/hiwonder-ainex-4k-rootfix",
         "ok": true,
         "profile_id": "hiwonder-ainex",
         "tasks": [
@@ -536,6 +536,60 @@
           "winner_consistent": true,
           "eval_rollout_depth": true
         }
+      },
+      {
+        "name": "asimov-1",
+        "path": "/root/robot/evidence/backend_compare/asimov-1",
+        "ok": true,
+        "profile_id": "asimov-1",
+        "tasks": [
+          "stand_up",
+          "walk_forward",
+          "walk_backward",
+          "sidestep_left",
+          "sidestep_right",
+          "turn_left",
+          "turn_right"
+        ],
+        "steps": 30000,
+        "winner_by_mean_reward": "ppo",
+        "alberta_minus_ppo_mean_reward": -29.02255766396962,
+        "alberta_gte_ppo_by_mean_reward": false,
+        "baseline_mean_reward": 251.5049904876888,
+        "alberta_mean_reward": 165.82098109095026,
+        "ppo_mean_reward": 194.84353875491988,
+        "alberta_minus_untrained_mean_reward": -85.68400939673853,
+        "ppo_minus_untrained_mean_reward": -56.66145173276891,
+        "survival": {
+          "baseline_min_mean_steps_survived": 79.0,
+          "alberta_min_mean_steps_survived": 56.0,
+          "ppo_min_mean_steps_survived": 65.0,
+          "min_mean_steps_survived": 56.0,
+          "mean_mean_steps_survived": 67.61904761904762,
+          "survival_values_present": true
+        },
+        "checks": {
+          "comparison_dir": true,
+          "json": true,
+          "markdown": true,
+          "profile": true,
+          "tasks": true,
+          "steps": true,
+          "eval_config": true,
+          "baseline_eval": true,
+          "alberta_present": true,
+          "alberta_validation": true,
+          "alberta_eval": true,
+          "alberta_delta_vs_untrained": true,
+          "ppo_present": true,
+          "ppo_eval": true,
+          "ppo_delta_vs_untrained": true,
+          "mean_rewards": true,
+          "alberta_vs_ppo_delta": true,
+          "winner": true,
+          "winner_consistent": true,
+          "eval_rollout_depth": true
+        }
       }
     ]
   },
@@ -548,11 +602,11 @@
       "role": "SOTA-style accelerator PPO baseline",
       "preflight_validation_ok": true,
       "script_present": true,
-      "script": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/40_nebius_brax_baseline.sh",
-      "manifest_present": false,
-      "regime": null,
-      "profile_id": null,
-      "total_steps": null,
+      "script": "/root/robot/evidence/full_training_preflight/scripts/40_nebius_brax_baseline.sh",
+      "manifest_present": true,
+      "regime": "brax_ppo",
+      "profile_id": "asimov-1",
+      "total_steps": 1024,
       "contract_artifact_present": true,
       "contract_artifact_ok": true,
       "contract_only": true,
@@ -630,7 +684,7 @@
     "reports": [
       {
         "name": "asimov-1",
-        "path": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/asimov-1/alberta_validation_report.json",
+        "path": "/root/robot/evidence/alberta_all_profiles/asimov-1/alberta_validation_report.json",
         "checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/asimov-1/alberta",
         "ok": true,
         "profile_id": "asimov-1",
@@ -648,7 +702,7 @@
       },
       {
         "name": "hiwonder-ainex",
-        "path": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/hiwonder-ainex/alberta_validation_report.json",
+        "path": "/root/robot/evidence/alberta_all_profiles/hiwonder-ainex/alberta_validation_report.json",
         "checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/hiwonder-ainex/alberta",
         "ok": true,
         "profile_id": "hiwonder-ainex",
@@ -666,7 +720,7 @@
       },
       {
         "name": "unitree-g1",
-        "path": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/unitree-g1/alberta_validation_report.json",
+        "path": "/root/robot/evidence/alberta_all_profiles/unitree-g1/alberta_validation_report.json",
         "checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/unitree-g1/alberta",
         "ok": true,
         "profile_id": "unitree-g1",
@@ -684,7 +738,7 @@
       },
       {
         "name": "unitree-h1",
-        "path": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/unitree-h1/alberta_validation_report.json",
+        "path": "/root/robot/evidence/alberta_all_profiles/unitree-h1/alberta_validation_report.json",
         "checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/unitree-h1/alberta",
         "ok": true,
         "profile_id": "unitree-h1",
@@ -702,7 +756,7 @@
       },
       {
         "name": "unitree-r1",
-        "path": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/unitree-r1/alberta_validation_report.json",
+        "path": "/root/robot/evidence/alberta_all_profiles/unitree-r1/alberta_validation_report.json",
         "checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/unitree-r1/alberta",
         "ok": true,
         "profile_id": "unitree-r1",
@@ -720,7 +774,7 @@
       },
       {
         "name": "asimov-1-profile-4k",
-        "path": "/home/shaw/milady/eliza/packages/robot/evidence/backend_compare_local/asimov-1-profile-4k/alberta_validation_report.json",
+        "path": "/root/robot/evidence/backend_compare_local/asimov-1-profile-4k/alberta_validation_report.json",
         "checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/backend_compare_local/asimov-1-profile-4k/alberta",
         "ok": true,
         "profile_id": "asimov-1",
@@ -738,7 +792,7 @@
       },
       {
         "name": "hiwonder-ainex-4k-rootfix",
-        "path": "/home/shaw/milady/eliza/packages/robot/evidence/backend_compare_local/hiwonder-ainex-4k-rootfix/alberta_validation_report.json",
+        "path": "/root/robot/evidence/backend_compare_local/hiwonder-ainex-4k-rootfix/alberta_validation_report.json",
         "checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/backend_compare_local/hiwonder-ainex-4k-rootfix/alberta",
         "ok": true,
         "profile_id": "hiwonder-ainex",
@@ -757,11 +811,11 @@
     ]
   },
   "alberta_checkpoint_videos": {
-    "ok": true,
-    "evidence_dir": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos",
-    "manifest": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/manifest.json",
-    "review": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_video_review/video_review.json",
-    "validation": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_video_review/validation_report.json",
+    "ok": false,
+    "evidence_dir": "/root/robot/evidence/alberta_checkpoint_videos",
+    "manifest": "/root/robot/evidence/alberta_checkpoint_videos/manifest.json",
+    "review": "/root/robot/evidence/alberta_checkpoint_video_review/video_review.json",
+    "validation": "/root/robot/evidence/alberta_checkpoint_video_review/validation_report.json",
     "profile_count": 5,
     "video_count": 15,
     "expected_video_count": 15,
@@ -954,7 +1008,33 @@
       }
     },
     "missing_profiles": [],
-    "checkpoint_mismatches": [],
+    "checkpoint_mismatches": [
+      {
+        "profile": "asimov-1",
+        "expected": "/root/robot/evidence/alberta_all_profiles/asimov-1/alberta",
+        "actual": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/asimov-1/alberta"
+      },
+      {
+        "profile": "hiwonder-ainex",
+        "expected": "/root/robot/evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+        "actual": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/hiwonder-ainex/alberta"
+      },
+      {
+        "profile": "unitree-g1",
+        "expected": "/root/robot/evidence/alberta_all_profiles/unitree-g1/alberta",
+        "actual": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/unitree-g1/alberta"
+      },
+      {
+        "profile": "unitree-h1",
+        "expected": "/root/robot/evidence/alberta_all_profiles/unitree-h1/alberta",
+        "actual": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/unitree-h1/alberta"
+      },
+      {
+        "profile": "unitree-r1",
+        "expected": "/root/robot/evidence/alberta_all_profiles/unitree-r1/alberta",
+        "actual": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/unitree-r1/alberta"
+      }
+    ],
     "validation_ok": true,
     "validation_checks": {
       "manifest": true,
@@ -969,7 +1049,7 @@
   },
   "local_validation": {
     "present": true,
-    "path": "/home/shaw/milady/eliza/packages/robot/evidence/local_validation/alberta_robot_validation_summary.json",
+    "path": "/root/robot/evidence/local_validation/alberta_robot_validation_summary.json",
     "ok": true,
     "tests": 123,
     "passed": 123,
@@ -999,7 +1079,7 @@
     "stable_baselines3_sac": {
       "present": true,
       "ok": true,
-      "path": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_obstacle_course_sac_smoke",
+      "path": "/root/robot/evidence/alberta_obstacle_course_sac_smoke",
       "env_kind": "obstacle_course",
       "n_tasks": 2,
       "steps_per_task": 40,
@@ -1122,44 +1202,44 @@
     "ok": true,
     "env_kind": "obstacle_course",
     "n_tasks": 4,
-    "steps_per_task": 2500,
+    "steps_per_task": 16000,
     "eval_episodes": 10,
-    "seeds": 1,
-    "alberta_acc": 3.9122425593550316,
-    "ppo_acc": 2.709281239978815,
+    "seeds": 3,
+    "alberta_acc": 2.1105637620902296,
+    "ppo_acc": 4.148000696491805,
     "alberta_bwt": 0.0,
-    "ppo_bwt": 0.5614485673472048,
+    "ppo_bwt": -2.7721158649528364,
     "alberta_forgetting": 0.0,
-    "ppo_forgetting": 0.03360498752375892,
+    "ppo_forgetting": 2.7992106749268646,
     "alberta_fwt": 0.0,
-    "ppo_fwt": 0.5690661831305438,
+    "ppo_fwt": -0.035076810316335964,
     "deltas": {
-      "alberta_acc_minus_ppo": 1.2029613193762168,
-      "alberta_forgetting_minus_ppo": -0.03360498752375892
+      "alberta_acc_minus_ppo": -2.0374369344015757,
+      "alberta_forgetting_minus_ppo": -2.7992106749268646
     },
     "adaptation": {
       "alberta": {
-        "mean_new_task_gain": 3.506465335172088,
-        "min_new_task_gain": -0.5026378377910152,
-        "tasks_with_positive_gain": 3.0,
+        "mean_new_task_gain": 1.704786537907286,
+        "min_new_task_gain": -4.95100463719756,
+        "tasks_with_positive_gain": 2.0,
         "task_count": 4.0,
-        "mean_final_minus_best": -0.1256594594477538,
-        "min_final_minus_best": -0.5026378377910152,
+        "mean_final_minus_best": -1.129290150769499,
+        "min_final_minus_best": -4.517160603077996,
         "first_task_retention_delta": 0.0,
-        "seeds": 1
+        "seeds": 3
       },
       "ppo": {
-        "mean_new_task_gain": 1.875531163785622,
-        "min_new_task_gain": 0.5236736082358899,
+        "mean_new_task_gain": 5.814190304791019,
+        "min_new_task_gain": 2.0406231844888505,
         "tasks_with_positive_gain": 4.0,
         "task_count": 4.0,
-        "mean_final_minus_best": -0.02520374064281919,
-        "min_final_minus_best": -0.06172417516785833,
-        "first_task_retention_delta": 1.7851606646128912,
-        "seeds": 1
+        "mean_final_minus_best": -2.0994080061951483,
+        "min_final_minus_best": -5.218421328624578,
+        "first_task_retention_delta": -4.995251798484392,
+        "seeds": 3
       }
     },
-    "alberta_acc_gte_ppo": true,
+    "alberta_acc_gte_ppo": false,
     "alberta_forgetting_lte_ppo": true,
     "checks": {
       "benchmark_dir": true,
@@ -1186,35 +1266,25 @@
     "demo": {
       "present": true,
       "ok": true,
-      "video": "evidence/alberta_obstacle_course_local_4task/obstacle_course_demo.mp4",
-      "video_bytes": 109105,
+      "video": "/root/robot/evidence/alberta_obstacle_course/obstacle_course_demo.mp4",
+      "video_bytes": 112704,
       "frames": 72,
-      "visual_review": {
-        "reviewed_at": "2026-05-24T00:20:45.817928Z",
-        "reviewer": "codex",
-        "contact_sheet": "evidence/alberta_obstacle_course_local_4task/obstacle_course_demo_review_contact.jpg",
-        "verdict": "good",
-        "review_notes": "Contact sheet shows phase-by-phase Alberta/PPO heatmaps, task-0 retention, and final metrics. Alberta keeps task 0 flat through later obstacle phases and finishes with higher ACC and zero forgetting."
-      },
+      "visual_review": null,
       "artifacts": {
         "video_present": true,
-        "video_bytes_actual": 109105,
-        "video_bytes_recorded": 109105,
+        "video_bytes_actual": 112704,
+        "video_bytes_recorded": 112704,
         "video_bytes_match": true,
-        "contact_sheet": "evidence/alberta_obstacle_course_local_4task/obstacle_course_demo_review_contact.jpg",
-        "contact_sheet_exists": true
+        "contact_sheet": null,
+        "contact_sheet_exists": false
       }
     }
   },
   "video_review": {
     "ok": true,
-    "video_count": 25,
+    "video_count": 5,
     "profiles": [
-      "asimov-1",
-      "hiwonder-ainex",
-      "unitree-g1",
-      "unitree-h1",
-      "unitree-r1"
+      "asimov-1"
     ],
     "actions": [
       "combined_actions",
@@ -1224,179 +1294,91 @@
       "walk_forward"
     ],
     "all_videos_reviewed_good": true,
-    "manual_annotation_count": 10,
+    "manual_annotation_count": 0,
     "telemetry": {
       "required": true,
-      "present_count": 25,
-      "ok_count": 25,
+      "present_count": 5,
+      "ok_count": 5,
       "failed_count": 0
     },
-    "min_visual_progress": 0.0016422206864637487,
-    "mean_visual_progress": 0.005573210766502456,
+    "min_visual_progress": 0.005898740653898202,
+    "mean_visual_progress": 0.011063551961206921,
     "review_artifacts": {
-      "contact_sheet_count": 25,
-      "existing_contact_sheet_count": 25,
+      "contact_sheet_count": 5,
+      "existing_contact_sheet_count": 5,
       "missing_contact_sheet_count": 0,
       "missing_contact_sheets": [],
-      "sample_count": 10,
+      "sample_count": 5,
       "samples": [
         {
           "profile": "asimov-1",
           "action": "combined_actions",
           "video": "asimov-1/asimov-1_combined_actions.mp4",
-          "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/asimov-1_asimov-1_combined_actions_contact.jpg",
+          "contact_sheet": "/root/robot/evidence/video_review/asimov-1_asimov-1_combined_actions_contact.jpg",
           "contact_sheet_exists": true,
           "verdict": "good",
           "review_notes": "Sampled frames show a nonblank robot sequence across the combined action script with measurable frame-to-frame or centroid progress.",
           "frame_count": 160,
-          "visual_progress": 0.004411419933917476,
+          "visual_progress": 0.005898740653898202,
           "telemetry_ok": true
         },
         {
           "profile": "asimov-1",
           "action": "stand_up",
           "video": "asimov-1/asimov-1_stand_up.mp4",
-          "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/asimov-1_asimov-1_stand_up_contact.jpg",
+          "contact_sheet": "/root/robot/evidence/video_review/asimov-1_asimov-1_stand_up_contact.jpg",
           "contact_sheet_exists": true,
           "verdict": "good",
           "review_notes": "Sampled frames show nonblank robot motion for `stand up` with measurable frame-to-frame or centroid progress.",
           "frame_count": 40,
-          "visual_progress": 0.004653543642922944,
+          "visual_progress": 0.013446531810012518,
           "telemetry_ok": true
         },
         {
           "profile": "asimov-1",
           "action": "turn_left",
           "video": "asimov-1/asimov-1_turn_left.mp4",
-          "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/asimov-1_asimov-1_turn_left_contact.jpg",
+          "contact_sheet": "/root/robot/evidence/video_review/asimov-1_asimov-1_turn_left_contact.jpg",
           "contact_sheet_exists": true,
           "verdict": "good",
           "review_notes": "Sampled frames show nonblank robot motion for `turn left` with measurable frame-to-frame or centroid progress.",
           "frame_count": 40,
-          "visual_progress": 0.004413526373751023,
+          "visual_progress": 0.01198728224810432,
           "telemetry_ok": true
         },
         {
           "profile": "asimov-1",
           "action": "turn_right",
           "video": "asimov-1/asimov-1_turn_right.mp4",
-          "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/asimov-1_asimov-1_turn_right_contact.jpg",
+          "contact_sheet": "/root/robot/evidence/video_review/asimov-1_asimov-1_turn_right_contact.jpg",
           "contact_sheet_exists": true,
           "verdict": "good",
           "review_notes": "Sampled frames show nonblank robot motion for `turn right` with measurable frame-to-frame or centroid progress.",
           "frame_count": 40,
-          "visual_progress": 0.004595001071107154,
+          "visual_progress": 0.012000064055124918,
           "telemetry_ok": true
         },
         {
           "profile": "asimov-1",
           "action": "walk_forward",
           "video": "asimov-1/asimov-1_walk_forward.mp4",
-          "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/asimov-1_asimov-1_walk_forward_contact.jpg",
+          "contact_sheet": "/root/robot/evidence/video_review/asimov-1_asimov-1_walk_forward_contact.jpg",
           "contact_sheet_exists": true,
           "verdict": "good",
           "review_notes": "Sampled frames show nonblank robot motion for `walk forward` with measurable frame-to-frame or centroid progress.",
           "frame_count": 40,
-          "visual_progress": 0.004479179487508886,
-          "telemetry_ok": true
-        },
-        {
-          "profile": "hiwonder-ainex",
-          "action": "combined_actions",
-          "video": "hiwonder-ainex/hiwonder-ainex_combined_actions.mp4",
-          "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/hiwonder-ainex_hiwonder-ainex_combined_actions_contact.jpg",
-          "contact_sheet_exists": true,
-          "verdict": "good",
-          "review_notes": "Sampled frames show a nonblank robot sequence across the combined action script with measurable frame-to-frame or centroid progress.",
-          "frame_count": 160,
-          "visual_progress": 0.002732779290161881,
-          "telemetry_ok": true
-        },
-        {
-          "profile": "hiwonder-ainex",
-          "action": "stand_up",
-          "video": "hiwonder-ainex/hiwonder-ainex_stand_up.mp4",
-          "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/hiwonder-ainex_hiwonder-ainex_stand_up_contact.jpg",
-          "contact_sheet_exists": true,
-          "verdict": "good",
-          "review_notes": "Sampled frames show nonblank robot motion for `stand up` with measurable frame-to-frame or centroid progress.",
-          "frame_count": 40,
-          "visual_progress": 0.005362323861496121,
-          "telemetry_ok": true
-        },
-        {
-          "profile": "hiwonder-ainex",
-          "action": "turn_left",
-          "video": "hiwonder-ainex/hiwonder-ainex_turn_left.mp4",
-          "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/hiwonder-ainex_hiwonder-ainex_turn_left_contact.jpg",
-          "contact_sheet_exists": true,
-          "verdict": "good",
-          "review_notes": "Sampled frames show nonblank robot motion for `turn left` with measurable frame-to-frame or centroid progress.",
-          "frame_count": 40,
-          "visual_progress": 0.005362323861496121,
-          "telemetry_ok": true
-        },
-        {
-          "profile": "hiwonder-ainex",
-          "action": "turn_right",
-          "video": "hiwonder-ainex/hiwonder-ainex_turn_right.mp4",
-          "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/hiwonder-ainex_hiwonder-ainex_turn_right_contact.jpg",
-          "contact_sheet_exists": true,
-          "verdict": "good",
-          "review_notes": "Sampled frames show nonblank robot motion for `turn right` with measurable frame-to-frame or centroid progress.",
-          "frame_count": 40,
-          "visual_progress": 0.005362323861496121,
-          "telemetry_ok": true
-        },
-        {
-          "profile": "hiwonder-ainex",
-          "action": "walk_forward",
-          "video": "hiwonder-ainex/hiwonder-ainex_walk_forward.mp4",
-          "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/hiwonder-ainex_hiwonder-ainex_walk_forward_contact.jpg",
-          "contact_sheet_exists": true,
-          "verdict": "good",
-          "review_notes": "Sampled frames show nonblank robot motion for `walk forward` with measurable frame-to-frame or centroid progress.",
-          "frame_count": 40,
-          "visual_progress": 0.005362323861496121,
+          "visual_progress": 0.011985141038894653,
           "telemetry_ok": true
         }
       ]
     },
-    "manifest_video_count": 25,
-    "expected_video_count": 25,
+    "manifest_video_count": 5,
+    "expected_video_count": 5,
     "manifest_review_consistent": true,
     "all_manifest_profiles_ok": true,
     "min_frame_count": 40,
     "profile_video_counts": {
-      "unitree-r1": {
-        "videos": 5,
-        "expected": 5,
-        "missing": 0,
-        "combined_present": true,
-        "ok": true
-      },
-      "hiwonder-ainex": {
-        "videos": 5,
-        "expected": 5,
-        "missing": 0,
-        "combined_present": true,
-        "ok": true
-      },
       "asimov-1": {
-        "videos": 5,
-        "expected": 5,
-        "missing": 0,
-        "combined_present": true,
-        "ok": true
-      },
-      "unitree-g1": {
-        "videos": 5,
-        "expected": 5,
-        "missing": 0,
-        "combined_present": true,
-        "ok": true
-      },
-      "unitree-h1": {
         "videos": 5,
         "expected": 5,
         "missing": 0,
@@ -1416,7 +1398,7 @@
     ],
     "backend_any_alberta_gte_ppo": false,
     "backend_all_ok_alberta_gte_ppo": false,
-    "obstacle_alberta_acc_gte_ppo": true,
+    "obstacle_alberta_acc_gte_ppo": false,
     "obstacle_alberta_forgetting_lte_ppo": true,
     "obstacle_demo_video_ok": true,
     "sac_comparison_ok": true,
@@ -1425,10 +1407,10 @@
     "alberta_new_task_gain_gte_sac": true,
     "sac_demo_video_ok": true,
     "alberta_sac_obstacle_advantage_supported": true,
-    "alberta_obstacle_advantage_supported": true,
+    "alberta_obstacle_advantage_supported": false,
     "alberta_robot_backend_advantage_supported": false,
     "all_robot_backend_comparisons_support_alberta": false,
-    "checkpoint_bound_local_policy_videos_ok": true,
+    "checkpoint_bound_local_policy_videos_ok": false,
     "production_claim_supported": false
   },
   "objective_audit": {

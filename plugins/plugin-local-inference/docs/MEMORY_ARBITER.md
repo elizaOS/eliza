@@ -165,7 +165,7 @@ pressure-driven eviction.
 
 | Role          | Priority | Typical capability       | Eviction cost                 |
 | ------------- | -------- | ------------------------ | ----------------------------- |
-| `drafter`     | 10       | DFlash speculative draft | Restart llama-server w/o -md  |
+| `drafter`     | 10       | MTP speculative draft | Restart llama-server w/o -md  |
 | `vision`      | 20       | `vision-describe`, `image-gen` | Unload weights, drop projector cache |
 | `embedding`   | 25       | `embedding`              | Unload embedding model         |
 | `vad`         | 35       | Voice VAD                 | madvise(DONTNEED) on weights  |

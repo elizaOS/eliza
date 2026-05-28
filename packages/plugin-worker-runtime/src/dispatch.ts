@@ -286,7 +286,7 @@ type ActionHandler = (
   options: JsonValue,
   callback: (data: JsonValue) => Promise<void> | void,
   responses: JsonValue,
-) => Promise<JsonValue | void> | JsonValue | void;
+) => Promise<JsonValue | undefined> | JsonValue | undefined;
 type EvaluatorHandler = (
   runtime: RuntimeProxyApi,
   message: JsonValue,

@@ -34,7 +34,7 @@ abort in lock-step.
 ```ts
 interface VoiceCancellationToken {
   readonly runId: string;            // stable per-utterance id
-  readonly slot?: number;            // DflashLlamaServer slot id, when known
+  readonly slot?: number;            // MtpLlamaServer slot id, when known
   readonly aborted: boolean;         // cheap poll
   readonly reason: VoiceCancellationReason | null;
   readonly signal: AbortSignal;      // standard signal for fetch / model
@@ -77,7 +77,7 @@ coordinator.bargeIn(roomId)         coordinator.armTurn({ roomId, runId, slot? }
                 │      see TurnAbortedError at the next yield               │
                 │                                                            │
                 │ 2. slotAbort(slot, reason)  [if slot was registered]      │
-                │    → DflashLlamaServer.abortSlot — closes in-flight       │
+                │    → MtpLlamaServer.abortSlot — closes in-flight       │
                 │      fetches against the slot. On a fork with a           │
                 │      slot-cancel REST route, the route is hit instead.    │
                 │                                                            │
@@ -151,7 +151,7 @@ EngineVoiceBridge.start({ runtime, ... })
   │
   ├─► VoiceCancellationCoordinator (per session, owns per-roomId tokens)
   │       │
-  │       ├─ slotAbort   ← opts.slotAbort (production wires DflashLlamaServer.abortSlot
+  │       ├─ slotAbort   ← opts.slotAbort (production wires MtpLlamaServer.abortSlot
   │       │                when a slot id is known per turn)
   │       ├─ ttsStop     ← bridge.triggerBargeIn()  ← audio sink drain
   │       │                                          + scheduler chunker flush
@@ -202,10 +202,10 @@ compat for callers that haven't adopted the canonical surface yet):
   Fix tracked under R11 §5.3 — extend the in-source route handler at
   `plugins/plugin-local-inference/native/llama.cpp/tools/server/server.cpp`
   (namespace `eliza_omnivoice`, the `audio_speech_handler()` lambda).
-- **REST-shape reconciliation.** `dflash-checkpoint-client.ts` speaks
+- **REST-shape reconciliation.** `mtp-checkpoint-client.ts` speaks
   the post-merge shape (`POST /slots/<id>/save?filename=` +
   `DELETE /slots/<id>`); the bundled fork still serves the legacy
-  `?action=` route. The capability-probe in `dflash-server.ts`
+  `?action=` route. The capability-probe in `ffi-streaming-backend.ts`
   `probeCtxCheckpointsSupported` is the seam — see R11 §3.3.
 
 ## How to extend

@@ -15,11 +15,9 @@ from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MATRIX = (
-    ROOT
-    / "board/kicad/e1-phone/production/sourcing/readiness/"
+    ROOT / "board/kicad/e1-phone/production/sourcing/readiness/"
     "supplier-return-evidence-acceptance-matrix-2026-05-22.yaml"
 )
 
@@ -63,7 +61,9 @@ def repo_path(path_text: str) -> Path:
     return ROOT / path
 
 
-def placeholder_payload(lane: str, function: str, evidence_class: str, path_text: str) -> dict[str, Any]:
+def placeholder_payload(
+    lane: str, function: str, evidence_class: str, path_text: str
+) -> dict[str, Any]:
     return {
         "schema": "eliza.e1_phone_supplier_return_intake_placeholder.v1",
         **COMMON_FIELDS,

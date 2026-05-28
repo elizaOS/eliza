@@ -1,0 +1,11 @@
+[Default Applications]
+application/pgp-encrypted=org.kde.kleopatra.desktop
+x-scheme-handler/mailto=thunderbird.desktop
+text/html=org.boum.tails.TorBrowser.desktop
+# XXX: Forky: the following line should not be needed anymore
+application/x-keepass2=org.gnome.World.Secrets.desktop
+
+[Added Associations]
+application/pgp-encrypted=org.kde.kleopatra.desktop
+x-scheme-handler/mailto=thunderbird.desktop
+text/html=org.boum.tails.TorBrowser.desktop

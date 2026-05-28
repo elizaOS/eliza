@@ -79,7 +79,7 @@ bundle_recommendations:
     estimated_prefill_tps: 2500
     notes: "Maximum 4090 tier; use one or two parallel slots depending on live KV pressure."
 
-dflash:
+mtp:
   enabled: true
   draft_min: 4
   draft_max: 24
@@ -99,7 +99,7 @@ verify_recipe:
     - turbo3_tcq                 # sm_89 has the tensor-core Q kernel
     - qjl_full
     - polarquant
-    - dflash
+    - mtp
   unavailable_kernels: []
   smoke_bundle: eliza-1-27b
   tolerance_pct: 10

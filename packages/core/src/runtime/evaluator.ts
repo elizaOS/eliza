@@ -64,6 +64,8 @@ interface ParsedEvaluatorObject {
 	parseError?: string;
 }
 
+const DEFAULT_EVALUATOR_MAX_TOKENS = 1024;
+
 export async function runEvaluator(
 	params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
@@ -92,12 +94,20 @@ export async function runEvaluator(
 		}),
 		modelInputBudget,
 	);
+	const typedProviderOptions = providerOptions as Record<string, unknown> & {
+		eliza?: Record<string, unknown>;
+	};
+	typedProviderOptions.eliza = {
+		...(typedProviderOptions.eliza ?? {}),
+		thinking: "off",
+	};
 	const startedAt = Date.now();
 	const modelType = params.modelType ?? ModelType.RESPONSE_HANDLER;
 	const raw = await params.runtime.useModel(
 		modelType,
 		{
 			messages: renderedInput.messages,
+			maxTokens: DEFAULT_EVALUATOR_MAX_TOKENS,
 			responseSchema: evaluatorSchema,
 			promptSegments: renderedInput.promptSegments,
 			providerOptions,
@@ -500,14 +510,63 @@ function recoverEvaluatorTextOutput(
 	if (!hasSuccessfulToolResult(trajectory)) return output;
 	if (!looksLikeUserFacingAnswer(text)) return output;
 
+	const userFacing = stripTrailingEvaluatorEnvelope(text);
+
 	return {
 		success: true,
 		decision: "FINISH",
 		thought:
 			"Recovered user-facing evaluator prose after a successful tool result.",
-		messageToUser: text,
+		messageToUser: userFacing,
 		raw: { recoverySource: "prose_after_successful_tool" },
 	};
+}
+
+// When the evaluator model emits user-facing prose followed by the
+// structured envelope (e.g. shell output ... then `{"success":true,
+// "decision":"FINISH","thought":"..."}`) the strict JSON parser
+// rejects the whole response. The recovery path above then uses the
+// raw text as the user reply — and without this strip, the JSON
+// envelope leaks into Discord.
+//
+// Live regression on 2026-05-25 (trajectory tj-b224d87039960b.json):
+// user asked "use shell to show disk space" — the evaluator model
+// emitted the actual `df -h` table prose immediately followed by a
+// JSON object `{"success":true,"decision":"FINISH","thought":...}`
+// and that object was published verbatim to the user's Discord
+// channel underneath the table.
+//
+// The strip is conservative: it only removes a trailing balanced JSON object
+// that parses as a real evaluator envelope (`success` boolean plus a valid
+// `decision`/`route`). A legitimate user-asked-for trailing JSON object such
+// as `{"success":true}` or `{"decision":"approve"}` is left untouched.
+function stripTrailingEvaluatorEnvelope(text: string): string {
+	const trimmed = text.trimEnd();
+	if (!trimmed.endsWith("}")) return text;
+	const candidate = extractJsonObjects(trimmed).at(-1);
+	if (!candidate || !trimmed.endsWith(candidate)) return text;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(candidate);
+	} catch {
+		return text;
+	}
+	if (!isEvaluatorEnvelopeObject(parsed)) return text;
+	return trimmed.slice(0, trimmed.length - candidate.length).trimEnd();
+}
+
+function isEvaluatorEnvelopeObject(value: unknown): boolean {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+	const record = value as Record<string, unknown>;
+	if (typeof record.success !== "boolean") return false;
+	const decision = typeof record.decision === "string" ? record.decision : "";
+	const route = typeof record.route === "string" ? record.route : "";
+	const normalizedDecision = (decision || route).toUpperCase();
+	return (
+		normalizedDecision === "FINISH" ||
+		normalizedDecision === "CONTINUE" ||
+		normalizedDecision === "NEXT_RECOMMENDED"
+	);
 }
 
 function rawText(raw: string | { text?: string; object?: unknown }): string {

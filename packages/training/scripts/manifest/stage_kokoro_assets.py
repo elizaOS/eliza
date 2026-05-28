@@ -3,7 +3,7 @@
 
 This is intentionally separate from the OmniVoice/ASR/VAD staging helper:
 small Eliza-1 tiers can add Kokoro to already-built raw/base bundles without
-re-running text quantization or DFlash staging. The script downloads the
+re-running text quantization or MTP staging. The script downloads the
 canonical Kokoro ONNX export and bundled voice packs, adds them to
 ``files.voice`` in ``eliza-1.manifest.json``, writes provenance evidence, and
 regenerates ``checksums/SHA256SUMS``. For small-tier releases, pass

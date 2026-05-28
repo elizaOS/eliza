@@ -29,7 +29,7 @@ export function normalizeSystemPromptRole(
 
 // Mirrors `@elizaos/shared/src/utils/name-tokens.ts:replaceNameTokens`.
 // Inlined because `@elizaos/core` does not depend on `@elizaos/shared` at
-// runtime. Onboarding-preset characters ship with `{{name}}` / `{{agentName}}`
+// runtime. Setup-preset characters ship with `{{name}}` / `{{agentName}}`
 // tokens in `system` and `bio` (PR #7101 deliberately preserves them on save
 // so renames propagate), so the canonical prompt builder must resolve them
 // before forwarding text to the model.

@@ -249,8 +249,9 @@ def execute_fetch(asset: dict[str, Any], dest: Path) -> dict[str, Any]:
             from huggingface_hub import snapshot_download
         except Exception as exc:  # noqa: BLE001
             return {"status": "BLOCKED_MISSING_TOOL", "tool": "huggingface_hub", "error": str(exc)}
+        snapshot_download_any: Any = snapshot_download
         try:
-            snapshot_download(
+            snapshot_download_any(
                 repo_id=dataset_id,
                 repo_type="dataset",
                 revision=revision,
@@ -258,7 +259,7 @@ def execute_fetch(asset: dict[str, Any], dest: Path) -> dict[str, Any]:
                 local_dir_use_symlinks=False,
             )
         except TypeError:
-            snapshot_download(
+            snapshot_download_any(
                 repo_id=dataset_id,
                 repo_type="dataset",
                 revision=revision,

@@ -1,0 +1,14 @@
+<volume>
+  <name></name>
+  <allocation>0</allocation>
+  <capacity unit="b"></capacity>
+  <target>
+    <path></path>
+    <format type='qcow2'/>
+    <permissions>
+      <owner></owner>
+      <group></group>
+      <mode>0664</mode>
+    </permissions>
+  </target>
+</volume>

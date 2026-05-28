@@ -242,6 +242,7 @@ class AndroidLauncherRuntimeEvidenceTests(unittest.TestCase):
                 {"/system/etc/permissions/foo.xml": "foo.xml -> /system/etc/permissions/foo.xml"}
             )
         )
+
     def test_stale_nonpass_top_level_status_blocks_even_if_fields_pass(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

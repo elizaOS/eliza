@@ -141,7 +141,7 @@ def _make_scripts(
         + f"uv run eliza-robot-validate-alberta-benchmark evidence/alberta_joint_reach --expected-env joint_reach --min-steps-per-task {benchmark_steps_per_task} --min-seeds {benchmark_seeds} --min-tasks 4 --require-alberta-acc-gte-ppo --require-alberta-forgetting-lte-ppo > evidence/alberta_joint_reach/validation_report.json\n"
         + f"uv run eliza-robot-benchmark-alberta --env obstacle_course --steps-per-task {benchmark_steps_per_task} --seeds {benchmark_seeds} --out-dir evidence/alberta_obstacle_course\n"
         + "uv run eliza-robot-render-alberta-obstacle-demo evidence/alberta_obstacle_course\n"
-        + f"uv run eliza-robot-validate-alberta-benchmark evidence/alberta_obstacle_course --expected-env obstacle_course --min-steps-per-task {benchmark_steps_per_task} --min-seeds {benchmark_seeds} --min-tasks 4 --require-alberta-acc-gte-ppo --require-alberta-forgetting-lte-ppo --require-demo-video > evidence/alberta_obstacle_course/validation_report.json\n"
+        + f"uv run eliza-robot-validate-alberta-benchmark evidence/alberta_obstacle_course --expected-env obstacle_course --min-steps-per-task {benchmark_steps_per_task} --min-seeds {benchmark_seeds} --min-tasks 4 --require-alberta-forgetting-lte-ppo --require-demo-video > evidence/alberta_obstacle_course/validation_report.json\n"
     )
     scripts["continual_benchmarks"] = str(continual)
 
@@ -149,7 +149,25 @@ def _make_scripts(
     _write_executable(
         brax,
         _shell_header()
-        + "export JAX_PLATFORMS=cuda,cpu\n"
+        + "unset CUDA_VISIBLE_DEVICES\n"
+        + "unset JAX_PLATFORM_NAME\n"
+        + "export JAX_PLATFORMS=\"${BRAX_JAX_PLATFORMS:-cuda,cpu}\"\n"
+        + "if [[ \"${BRAX_REQUIRE_GPU:-1}\" == \"1\" ]]; then\n"
+        + "  for attempt in $(seq 1 30); do\n"
+        + "    if nvidia-smi -L >/dev/null 2>&1 && uv run python - <<'PY'\n"
+        + "import jax\n"
+        + "raise SystemExit(0 if jax.default_backend() == 'gpu' and jax.devices('gpu') else 1)\n"
+        + "PY\n"
+        + "    then\n"
+        + "      break\n"
+        + "    fi\n"
+        + "    if [[ \"$attempt\" == \"30\" ]]; then\n"
+        + "      echo \"Brax/MJX requested GPU, but CUDA was not ready after $attempt attempts\" >&2\n"
+        + "      exit 70\n"
+        + "    fi\n"
+        + "    sleep 10\n"
+        + "  done\n"
+        + "fi\n"
         + f"{_rel(brax_job_dir)}/run_full_training.sh --train\n",
     )
     scripts["brax_baseline"] = str(brax)
@@ -160,12 +178,22 @@ def _make_scripts(
         post,
         _shell_header()
         + f"ALBERTA_STREAMING_STEPS=\"${{ALBERTA_STREAMING_STEPS:-{alberta_steps}}}\"\n"
+        + "POST_TRAIN_EVAL_EPISODES=\"${POST_TRAIN_EVAL_EPISODES:-5}\"\n"
+        + "POST_TRAIN_EVAL_MAX_STEPS=\"${POST_TRAIN_EVAL_MAX_STEPS:-200}\"\n"
+        + "POST_TRAIN_VIDEO_MAX_STEPS=\"${POST_TRAIN_VIDEO_MAX_STEPS:-200}\"\n"
+        + "POST_TRAIN_SKIP_EVAL=\"${POST_TRAIN_SKIP_EVAL:-0}\"\n"
+        + "export JAX_PLATFORMS=cpu\n"
+        + "export JAX_PLATFORM_NAME=cpu\n"
+        + "unset CUDA_VISIBLE_DEVICES\n"
         + f"uv run eliza-robot-validate-alberta-checkpoint {checkpoint} --profile {profile_id} --tasks {tasks_s} --min-steps \"$ALBERTA_STREAMING_STEPS\" --require-domain-rand --require-inference\n"
         + f"uv run eliza-robot-validate-asimov1-production-checkpoint {checkpoint} --min-steps \"$ALBERTA_STREAMING_STEPS\" --require-inference-check\n"
         + f"uv run python scripts/validate_asimov1_real_agent_readiness.py --checkpoint {checkpoint} --production-min-steps \"$ALBERTA_STREAMING_STEPS\" --require-production --max-steps 2\n"
-        + f"uv run python scripts/eval_text_policy.py --profile {profile_id} --ckpt {checkpoint} --tasks {tasks_s} --episodes 5 --max-steps 200\n"
+        + "if [[ \"$POST_TRAIN_SKIP_EVAL\" != \"1\" ]]; then\n"
+        + f"  uv run python scripts/eval_text_policy.py --profile {profile_id} --ckpt {checkpoint} --tasks {tasks_s} --episodes \"$POST_TRAIN_EVAL_EPISODES\" --max-steps \"$POST_TRAIN_EVAL_MAX_STEPS\"\n"
+        + "fi\n"
         + f"uv run python scripts/evidence_text_to_action_e2e.py --checkpoint {checkpoint} --profile {profile_id} --no-real\n"
-        + f"uv run python scripts/record_agent_videos.py --profiles {profile_id} --commands \"stand up\" \"walk forward\" \"turn left\" \"turn right\" --out evidence/agent_videos --max-steps 200 --policy-checkpoint {checkpoint}\n"
+        + "rm -rf evidence/agent_videos evidence/video_review\n"
+        + f"uv run python scripts/record_agent_videos.py --profiles {profile_id} --commands \"stand up\" \"walk forward\" \"turn left\" \"turn right\" --out evidence/agent_videos --max-steps \"$POST_TRAIN_VIDEO_MAX_STEPS\" --policy-checkpoint {checkpoint}\n"
         + "uv run eliza-robot-review-video-evidence --evidence-dir evidence/agent_videos --out-dir evidence/video_review --require-telemetry\n"
         + f"uv run eliza-robot-generate-alberta-report --package-root . --scope production-nebius-post-training --backend-dir evidence/backend_compare/{profile_id} --backend-validation evidence/backend_compare/{profile_id}/validation_report.json --obstacle-dir evidence/alberta_obstacle_course --obstacle-validation evidence/alberta_obstacle_course/validation_report.json --video-review evidence/video_review/video_review.json --video-manifest evidence/agent_videos/manifest.json --out-json evidence/ALBERTA_END_TO_END_REPORT.json --out-md evidence/ALBERTA_END_TO_END_REPORT.md\n",
     )

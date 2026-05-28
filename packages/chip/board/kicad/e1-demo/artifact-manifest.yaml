@@ -13,31 +13,31 @@ artifact_groups:
       - name: project
         status: draft
         metadata:
-          source_revision: 1a23d8d+working-tree
+          draft_provenance_note: draft source tree has no archived release source revision
           package_manifest_checksum: 57a60eafed39b3105c13af0e331d0df67796eea53ec96f07e196e383c3b6ac55
         required_metadata:
-          - source_revision
+          - draft_provenance_note
           - package_manifest_checksum
         globs:
           - board/kicad/e1-demo/*.kicad_pro
       - name: schematic
         status: draft
         metadata:
-          source_revision: 1a23d8d+working-tree
+          draft_provenance_note: draft source tree has no archived release source revision
           package_pinout_checksum: e0bc0ff6b04962667cf328efa6017ebf215408ac07d700f359141feadf08bcbe
         required_metadata:
-          - source_revision
+          - draft_provenance_note
           - package_pinout_checksum
         globs:
           - board/kicad/e1-demo/*.kicad_sch
       - name: pcb
         status: draft
         metadata:
-          source_revision: 1a23d8d+working-tree
+          draft_provenance_note: draft source tree has no archived release source revision
           schematic_checksum: e2ec1b8bec733c9162fb7e36cd90ecb145f8f6532e1a610abded05700e6aeea5
           footprint_source_checksum: 653620fabb70aeaf9c1dcd6c000f8c878d122bfa01c0e662675dcd47623c20c8
         required_metadata:
-          - source_revision
+          - draft_provenance_note
           - schematic_checksum
           - footprint_source_checksum
         globs:
@@ -54,7 +54,7 @@ artifact_groups:
           - board/kicad/e1-demo/**/*.pretty/*.kicad_mod
   kicad_cli_outputs:
     owner: board_closure
-    status: complete
+    status: missing
     cli_commands:
       erc: kicad-cli sch erc --output board/reports/fab/e1-demo-2026-05-17/e1-demo-erc-report.txt board/kicad/e1-demo/e1-demo.kicad_sch
       drc: kicad-cli pcb drc --output board/reports/fab/e1-demo-2026-05-17/e1-demo-drc-report.txt board/kicad/e1-demo/e1-demo.kicad_pcb
@@ -65,7 +65,7 @@ artifact_groups:
       fab_drawing: kicad-cli pcb export pdf --output board/reports/fab/e1-demo-2026-05-17/pdf/e1-demo-fab-drawing.pdf board/kicad/e1-demo/e1-demo.kicad_pcb
     artifacts:
       - name: erc_report
-        status: complete
+        status: missing
         metadata:
           kicad_version: 10.0.3
           command: kicad-cli sch erc --output board/reports/fab/e1-demo-2026-05-17/e1-demo-erc-report.txt board/kicad/e1-demo/e1-demo.kicad_sch
@@ -80,7 +80,7 @@ artifact_groups:
           - board/reports/fab/**/e1-demo-erc-report.txt
           - board/kicad/e1-demo/reports/erc*.txt
       - name: drc_report
-        status: complete
+        status: missing
         metadata:
           kicad_version: 10.0.3
           command: kicad-cli pcb drc --output board/reports/fab/e1-demo-2026-05-17/e1-demo-drc-report.txt board/kicad/e1-demo/e1-demo.kicad_pcb
@@ -95,7 +95,7 @@ artifact_groups:
           - board/reports/fab/**/e1-demo-drc-report.txt
           - board/kicad/e1-demo/reports/drc*.txt
       - name: gerbers
-        status: complete
+        status: draft
         metadata:
           kicad_version: 10.0.3
           command: kicad-cli pcb export gerbers --output board/reports/fab/e1-demo-2026-05-17/gerbers board/kicad/e1-demo/e1-demo.kicad_pcb
@@ -108,7 +108,7 @@ artifact_groups:
           - board/reports/fab/**/gerbers/*.g*
           - board/kicad/e1-demo/fab/gerbers/*.gbr
       - name: drill
-        status: complete
+        status: missing
         metadata:
           kicad_version: 10.0.3
           command: kicad-cli pcb export drill --output board/reports/fab/e1-demo-2026-05-17/drill board/kicad/e1-demo/e1-demo.kicad_pcb
@@ -121,7 +121,7 @@ artifact_groups:
           - board/reports/fab/**/drill/*.drl
           - board/kicad/e1-demo/fab/drill/*.drl
       - name: bom
-        status: complete
+        status: missing
         metadata:
           kicad_version: 10.0.3
           command: kicad-cli sch export bom --output board/reports/fab/e1-demo-2026-05-17/e1-demo-bom.csv board/kicad/e1-demo/e1-demo.kicad_sch
@@ -135,7 +135,7 @@ artifact_groups:
           - board/kicad/e1-demo/fab/bom/*.csv
           - board/kicad/e1-demo/fab/bom/*.xml
       - name: pick_and_place
-        status: complete
+        status: missing
         metadata:
           kicad_version: 10.0.3
           command: kicad-cli pcb export pos --output board/reports/fab/e1-demo-2026-05-17/e1-demo-position.csv board/kicad/e1-demo/e1-demo.kicad_pcb
@@ -149,7 +149,7 @@ artifact_groups:
           - board/kicad/e1-demo/fab/position/*.pos
           - board/kicad/e1-demo/fab/position/*.csv
       - name: fab_drawing
-        status: complete
+        status: missing
         metadata:
           kicad_version: 10.0.3
           command: kicad-cli pcb export pdf --output board/reports/fab/e1-demo-2026-05-17/pdf/e1-demo-fab-drawing.pdf board/kicad/e1-demo/e1-demo.kicad_pcb
@@ -162,6 +162,32 @@ artifact_groups:
           - board/reports/fab/**/*fab*drawing*.pdf
           - board/reports/fab/**/*fabrication*drawing*.pdf
           - board/kicad/e1-demo/fab/pdf/*fab*drawing*.pdf
+      - name: command_transcript
+        status: draft
+        metadata:
+          required_for_release_credit: true
+          release_credit: false
+          command_scope: erc_drc_gerber_drill_bom_position_fab_drawing
+        required_metadata:
+          - required_for_release_credit
+          - release_credit
+          - command_scope
+        globs:
+          - board/reports/fab/**/*command*transcript*.txt
+          - board/reports/fab/**/*kicad*transcript*.txt
+      - name: kicad_tool_versions
+        status: draft
+        metadata:
+          required_for_release_credit: true
+          release_credit: false
+          command: kicad-cli version
+        required_metadata:
+          - required_for_release_credit
+          - release_credit
+          - command
+        globs:
+          - board/reports/fab/**/*tool*version*.txt
+          - board/reports/fab/**/*kicad*version*.txt
   board_reviews:
     owner: board_closure
     status: draft

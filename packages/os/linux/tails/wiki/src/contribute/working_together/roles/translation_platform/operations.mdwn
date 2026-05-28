@@ -1,0 +1,208 @@
+[[!meta title="Translation platform: operations documentation"]]
+[[!meta robots="noindex"]]
+
+[[!toc levels=1]]
+
+Enable a new language on Weblate
+================================
+
+If the language you're planning to enable is part of our [[(Tier-1)
+languages|contribute/how/translate#tier-1-languages]], you may proceed.
+Else, propose this on the [[tails-l10n mailing list|doc/about/contact#tails-l10n]].
+
+1. Add the new language code to the `exclude` setting in
+   [[!tails_gitweb ikiwiki.setup]]
+   and have this change reviewed and merged into our `master` branch.
+
+2. Add the new language to `weblate::params::weblate_additional_languages` in
+   [[!tails_gitweb_puppet_code data/common.yaml]]
+   and have a sysadmin review your changes and deploy them to production.
+
+3. To create PO files for the new language and commit them to Git,
+   run this command on the system that runs our translation platform,
+   as the `weblate` user:
+
+       ~/scripts/weblate_status.py
+
+   Once satisfied, run this command again with the `--modify`
+   argument, so it actually performs the desired changes:
+
+       ~/scripts/weblate_status.py --modify
+
+   Note that this script must not be run concurrently with
+   [[!tails_gitweb_puppet_weblate files/weblate/scripts/weblate-integration desc="`weblate-integration`"]].
+   Hence, they both use a shared lock file.
+
+   The changes made by the above script must be manually pushed to the
+   canonical repo, as we don't allow Weblate to create new files:
+
+       sudo -u weblate /var/lib/weblate/scripts/shell_in_container.sh
+       cd /integration
+       git pull weblate master
+       git push weblate-gatekeeper master
+
+4. Finally, to update the Weblate components, run this command as the
+   `weblate` user:
+
+       python3 /usr/local/share/weblate/manage.py \
+                  loadpo --all --lang <LANG>
+
+   … where `<LANG>` is the newly added 2-letter language code.
+
+Add a new language to the Tails website and the bundled offline documentation
+=============================================================================
+
+When a new language is sufficiently translated (especially the core pages),
+this are the steps needed to make it available on our website and ship it with
+new versions of Tails:
+
+- Browse the translation on our staging site and make sure that it has no big
+  issues.
+
+- Checkout and build locally the weblate repository, and see that there are no
+  errors.
+
+- Edit the `./ikiwiki.setup` file, both for the production website and in [[!tails_gitlab tails/tails desc="the `tails/tails` project"]] (for the bundled offline documentation) ([example for Russian locale](https://gitlab.tails.boum.org/tails/tails/-/commit/db7a64d89a5ecd062cfaf2545e03c048351aa19f)):
+
+  - Remove the locale from the regexp exclude line.
+
+  - Add locale to `po_slave_languages` list (in alphabetical order).
+
+- Update the `wiki/src/contribute/l10n_tricks/language_statistics.sh` script by adding the new language to `LANGUAGES` and maybe updating the list of languages not activated in the website yet.
+
+Fix missing not-in-production languages
+=======================================
+
+If our integration scripts for some reason fail to add to a component the
+languages that are only enabled in Weblate and not in production, you may fix
+it (or at least try to reproduce the issue) by doing the following:
+
+1. Force the creation of the language files: `weblate_status.py --modify`
+
+2. Pull the changes from the Weblate repo and manually push them to the canonical repo.
+
+3. Wait for or manually run `cron.sh`.
+
+4. Tell Weblate to load the new `.po` files: `weblate loadpo --foreground tails/wikisrcnewsversion_58po`
+
+Manually fix issues
+===================
+
+Our Weblate codebase is stored in `/usr/local/share/weblate`.
+
+If commands have to be run, they should be run as the `weblate` user;
+for example, with `sudo -u weblate COMMAND`.
+
+However, this VM is supposed to run smoothly without human
+intervention, so be careful with what you do and please document
+modifications you make so that they can be fed back to a more
+appropriate place, such as our Puppet code or this document.
+
+Reload translations from Git and cleanup orphaned checks and suggestions
+========================================================================
+
+If something went wrong, we may need to ask Weblate to reload all
+translations from Git, using the following command:
+
+	sudo -u weblate ./manage.py loadpo --all
+
+Cronjobs
+========
+
+Make sure that cronjobs are enabled:
+
+    sudo -u weblate crontab -l
+
+Post-upgrade
+============
+
+So, after - lets say - pulling a new Weblate version, from the directory
+/usr/local/share/weblate you need run, the
+[[Generic Upgrade Instructions|https://docs.weblate.org/en/latest/admin/upgrade.html#generic-upgrade-instructions]]
+as weblate user:
+
+In order to update all checks after an upgrade:
+
+	sudo -u weblate python3 manage.py updatechecks --all
+
+see [[documentation|https://docs.weblate.org/en/weblate-3.5.1/admin/management.html#updatechecks]]:
+"This could be useful only on upgrades which do major changes to checks."
+
+Fix broken `commit_pending`
+===========================
+
+Occasionally, Weblate's `manage.py commit_pending`, that's run by cron,
+will get stuck on a specific file.
+
+To fix that, one can delete the translation change that breaks stuff.
+
+1. Run the `commit_pending` thing by hand. If it gets stuck on
+   "committing $FILE", then read on. Otherwise you're probably
+   experiencing a different problem.
+
+2. Find the ID of the affected subproject (i.e. translation file)
+   in the `trans_subprojet` table. For example:
+
+        select id from trans_subproject where name = 'wiki/src/install/mac/usb.*.po';
+
+3. Find the ID of the broken translation, for example:
+
+        select id from trans_translation where subproject_id = 1889 and language_code = 'fr';
+
+4. List recent changes on this translation, for example:
+
+        select * from trans_change where translation_id = 9734;
+
+5. Delete the last translation change, for example:
+
+        delete from trans_change where id = XYZ;
+
+6. Run the `commit_pending` thing by hand. This time it should
+   complete rather quickly.
+
+7. If `commit_pending` still does not complete, or if you can't make
+   change in the Weblate web interface to the component that was
+   broken, then you need to do more than this (#16995) ⇒ read on.
+   Else, you can stop here.
+
+8. Delete all translation history for the broken resource (`translation_id`);
+   for example:
+   
+        delete from trans_change where translation_id = 9734;
+
+9. Make Weblate forget the broken component, then re-add it.
+   To do so:
+
+   1. Log in as the `weblate` user.
+
+   2. `cd ~/scripts/`.
+
+   3. Start `ipython3`.
+
+   4. Run code based on this example, line by line:
+
+          import tailsWeblate
+          fpath = 'wiki/src/install/mac/usb.es.po'
+          sp = tailsWeblate.subProject(fpath)
+          sp.delete()
+          sp = tailsWeblate.addComponent(fpath)
+
+<a id="maintenance-mode"></a>
+
+Maintenance mode
+================
+
+To disable `cron.sh` temporarily, run:
+
+    touch /var/lib/weblate/config/.maintenance
+
+To re-enable `cron.sh`, run:
+
+    rm /var/lib/weblate/config/.maintenance
+
+Unlock translations
+===================
+
+When Weblate fails to fetch from repositories it locks translations. They can be unlocked with:
+
+    sudo -u weblate podman exec -t -i weblate weblate unlock_translation tails

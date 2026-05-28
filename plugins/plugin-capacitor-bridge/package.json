@@ -42,7 +42,7 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "bun run check:android-manifest && tsup",
+		"build": "bun run check:android-manifest && NODE_OPTIONS='--max-old-space-size=8192' tsup",
 		"check:android-manifest": "node scripts/check-android-manifest.mjs",
 		"dev": "tsup --watch",
 		"clean": "rm -rf dist .turbo node_modules",

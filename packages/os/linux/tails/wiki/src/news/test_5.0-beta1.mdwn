@@ -1,0 +1,111 @@
+[[!meta title="Call for testing: 5.0~beta1"]]
+[[!meta date="Tue, 05 Apr 2022 00:00:00 -0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+We plan to release Tails 5.0 on May 3 or May 31. It will be the first version of Tails
+based on Debian 11 (Bullseye). It brings new versions of most of the software
+included in Tails and some important usability improvements.
+
+You can help Tails by testing the beta for Tails 5.0
+before the end of April.
+
+[[!toc levels=1]]
+
+# Changes and upgrades
+
+* Update to Debian 11 (Bullseye)
+
+  In particular this updates software included in Tails to:
+
+  - GNOME 3.38
+  - Audacity 2.4.2
+  - GIMP 2.20.22
+  - Inkscape 1.0.2
+  - LibreOffice 7.0.4
+  - OnionCircuits 0.7
+  - Pidgin 2.14.1
+  - Thunderbird 91.7.0-2~deb11u1
+
+* Upgrade Tor Browser to 11.0.10
+
+* Enable driverless printing and scanning ([[!tails_ticket 18521]])
+
+# Fixed problems
+
+* Fix locales translation in the Welcome Screen ([[!tails_ticket 18199]])
+
+* Fix opening a Veracrypt volume with a long passphrase ([[!tails_ticket 17474]])
+
+# Changelog
+
+For more details about what has changed in Tails 5.0~beta1, read our
+[changelog](https://gitlab.tails.boum.org/tails/tails/-/raw/5.0-beta1/debian/changelog).
+
+# Known issues
+
+* *WhisperBack* fails to send error reports ([[!tails_ticket 18908]]).
+
+* *Tails Installer* sometimes fails to install or upgrade Tails ([[!tails_ticket 18844]], [[!tails_ticket 18841]]).
+  If this happens to you, please retry.
+
+* *Additional Software* sometimes fails to install packages on first startup after configuring it ([[!tails_ticket 18839]]).
+  To fix this problem, install your *Additional Software* manually again, then restart Tails.
+
+* *OpenPGP Applet* is not usable: its icon is not displayed ([[!tails_ticket 18845]]).
+
+* Tails 5.0~beta1 takes more time to start than previous versions ([[!tails_ticket 18906]]).
+
+* [Open issues for Tails 5.0](https://gitlab.tails.boum.org/tails/tails/-/boards/4?label_name%5B%5D=Core%20Work%3AFoundations%20Team&milestone_title=Tails_5.0)
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# How to test Tails 5.0~beta1?
+
+Keep in mind that this is a test image. We tested that it is not broken in
+obvious ways, but it might still contain undiscovered issues.
+
+Please, report any new problem to <tails-testers@boum.org> (public mailing list)
+before the end of April.
+
+# Get Tails 5.0~beta1
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+No automatic upgrade is available, so do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To download 5.0~beta1
+
+### Direct download
+
+  - For USB sticks (USB image)
+
+  - For DVDs and virtual machines (ISO image)
+
+### BitTorrent download
+
+  - For USB sticks (USB image)
+
+  - For DVDs and virtual machines (ISO image)
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+  - [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+# What's coming up?
+
+We will keep our [[calendar|contribute/calendar]] updated regarding the planned
+release date of Tails 5.0.
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=5.0-beta1">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

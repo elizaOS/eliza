@@ -1,0 +1,10 @@
+#include <tunables/global>
+
+/usr/bin/onionshare-cli {
+  #include <abstractions/onionshare>
+
+  /usr/bin/ r,
+  /usr/bin/onionshare-cli r,
+
+  #include <local/usr.bin.onionshare-cli>
+}

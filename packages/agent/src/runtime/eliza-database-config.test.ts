@@ -64,7 +64,7 @@ describe("database runtime config", () => {
         warn: () => undefined,
         error: () => undefined,
       },
-    } as any;
+    } as unknown as Parameters<typeof installRuntimeMethodBindings>[0];
 
     installRuntimeMethodBindings(runtime);
 

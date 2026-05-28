@@ -1,0 +1,14 @@
+[Unit]
+Description=Tor Connection Assistant
+Requires=tails-ibus-proxy.service
+After=tails-ibus-proxy.service
+Requires=tails-a11y-bus-proxy.service
+After=tails-a11y-bus-proxy.service
+ConditionUser=1000
+
+[Service]
+Type=notify
+NotifyAccess=all
+StandardError=journal
+ExecStart=/usr/local/bin/tca
+Restart=no

@@ -9,7 +9,7 @@
  *   - the mmap regions for weights (deduplicated by absolute path),
  *   - the kernel set (same shipped llama.cpp library after fusion),
  *   - the scheduler queue (one queue, prioritised),
- *   - the DFlash drafter (always wired, see AGENTS.md §3 #4).
+ *   - the native MTP draft path (always wired for Eliza-1).
  *
  * What they do NOT share:
  *   - KV cache memory (different layer counts, different head configs,
@@ -32,11 +32,10 @@ interface Logger {
 /**
  * The model roles that can be resident at once on the local-inference
  * path. The `MemoryMonitor` evicts them in *ascending priority* under RAM
- * pressure (lowest first): the DFlash drafter is cheapest to drop, the
- * text target is the last thing to go. Voice TTS/ASR weights are evicted
- * via `MmapRegionHandle.evictPages()`; the embedding model by unloading
- * it; the drafter by restarting llama-server without `-md` (a last resort
- * — it's co-resident in that process, so "evict" is heavy).
+ * pressure (lowest first): low-cost voice auxiliaries are cheapest to drop,
+ * the text target is the last thing to go. Voice TTS/ASR weights are evicted
+ * via `MmapRegionHandle.evictPages()`; the embedding model is unloaded by
+ * its owner.
  */
 export type ResidentModelRole =
 	| "drafter"
@@ -51,7 +50,7 @@ export type ResidentModelRole =
 
 /**
  * Eviction priority by role — lower evicts first. Matches the brief's
- * `drafter < emotion < speaker-id < vision/mmproj < embedding < vad < ASR <
+ * `emotion < speaker-id < vision/mmproj < embedding < vad < ASR <
  * TTS < text-target`. The cold-3 set (`emotion`, `speaker-id`) is cheap to
  * load on demand, so evicting them is the first reclamation step under
  * sustained pressure. See `.swarm/research/R9-memory.md` §4.1.
@@ -191,40 +190,19 @@ export interface SchedulerSlot extends RefCountedResource {
 	surfaces(): ReadonlyArray<"text" | "voice">;
 }
 
-/** DFlash drafter is shared between text-only and voice modes (AGENTS.md §4). */
-export interface DflashDrafterHandle extends RefCountedResource {
-	readonly drafterModelId: string;
-	/**
-	 * Absolute path of the drafter GGUF the running llama-server was launched
-	 * with (`-md`). Co-resident with the target for the lifetime of the
-	 * server — `release()` here just drops the refcount; the actual unmap
-	 * happens when the server stops.
-	 */
-	readonly drafterModelPath: string;
+/** Native MTP draft state is shared between text-only and voice modes. */
+export interface MtpDraftHandle extends RefCountedResource {
+	readonly modelId: string;
 }
 
-/**
- * Build a real `DflashDrafterHandle` backed by the running llama-server's
- * `-md` drafter. The drafter is mmapped by the fork at server start and stays
- * resident until the server stops, so `release()` is a no-op from this
- * handle's perspective — the registry refcount is what gates whether voice
- * mode may evict the *target's* page set, not the drafter. Returns null when
- * no llama-server is running with a configured drafter (the node-llama-cpp
- * backend has no drafter — text-only, no speculative decoding).
- */
-export function createDflashDrafterHandle(args: {
-	drafterModelId: string;
-	drafterModelPath: string;
-}): DflashDrafterHandle {
+export function createMtpDraftHandle(args: {
+	modelId: string;
+}): MtpDraftHandle {
 	return {
-		id: `dflash-drafter:${args.drafterModelPath}`,
-		drafterModelId: args.drafterModelId,
-		drafterModelPath: args.drafterModelPath,
+		id: `mtp:${args.modelId}`,
+		modelId: args.modelId,
 		async release(): Promise<void> {
-			// The drafter's mmap lifetime is owned by the llama-server process;
-			// dropping the last ref here does not unmap it. This is intentional:
-			// the drafter is "always wired" (AGENTS.md §4) and re-acquired the
-			// moment voice arms again, so churn is wasteful.
+			// MTP state lifetime is owned by the active native text runtime.
 		},
 	};
 }

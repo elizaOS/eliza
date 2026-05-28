@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "metric": "asr_wer",
+  "op": "<=",
+  "status": "not-run",
+  "wer": null,
+  "passed": false,
+  "gateThreshold": 0.1,
+  "backend": "metal",
+  "labelledSetSource": "tts_loopback_self_labelled",
+  "labelledSetProvenance": "generated_tts",
+  "utterances": 2,
+  "reason": "Audio is synthesized from the same local bundle and labelled with the text that created it. This self-labelled TTS→ASR loopback WER measures text preservation through the local TTS and ASR stack, not ASR accuracy on real recorded speech.",
+  "minRealRecordedUtterances": 5,
+  "rtf": 6.780166242346335,
+  "benchArtifact": "../../local-evidence/qwen3-voice-proof/asr-bench.json"
+}

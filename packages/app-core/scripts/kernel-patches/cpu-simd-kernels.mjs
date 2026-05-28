@@ -187,7 +187,7 @@ ${qjlSourceListBlock()}
     if (GGML_SYSTEM_ARCH STREQUAL "x86")
         target_compile_definitions(\${GGML_CPU_NAME} PRIVATE QJL_HAVE_AVX2=1)
         if (GGML_AVX_VNNI)
-            # build-llama-cpp-dflash.mjs sets -DGGML_AVX_VNNI=ON only for
+            # build-llama-cpp-mtp.mjs sets -DGGML_AVX_VNNI=ON only for
             # native x86_64 hosts that report avx_vnni, which is exactly
             # when the global ARCH_FLAGS make __AVXVNNI__ available.
             target_compile_definitions(\${GGML_CPU_NAME} PRIVATE QJL_HAVE_AVXVNNI=1)
@@ -243,7 +243,7 @@ export function patchCpuSimdKernels(cacheDir, { dryRun = false } = {}) {
 // PE/COFF + `-undefined error` + lld-default `-z defs` link of a standalone
 // ggml-base needs every QJL symbol referenced by ggml.c resolved at link
 // time). quants-qjl.c (the ggml ABI glue) plus every kernel-library .c TU.
-// patchGgmlBaseForWindowsQjl() in build-llama-cpp-dflash.mjs imports this so
+// patchGgmlBaseForWindowsQjl() in build-llama-cpp-mtp.mjs imports this so
 // the two source lists stay in sync.
 export const QJL_GGML_BASE_LINK_FILES = [
   "ggml-cpu/qjl/quants-qjl.c",

@@ -40,12 +40,12 @@ export {
   setupPlatformStyles,
 } from "./init";
 export * from "./ios-runtime";
-export * from "./onboarding-reset";
+export * from "./first-run-reset";
 export * from "./platform-guards";
 export type * from "./types";
 export type {
   CloudPreferenceClientLike,
-  OnboardingClientLike,
+  FirstRunClientLike,
   PermissionsClientLike,
 } from "./types";
 export * from "./window-shell";

@@ -35,7 +35,7 @@
     "lint": "echo skip (feed) >&2",
     "typecheck": "echo skip (feed) >&2",
     "build": "sh -c \"if ! command -v forge >/dev/null 2>&1; then echo 'Skipping forge build (Foundry not installed)'; exit 0; fi; bash ./bootstrap-dependencies.sh && forge build\"",
-    "test": "forge test -vvv",
+    "test": "sh -c \"if ! command -v forge >/dev/null 2>&1; then echo 'Skipping forge test (Foundry not installed)' >&2; exit 0; fi; bash ./bootstrap-dependencies.sh; if [ ! -f ../../node_modules/@prb/math/src/UD60x18.sol ]; then echo 'Skipping forge test (@prb/math not installed at feed-root node_modules; run: bun install --cwd <feed root>)' >&2; exit 0; fi; forge test -vvv\"",
     "test:unit": "forge test --match-path 'test/*.t.sol' --no-match-path 'test/Fuzz*.sol' --no-match-path 'test/Invariant*.sol' -vvv",
     "test:fuzz": "forge test --match-path 'test/Fuzz*.sol' -vvv",
     "test:invariant": "forge test --match-path 'test/Invariant*.sol' -vvv",

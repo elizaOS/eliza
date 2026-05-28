@@ -1,4 +1,4 @@
-CONFIG_CMDLINE="earlycon console=ttySIF0,3686400n8 ignore_loglevel loglevel=7 mem=192M"
+CONFIG_CMDLINE="console=ttyS0 console=ttySIF0,3686400 earlycon quiet loglevel=4 mem=192M"
 CONFIG_CMDLINE_FORCE=y
 CONFIG_RISCV_SBI_V01=y
 CONFIG_HVC_RISCV_SBI=y

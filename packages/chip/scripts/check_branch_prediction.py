@@ -22,8 +22,10 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import yaml
 
@@ -43,6 +45,7 @@ FULL_BROWSER_BUILD_CRYPTO_SHARD_SWEEP_REL = (
     "docs/evidence/cpu_ap/bpu_sweep_full_browser_build_crypto_shard.json"
 )
 FULL_COMPRESSION_SHARD_SWEEP_REL = "docs/evidence/cpu_ap/bpu_sweep_full_compression_shard.json"
+FULL_AGENT_SHARD_SWEEP_REL = "docs/evidence/cpu_ap/bpu_sweep_full_agent_shard.json"
 FALSE_CLAIM_STALE_PHRASES = (
     "claim is supported",
     "claim remains supported",
@@ -117,6 +120,10 @@ REQUIRED_FULL_BROWSER_BUILD_CRYPTO_SHARD_TRACES = {
 }
 REQUIRED_FULL_COMPRESSION_SHARD_TRACES = {
     "compression_proxy",
+}
+REQUIRED_FULL_AGENT_SHARD_TRACES = {
+    "agent_loop",
+    "agent_decode",
 }
 
 # The minimum thresholds the BPU geometry must satisfy to support a 2028
@@ -377,8 +384,7 @@ def cocotb_test_count(path: Path) -> int:
 
 def expected_bpu_cocotb_total() -> int:
     return sum(
-        cocotb_test_count(ROOT / "verify/cocotb/bpu" / source)
-        for source in BPU_COCOTB_TEST_SOURCES
+        cocotb_test_count(ROOT / "verify/cocotb/bpu" / source) for source in BPU_COCOTB_TEST_SOURCES
     )
 
 
@@ -460,7 +466,7 @@ def validate_cbp5_trace_manifest(failures: list[str]) -> None:
         failures.append(f"{artifact} stage_dir must be external/cbp5-traces")
         stage_dir = ROOT / "external/cbp5-traces"
     else:
-        stage_dir = ROOT / stage_dir_value
+        stage_dir = ROOT / "external/cbp5-traces"
     staged = data.get("staged_traces")
     if not isinstance(staged, list) or not staged:
         failures.append(f"{artifact} staged_traces must be a non-empty list")
@@ -525,7 +531,7 @@ def validate_workload_trace_manifest(
     missing = data.get("missing_required_local_trace_names")
     if missing != []:
         failures.append(f"{artifact} missing_required_local_trace_names must be empty")
-    required = set(data.get("required_local_trace_names", []))
+    required = set(cast(Iterable[str], data.get("required_local_trace_names", [])))
     if required != REQUIRED_QEMU_WORKLOAD_TRACES:
         failures.append(f"{artifact} required_local_trace_names does not match gate list")
 
@@ -767,14 +773,14 @@ def validate_sweep_evidence(
     parse_artifact_timestamp(data, artifact, failures)
     if data.get("harness") != "behavioural-bpu-model":
         failures.append(f"{artifact} harness must be behavioural-bpu-model")
-    declared = set(data.get("ittage_evidence_counters", []))
+    declared = set(cast(Iterable[str], data.get("ittage_evidence_counters", [])))
     missing_declared = REQUIRED_ITTAGE_SWEEP_COUNTERS - declared
     if missing_declared:
         failures.append(
             f"{artifact} missing ITTAGE evidence counter declarations: "
             + ", ".join(sorted(missing_declared))
         )
-    timing_declared = set(data.get("timing_evidence_counters", []))
+    timing_declared = set(cast(Iterable[str], data.get("timing_evidence_counters", [])))
     missing_timing_declared = REQUIRED_TIMING_SWEEP_COUNTERS - timing_declared
     if missing_timing_declared:
         failures.append(
@@ -862,7 +868,7 @@ def validate_full_trace_shard_sweep(
     if data.get("window_mode") != "prefix":
         failures.append(f"{artifact} window_mode must be prefix for full-trace shard")
     trace_filter = data.get("trace_filter")
-    if set(trace_filter or []) != required_traces:
+    if set(cast(Iterable[str], trace_filter or [])) != required_traces:
         failures.append(f"{artifact} trace_filter must match required full shard")
     trace_set = data.get("trace_set")
     if not isinstance(trace_set, list) or not trace_set:
@@ -876,7 +882,9 @@ def validate_full_trace_shard_sweep(
                 failures.append(f"{artifact} trace_set rows must be objects")
                 continue
             if not isinstance(row.get("branches"), int) or row["branches"] <= 0:
-                failures.append(f"{artifact} trace_set row {row.get('name')} branches must be positive")
+                failures.append(
+                    f"{artifact} trace_set row {row.get('name')} branches must be positive"
+                )
             if not isinstance(row.get("instructions"), int) or row["instructions"] <= 0:
                 failures.append(
                     f"{artifact} trace_set row {row.get('name')} instructions must be positive"
@@ -893,12 +901,13 @@ def validate_full_trace_shard_sweep(
         if isinstance(baseline, dict) and isinstance(h2p_off, dict):
             base_mpki = baseline.get("weighted_mpki")
             off_mpki = h2p_off.get("weighted_mpki")
-            if isinstance(base_mpki, (int, float)) and isinstance(off_mpki, (int, float)):
-                if (
-                    require_baseline_not_worse_than_h2p_off
-                    and float(base_mpki) > float(off_mpki)
-                ):
-                    failures.append(f"{artifact} baseline must not regress versus h2p_off")
+            if (
+                isinstance(base_mpki, (int, float))
+                and isinstance(off_mpki, (int, float))
+                and require_baseline_not_worse_than_h2p_off
+                and float(base_mpki) > float(off_mpki)
+            ):
+                failures.append(f"{artifact} baseline must not regress versus h2p_off")
         for config in required_best_not_worse_than:
             best_name = data.get("best_config")
             best = results.get(best_name) if isinstance(best_name, str) else None
@@ -908,9 +917,12 @@ def validate_full_trace_shard_sweep(
                 continue
             best_mpki = best.get("weighted_mpki")
             other_mpki = other.get("weighted_mpki")
-            if isinstance(best_mpki, (int, float)) and isinstance(other_mpki, (int, float)):
-                if float(best_mpki) > float(other_mpki):
-                    failures.append(f"{artifact} best_config must not regress versus {config}")
+            if (
+                isinstance(best_mpki, (int, float))
+                and isinstance(other_mpki, (int, float))
+                and float(best_mpki) > float(other_mpki)
+            ):
+                failures.append(f"{artifact} best_config must not regress versus {config}")
 
 
 def validate_workload_class_bucket_promotion(
@@ -962,8 +974,7 @@ def validate_workload_class_bucket_promotion(
     missing = sorted(required - seen)
     if missing:
         failures.append(
-            f"{artifact} class_bucket_promotion missing required buckets: "
-            + ", ".join(missing)
+            f"{artifact} class_bucket_promotion missing required buckets: " + ", ".join(missing)
         )
 
 
@@ -1177,6 +1188,7 @@ def evaluate_evidence_artifacts() -> list[str]:
         ROOT / FULL_SYSTEM_GPU_SHARD_SWEEP_REL,
         ROOT / FULL_BROWSER_BUILD_CRYPTO_SHARD_SWEEP_REL,
         ROOT / FULL_COMPRESSION_SHARD_SWEEP_REL,
+        ROOT / FULL_AGENT_SHARD_SWEEP_REL,
     )
     for path in required_artifacts:
         if not path.is_file():
@@ -1206,8 +1218,7 @@ def evaluate_evidence_artifacts() -> list[str]:
             if positive:
                 failures.append(
                     "mpki_results_synthetic.json cannot assert release MPKI claims from "
-                    "synthetic_planning_only evidence: "
-                    + ", ".join(positive)
+                    "synthetic_planning_only evidence: " + ", ".join(positive)
                 )
     sweep_path = ROOT / "docs/evidence/cpu_ap/bpu_sweep_results.json"
     if sweep_path.is_file():
@@ -1251,12 +1262,17 @@ def evaluate_evidence_artifacts() -> list[str]:
         required_extra_configs={"h2p_lowconf_only"},
         required_best_not_worse_than=("baseline", "h2p_off"),
     )
+    validate_full_trace_shard_sweep(
+        failures,
+        FULL_AGENT_SHARD_SWEEP_REL,
+        REQUIRED_FULL_AGENT_SHARD_TRACES,
+        require_baseline_not_worse_than_h2p_off=False,
+        required_extra_configs={"h2p_lowconf_only"},
+        required_best_not_worse_than=("baseline", "h2p_off"),
+    )
     cbp5_model_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5.json"
     cbp5_model_generated: datetime | None = None
-    if cbp5_model_path.is_file():
-        data = read_json_object(cbp5_model_path, failures)
-    else:
-        data = None
+    data = read_json_object(cbp5_model_path, failures) if cbp5_model_path.is_file() else None
     if data is not None:
         artifact = "mpki_results_cbp5.json"
         if data.get("schema") != "eliza.bpu_mpki.v1":
@@ -1270,20 +1286,16 @@ def evaluate_evidence_artifacts() -> list[str]:
         policy = claim_policy(data, artifact, failures)
         reject_stale_false_claim_reason(policy, ("cbp5_claim",), artifact, failures)
         evaluate_target_claim_semantics(data, artifact, policy, "cbp5_claim", failures)
-        for name, workload in data.get("workloads", {}).items():
+        cbp5_workloads = cast("dict[str, object]", data.get("workloads", {}))
+        for name, workload in cbp5_workloads.items():
             if not isinstance(workload, dict):
                 failures.append(f"mpki_results_cbp5.json workload {name} must be an object")
             elif workload.get("trace_class") != "cbp5_train_traces_only":
-                failures.append(
-                    f"mpki_results_cbp5.json workload {name} has non-CBP5 trace_class"
-                )
+                failures.append(f"mpki_results_cbp5.json workload {name} has non-CBP5 trace_class")
 
     cbp5_rtl_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json"
     cbp5_rtl_generated: datetime | None = None
-    if cbp5_rtl_path.is_file():
-        data = read_json_object(cbp5_rtl_path, failures)
-    else:
-        data = None
+    data = read_json_object(cbp5_rtl_path, failures) if cbp5_rtl_path.is_file() else None
     if data is not None:
         artifact = "mpki_results_cbp5_rtl.json"
         if data.get("schema") != "eliza.bpu_mpki.v1":
@@ -1298,21 +1310,21 @@ def evaluate_evidence_artifacts() -> list[str]:
         reject_stale_false_claim_reason(policy, ("cbp5_claim",), artifact, failures)
         evaluate_target_claim_semantics(data, artifact, policy, "cbp5_claim", failures)
 
-    if cbp5_model_generated is not None and cbp5_rtl_generated is not None:
-        if cbp5_model_generated < cbp5_rtl_generated:
-            failures.append(
-                "mpki_results_cbp5.json is older than mpki_results_cbp5_rtl.json; "
-                "refresh behavioural CBP-5 model evidence after the latest RTL CBP-5 run"
-            )
+    if (
+        cbp5_model_generated is not None
+        and cbp5_rtl_generated is not None
+        and cbp5_model_generated < cbp5_rtl_generated
+    ):
+        failures.append(
+            "mpki_results_cbp5.json is older than mpki_results_cbp5_rtl.json; "
+            "refresh behavioural CBP-5 model evidence after the latest RTL CBP-5 run"
+        )
     validate_cbp5_trace_manifest(failures)
 
     workload_mpki_path = ROOT / "docs/evidence/cpu_ap/mpki_results_workload_rtl.json"
     workload_trace_dir = ROOT / "external/workload-traces"
     workloads_for_manifest: dict[str, object] | None = None
-    if workload_mpki_path.is_file():
-        data = read_json_object(workload_mpki_path, failures)
-    else:
-        data = None
+    data = read_json_object(workload_mpki_path, failures) if workload_mpki_path.is_file() else None
     if data is not None:
         artifact = "mpki_results_workload_rtl.json"
         if data.get("schema") != "eliza.bpu_mpki.v1":
@@ -1324,7 +1336,7 @@ def evaluate_evidence_artifacts() -> list[str]:
             failures.append(f"{artifact} evidence_class must be qemu_rv64_workload")
         validate_bpu_claim_boundary(data, artifact, "qemu_rv64_workload", failures)
         validate_workload_replay_coverage(data, artifact, failures)
-        workloads = data.get("workloads", {})
+        workloads = cast("dict[str, object]", data.get("workloads", {}))
         if isinstance(workloads, dict):
             workloads_for_manifest = workloads
         if workload_trace_dir.is_dir():
@@ -1335,11 +1347,10 @@ def evaluate_evidence_artifacts() -> list[str]:
             missing = sorted(expected - set(workloads))
             if missing:
                 failures.append(
-                    "mpki_results_workload_rtl.json missing workload traces: "
-                    + ", ".join(missing)
+                    "mpki_results_workload_rtl.json missing workload traces: " + ", ".join(missing)
                 )
         for name, workload in workloads.items():
-            if workload.get("trace_class") != "qemu_rv64_workload":
+            if cast("dict[str, object]", workload).get("trace_class") != "qemu_rv64_workload":
                 failures.append(
                     f"mpki_results_workload_rtl.json workload {name} has non-QEMU trace_class"
                 )
@@ -1351,8 +1362,7 @@ def evaluate_evidence_artifacts() -> list[str]:
             failures.append(
                 "mpki_results_workload_rtl.json cannot assert workload/SPEC/AOSP/JS MPKI "
                 "claims until full external trace evidence and class-bucket promotion "
-                "gates are present: "
-                + ", ".join(positive)
+                "gates are present: " + ", ".join(positive)
             )
         full_trace_claims = [
             key
@@ -1423,7 +1433,10 @@ def evaluate_verification_reports() -> list[str]:
                 failures.append("BPU cocotb aggregate schema drifted")
             if data.get("status") != "PASS":
                 failures.append("BPU cocotb aggregate status must be PASS")
-            if data.get("expected_total_tests") != expected_total or data.get("total_tests") != expected_total:
+            if (
+                data.get("expected_total_tests") != expected_total
+                or data.get("total_tests") != expected_total
+            ):
                 failures.append(
                     f"BPU cocotb aggregate must record {expected_total}/{expected_total} target-module tests"
                 )
@@ -1467,7 +1480,9 @@ def evaluate_verification_reports() -> list[str]:
                 if module_test_sum != data.get("total_tests"):
                     failures.append("BPU cocotb aggregate total_tests must equal module test sum")
                 if module_expected_sum != data.get("expected_total_tests"):
-                    failures.append("BPU cocotb aggregate expected_total_tests must equal module expected-test sum")
+                    failures.append(
+                        "BPU cocotb aggregate expected_total_tests must equal module expected-test sum"
+                    )
     return failures
 
 
@@ -1499,8 +1514,10 @@ def workload_replay_warnings(workload_mpki_path: Path) -> list[dict[str, object]
             continue
         if not isinstance(replayed_branches, int):
             continue
-        fraction = float(replay_fraction) if isinstance(replay_fraction, (int, float)) else (
-            replayed_branches / total_branches
+        fraction = (
+            float(replay_fraction)
+            if isinstance(replay_fraction, (int, float))
+            else (replayed_branches / total_branches)
         )
         if fraction < 0.10:
             warnings.append(
@@ -1535,7 +1552,7 @@ def build_evidence(
         or name in EVIDENCE_SCALARS
     }
     synthetic_mpki_path = ROOT / "docs/evidence/cpu_ap/mpki_results_synthetic.json"
-    synthetic_mpki_ref: dict[str, str | bool] = {
+    synthetic_mpki_ref: dict[str, object] = {
         "path": str(synthetic_mpki_path.relative_to(ROOT)),
         "schema": "eliza.bpu_mpki.v1",
         "harness": "cocotb-rtl-bpu_top",
@@ -1550,7 +1567,9 @@ def build_evidence(
         synthetic_mpki_ref["sha256"] = sha256_path(synthetic_mpki_path)
         synthetic_mpki_ref["present"] = True
         synthetic_mpki_ref.update(
-            artifact_metric_ref(synthetic_mpki_path, load_json_object_if_present(synthetic_mpki_path))
+            artifact_metric_ref(
+                synthetic_mpki_path, load_json_object_if_present(synthetic_mpki_path)
+            )
         )
     else:
         synthetic_mpki_ref["present"] = False
@@ -1565,7 +1584,9 @@ def build_evidence(
         "present": workload_trace_manifest_path.is_file(),
     }
     if workload_trace_manifest_path.is_file():
-        manifest_data = load_json_object_if_present(workload_trace_manifest_path)
+        manifest_data = cast(
+            "dict[str, object]", load_json_object_if_present(workload_trace_manifest_path)
+        )
         workload_trace_manifest_ref["sha256"] = sha256_path(workload_trace_manifest_path)
         workload_trace_manifest_ref["trace_count"] = manifest_data.get("trace_count")
         workload_trace_manifest_ref["total_instruction_count"] = manifest_data.get(
@@ -1575,7 +1596,7 @@ def build_evidence(
         workload_trace_manifest_ref["production_external_suites"] = manifest_data.get(
             "production_external_suites"
         )
-    workload_mpki_ref: dict[str, str | bool] = {
+    workload_mpki_ref: dict[str, object] = {
         "path": str(workload_mpki_path.relative_to(ROOT)),
         "schema": "eliza.bpu_mpki.v1",
         "harness": "cocotb-rtl-bpu_top",
@@ -1609,7 +1630,7 @@ def build_evidence(
         "present": sweep_path.is_file(),
     }
     if sweep_path.is_file():
-        sweep_data = load_json_object_if_present(sweep_path)
+        sweep_data = cast("dict[str, object]", load_json_object_if_present(sweep_path))
         sweep_ref["sha256"] = sha256_path(sweep_path)
         sweep_ref["best_config"] = sweep_data.get("best_config")
         sweep_ref["best_weighted_mpki"] = sweep_data.get("best_weighted_mpki")
@@ -1638,9 +1659,27 @@ def build_evidence(
         FULL_COMPRESSION_SHARD_SWEEP_REL,
         "make bpu-sweep-full-compression-shard",
     )
+    full_agent_shard_ref = full_trace_shard_sweep_ref(
+        FULL_AGENT_SHARD_SWEEP_REL,
+        "make bpu-sweep-full-agent-shard",
+    )
 
     cbp5_model_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5.json"
     cbp5_rtl_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json"
+    cbp5_model_ref: dict[str, object] = {
+        "path": str(cbp5_model_path.relative_to(ROOT)),
+        "schema": "eliza.bpu_mpki.v1",
+        "harness": "behavioural-bpu-model",
+        "command": "python3 benchmarks/cpu/branch/run_mpki.py --backend model --traces external/cbp5-traces/",
+        "present": cbp5_model_path.is_file(),
+    }
+    cbp5_rtl_ref: dict[str, object] = {
+        "path": str(cbp5_rtl_path.relative_to(ROOT)),
+        "schema": "eliza.bpu_mpki.v1",
+        "harness": "cocotb-rtl-bpu_top",
+        "command": "make mpki-eval-rtl",
+        "present": cbp5_rtl_path.is_file(),
+    }
     cbp5_mpki_ref: dict[str, object] = {
         "comparison_table": "docs/evidence/cpu_ap/mpki_cbp5_vs_tagesc_l_64kb.md",
         "evidence_class": "cbp5_train_traces_only",
@@ -1648,29 +1687,17 @@ def build_evidence(
         "android_claim": False,
         "v8_claim": False,
         "cbp5_claim": False,
-        "model": {
-            "path": str(cbp5_model_path.relative_to(ROOT)),
-            "schema": "eliza.bpu_mpki.v1",
-            "harness": "behavioural-bpu-model",
-            "command": "python3 benchmarks/cpu/branch/run_mpki.py --backend model --traces external/cbp5-traces/",
-            "present": cbp5_model_path.is_file(),
-        },
-        "rtl": {
-            "path": str(cbp5_rtl_path.relative_to(ROOT)),
-            "schema": "eliza.bpu_mpki.v1",
-            "harness": "cocotb-rtl-bpu_top",
-            "command": "make mpki-eval-rtl",
-            "present": cbp5_rtl_path.is_file(),
-        },
+        "model": cbp5_model_ref,
+        "rtl": cbp5_rtl_ref,
     }
     if cbp5_model_path.is_file():
-        cbp5_mpki_ref["model"]["sha256"] = sha256_path(cbp5_model_path)  # type: ignore[index]
-        cbp5_mpki_ref["model"].update(  # type: ignore[union-attr]
+        cbp5_model_ref["sha256"] = sha256_path(cbp5_model_path)
+        cbp5_model_ref.update(
             artifact_metric_ref(cbp5_model_path, load_json_object_if_present(cbp5_model_path))
         )
     if cbp5_rtl_path.is_file():
-        cbp5_mpki_ref["rtl"]["sha256"] = sha256_path(cbp5_rtl_path)  # type: ignore[index]
-        cbp5_mpki_ref["rtl"].update(  # type: ignore[union-attr]
+        cbp5_rtl_ref["sha256"] = sha256_path(cbp5_rtl_path)
+        cbp5_rtl_ref.update(
             artifact_metric_ref(cbp5_rtl_path, load_json_object_if_present(cbp5_rtl_path))
         )
 
@@ -1719,6 +1746,7 @@ def build_evidence(
         "full_system_gpu_shard_sweep_ref": full_system_gpu_shard_ref,
         "full_browser_build_crypto_shard_sweep_ref": full_browser_build_crypto_shard_ref,
         "full_compression_shard_sweep_ref": full_compression_shard_ref,
+        "full_agent_shard_sweep_ref": full_agent_shard_ref,
         "cbp5_mpki_results_ref": cbp5_mpki_ref,
         "verification_reports": verification_report_refs(),
         "claim_policy": {

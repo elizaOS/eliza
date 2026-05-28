@@ -10,7 +10,7 @@
 > | PolarQuant   | `metal/polar.metal`, `vulkan/polar.comp`, `vulkan/polar_preht.comp` plus fallback `vulkan/polar_get_rows.comp` | YES (against `dequantize_row_q4_polar_ref` + `polar_dot_ref` in `packages/native/plugins/polarquant-cpu`) | YES (Vulkan); YES (Metal — runtime JIT) | Metal: YES — 8/8 PASS on Apple M4 Max, including pre-Hadamard query entrypoint. Vulkan matvec: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 and on Intel ARL Mesa ANV 25.2.8, including `polar_preht.spv`. Fallback `polar_get_rows` (informational): PASS on lavapipe; on Mesa ANV a small varying handful of the 128 elements intermittently read back `0.0` (ANV strided-store codegen quirk, not a logic bug; `-`-guarded in the Makefile). Both `use_qjl` modes affected; the reduction-based `polar.comp`/`polar_preht.comp` share the same decode and are clean |
 > | Fused attention (QJL-K + TBQ-V / Polar-V) | `vulkan/fused_attn_qjl_tbq.comp`, `vulkan/fused_attn_qjl_polar.comp`; `metal/fused_attn_qjl_tbq.metal`, `metal/fused_attn_qjl_polar.metal`; `cuda/fused-attn-qjl-tbq.cu` + `verify/cuda_verify.cu` harness | YES (against `eliza_fused_attn_qjl_tbq3` / `eliza_fused_attn_qjl_polar` in `reference/`; Metal/CUDA are byte-faithful mirrors of the hardware-verified Vulkan ports) | YES (Vulkan glslc SPIR-V 1.3 / Vulkan 1.1; Metal runtime JIT; CUDA nvcc gated) | Vulkan: YES — 1920/1920 outputs PASS on Intel ARL Mesa ANV 25.2.8 across all four cases (n_kv 64/512/256/128, GQA 1/2/4), max diff 6.3e-7 (`make vulkan-verify-fused`); built-fork `GGML_OP_FUSED_ATTN_QJL_TBQ` graph dispatch verified (`vulkan-dispatch-smoke` 7/7, max diff 4.5e-8). Metal standalone: YES — 1920/1920 outputs PASS on Apple M4 Max via `make metal-verify-fused`, max diff 7.2e-7; Metal fused graph dispatch still needs a built-fork smoke before `fusedAttn.runtimeStatus.metal` can flip runtime-ready. CUDA: AUTHORED — hardware-verify pending (no NVIDIA HW; `verify/cuda_runner.sh` on a CUDA host; build the fork with `-DGGML_CUDA_FUSED_ATTN_QJL=ON`) |
 > | PolarQuant pre-Hadamard-query score | `metal/polar_preht.metal` (`kernel_attn_score_q4_polar_preht_f32` + `_multi`), `vulkan/polar_preht.comp` | YES (`dot(H·x, q) == dot(x, H·q)`; same reference as PolarQuant) | YES (Metal runtime JIT; Vulkan glslc) | Vulkan: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 + Intel ARL Mesa ANV 25.2.8 (the mat-vec ABI). Metal attention-score ABI: YES — 8/8 PASS for `kernel_attn_score_q4_polar_preht_f32` and `_multi` on Apple M4 Max via `make metal-verify-fused`, max diff 5.8e-6. Metal mat-vec ABI (`kernel_mul_mv_q4_polar_preht_f32` in `polar.metal`): YES — 8/8 PASS on Apple M4 Max |
-> | CUDA (all 5) | `verify/cuda_verify.cu` linking `~/.cache/eliza-dflash/eliza-llama-cpp/build-cuda/.../libggml-cuda.so` (qjl, polar, turbo3_tcq exported symbols; turbo3/turbo4 via thin `__global__` wrapper around the shipped device-side `tbq_decode_block_cuda`) plus `verify/runtime_graph_smoke.sh` for `llama-cli --cache-type-k` graph dispatch | YES (against `ggml-cuda/{turboquant,turbo-tcq,qjl,polarquant}.cu(h)` in the `elizaOS/llama.cpp` fork; `make cuda-preprocess-check` asserts every API symbol + every `block_*` layout is present in the in-fork headers) | NEEDS-HARDWARE — `make cuda` requires `nvcc` (gated on Linux + CUDA Toolkit; macOS not supported); preprocessor-only API surface check passes on M4 Max | NEEDS-HARDWARE — see `verify/HARDWARE_VERIFICATION.md` and `verify/CUDA_VERIFICATION.md`; `cuda_runner.sh` now requires NVIDIA hardware, fixture parity, and a real GGUF graph-smoke model before a pass can be recorded |
+> | CUDA (all 5) | `verify/cuda_verify.cu` linking `~/.cache/eliza-mtp/eliza-llama-cpp/build-cuda/.../libggml-cuda.so` (qjl, polar, turbo3_tcq exported symbols; turbo3/turbo4 via thin `__global__` wrapper around the shipped device-side `tbq_decode_block_cuda`) plus `verify/runtime_graph_smoke.sh` for `llama-cli --cache-type-k` graph dispatch | YES (against `ggml-cuda/{turboquant,turbo-tcq,qjl,polarquant}.cu(h)` in the `elizaOS/llama.cpp` fork; `make cuda-preprocess-check` asserts every API symbol + every `block_*` layout is present in the in-fork headers) | NEEDS-HARDWARE — `make cuda` requires `nvcc` (gated on Linux + CUDA Toolkit; macOS not supported); preprocessor-only API surface check passes on M4 Max | NEEDS-HARDWARE — see `verify/HARDWARE_VERIFICATION.md` and `verify/CUDA_VERIFICATION.md`; `cuda_runner.sh` now requires NVIDIA hardware, fixture parity, and a real GGUF graph-smoke model before a pass can be recorded |
 >
 > Earlier history: the original `turbo*.comp` Vulkan port reported 0/8 PASS
 > against Mesa llvmpipe AND Intel ARL — different wrong values per ICD,
@@ -37,7 +37,7 @@
 >     compiled into its own `.air` and merged into `default.metallib`
 >     alongside `ggml-metal.air`. The patch fires unconditionally on every
 >     Metal target — no env-var opt-in. The previous opt-in environment
->     variables (`ELIZA_DFLASH_PATCH_METAL_*=1`) were decorative log toggles
+>     variables (`ELIZA_MTP_PATCH_METAL_*=1`) were decorative log toggles
 >     and are removed. Idempotent via `# ELIZA-KERNEL-PATCH-V1` sentinel.
 >
 >   * For Apple desktop targets the script now sets
@@ -288,7 +288,7 @@ Each shader file annotates the CUDA function it ports. Key correspondences:
 
 Before running backend-specific hardware checks, run the executable contract
 gate. It verifies that the manifest kernel names
-(`turboquant_q3`/`turboquant_q4`/`qjl`/`polarquant`/`dflash`/`turbo3_tcq`),
+(`turboquant_q3`/`turboquant_q4`/`qjl`/`polarquant`/`mtp`/`turbo3_tcq`),
 the build-script capability keys (`turbo3`/`turbo4`/`turbo3_tcq`/`qjl_full`),
 the fixture set, and every supported build target's platform gate are still
 in sync:
@@ -322,15 +322,15 @@ make metal
 
 # 5) Optional: build the patched llama-server. Metal kernel patching is
 #    unconditional for Metal targets; there are no opt-in env vars.
-bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend metal
+bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs --backend metal
 
 # 6) Optional: build the iOS Capacitor static archive that the
 #    LlamaCpp.xcframework patch in
 #    packages/app-core/patches/llama-cpp-capacitor@0.1.5.patch consumes.
 #    Requires macOS host with Xcode installed.
-bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs \
+bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs \
   --target ios-arm64-metal
-bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs \
+bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs \
   --target ios-arm64-simulator-metal
 ```
 
@@ -353,13 +353,13 @@ make vulkan-verify
 #    ELIZA_ALLOW_SOFTWARE_VULKAN=1, runs standalone fixtures, builds the
 #    patched fork, dumps CAPABILITIES.json, then runs the built-fork graph
 #    gate against the managed install output under
-#    $ELIZA_STATE_DIR/local-inference/bin/dflash/linux-x64-vulkan by default.
+#    $ELIZA_STATE_DIR/local-inference/bin/mtp/linux-x64-vulkan by default.
 #    Build failure stops the runner; stale/symbol-only artifacts are not reused.
 make vulkan-native-smoke
 
 #    Direct graph dispatch smoke is native-Linux-only by default and requires a
 #    bin dir containing libggml-vulkan.so. Override only for explicit prebuilts:
-#    ELIZA_DFLASH_VULKAN_BIN_DIR=/path/to/bin make vulkan-dispatch-smoke
+#    ELIZA_MTP_VULKAN_BIN_DIR=/path/to/bin make vulkan-dispatch-smoke
 
 # 3) On-device (Android) verification: cross-compile the harness against
 #    the Android NDK Vulkan headers and push to a Vulkan-capable handset
@@ -374,7 +374,7 @@ make android-vulkan-smoke
 # 4) End-to-end via llama-server: the patch hook `patchVulkanKernels` is
 #    default-on. The build still refuses publishable artifacts until graph
 #    dispatch capabilities are runtime-ready, not merely symbol-shipped.
-bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend vulkan
+bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs --backend vulkan
 ```
 
 ## Verification matrix (verified locally vs needs hardware)
@@ -508,14 +508,14 @@ on the @elizaos/native-plugins packages.
 
 ## The patched llama.cpp fork (submodule)
 
-The DFlash/TBQ/QJL/Polar/Metal fork ships in-tree as a git submodule at
+The MTP/TBQ/QJL/Polar/Metal fork ships in-tree as a git submodule at
 [`plugins/plugin-local-inference/native/llama.cpp`](llama.cpp) —
 `elizaOS/llama.cpp` at the repository gitlink commit (currently
-`33c888a7b`, with `ce85787c8` as the validated DFlash/SWA build base).
+`33c888a7b`, with `ce85787c8` as the validated MTP/SWA build base).
 `bun install` runs `git submodule update --init --recursive`, so a fresh
 checkout has it. Both build paths default to this checkout:
 
-- `packages/app-core/scripts/build-llama-cpp-dflash.mjs` — desktop / server /
+- `packages/app-core/scripts/build-llama-cpp-mtp.mjs` — desktop / server /
   Windows / iOS.
 - `packages/app-core/scripts/aosp/compile-libllama.mjs` — Android cross-compile
   (same pinned commit, so both paths land on identical kernels).
@@ -523,17 +523,17 @@ checkout has it. Both build paths default to this checkout:
 The build re-applies the kernel patches (`kernel-patches/*`) on top of the
 pristine submodule tree each run, then `git checkout -- . && git clean -fdx`
 discards those edits at the start of the next build — the submodule stays pinned
-to its gitlink commit. `ELIZA_DFLASH_LLAMA_CPP_REMOTE` / `ELIZA_DFLASH_LLAMA_CPP_REF`
+to its gitlink commit. `ELIZA_MTP_LLAMA_CPP_REMOTE` / `ELIZA_MTP_LLAMA_CPP_REF`
 (or `--cache-dir` / `--src-dir`) still force a standalone clone for fork bisects.
-The DFlash build scripts now reject source checkouts that lack the
+The MTP build scripts now reject source checkouts that lack the
 SWA-aware `seq_rm` probe fallback from elizaOS/eliza#7635; otherwise
-SWA-based bodies can silently run target-only after `--spec-type dflash`.
+SWA-based bodies can silently run target-only after `--spec-type mtp`.
 
 ## How standalone shaders flow into the shipped binary
 
 Source-of-truth: the verified `.metal` and `.comp` files in this
 directory (`plugins/plugin-local-inference/native/{metal,vulkan}/`). The build script
-`packages/app-core/scripts/build-llama-cpp-dflash.mjs` calls into
+`packages/app-core/scripts/build-llama-cpp-mtp.mjs` calls into
 `packages/app-core/scripts/kernel-patches/{metal,vulkan}-kernels.mjs`
 during `applyForkPatches()` and the helpers do the actual work:
 
@@ -610,13 +610,13 @@ before it can satisfy AGENTS.md §3 in this workspace.
 
 | Env var                                  | What it does                                              | Default |
 | ---------------------------------------- | --------------------------------------------------------- | ------- |
-| `ELIZA_DFLASH_LLAMA_CPP_REMOTE`          | Build from a standalone clone of this fork remote instead of the in-repo `plugins/plugin-local-inference/native/llama.cpp` submodule (default `https://github.com/elizaOS/llama.cpp.git`). | unset |
-| `ELIZA_DFLASH_LLAMA_CPP_REF`             | Standalone-clone fork ref (default `33c888a7be0b0b8ffb54cd3f0e05b4bed20cc52e`). Setting either this or `_REMOTE` switches off the submodule build path. | unset |
-| `ELIZA_DFLASH_VULKAN_HEADERS_DIR` / `ELIZA_DFLASH_SPIRV_HEADERS_DIR` | Pre-staged Khronos header paths for cross-builds. | unset |
-| `ELIZA_DFLASH_CMAKE_FLAGS`               | Extra cmake flags appended to the per-target list. Wins on conflict (e.g. override `-DCMAKE_CUDA_ARCHITECTURES`). | unset |
+| `ELIZA_MTP_LLAMA_CPP_REMOTE`          | Build from a standalone clone of this fork remote instead of the in-repo `plugins/plugin-local-inference/native/llama.cpp` submodule (default `https://github.com/elizaOS/llama.cpp.git`). | unset |
+| `ELIZA_MTP_LLAMA_CPP_REF`             | Standalone-clone fork ref (default `33c888a7be0b0b8ffb54cd3f0e05b4bed20cc52e`). Setting either this or `_REMOTE` switches off the submodule build path. | unset |
+| `ELIZA_MTP_VULKAN_HEADERS_DIR` / `ELIZA_MTP_SPIRV_HEADERS_DIR` | Pre-staged Khronos header paths for cross-builds. | unset |
+| `ELIZA_MTP_CMAKE_FLAGS`               | Extra cmake flags appended to the per-target list. Wins on conflict (e.g. override `-DCMAKE_CUDA_ARCHITECTURES`). | unset |
 | `MINGW_TOOLCHAIN_FILE`                   | Operator-supplied cmake toolchain file for windows-* targets. Required for `windows-arm64-*` cross builds; optional override for `windows-x64-*` (auto-detected mingw is used otherwise). | unset |
 
-The previous `ELIZA_DFLASH_PATCH_METAL_*` / `ELIZA_DFLASH_PATCH_VULKAN_KERNELS`
+The previous `ELIZA_MTP_PATCH_METAL_*` / `ELIZA_MTP_PATCH_VULKAN_KERNELS`
 environment knobs were decorative log toggles for the v0.4.0-eliza-era
 no-op patch hooks. They have been removed; both the Metal and Vulkan
 patch helpers now run unconditionally on every matching target — Metal
@@ -626,7 +626,7 @@ available staging patches.
 There is no opt-out, per AGENTS.md §3 ("Required for ALL tiers").
 Symbol-only kernels do not satisfy the post-build audit gate.
 
-Wiring these into `dflash-server.ts` (so `--cache-type-k turbo3_tcq`
+Wiring these into `ffi-streaming-backend.ts` (so `--cache-type-k turbo3_tcq`
 actually runs through the new shader, and so QJL / Polar are reachable
 from the CLI) is owned by another agent and depends on the
 ggml-metal-ops dispatch work flagged above.
@@ -645,19 +645,19 @@ targets (compile-only on this machine — they require macOS host with
 Xcode):
 
 ```bash
-bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --target ios-arm64-metal
-bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --target ios-arm64-simulator-metal
+bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs --target ios-arm64-metal
+bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs --target ios-arm64-simulator-metal
 ```
 
 Both pass `-DGGML_METAL=ON -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=arm64`
 plus `-DGGML_METAL_EMBED_LIBRARY=ON` so the `.metallib` ships inside the
 static archive. Output lands under
-`$ELIZA_STATE_DIR/local-inference/bin/dflash/<target>/` as `lib*.a` files
+`$ELIZA_STATE_DIR/local-inference/bin/mtp/<target>/` as `lib*.a` files
 plus a `include/` headers staging directory. A follow-up packaging step
 (not in this directory) glues these into the Capacitor xcframework
 layout the patch expects.
 
-Fused mobile status is intentionally closed. The dflash build script does
+Fused mobile status is intentionally closed. The mtp build script does
 not advertise or build `android-*-*-fused`, `ios-arm64-metal-fused`, or
 `ios-arm64-simulator-metal-fused` because the libelizainference mobile FFI
 packaging and verifier path are not wired here yet. Those spellings fail

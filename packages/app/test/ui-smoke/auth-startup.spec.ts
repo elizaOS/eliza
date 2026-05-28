@@ -252,7 +252,7 @@ test("cloud bootstrap exchange stores the session bearer and resumes startup", a
       },
     });
   });
-  await page.route("**/api/onboarding/status", async (route) => {
+  await page.route("**/api/first-run/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
@@ -352,7 +352,7 @@ test("remote pairing redeem persists token and resumes startup", async ({
       },
     });
   });
-  await page.route("**/api/onboarding/status", async (route) => {
+  await page.route("**/api/first-run/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;

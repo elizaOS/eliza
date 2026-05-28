@@ -1,0 +1,107 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2023-06-13 14:17+0200\n"
+"PO-Revision-Date: 2024-05-20 17:59+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: id\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<style>\n"
+"/* Display \"*Unsafe Browser*\" instead of \"this browser\" in /doc/anonymous_internet/unsafe_browser and /misc/unsafe_browser_warning */\n"
+".doc {\n"
+"  display: inline-block;\n"
+"}\n"
+".warning {\n"
+"  display: none;\n"
+"}\n"
+"</style>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "To sign in to a network using a captive portal:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Try visiting an innocent-looking website that is common in your location, "
+"for example, a search engine or news site:"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "<a href=\"http://google.com/\" target=\"_blank\">Google</a>"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "<a href=\"http://linkedin.com/\" target=\"_blank\">LinkedIn</a>"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "<a href=\"http://duckduckgo.com/\" target=\"_blank\"/>DuckDuckGo</a>"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "<a href=\"http://baidu.com/\" target=\"_blank\"/>Baidu</a>"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "If you are redirected to a captive portal, sign in to the network."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If you are not redirected to a captive portal and the website loads,\n"
+"   this means that you are already connected to the Internet. Close\n"
+"   <span class=\"warning\">this browser</span>\n"
+"   <span class=\"doc\">the <i>Unsafe Browser</i></span>\n"
+"   and try connecting to the Tor network again.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"After Tails is connected to Tor, close <span class=\"warning\">this browser."
+"</span> <span class=\"doc\">the <i>Unsafe Browser</i>.</span>"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"caution\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>It is particularly important that you close the <i>Unsafe Browser</i> if\n"
+"   you use accessibility features like the Screen Keyboard or the Screen Reader.\n"
+"   If you keep the <i>Unsafe Browser</i> open, a very advanced network attacker\n"
+"   might use it to deanonymize you.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   You can use *Tor Browser* or any other application as usual.\n"
+msgstr ""

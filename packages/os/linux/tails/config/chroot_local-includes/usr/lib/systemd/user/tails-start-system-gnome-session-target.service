@@ -1,0 +1,13 @@
+# The gnome-session.target started by this unit is the system equivalent
+# of the user gnome-session.target. It allows system units to be started
+# after the GNOME session has been fully initialized.
+
+[Unit]
+Description=Start the system GNOME session target
+After=gnome-session.target
+
+[Service]
+ExecStart=/bin/systemctl --system start gnome-session.target
+
+[Install]
+WantedBy=gnome-session.target

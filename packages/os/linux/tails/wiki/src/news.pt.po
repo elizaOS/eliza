@@ -1,0 +1,47 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-01 17:04+0200\n"
+"PO-Revision-Date: 2025-09-02 11:15+0200\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"News\"]]"
+msgstr "[[!meta title=\"Notícias\"]]"
+
+#. type: Content of: <p>
+msgid "Subscribe to our newsletter to receive the same news by email:"
+msgstr ""
+
+#. type: Content of: <form>
+msgid ""
+"<input aria-label=\"Email\" name=\"email\" value=\"\"/> <button aria-"
+"label=\"Subscribe\" class=\"button\" type=\"submit\">Subscribe</button>"
+msgstr ""
+
+#. type: Content of: <form><p>
+msgid "[[Archive of all news|news/archive]]"
+msgstr ""
+
+#.  Inlined news 
+#.  Feed buttons used by puppet-code:site/profile/manifests/tails/website/rss2email.pp
+#. [[!inline pages="page(news/*) and !news/archive and !news/*/* and !news/discussion and tagged(announce)"
+#. show="10" feeds="yes" feedonly="yes" feedfile="emails" sort="-meta(date) age -path"]]
+#. type: Content of: outside any tag (error?)
+msgid ""
+"[[!inline pages=\"page(news/*) and !news/archive and !news/*/* and !news/"
+"discussion\" show=\"10\" sort=\"-meta(date) age -path\"]]"
+msgstr "[[!inline pages=\"page(news/*) and !news/archive and !news/*/* and !news/discussion\" show=\"10\" sort=\"-meta(date) age -path\"]]"

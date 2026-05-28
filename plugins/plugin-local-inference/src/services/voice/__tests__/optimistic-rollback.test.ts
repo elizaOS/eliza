@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
 	CheckpointClient,
 	CheckpointHandle,
-} from "../../dflash-checkpoint-client";
+} from "../../checkpoint-client";
 import {
 	type AbortReason,
 	OptimisticRollbackController,

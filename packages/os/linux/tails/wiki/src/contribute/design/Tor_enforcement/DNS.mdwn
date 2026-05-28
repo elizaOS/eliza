@@ -1,0 +1,40 @@
+Tor does not support UDP so we cannot simply redirect DNS queries to
+the Tor transparent proxy.
+
+Most DNS leaks are avoided by having the system resolver query
+the Tor network using the `DNSPort` configured in
+`torrc`.
+
+There is a concern that any application could attempt to do its own
+DNS resolution without using the system resolver; UDP datagrams are
+therefore blocked in order to prevent leaks. Another solution may be
+to use the Linux network filter to forward outgoing UDP datagrams to
+the local DNS proxy.
+
+Tails also forbids DNS queries to RFC1918 addresses; those might
+indeed allow the system to learn the local network's public IP
+address.
+
+`resolv.conf` is configured to point to the Tor DNS resolver, and
+we configure *NetworkManager*
+not to manage `resolv.conf` at all:
+
+* [[!tails_gitweb config/chroot_local-includes/etc/NetworkManager/conf.d/dns.conf]]
+* [[!tails_gitweb config/chroot_local-includes/etc/resolv.conf]]
+* [[!tails_gitweb config/chroot_local-includes/etc/tor/torrc]]
+
+Some applications need to be able to do clearnet DNS resolutions, so
+we save the DNS configuration obtained by NetworkManager:
+
+* [[!tails_gitweb config/chroot_local-includes/etc/NetworkManager/dispatcher.d/00-resolv-over-clearnet]]
+
+The following is the complete list of the applications allowed to use
+the clearnet DNS configuration:
+
+* the `tor` process itself, but only if the user requested to
+  configure Tor's network settings in the Welcome Screen; in this case
+  `tor` being able to resolve hostnames is convenient (e.g. hostnames
+  are human-readable, IP addresses not as much) or even necessary
+  (e.g. for the Meek pluggable transport):
+  - [[!tails_gitweb config/chroot_local-includes/etc/NetworkManager/dispatcher.d/10-tor.sh]]
+* The [[contribute/design/Unsafe_Browser]]

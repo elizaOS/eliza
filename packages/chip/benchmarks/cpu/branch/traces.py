@@ -937,9 +937,13 @@ def synthetic_command_buffer_validation(commands: int = 768) -> Iterator[BranchE
         valid_descriptor = (opcode % 5) != 0 or (i % 23) != 0
         has_barrier = opcode in (3, 7, 11, 13) and (i % 4) != 0
         resource_ready = ((i + opcode * 3) % 29) != 0
-        yield BranchEvent(pc=desc_pc, target=desc_pc + 0x200, taken=not valid_descriptor, kind=BR_COND)
+        yield BranchEvent(
+            pc=desc_pc, target=desc_pc + 0x200, taken=not valid_descriptor, kind=BR_COND
+        )
         yield BranchEvent(pc=barrier_pc, target=barrier_pc + 0x240, taken=has_barrier, kind=BR_COND)
-        yield BranchEvent(pc=resource_pc, target=resource_pc + 0x280, taken=not resource_ready, kind=BR_COND)
+        yield BranchEvent(
+            pc=resource_pc, target=resource_pc + 0x280, taken=not resource_ready, kind=BR_COND
+        )
         if not valid_descriptor or not resource_ready:
             yield BranchEvent(
                 pc=invalid_pc,
@@ -1076,7 +1080,7 @@ def synthetic_gpu_wavefront_compaction(waves: int = 256) -> Iterator[BranchEvent
     material_base = 0x8022_4000
     for wave in range(waves):
         phase = (wave // 32) & 3
-        active_lanes = ((wave * 11 + phase * 5) % 33)
+        active_lanes = (wave * 11 + phase * 5) % 33
         sparse = active_lanes < 8
         full = active_lanes > 28
         yield BranchEvent(
@@ -1208,10 +1212,9 @@ def synthetic_android_runtime_inline_cache(objects: int = 640) -> Iterator[Branc
             kind=BR_COND,
         )
         yield BranchEvent(pc=deopt_pc, target=deopt_pc + 0x2C0, taken=deopt, kind=BR_COND)
-        if deopt:
-            target = deopt_base + (tier % 4) * 0x100
-        else:
-            target = handler_base + (tier * 8 + shape) * 0x80
+        target = (
+            deopt_base + (tier % 4) * 0x100 if deopt else handler_base + (tier * 8 + shape) * 0x80
+        )
         yield BranchEvent(pc=dispatch_pc, target=target, taken=True, kind=BR_IND)
 
 

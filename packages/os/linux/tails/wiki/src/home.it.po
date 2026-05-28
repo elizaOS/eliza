@@ -1,0 +1,96 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-10-14 16:04+0000\n"
+"PO-Revision-Date: 2025-11-02 18:19+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: ita <transitails@inventati.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Welcome to Tails!\"]]"
+msgstr "[[!meta title=\"Un benvenuto da Tails!\"]]"
+
+#. type: Content of: outside any tag (error?)
+msgid ""
+"[[!meta stylesheet=\"home\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+"robots=\"noindex\"]] [[!meta script=\"home\"]]"
+msgstr ""
+"[[!meta stylesheet=\"home\" rel=\"stylesheet\" title=\"\"]] "
+"[[!meta robots=\"noindex\"]] [[!meta script=\"home\"]]"
+
+#. type: Content of: <div>
+msgid "<a href=\"https://check.torproject.org/\">Tor check</a>"
+msgstr "<a href=\"https://check.torproject.org/?lang=it\">Verifica Tor</a>"
+
+#. type: Content of: <div>
+msgid "[[!inline pages=\"news\" raw=\"yes\" sort=\"age\"]]"
+msgstr "[[!inline pages=\"news.it\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid ""
+#~ "The cryptographic parameters of LUKS from Tails 5.12 or earlier are weak "
+#~ "against a state-sponsored attacker with physical access to your device."
+#~ msgstr ""
+#~ "I parametri crittografici di LUKS da Tails 5.12 o precedenti sono deboli "
+#~ "nei confronti di un attaccante appoggiato-dallo-Stato che abbia accesso "
+#~ "fisico al tuo dispositivo."
+
+#~ msgid ""
+#~ "<strong>We recommend you change the passphrase of your Persistent Storage "
+#~ "and other LUKS encrypted volumes unless you use a long passphrase of 5 "
+#~ "random words or more.</strong>"
+#~ msgstr ""
+#~ "<strong>Ti consigliamo di modificare la frase d'accesso dell'Archivio "
+#~ "Persistente e di altri volumi cifrati LUKS, a meno che tu non utilizzi "
+#~ "una frase d'accesso lunga, composta da 5 parole casuali o più.</strong>"
+
+#~ msgid "[[Read our security advisory and upgrade guide.|security/argon2id]]"
+#~ msgstr ""
+#~ "[Leggi il nostro avviso di sicurezza e la guida all'aggiornamento.|"
+#~ "security/argon2id]]"
+
+#~ msgid "[[!inline pages=\"home/donate.inline\" raw=\"yes\" sort=\"age\"]]"
+#~ msgstr "[[!inline pages=\"home/donate.inline\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid ""
+#~ "Today, we are asking you to help Tails. Everybody can get Tails for free "
+#~ "because we believe that nobody should have to pay to be safe while using "
+#~ "computers. And we will keep it this way, with your support."
+#~ msgstr ""
+#~ "Oggi ti chiediamo di aiutare Tails. Tutti possono avere Tails "
+#~ "gratuitamente, perché crediamo che nessuno dovrebbe pagare per essere al "
+#~ "sicuro quando si usano i computer. E continueremo così, con il vostro "
+#~ "supporto."
+
+#~ msgid ""
+#~ "<span class=\"highlight\">If everyone reading this gave $5, our "
+#~ "fundraiser would be done in one day.</span> The price of a USB stick is "
+#~ "all we need."
+#~ msgstr ""
+#~ "<span class=\"highlight\">Se ognuno che legge questa pagina donasse 5€/$ "
+#~ "la nostra raccolta fondi finirebbe in un giorno.</span> Il costro di una "
+#~ "chiavetta USB è tutto ciò di cui abbiamo bisogno."
+
+#~ msgid ""
+#~ "But, not everyone can donate. So when you do, you are offering to many "
+#~ "others who need it, this precious tool that is Tails."
+#~ msgstr ""
+#~ "Ma non tutti possono donare. Così quando lo fate, state offrendo a molti "
+#~ "altri che ne hanno bisogno, questo prezioso strumento che è Tails."
+
+#~ msgid "[[Donate now to fight surveillance and censorship!|donate]]"
+#~ msgstr "[[Dona ora per combattere la sorveglianza e la censura!|donate]]"
+
+#~ msgid "[[!inline pages=\"home/tor_check\" raw=\"yes\" sort=\"age\"]]"
+#~ msgstr "[[!inline pages=\"home/tor_check.it\" raw=\"yes\" sort=\"age\"]]"

@@ -1,0 +1,225 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2026-03-29 15:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Changing the passphrase of the Persistent Storage\"]]\n"
+msgstr "[[!meta title=\"Modifier la phrase de passe du stockage persistant\"]]\n"
+
+#. type: Plain text
+msgid "To change the passphrase of your Persistent Storage:"
+msgstr "Pour changer la phrase de passe de votre stockage persistant :"
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ Tails&nbsp;▸ Persistent Storage** to open the "
+"Persistent Storage settings."
+msgstr ""
+"Choisissez **Applications&nbsp;▸ Tails&nbsp;▸ Stockage persistant** pour "
+"ouvrir les paramètres du stockage persistant."
+
+#. type: Bullet: '1. '
+msgid "Click on the **Change Passphrase** button on the left of the title bar."
+msgstr ""
+"Cliquez sur le bouton **Modifier la phrase de passe** à gauche de la barre "
+"de titre."
+
+#. type: Bullet: '1. '
+msgid "Enter the current passphrase in the **Current Passphrase** text box."
+msgstr ""
+"Entrez la phrase de passe actuelle dans la boîte de dialogue **Phrase de "
+"passe actuelle**."
+
+#. type: Bullet: '1. '
+msgid "Enter your new passphrase in the **New Passphrase** text box."
+msgstr ""
+"Entrez la nouvelle phrase de passe dans la boîte de dialogue **Nouvelle "
+"phrase de passe**."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <!-- Consider removing after #18736. -->\n"
+msgstr "   <!-- Consider removing after #18736. -->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div class=\"caution\">\n"
+"   <p>It is impossible to recover your passphrase if you forget it!</p>\n"
+msgstr ""
+"   <div class=\"caution\">\n"
+"   <p>Il est impossible de récupérer votre phrase de passe si vous l'avez oubliée !</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>To help you remember your passphrase, you can write it on a piece of\n"
+"   paper, store it in your wallet for a few days, and destroy it once\n"
+"   you know it well.</p>\n"
+"   </div>\n"
+msgstr ""
+"   <p>Pour vous aider à vous rappeler de votre phrase de passe, vous pouvez l'écrire sur un morceau de\n"
+"   papier, le ranger dans votre portefeuille quelques jours, puis le détruire une fois\n"
+"   que vous le connaissez bien.</p>\n"
+"   </div>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Enter your new passphrase again in the **Confirm New Passphrase** text box."
+msgstr ""
+"Entrez votre nouvelle phrase de passe une nouvelle fois dans la boîte de "
+"dialogue **Confirmer la nouvelle phrase de passe**."
+
+#. type: Bullet: '1. '
+msgid "Click **Change**."
+msgstr "Cliquez sur **Modifier**."
+
+#. type: Plain text
+msgid ""
+"You can now restart Tails and try to unlock the Persistent Storage with the "
+"new passphrase."
+msgstr ""
+"Vous pouvez désormais redémarrer Tails et essayer de déverrouiller le "
+"stockage persistant avec la nouvelle phrase de passe."
+
+#, no-wrap
+#~ msgid "   <!-- Consider removing after #18148. -->\n"
+#~ msgstr "   <!-- Consider removing after #18148. -->\n"
+
+#, no-wrap
+#~ msgid "   <div class=\"tip\">\n"
+#~ msgstr "   <div class=\"tip\">\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   <p>We recommend choosing a long passphrase made of 5 to 7 random words.\n"
+#~ "   <a href=\"https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/\">See\n"
+#~ "   this article about memorizable and secure passphrases.</a></p>\n"
+#~ msgstr ""
+#~ "   <p>Nous recommandons de choisir une phrase de passe longue composée de 5 à 7 mots aléatoires.\n"
+#~ "   <a href=\"https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/\">Voir\n"
+#~ "   cet article (en anglais) à propos des phrases de passe sûres et mémorisables.</a></p>\n"
+
+#, no-wrap
+#~ msgid "   </div>\n"
+#~ msgstr "   </div>\n"
+
+#~ msgid ""
+#~ "Start Tails and [[set up an administration password |doc/first_steps/"
+#~ "welcome_screen/administration_password]]."
+#~ msgstr ""
+#~ "Démarrer Tails et [[définir un mot de passe d'administration|doc/"
+#~ "first_steps/welcome_screen/administration_password]]."
+
+#, no-wrap
+#~ msgid "     In the Welcome Screen, keep the Persistent Storage locked.\n"
+#~ msgstr "     Dans l'écran de bienvenue, maintenir le stockage persistant verrouillé.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "  1. Open *Disks* from the menu\n"
+#~ "     <span class=\"menuchoice\">\n"
+#~ "       **Applications**&nbsp;▸\n"
+#~ "       **Utilities**&nbsp;▸\n"
+#~ "       **Disks**</span>.\n"
+#~ msgstr ""
+#~ "  1. Ouvrir *Disques* depuis le menu\n"
+#~ "     <span class=\"menuchoice\">\n"
+#~ "       **Applications**&nbsp;▸\n"
+#~ "       **Utilitaires**&nbsp;▸\n"
+#~ "       **Disques**</span>.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "     *Disks* lists all the current storage\n"
+#~ "     devices in the left pane of the window. When you select one of these devices,\n"
+#~ "     detailed information about it is displayed in the right pane: its partitions,\n"
+#~ "     its brand, its size, etc.\n"
+#~ msgstr ""
+#~ "     *Disques* liste tous les périphériques\n"
+#~ "     de stockage dans la partie gauche de la fenêtre. Lorsque vous choisissez l'un de ces\n"
+#~ "     périphériques, des informations détaillées à son propos sont affichées dans la partie\n"
+#~ "     droite : ses partitions, sa marque, sa taille, etc.\n"
+
+#~ msgid ""
+#~ "Find which device is your Tails USB stick. It should have 2 partitions: "
+#~ "one labeled **Tails** and another one labeled **TailsData**, which "
+#~ "corresponds to the Persistent Storage."
+#~ msgstr ""
+#~ "Trouver quel périphérique correspond à votre clé USB Tails. Il devrait "
+#~ "contenir deux partitions, une appelée **Tails** et une autre appelée "
+#~ "**TailsData** qui correspond au stockage persistant."
+
+#~ msgid ""
+#~ "In the right pane, click on the Persistent Storage partition, labeled "
+#~ "**TailsData**."
+#~ msgstr ""
+#~ "Dans la partie droite, cliquer sur la partition du stockage persistant, "
+#~ "appelée **TailsData**."
+
+#~ msgid ""
+#~ "Click on <span class=\"guimenu\">[[!img lib/system-run.png alt=\"Disks "
+#~ "context menu\" class=\"symbolic\" link=\"no\"]]</span> and choose <span "
+#~ "class=\"guilabel\">Change Passphrase…</span>."
+#~ msgstr ""
+#~ "Cliquer sur <span class=\"guimenu\">[[!img lib/system-run.png alt=\"Menu "
+#~ "contextuel disques\" class=\"symbolic\" link=\"no\"]]</span> et choisir "
+#~ "**Modifier la phrase de passe…**."
+
+#~ msgid "Type your current passphrase and then type twice a new one."
+#~ msgstr ""
+#~ "Taper votre phrase de passe actuelle et taper ensuite deux fois la "
+#~ "nouvelle phrase de passe."
+
+#~ msgid "Finally confirm by clicking **Change**."
+#~ msgstr "Confirmer enfin en cliquant sur **Modifier**."
+
+#~ msgid ""
+#~ "In the confirmation dialog, enter your administration password and click "
+#~ "**Authenticate**."
+#~ msgstr ""
+#~ "Dans la fenêtre de confirmation, entrer votre mot de passe "
+#~ "d'administration et cliquer sur <span class=\"guilabel\">S'authentifier</"
+#~ "span>."
+
+#, fuzzy
+#~ msgid "     Do not enable the persistent volume in the Welcome Screen.\n"
+#~ msgstr ""
+#~ "     N'activez pas le volume persistant dans le <span "
+#~ "class=\"application\">Tails Greeter</span>.\n"
+
+#~ msgid "[[!toc levels=2]]\n"
+#~ msgstr "[[!toc levels=2]]\n"
+
+#~ msgid "Start GNOME Disk utility\n"
+#~ msgstr "Lancer l'Utilitaire de disque GNOME\n"
+
+#~ msgid "Find out the device of the persistent volume\n"
+#~ msgstr "Trouver le périphérique du volume persistant\n"
+
+#~ msgid ""
+#~ "In the right pane of the window, verify that the device corresponds to "
+#~ "your device, its brand, its size, etc."
+#~ msgstr ""
+#~ "Dans la partie droite de la fenêtre, vérifier que le périphérique "
+#~ "correspond au votre, sa marque, sa taille, etc."
+
+#~ msgid "Click on **Change Passphrase**."
+#~ msgstr "Cliquer sur **Changer la phrase de passe**."

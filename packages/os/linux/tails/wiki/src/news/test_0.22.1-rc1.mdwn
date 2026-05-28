@@ -1,0 +1,110 @@
+[[!meta title="Call for testing: 0.22.1~rc1"]]
+
+[[!meta date="Mon, 11 Jan 2014 00:18:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+You can help Tails! The first release candidate for the upcoming version
+0.22.1 is out. Please test it and see if it works for you.
+
+[[!toc levels=1]]
+
+How to test Tails 0.22.1~rc1?
+=============================
+
+1. **Keep in mind that this is a test image.** We have made sure
+   that it is not broken in an obvious way, but it might still contain
+   undiscovered issues.
+
+2. Either try the <a href="#automatic_upgrade">automatic upgrade</a>, or
+   download the ISO image and its signature:
+
+   <a class="download-file" href="" >Tails 0.22.1~rc1 ISO image</a>
+
+   Tails 0.22.1~rc1 signature
+
+1. Verify the ISO image.
+
+1. Have a look at the list of <a href="#known_issues">known issues
+   of this release</a> and the list of [[longstanding known
+   issues|support/known_issues]].
+
+1. Test wildly!
+
+If you find anything that is not working as it should, please [[report to
+us|doc/first_steps/whisperback]]! Bonus points if you check that it is not a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].
+
+<div id="automatic_upgrade"></a>
+
+How automatically upgrade from 0.22?
+====================================
+
+These steps allow you to automatically upgrade a device installed with
+*Tails Installer* from Tails 0.22 to Tails 0.22.1~rc1.
+
+1. Start Tails 0.22 and [[set an administration
+   password|doc/first_steps/welcome_screen/administration_password]].
+
+2. Run this command in a *Root Terminal*
+   to select the "alpha" upgrade channel:
+   <pre><code>echo TAILS_CHANNEL=\"alpha\" >> /etc/os-release</code></pre>
+
+3. Run this command in a *Root Terminal*
+   to install the latest version of
+   *Tails Upgrader*:
+
+       echo "deb http://deb.tails.boum.org/ 0.22.1-rc1 main" \
+           > /etc/apt/sources.list.d/tails-0.22-rc1.list && \
+           sed -i -e '/tor-0.2.4.x-squeeze/ d' \
+          /etc/apt/sources.list.d/torproject.list &&
+           apt-get update && \
+           apt-get install tails-iuk
+
+4. Choose **Applications&nbsp;&#x25B8; Tails&nbsp;&#x25B8; Tails Upgrader**
+   to start *Tails Upgrader*.
+
+5. Accept *Tails Upgrader*&#39;s proposal
+to upgrade to Tails 0.22.1~rc1.
+
+6. Wait while the upgrade is downloaded and applied.
+
+7. Restart the system when advised to do so.
+
+8. Once the system is restarted, choose
+   **System&nbsp;&#x25B8; About Tails**
+   to confirm that the running system is now Tails 0.22.1~rc1.
+
+What's new since 0.22?
+======================
+
+- Security fixes
+  - Update NSS to 3.14.5-1~bpo60+1.
+
+- Major improvements
+  - Check for upgrades availability using Tails Upgrader, and propose to apply an incremental upgrade whenever possible.
+  - Install Linux 3.12 (3.12.6-2).
+
+- Bugfixes
+  - Fix the keybindings problem introduced in 0.22.
+  - Fix the Unsafe Browser problem introduced in 0.22.
+  - Use IE's icon in Windows camouflage mode.
+  - Handle some corner cases better in Tails Installer.
+
+- Minor improvements
+  - Update Tor Browser to 24.2.0esr-1+tails1.
+  - Update Torbutton to 1.6.5.3.
+  - Do not start Tor Browser automatically, but notify when Tor is ready.
+  - Import latest Tor Browser prefs.
+  - Many user interface improvements in Tails Upgrader.
+
+See the online
+Changelog for technical details.
+
+<a id="known_issues"></a>
+
+Known issues in 0.22.1~rc1
+==========================
+
+- The memory erasure on shutdown [[!tails_ticket 6460 desc="does not work on
+  some hardware"]].

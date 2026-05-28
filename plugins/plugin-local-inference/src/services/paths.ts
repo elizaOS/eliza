@@ -1,22 +1,5 @@
-import { homedir } from "node:os";
 import path from "node:path";
-
-function resolveUserPath(input: string): string {
-	const trimmed = input.trim();
-	if (!trimmed) return trimmed;
-	if (trimmed.startsWith("~")) {
-		return path.resolve(trimmed.replace(/^~(?=$|[\\/])/, homedir()));
-	}
-	return path.resolve(trimmed);
-}
-
-function resolveStateDir(): string {
-	const explicit =
-		process.env.ELIZA_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
-	if (explicit) return resolveUserPath(explicit);
-	const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
-	return path.join(homedir(), `.${namespace}`);
-}
+import { resolveStateDir } from "@elizaos/core";
 
 export function localInferenceRoot(): string {
 	return path.join(resolveStateDir(), "local-inference");

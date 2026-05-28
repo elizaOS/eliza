@@ -1,0 +1,3 @@
+Intentionally empty to override the one in the server's underlay: this
+page is an orphan one, not really useful for Tails purposes, and is
+quite long/costly to build and update.

@@ -28,6 +28,7 @@ import type {
   CreateTriggerRequest,
   DropStatus,
   ExtensionStatus,
+  FirstRunOptions,
   ImageAttachment,
   LogEntry,
   McpMarketplaceResult,
@@ -35,7 +36,6 @@ import type {
   McpServerConfig,
   McpServerStatus,
   MintResult,
-  OnboardingOptions,
   PluginInfo,
   RegistryPlugin,
   RegistryStatus,
@@ -71,9 +71,9 @@ import type {
   WhitelistStatus,
   WorkbenchOverview,
 } from "../api/client";
+import type { FirstRunRuntimeTarget } from "../first-run/runtime-target";
 import type { UiLanguage } from "../i18n";
 import type { Tab } from "../navigation";
-import type { OnboardingServerTarget } from "../onboarding/server-target";
 import type { AgentProfile } from "./agent-profile-types";
 import type { UiShellMode, UiTheme } from "./ui-preferences";
 
@@ -94,10 +94,10 @@ export interface TabCommittedDetail {
 }
 
 /**
- * Optional flags for {@link AppActions.completeOnboarding} when finishing the
- * full onboarding wizard (not RuntimeGate).
+ * Optional flags for {@link AppActions.completeFirstRun} when finishing the
+ * first-run setup.
  */
-export interface CompleteOnboardingOptions {
+export interface CompleteFirstRunOptions {
   /**
    * When true, opens the `@elizaos/plugin-companion` overlay and syncs the URL to
    * `/apps/companion`. Ignored when companion mode or the apps surface is disabled.
@@ -118,34 +118,33 @@ export interface NavigationEventsApi {
   scheduleAfterTabCommit: (fn: () => void) => void;
 }
 
-export type OnboardingStep = "deployment" | "providers" | "features";
+export type SetupStep = "connection" | "model" | "capabilities";
 
-export interface OnboardingStepMeta {
-  id: OnboardingStep;
+export interface SetupStepMeta {
+  id: SetupStep;
   name: string;
   subtitle: string;
 }
 
-/** 3-step onboarding flow — setup, provider connection, then optional features. */
-export const ONBOARDING_STEPS: OnboardingStepMeta[] = [
+export const SETUP_STEPS: SetupStepMeta[] = [
   {
-    id: "deployment",
-    name: "onboarding.stepName.deployment",
-    subtitle: "onboarding.stepSub.deployment",
+    id: "connection",
+    name: "setup.stepName.connection",
+    subtitle: "setup.stepSub.connection",
   },
   {
-    id: "providers",
-    name: "onboarding.stepName.providers",
-    subtitle: "onboarding.stepSub.providers",
+    id: "model",
+    name: "setup.stepName.model",
+    subtitle: "setup.stepSub.model",
   },
   {
-    id: "features",
-    name: "onboarding.stepName.features",
-    subtitle: "onboarding.stepSub.features",
+    id: "capabilities",
+    name: "setup.stepName.capabilities",
+    subtitle: "setup.stepSub.capabilities",
   },
 ];
 
-export type OnboardingMode = "basic" | "advanced" | "elizacloudonly";
+export type FirstRunMode = "basic" | "advanced" | "elizacloudonly";
 
 export type FlaminaGuideTopic =
   | "provider"
@@ -154,22 +153,21 @@ export type FlaminaGuideTopic =
   | "voice"
   | "features";
 
-export interface OnboardingNextOptions {
+export interface FirstRunNextOptions {
   allowPermissionBypass?: boolean;
   omitRuntimeProvider?: boolean;
   skipTask?: string;
 }
 
-export const ONBOARDING_PERMISSION_LABELS: Record<SystemPermissionId, string> =
-  {
-    accessibility: "Accessibility",
-    "screen-recording": "Screen Recording",
-    microphone: "Microphone",
-    camera: "Camera",
-    shell: "Full Disk Access",
-    "website-blocking": "Website Blocking",
-    location: "Location",
-  };
+export const FIRST_RUN_PERMISSION_LABELS: Record<SystemPermissionId, string> = {
+  accessibility: "Accessibility",
+  "screen-recording": "Screen Recording",
+  microphone: "Microphone",
+  camera: "Camera",
+  shell: "Full Disk Access",
+  "website-blocking": "Website Blocking",
+  location: "Location",
+};
 
 import type { ActionNotice } from "./action-notice";
 
@@ -209,7 +207,7 @@ export const LIFECYCLE_MESSAGES: Record<
     inProgress: "resetting",
     progress:
       "Resetting agent (server wipe + restart). This can take 1–2 minutes — keep the app open.",
-    success: "Agent reset. Returning to onboarding.",
+    success: "Agent reset. Returning to first-run.",
     verb: "reset",
   },
 };
@@ -252,12 +250,11 @@ export interface StartupErrorState {
 export interface StartupCoordinatorView {
   state: {
     phase:
-      | "splash"
       | "restoring-session"
       | "resolving-target"
       | "polling-backend"
       | "pairing-required"
-      | "onboarding-required"
+      | "first-run-required"
       | "starting-runtime"
       | "hydrating"
       | "ready"
@@ -268,7 +265,7 @@ export interface StartupCoordinatorView {
   retry: () => void;
   reset: () => void;
   pairingSuccess: () => void;
-  onboardingComplete: () => void;
+  firstRunComplete: () => void;
   policy: {
     supportsLocalRuntime: boolean;
     backendTimeoutMs: number;
@@ -323,10 +320,10 @@ export interface AppState {
   companionHalfFramerateMode: CompanionHalfFramerateMode;
   connected: boolean;
   agentStatus: AgentStatus | null;
-  onboardingComplete: boolean;
-  /** Incremented on agent reset so onboarding UI shows immediately (not stuck behind VRM reveal). */
-  onboardingUiRevealNonce: number;
-  onboardingLoading: boolean;
+  firstRunComplete: boolean;
+  /** Incremented on agent reset so first-run UI shows immediately (not stuck behind VRM reveal). */
+  firstRunUiRevealNonce: number;
+  firstRunLoading: boolean;
   startupPhase: StartupPhase;
   startupError: StartupErrorState | null;
   /** StartupCoordinator handle — the sole startup authority. */
@@ -509,6 +506,18 @@ export interface AppState {
   cloudDashboardView: "overview" | "billing";
   elizaCloudLoginBusy: boolean;
   elizaCloudLoginError: string | null;
+  /**
+   * Verification URL returned by `POST /api/cloud/login` while a device-code
+   * sign-in is in flight. Always exposed (not just on error) so the renderer
+   * can render a copyable "didn't open? visit this link" fallback panel
+   * underneath the spinner. Cleared when polling stops.
+   *
+   * See useCloudState.handleCloudLogin for the setter and the rationale —
+   * some desktop environments (notably Tails routing xdg-open to Tor
+   * Browser flatpak) open without crashing but never surface a usable
+   * window, leaving the user stuck.
+   */
+  elizaCloudLoginFallbackUrl: string | null;
   elizaCloudDisconnecting: boolean;
 
   // Multi-agent profiles
@@ -569,26 +578,26 @@ export interface AppState {
   // Startup
   startupStatus: string | null;
 
-  // Onboarding
-  onboardingStep: OnboardingStep;
-  onboardingMode: OnboardingMode;
-  onboardingActiveGuide: string | null;
-  onboardingDeferredTasks: string[];
-  postOnboardingChecklistDismissed: boolean;
-  onboardingOptions: OnboardingOptions | null;
-  onboardingName: string;
-  onboardingOwnerName: string;
-  onboardingStyle: string;
-  onboardingServerTarget: OnboardingServerTarget;
-  onboardingCloudApiKey: string;
-  onboardingSmallModel: string;
-  onboardingLargeModel: string;
-  onboardingProvider: string;
-  onboardingApiKey: string;
-  onboardingVoiceProvider: string;
-  onboardingVoiceApiKey: string;
-  onboardingExistingInstallDetected: boolean;
-  onboardingDetectedProviders: Array<{
+  // First-run
+  setupStep: SetupStep;
+  firstRunMode: FirstRunMode;
+  firstRunActiveGuide: string | null;
+  firstRunDeferredTasks: string[];
+  postFirstRunChecklistDismissed: boolean;
+  firstRunOptions: FirstRunOptions | null;
+  firstRunName: string;
+  firstRunOwnerName: string;
+  firstRunStyle: string;
+  firstRunRuntimeTarget: FirstRunRuntimeTarget;
+  firstRunCloudApiKey: string;
+  firstRunSmallModel: string;
+  firstRunLargeModel: string;
+  firstRunProvider: string;
+  firstRunApiKey: string;
+  firstRunVoiceProvider: string;
+  firstRunVoiceApiKey: string;
+  firstRunExistingInstallDetected: boolean;
+  firstRunDetectedProviders: Array<{
     id: string;
     source: string;
     apiKey?: string;
@@ -596,39 +605,39 @@ export interface AppState {
     status?: "valid" | "invalid" | "unchecked" | "error";
     cliInstalled: boolean;
   }>;
-  onboardingRemoteApiBase: string;
-  onboardingRemoteToken: string;
-  onboardingRemoteConnecting: boolean;
-  onboardingRemoteError: string | null;
-  onboardingRemoteConnected: boolean;
-  onboardingOpenRouterModel: string;
-  onboardingPrimaryModel: string;
-  onboardingTelegramToken: string;
-  onboardingDiscordToken: string;
-  onboardingWhatsAppSessionPath: string;
-  onboardingTwilioAccountSid: string;
-  onboardingTwilioAuthToken: string;
-  onboardingTwilioPhoneNumber: string;
-  onboardingBlooioApiKey: string;
-  onboardingBlooioPhoneNumber: string;
-  onboardingGithubToken: string;
-  onboardingSubscriptionTab: "token" | "oauth";
-  onboardingElizaCloudTab: "login" | "apikey";
-  onboardingSelectedChains: Set<string>;
-  onboardingRpcSelections: Record<string, string>;
-  onboardingRpcKeys: Record<string, string>;
-  onboardingAvatar: number;
+  firstRunRemoteApiBase: string;
+  firstRunRemoteToken: string;
+  firstRunRemoteConnecting: boolean;
+  firstRunRemoteError: string | null;
+  firstRunRemoteConnected: boolean;
+  firstRunOpenRouterModel: string;
+  firstRunPrimaryModel: string;
+  firstRunTelegramToken: string;
+  firstRunDiscordToken: string;
+  firstRunWhatsAppSessionPath: string;
+  firstRunTwilioAccountSid: string;
+  firstRunTwilioAuthToken: string;
+  firstRunTwilioPhoneNumber: string;
+  firstRunBlooioApiKey: string;
+  firstRunBlooioPhoneNumber: string;
+  firstRunGithubToken: string;
+  firstRunSubscriptionTab: "token" | "oauth";
+  firstRunElizaCloudTab: "login" | "apikey";
+  firstRunSelectedChains: Set<string>;
+  firstRunRpcSelections: Record<string, string>;
+  firstRunRpcKeys: Record<string, string>;
+  setupAvatar: number;
 
-  // Onboarding feature toggles (features step)
-  onboardingFeatureTelegram: boolean;
-  onboardingFeatureDiscord: boolean;
-  onboardingFeaturePhone: boolean;
-  onboardingFeatureCrypto: boolean;
-  onboardingFeatureBrowser: boolean;
-  onboardingFeatureComputerUse: boolean;
+  // First-run feature toggles (features step)
+  firstRunFeatureTelegram: boolean;
+  firstRunFeatureDiscord: boolean;
+  firstRunFeaturePhone: boolean;
+  firstRunFeatureCrypto: boolean;
+  firstRunFeatureBrowser: boolean;
+  firstRunFeatureComputerUse: boolean;
   /** Which feature is currently mid-OAuth flow, or null. */
-  onboardingFeatureOAuthPending: string | null;
-  onboardingCloudProvisionedContainer: boolean;
+  firstRunFeatureOAuthPending: string | null;
+  firstRunCloudProvisionedContainer: boolean;
 
   // Command palette
   commandPaletteOpen: boolean;
@@ -918,28 +927,28 @@ export interface AppActions {
   ) => void;
   handleCharacterMessageExamplesInput: (value: string) => void;
 
-  // Onboarding
-  handleOnboardingNext: (options?: OnboardingNextOptions) => Promise<void>;
-  handleOnboardingBack: () => void;
+  // First-run
+  handleFirstRunNext: (options?: FirstRunNextOptions) => Promise<void>;
+  handleFirstRunBack: () => void;
   /** Jump to an earlier step in the active track (sidebar); backward-only. */
-  handleOnboardingJumpToStep: (step: OnboardingStep) => void;
-  /** Set onboarding step and sync Flamina guide (e.g. deployment → providers). */
-  goToOnboardingStep: (step: OnboardingStep) => void;
-  handleOnboardingRemoteConnect: () => Promise<void>;
-  handleOnboardingUseLocalBackend: () => void;
+  handleFirstRunJumpToStep: (step: SetupStep) => void;
+  /** Set internal configuration step and sync Flamina guide. */
+  goToFirstRunStep: (step: SetupStep) => void;
+  handleFirstRunRemoteConnect: () => Promise<void>;
+  handleFirstRunUseLocalBackend: () => void;
   /**
-   * Finalize onboarding without running the chat handoff.
-   * Used by RuntimeGate: the gate only picks a runtime target; it does
-   * not collect provider/character info, so there is no submit payload.
-   * Dispatches ONBOARDING_COMPLETE to the startup coordinator.
+   * Finalize first-run without running the chat handoff.
+   * Used when first-run setup already persisted the server-side profile.
+   * Dispatches FIRST_RUN_COMPLETE to the startup coordinator.
    *
-   * The full wizard passes `{ launchCompanionOverlay: true }` so first-time
-   * setup lands in `@elizaos/plugin-companion` at `/apps/companion`. RuntimeGate
-   * omits options and lands on chat only.
+   * The full first-run flow passes an explicit landing tab when needed.
+   *
+   * Passing `{ launchCompanionOverlay: true }` lands first-time setup in
+   * `@elizaos/plugin-companion` at `/apps/companion`.
    */
-  completeOnboarding: (
+  completeFirstRun: (
     landingTab?: Tab,
-    options?: CompleteOnboardingOptions,
+    options?: CompleteFirstRunOptions,
   ) => void;
 
   // Cloud
@@ -950,7 +959,7 @@ export interface AppActions {
 
   // Multi-agent
   switchAgentProfile: (profileId: string) => void;
-  handleCloudOnboardingFinish: () => Promise<void>;
+  handleCloudFirstRunFinish: () => Promise<void>;
 
   // Vincent
   vincentConnected: boolean;

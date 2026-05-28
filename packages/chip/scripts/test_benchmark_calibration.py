@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-import json
 import importlib.util
+import json
 import subprocess
 import sys
 import tempfile
@@ -15,8 +15,9 @@ RUNNER = ROOT / "benchmarks/run_benchmarks.py"
 BLOCKED_METADATA = ROOT / "benchmarks/metadata/strict-blocked-template.json"
 LOCAL_HOST_METADATA = ROOT / "benchmarks/metadata/local-host-smoke.json"
 spec = importlib.util.spec_from_file_location("run_benchmarks", RUNNER)
+assert spec is not None
 bench = importlib.util.module_from_spec(spec)
-assert spec and spec.loader
+assert spec.loader
 spec.loader.exec_module(bench)
 
 
@@ -186,9 +187,13 @@ def test_target_measured_l5_l6_report_provenance_validates() -> None:
         raise AssertionError(errors)
     if not any("raw_output_sha256 does not match raw_output" in error for error in drift_errors):
         raise AssertionError(drift_errors)
-    if not any("artifacts.raw_output must resolve under artifact root" in error for error in symlink_errors):
+    if not any(
+        "artifacts.raw_output must resolve under artifact root" in error for error in symlink_errors
+    ):
         raise AssertionError(symlink_errors)
-    if not any("target_execution.transcript_path must not be empty" in error for error in empty_errors):
+    if not any(
+        "target_execution.transcript_path must not be empty" in error for error in empty_errors
+    ):
         raise AssertionError(empty_errors)
     print("PASS target-measured L5/L6 provenance validates")
 

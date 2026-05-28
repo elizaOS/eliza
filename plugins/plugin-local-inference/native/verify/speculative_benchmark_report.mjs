@@ -4,7 +4,7 @@ import path from "node:path";
 
 export const SPECULATIVE_BENCHMARK_SCHEMA =
   "eliza.speculative-benchmark.v1";
-export const SPECULATORS = new Set(["dflash", "eagle3", "mtp"]);
+export const SPECULATORS = new Set(["mtp", "eagle3", "mtp"]);
 
 export function timestamp() {
   return new Date()
@@ -118,7 +118,7 @@ export function buildSpeculativeBenchmarkReport({
   const resolvedFailure =
     failure ??
     withDrafter?.failure ??
-    withDrafter?.dflashFailure ??
+    withDrafter?.mtpFailure ??
     withoutDrafter?.failure ??
     null;
   const resolvedBackend = backend ?? inferSpeculativeBackend(specBinary);

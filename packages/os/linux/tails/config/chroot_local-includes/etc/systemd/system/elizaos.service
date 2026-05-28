@@ -1,0 +1,18 @@
+[Unit]
+Description=elizaOS AI desktop home supervisor
+After=display-manager.service elizaos-update-verify.service
+Wants=elizaos-update-verify.service elizaos-update-health-check.service
+ConditionPathExists=/usr/local/bin/elizaos
+ConditionPathExists=/opt/elizaos/bin/launcher
+RefuseManualStop=yes
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/elizaos/elizaos-keeper
+Restart=always
+RestartSec=2
+SyslogIdentifier=elizaos-supervisor
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full

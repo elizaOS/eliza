@@ -183,8 +183,7 @@ def drift_report(failures: list[DriftFinding]) -> dict[str, Any]:
                     "--write-committed"
                 ),
                 "source_inputs": [
-                    path_details(source_input)
-                    for source_input in failure.spec.source_inputs
+                    path_details(source_input) for source_input in failure.spec.source_inputs
                 ],
             }
             for failure in failures
@@ -226,37 +225,32 @@ def main() -> int:
                 ROOT / "board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml"
             )
             committed_supplier_yaml = (
-                ROOT
-                / "board/kicad/e1-phone/production/sourcing/readiness/"
+                ROOT / "board/kicad/e1-phone/production/sourcing/readiness/"
                 "supplier-return-evidence-acceptance-matrix-2026-05-22.yaml"
             )
             committed_routed_yaml = (
-                ROOT
-                / "board/kicad/e1-phone/production/readiness/"
+                ROOT / "board/kicad/e1-phone/production/readiness/"
                 "routed-board-release-acceptance-matrix-2026-05-22.yaml"
             )
             committed_production_presence = (
-                ROOT
-                / "board/kicad/e1-phone/production/readiness/"
+                ROOT / "board/kicad/e1-phone/production/readiness/"
                 "production-factory-required-output-presence-inventory-2026-05-22.yaml"
             )
             committed_first_article = (
-                ROOT
-                / "board/kicad/e1-phone/production/test/readiness/"
+                ROOT / "board/kicad/e1-phone/production/test/readiness/"
                 "e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml"
             )
             committed_first_article_missing = (
-                ROOT
-                / "board/kicad/e1-phone/production/test/readiness/"
+                ROOT / "board/kicad/e1-phone/production/test/readiness/"
                 "e1-phone-first-article-missing-evidence-2026-05-22.yaml"
             )
             committed_first_article_executed_log_contract = (
-                ROOT
-                / "board/kicad/e1-phone/production/test/readiness/"
+                ROOT / "board/kicad/e1-phone/production/test/readiness/"
                 "e1-phone-first-article-executed-log-contract-2026-05-22.yaml"
             )
             committed_mechanical_cad = (
-                ROOT / "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml"
+                ROOT
+                / "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml"
             )
             committed_objective_audit = (
                 ROOT / "board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml"
@@ -265,18 +259,15 @@ def main() -> int:
                 ROOT / "board/kicad/e1-phone/e1-phone-readiness-unblock-register-2026-05-22.yaml"
             )
             committed_content_contract = (
-                ROOT
-                / "board/kicad/e1-phone/production/readiness/"
+                ROOT / "board/kicad/e1-phone/production/readiness/"
                 "release-evidence-content-contract-2026-05-22.yaml"
             )
             committed_validation_dry_run = (
-                ROOT
-                / "board/kicad/e1-phone/production/readiness/"
+                ROOT / "board/kicad/e1-phone/production/readiness/"
                 "release-evidence-validation-dry-run-2026-05-22.yaml"
             )
             committed_release_gate = (
-                ROOT
-                / "board/kicad/e1-phone/production/readiness/"
+                ROOT / "board/kicad/e1-phone/production/readiness/"
                 "fabrication-enclosure-e2e-release-gate-2026-05-22.yaml"
             )
             first_article = tmp / "e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml"
@@ -294,9 +285,7 @@ def main() -> int:
                 production_presence = committed_production_presence
                 first_article = committed_first_article
                 first_article_missing = committed_first_article_missing
-                first_article_executed_log_contract = (
-                    committed_first_article_executed_log_contract
-                )
+                first_article_executed_log_contract = committed_first_article_executed_log_contract
                 mechanical_cad = committed_mechanical_cad
                 objective_audit = committed_objective_audit
                 unblock_register = committed_unblock_register
@@ -305,9 +294,7 @@ def main() -> int:
                 release_gate = committed_release_gate
             else:
                 route_inventory = tmp / "kicad-route-readiness-inventory-2026-05-22.yaml"
-                supplier_yaml = (
-                    tmp / "supplier-return-evidence-acceptance-matrix-2026-05-22.yaml"
-                )
+                supplier_yaml = tmp / "supplier-return-evidence-acceptance-matrix-2026-05-22.yaml"
                 routed_yaml = tmp / "routed-board-release-acceptance-matrix-2026-05-22.yaml"
                 production_presence = (
                     tmp / "production-factory-required-output-presence-inventory-2026-05-22.yaml"
@@ -456,11 +443,11 @@ def main() -> int:
                 ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
                 ROOT / "board/kicad/e1-phone/routed-layout-si-drc-burndown-2026-05-22.yaml",
                 ROOT / "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml",
-                ROOT / "board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml",
+                ROOT
+                / "board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml",
             )
             supplier_sources = (
-                ROOT
-                / "board/kicad/e1-phone/production/sourcing/"
+                ROOT / "board/kicad/e1-phone/production/sourcing/"
                 "supplier-evidence-outbound-intake-manifest-2026-05-22.yaml",
                 ROOT / "board/kicad/e1-phone/supplier-evidence-drawing-gap-map-2026-05-22.yaml",
             )
@@ -468,20 +455,23 @@ def main() -> int:
                 committed_route_inventory,
                 ROOT / "board/kicad/e1-phone/routed-layout-si-drc-burndown-2026-05-22.yaml",
                 ROOT / "board/kicad/e1-phone/routed-release-plan.yaml",
-                ROOT / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+                ROOT
+                / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
                 ROOT / "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml",
                 ROOT / "board/kicad/e1-phone/production/step/component-models",
             )
             production_presence_sources = (
                 ROOT / "board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml",
-                ROOT / "board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml",
+                ROOT
+                / "board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml",
+                ROOT / "board/kicad/e1-phone/manufacturing-closure.yaml",
             )
             first_article_sources = (
-                ROOT
-                / "board/kicad/e1-phone/production/test/"
+                ROOT / "board/kicad/e1-phone/production/test/"
                 "bench-first-article-template-manifest-2026-05-22.yaml",
                 ROOT / "board/kicad/e1-phone/selected-hardware-first-article-execution.yaml",
-                ROOT / "board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml",
+                ROOT
+                / "board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml",
                 ROOT / "board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml",
             )
             mechanical_sources = (
@@ -492,28 +482,27 @@ def main() -> int:
             objective_audit_sources = (
                 ROOT / "board/kicad/e1-phone/artifact-manifest.yaml",
                 committed_route_inventory,
-                ROOT
-                / "board/kicad/e1-phone/production/sourcing/"
+                ROOT / "board/kicad/e1-phone/production/sourcing/"
                 "supplier-evidence-outbound-intake-manifest-2026-05-22.yaml",
                 ROOT / "board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml",
+                ROOT / "board/kicad/e1-phone/production/readiness/"
+                "production-factory-required-output-presence-inventory-2026-05-22.yaml",
                 ROOT / "board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml",
-                ROOT
-                / "board/kicad/e1-phone/production/test/"
+                ROOT / "board/kicad/e1-phone/production/test/"
                 "bench-first-article-template-manifest-2026-05-22.yaml",
                 ROOT / "mechanical/e1-phone/review/board-step-readiness.json",
                 ROOT / "mechanical/e1-phone/review/cad-connection-coverage.json",
-                ROOT / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+                ROOT
+                / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
             )
             unblock_register_sources = (
                 committed_objective_audit,
                 committed_route_inventory,
-                ROOT
-                / "board/kicad/e1-phone/production/sourcing/"
+                ROOT / "board/kicad/e1-phone/production/sourcing/"
                 "supplier-evidence-outbound-intake-manifest-2026-05-22.yaml",
                 committed_production_presence,
                 ROOT / "board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml",
-                ROOT
-                / "board/kicad/e1-phone/production/test/"
+                ROOT / "board/kicad/e1-phone/production/test/"
                 "bench-first-article-template-manifest-2026-05-22.yaml",
             )
             content_contract_sources = (
@@ -523,8 +512,10 @@ def main() -> int:
                 committed_production_presence,
                 committed_mechanical_cad,
                 ROOT / "board/kicad/e1-phone/kicad-cad-traceability-matrix-2026-05-22.yaml",
-                ROOT / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
-                ROOT / "board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml",
+                ROOT
+                / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml",
+                ROOT
+                / "board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml",
             )
             release_gate_sources = (
                 committed_content_contract,
@@ -642,11 +633,10 @@ def main() -> int:
         print("STATUS: BLOCKED E1 phone release evidence regeneration drift detected")
         for failure in failures:
             print(f"  - {failure.message}")
-            print(f"    release_credit: false")
+            print("    release_credit: false")
             print(f"    generator_command: {command_text(failure.spec.generator_command)}")
             source_inputs = [
-                path_details(source_input)["path"]
-                for source_input in failure.spec.source_inputs
+                path_details(source_input)["path"] for source_input in failure.spec.source_inputs
             ]
             print(
                 "    source_inputs: "

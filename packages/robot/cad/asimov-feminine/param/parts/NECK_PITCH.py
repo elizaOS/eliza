@@ -18,7 +18,7 @@ import sys
 sys.path.insert(0, '/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param')
 import numpy as np
 import trimesh
-import paramlib as P
+import warp2 as W
 import connections as C
 
 ROOT = '/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot'
@@ -52,14 +52,15 @@ def build():
     orig = trimesh.load(SRC)
     reserved = C.reserved_levels('NECK_PITCH')  # [0.0]
 
-    # pad=0.05 so the chin tip (low Z) and crown (high Z) extremes are captured
-    # and the bottom neck mate plane (~Z=0) stays in the loft.
-    param = P.slice_to_rings(orig, axis='z', step=0.01, n_angular=72, pad=0.05)
-    w = P.connection_weight(param, reserved, ramp=0.03)
-
-    P.radial_scale(param, jaw_profile, weight=w)
-
-    rebuilt = P.rings_to_mesh(param)
+    rebuilt = W.warp_similarity(
+        orig,
+        axis='z',
+        scale_fn=jaw_profile,
+        reserved=reserved,
+        ramp=0.03,
+        step=0.0025,
+        smooth_m=5,
+    )
     rebuilt.export(OUT)
     return orig, rebuilt, reserved
 

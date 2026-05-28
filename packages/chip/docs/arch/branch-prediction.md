@@ -308,7 +308,15 @@ H2P wins there too (`37.6255` versus baseline `38.0666` and `h2p_off`
 `37.8209`). `make bpu-sweep-full-browser-build-crypto-shard` covers the
 uncapped browser-layout, build/compiler, and crypto shard; guarded H2P wins
 there with no per-trace regressions (`48.5761` versus baseline `50.1515` and
-`h2p_off` `48.9479`).
+`h2p_off` `48.9479`). `make bpu-sweep-full-compression-shard` covers the
+uncapped compression proxy; guarded H2P wins (`102.2479` versus baseline
+`103.6911`) while `h2p_off` regresses (`103.8983`). `make
+bpu-sweep-full-agent-shard` covers the uncapped agent-loop and agent-decode
+traces; guarded H2P and H2P-off tie at `3.0128`, both ahead of baseline
+`4.1193`. Together these checked shards cover every local QEMU RV64 workload
+trace in `bpu-workload-trace-manifest.json`; the monolithic twenty-trace
+uncapped sweep remains a convenience/performance gap rather than a missing trace
+coverage gap.
 
 The synthetic set is deliberately broad enough to catch overfitting: regular
 GPU tile loops, SIMT divergence/reconvergence, GPU command processing and
@@ -605,6 +613,8 @@ downstream fetch logic can accept both lanes.
 | Full IO/media shard sweep | `make bpu-sweep-full-io-media-shard` | `docs/evidence/cpu_ap/bpu_sweep_full_io_media_shard.json`, `…_leaderboard.md` |
 | Full system/GPU shard sweep | `make bpu-sweep-full-system-gpu-shard` | `docs/evidence/cpu_ap/bpu_sweep_full_system_gpu_shard.json`, `…_leaderboard.md` |
 | Full browser/build/crypto shard sweep | `make bpu-sweep-full-browser-build-crypto-shard` | `docs/evidence/cpu_ap/bpu_sweep_full_browser_build_crypto_shard.json`, `…_leaderboard.md` |
+| Full compression shard sweep | `make bpu-sweep-full-compression-shard` | `docs/evidence/cpu_ap/bpu_sweep_full_compression_shard.json`, `…_leaderboard.md` |
+| Full agent shard sweep | `make bpu-sweep-full-agent-shard` | `docs/evidence/cpu_ap/bpu_sweep_full_agent_shard.json`, `…_leaderboard.md` |
 
 ## Files
 

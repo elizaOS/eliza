@@ -50,6 +50,22 @@
     "spec2017_mpki_claim": false,
     "two_taken_per_cycle_claim": false
   },
+  "full_agent_shard_sweep_ref": {
+    "baseline_weighted_mpki": 4.119273,
+    "best_config": "h2p_lowconf_only",
+    "best_weighted_mpki": 3.012804,
+    "command": "make bpu-sweep-full-agent-shard",
+    "harness": "behavioural-bpu-model",
+    "max_branches_per_trace": 0,
+    "path": "docs/evidence/cpu_ap/bpu_sweep_full_agent_shard.json",
+    "present": true,
+    "schema": "eliza.bpu_sweep.v1",
+    "sha256": "69fc3524179c4e4e6eff6034c8abefd79d620a0aa875c5a8b125cd4868a8e863",
+    "trace_filter": [
+      "agent_decode",
+      "agent_loop"
+    ]
+  },
   "full_browser_build_crypto_shard_sweep_ref": {
     "baseline_weighted_mpki": 50.151481,
     "best_config": "h2p_lowconf_only",
@@ -65,6 +81,21 @@
       "browser_layout_proxy",
       "build_compiler_proxy",
       "crypto_packet_proxy"
+    ]
+  },
+  "full_compression_shard_sweep_ref": {
+    "baseline_weighted_mpki": 103.691058,
+    "best_config": "h2p_lowconf_only",
+    "best_weighted_mpki": 102.247902,
+    "command": "make bpu-sweep-full-compression-shard",
+    "harness": "behavioural-bpu-model",
+    "max_branches_per_trace": 0,
+    "path": "docs/evidence/cpu_ap/bpu_sweep_full_compression_shard.json",
+    "present": true,
+    "schema": "eliza.bpu_sweep.v1",
+    "sha256": "72a8daa7cfa83cce8895f815b7f564c135194ff0f33d12db6911b44d698fc953",
+    "trace_filter": [
+      "compression_proxy"
     ]
   },
   "full_io_media_shard_sweep_ref": {
@@ -123,7 +154,7 @@
       "kernel_syscall_proxy"
     ]
   },
-  "generated_at_utc": "2026-05-24T05:57:58.461091+00:00",
+  "generated_at_utc": "2026-05-24T06:30:28.279306+00:00",
   "parameters": {
     "BIM_CTR_W": 2,
     "BIM_ENTRIES": 16384,
@@ -236,7 +267,7 @@
     "UFTB_WAYS": 4
   },
   "schema": "eliza.bpu_params.v1",
-  "source_revision": "f5ec488667ca291a401d968b8e26808d6f55bfe7",
+  "source_revision": "596b1929a16f971da093a7ef16a8f871453b6b20",
   "sources": {
     "cbp5_trace_manifest": {
       "path": "docs/evidence/cpu_ap/cbp5-trace-manifest.json",
@@ -245,7 +276,7 @@
     },
     "contract": {
       "path": "docs/arch/branch-prediction.md",
-      "sha256": "d19539ae5437ce6196a4473d10a9af6533effe665ca0b56736aee4fdfe08f897"
+      "sha256": "08aaf84ecf5bb3f99e25457930ff31c22953d13c3dd67397e77ad2de7435a0e4"
     },
     "manifest": {
       "path": "docs/generators/xiangshan/eliza-kunminghu-manifest.json",

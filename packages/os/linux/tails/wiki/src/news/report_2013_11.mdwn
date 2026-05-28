@@ -1,0 +1,141 @@
+[[!meta title="Tails report for November, 2013"]]
+[[!meta date="Wed, 11 Dec 2013 21:29:25 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Metrics
+=======
+
+- Tails has been started more than 205 802 times in November.
+  This make 6 860 boots a day in average.
+- 6 270 downloads of the OpenPGP signature of Tails ISO.
+- 80 reports were received through WhisperBack.
+
+Code
+====
+
+Some of the newest contributors were particularly active this month:
+
+  - We have a new and active maintainer for I2P in Tails. Big up to Kytv! So I2P
+    was updated to 0.9.8.1,
+    and the I2P configuration and integration was improved in several ways.
+  - SCIM was
+    replaced
+    by IBus as input method to better support various input methods
+    (Closes [[!tails_ticket 5624]] and [[!tails_ticket 6206]]). Thanks to WinterFairy!
+  - Kevin C. Krinke has been actively working on a replacement of the
+    clock with configurable
+    timezone. Many thanks!
+  - A script has been written to automate the
+    importation process of completed
+    translations from Transifex. Thanks to WinterFairy!
+  - The keyboard selection for some languages in Tails Greeter was
+    fixed
+    (Closes [[!tails_ticket 5741]]). Again thanks to WinterFairy!
+
+We kept on working on some major features, some are about to be released:
+
+  - The real-world deployment of incremental updates has been
+    made
+    ready for beta testing and
+    will be the default way to upgrade Tails, on point-releases at least.
+  - The second round of upgrade towards a safer
+    persistence was
+    prepared.
+  - A lot of work has been done towards
+    MAC spoofing. See the latest blueprint of
+    our design.
+  - The migration to Firefox 24 and Torbutton 1.6 was completed (Closes
+    [[!tails_ticket 6370]] and [[!tails_ticket 6371]]).
+
+Regarding security:
+
+  - The serious security upgrade to NSS 3.15.3 was prepared but we unfortunately
+    didn't have time to make a point release just for that. See CVE-2013-1741,
+    CVE-2013-5605 and CVE-2013-5606.
+  - More IP and MAC addresses are sanitized in WhisperBack reports (Closes
+    [[!tails_ticket 6391]]).
+
+Regarding user experience:
+
+  - DPMS screen blanking has been
+    disabled (Closes [[!tails_ticket 5617]]).
+  - The default system partition size is now
+    2.5GB.
+  - The bug that prevented Vidalia to show up sometimes was
+    fixed.
+
+And also:
+
+  - Tails now have its own [[!tails_gitweb
+    config/chroot_local-includes/usr/local/lib/tails-shell-library
+    desc="shell"]] and perl libraries
+    where we factorize some of our code.
+  - Upgrade to Linux 3.11 and got back to Linux 3.10 because 3.11 breaks the
+    shutdown process on some hardware.
+  - Uploaded a few packages and backports we need into Debian.
+  - Tails Installer
+    does not fail anymore if the `tmp` directory exists on
+    the destination filesystem.
+
+Documentation and website
+=========================
+
+  - A [[draft FAQ|support/faq]] was create to answer some questions asked on
+    our previous forum.
+  - A [[calendar|contribute/calendar]] was created to centralize all the
+    important dates for the community.
+  - A [[glossary|contribute/glossary]] was created on the website to define
+    terms specific to our process.
+  - The roles on the Contribute page were [[described|contribute]].
+  - Two new contribution pages were added: [[graphics|contribute/how/graphics]]
+    and [[user interface|contribute/how/user_experience]].
+  - Instructions to change the persistence passphrase were
+    drafted.
+  - The [[contribute/release_schedule]] was updated to match current
+    practice more closely.
+  - The [[documentation for translators|contribute/how/translate]] now
+    points to Git tutorials.
+
+Infrastructure
+==============
+
+  - We have organized donations of UEFI hardware, and purchased
+    some more.
+  - Recovered from disk breakage on our main server.
+  - Surveyed operators of HTTP mirrors for SNI availability.
+    The results look good, next step is to get a certificate for
+    `dl.amnesia.boum.org`.
+
+On-going discussions
+====================
+
+  - 2.0 milestone += supporting USB devices exposed as
+    non-removable?
+  - Tor Launcher
+    extension
+  - WhisperBack launcher should give a hint on its
+    use
+  - Glossary for
+    contributors
+
+Funding
+=======
+
+  - ThinkPenguin.com donated hardware for us to investigate on UEFI support.
+    Many thanks!
+  - We have been working on a proposal with sponsor Golf.
+
+Outreach
+========
+
+  - We submitted a talk for 30C3 but it was rejected.
+  - 2013-11-28: Helping Human Rights Defenders to Communicate Securely: TAILS,
+    National Democratic Institute,
+    USA at the World
+    Forum for Democracy
+
+Press and testimonials
+======================
+
+  - 2013-11: The German-speaking ADMIN magazine [reviews
+    Tails](http://www.admin-magazin.de/Das-Heft/2013/11/Tails-0.20).

@@ -172,7 +172,7 @@ export async function runMainMenuResetAfterApiBaseResolved(
 
   const readOnboardingComplete = async (): Promise<boolean | null> => {
     try {
-      const res = await d.fetchImpl(`${d.apiBase}/api/onboarding/status`, {
+      const res = await d.fetchImpl(`${d.apiBase}/api/first-run/status`, {
         method: "GET",
         headers: d.buildHeaders(),
       });
@@ -187,20 +187,20 @@ export async function runMainMenuResetAfterApiBaseResolved(
   };
 
   let statusPayload = await executeResetAndRestart();
-  let onboardingComplete = await readOnboardingComplete();
+  let firstRunComplete = await readOnboardingComplete();
 
   for (
     let attempt = 0;
-    onboardingComplete === true && attempt < MENU_RESET_VERIFY_RETRIES;
+    firstRunComplete === true && attempt < MENU_RESET_VERIFY_RETRIES;
     attempt += 1
   ) {
     statusPayload = await executeResetAndRestart();
-    onboardingComplete = await readOnboardingComplete();
+    firstRunComplete = await readOnboardingComplete();
   }
 
-  if (onboardingComplete === true) {
+  if (firstRunComplete === true) {
     throw new Error(
-      "Reset verification failed: onboarding still marked complete",
+      "Reset verification failed: first-run setup still marked complete",
     );
   }
 

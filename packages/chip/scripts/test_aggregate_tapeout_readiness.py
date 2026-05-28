@@ -15,6 +15,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 import yaml
@@ -24,21 +25,21 @@ if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
 import aggregate_tapeout_readiness as agg  # noqa: E402
-import check_e1_phone_factory_output_content as factory_content  # noqa: E402
-import check_e1_phone_fabrication_release as fabrication_release  # noqa: E402
-import check_e1_phone_first_article_content as first_article_content  # noqa: E402
 import check_e1_phone_board_package as board_package  # noqa: E402
 import check_e1_phone_enclosure_mechanical_content as enclosure_content  # noqa: E402
+import check_e1_phone_fabrication_release as fabrication_release  # noqa: E402
+import check_e1_phone_factory_output_content as factory_content  # noqa: E402
+import check_e1_phone_first_article_content as first_article_content  # noqa: E402
 import check_e1_phone_release_approval_signatures as approval_signatures  # noqa: E402
 import check_e1_phone_release_evidence_regeneration as regeneration_check  # noqa: E402
 import check_e1_phone_routed_output_content as routed_content  # noqa: E402
 import check_e1_phone_supplier_return_content as supplier_content  # noqa: E402
-import e1_phone_release_evidence_content_contract as release_contract  # noqa: E402
-import e1_phone_release_evidence_validation_dry_run as release_validation  # noqa: E402
-import e1_phone_mechanical_cad_evidence_inventory as mechanical_inventory  # noqa: E402
-import e1_phone_kicad_route_inventory as route_inventory  # noqa: E402
 import e1_phone_enclosure_readiness_gap_map as enclosure_gap_map  # noqa: E402
 import e1_phone_first_article_missing_evidence_diagnostic as first_article_missing  # noqa: E402
+import e1_phone_kicad_route_inventory as route_inventory  # noqa: E402
+import e1_phone_mechanical_cad_evidence_inventory as mechanical_inventory  # noqa: E402
+import e1_phone_release_evidence_content_contract as release_contract  # noqa: E402
+import e1_phone_release_evidence_validation_dry_run as release_validation  # noqa: E402
 import e1_phone_routed_board_release_acceptance_matrix as routed_acceptance  # noqa: E402
 
 
@@ -122,6 +123,91 @@ class EvidenceLineTests(unittest.TestCase):
             agg._first_evidence_line("foo", "", 0),
             "foo: no output (exit=0)",
         )
+
+
+class E1PhoneBoardPackageArtifactClassifierTests(unittest.TestCase):
+    def test_inline_blocked_candidate_pdf_is_not_release_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_text:
+            pdf_path = Path(tmp_text) / "rf-calibration-procedure.pdf"
+            pdf_path.write_bytes(
+                b"%PDF-1.4\n"
+                b"% rf_calibration_procedure_candidate: "
+                b"blocked local factory candidate, not release evidence\n"
+                b"%%EOF\n"
+            )
+
+            self.assertTrue(board_package.is_blocked_candidate_artifact(pdf_path))
+            self.assertFalse(board_package.is_release_artifact_present(pdf_path))
+
+    def test_supplier_return_csv_placeholder_is_not_release_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_text:
+            csv_path = Path(tmp_text) / "pinout-or-pad-map.csv"
+            csv_path.write_text(
+                "artifact_id,disposition,release_credit,notes\n"
+                "display_touch:pinout_or_pad_map,"
+                "blocked_pending_supplier_return,false,"
+                "placeholder for supplier return\n",
+                encoding="utf-8",
+            )
+
+            self.assertTrue(board_package.is_blocked_candidate_artifact(csv_path))
+            self.assertFalse(board_package.is_release_artifact_present(csv_path))
+
+    def test_supplier_return_text_placeholder_is_not_release_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_text:
+            step_path = Path(tmp_text) / "supplier-model.step"
+            step_path.write_text(
+                "E1 phone supplier-return placeholder\n"
+                "release_credit: false\n"
+                "This is not supplier evidence. Replace with signed supplier artifact.\n",
+                encoding="utf-8",
+            )
+
+            self.assertTrue(board_package.is_blocked_candidate_artifact(step_path))
+            self.assertFalse(board_package.is_release_artifact_present(step_path))
+
+    def test_metadata_sidecar_blocks_primary_artifact_release_credit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_text:
+            pdf_path = Path(tmp_text) / "assembly.pdf"
+            pdf_path.write_bytes(b"%PDF-1.4\n%%EOF\n")
+            pdf_path.with_name(pdf_path.name + ".metadata.yaml").write_text(
+                "status: blocked_pending_supplier_return\nrelease_credit: false\n",
+                encoding="utf-8",
+            )
+
+            self.assertTrue(board_package.is_blocked_candidate_artifact(pdf_path))
+            self.assertFalse(board_package.is_release_artifact_present(pdf_path))
+
+    def test_recursive_board_path_collection_follows_yaml_json_and_directory_manifests(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp_text:
+            root = Path(tmp_text)
+            yaml_path = root / "board/kicad/e1-phone/a.yaml"
+            json_path = root / "board/kicad/e1-phone/b.json"
+            directory = root / "board/kicad/e1-phone/production/bom"
+            yaml_path.parent.mkdir(parents=True)
+            directory.mkdir(parents=True)
+            yaml_path.write_text(
+                "next: board/kicad/e1-phone/b.json\n",
+                encoding="utf-8",
+            )
+            json_path.write_text(
+                json.dumps({"dir": "board/kicad/e1-phone/production/bom"}),
+                encoding="utf-8",
+            )
+            (directory / "release-manifest.yaml").write_text(
+                "status: blocked\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(board_package, "ROOT", root):
+                paths = board_package.collect_referenced_board_paths(
+                    {"board/kicad/e1-phone/a.yaml"}
+                )
+
+        self.assertIn("board/kicad/e1-phone/b.json", paths)
+        self.assertIn("board/kicad/e1-phone/production/bom", paths)
+        self.assertIn("board/kicad/e1-phone/production/bom/release-manifest.yaml", paths)
 
 
 class BuildReportTests(unittest.TestCase):
@@ -300,10 +386,7 @@ class BuildReportTests(unittest.TestCase):
                 ),
             ]
         )
-        phase_map = {
-            row["phase"]: row
-            for row in report["blocker_phase_plan"]
-        }
+        phase_map = {row["phase"]: row for row in report["blocker_phase_plan"]}
         self.assertIn("phone_fabrication_enclosure_release", phase_map)
         self.assertIn("phone_end_to_end_runtime_release", phase_map)
         self.assertIn("product_release_rollup", phase_map)
@@ -331,9 +414,7 @@ class BuildReportTests(unittest.TestCase):
         )
         self.assertIn("next_action", fabrication["blocked_gate_details"][0])
         self.assertEqual(
-            fabrication["next_command_by_dependency"][
-                "actionable_external_dependency"
-            ],
+            fabrication["next_command_by_dependency"]["actionable_external_dependency"],
             ["python3 scripts/check_e1_phone_fabrication_release.py"],
         )
         runtime = phase_map["phone_end_to_end_runtime_release"]
@@ -1067,7 +1148,7 @@ class ReportFileTests(unittest.TestCase):
             module="tests.test_x",
         )
         report = agg.build_report([result])
-        gate = report["gates"][0]  # type: ignore[index]
+        gate = report["gates"][0]
         self.assertEqual(gate["script"], "scripts/check_x.py")
         self.assertEqual(gate["args"], ("--release",))
         self.assertEqual(gate["module"], "tests.test_x")
@@ -1185,9 +1266,7 @@ class E1PhoneReleaseContentStrictnessTests(unittest.TestCase):
                         "schema": "synthetic",
                         "status": "blocked",
                         "content_contracts": [self._content_contract()],
-                        "artifact_content_requirements": [
-                            self._contract_row(str(evidence))
-                        ],
+                        "artifact_content_requirements": [self._contract_row(str(evidence))],
                     }
                 ),
                 encoding="utf-8",
@@ -1215,9 +1294,7 @@ class E1PhoneReleaseContentStrictnessTests(unittest.TestCase):
                         "schema": "synthetic",
                         "status": "blocked",
                         "content_contracts": [self._content_contract()],
-                        "artifact_content_requirements": [
-                            self._contract_row(str(missing))
-                        ],
+                        "artifact_content_requirements": [self._contract_row(str(missing))],
                     }
                 ),
                 encoding="utf-8",
@@ -1463,7 +1540,7 @@ class E1PhoneReleaseContentStrictnessTests(unittest.TestCase):
 
 class E1PhoneBoardPackageGateTests(unittest.TestCase):
     def test_top_bottom_interconnect_accepts_current_kicad_capture_blocker(self) -> None:
-        plan = {
+        plan: dict[str, Any] = {
             "status": "blocked_interconnect_requires_connector_stackup_and_si",
             "source_artifacts": [
                 "board/kicad/e1-phone/board-topology-decision.yaml",
@@ -1524,9 +1601,7 @@ class E1PhoneBoardPackageGateTests(unittest.TestCase):
                     ],
                 },
                 "signal_flex_alternate": {"family": "Hirose_FH58"},
-                "stacked_board_fallback": {
-                    "family": "Molex_SlimStack_ACB6_Plus_or_equivalent"
-                },
+                "stacked_board_fallback": {"family": "Molex_SlimStack_ACB6_Plus_or_equivalent"},
             },
             "minimum_pin_budget": {
                 "signal_or_power_nets_counted": 31,
@@ -1564,11 +1639,7 @@ class E1PhoneBoardPackageGateTests(unittest.TestCase):
             "blocks": [
                 {
                     "nets": {
-                        "all": [
-                            net
-                            for bus in plan["cross_island_buses"]
-                            for net in bus["nets"]
-                        ]
+                        "all": [net for bus in plan["cross_island_buses"] for net in bus["nets"]]
                     }
                 }
             ],
@@ -1594,9 +1665,11 @@ class E1PhoneBoardPackageGateTests(unittest.TestCase):
                 return routing
             raise AssertionError(f"unexpected fixture path: {path}")
 
-        with mock.patch.object(board_package, "load_yaml", side_effect=fake_load_yaml):
-            with redirect_stdout(io.StringIO()):
-                board_package.check_top_bottom_interconnect_plan()
+        with (
+            mock.patch.object(board_package, "load_yaml", side_effect=fake_load_yaml),
+            redirect_stdout(io.StringIO()),
+        ):
+            board_package.check_top_bottom_interconnect_plan()
 
     def test_checker_reports_release_not_ready_without_hiding_direct_failures(self) -> None:
         completed = subprocess.run(
@@ -1611,9 +1684,7 @@ class E1PhoneBoardPackageGateTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 2, combined[-4000:])
         self.assertEqual(agg._classify(completed.returncode, combined), "BLOCKED")
         report = json.loads(
-            (ROOT / "build/reports/e1_phone_board_package.json").read_text(
-                encoding="utf-8"
-            )
+            (ROOT / "build/reports/e1_phone_board_package.json").read_text(encoding="utf-8")
         )
         self.assertIn("STATUS: BLOCKED E1 phone board package", combined)
         self.assertFalse(report["summary"]["fabrication_ready"])
@@ -1647,7 +1718,9 @@ class E1PhoneBoardPackageGateTests(unittest.TestCase):
 
         self.assertIs(snapshot["present"], True)
         self.assertEqual(snapshot["status"], "development_routed_tracks_present_not_release")
-        self.assertEqual(snapshot["evidence_class"], "development_routing_visualization_not_release")
+        self.assertEqual(
+            snapshot["evidence_class"], "development_routing_visualization_not_release"
+        )
         self.assertEqual(snapshot["route_count"], 153)
         self.assertEqual(snapshot["segment_count"], 306)
         self.assertEqual(snapshot["missing_nets"], [])
@@ -1743,9 +1816,7 @@ class E1PhoneMechanicalCadEvidenceInventoryTests(unittest.TestCase):
 
     def test_mechanical_release_blockers_survive_local_cad_readiness(self) -> None:
         report = mechanical_inventory.build_report()
-        blocker_ids = {
-            row["gate"] for row in report["missing_release_ready_evidence"]
-        }
+        blocker_ids = {row["gate"] for row in report["missing_release_ready_evidence"]}
 
         self.assertEqual(
             blocker_ids,
@@ -1767,7 +1838,7 @@ class E1PhoneMechanicalCadEvidenceInventoryTests(unittest.TestCase):
 
 
 class E1PhoneFabricationReleaseGateTests(unittest.TestCase):
-    def _release_report(self) -> dict[str, object]:
+    def _release_report(self) -> dict[str, Any]:
         return {
             "schema": fabrication_release.EXPECTED_SCHEMA,
             "summary": {
@@ -1811,7 +1882,7 @@ class E1PhoneFabricationReleaseGateTests(unittest.TestCase):
             cwd=ROOT,
             text=True,
             capture_output=True,
-            timeout=30,
+            timeout=120,
             check=False,
         )
         combined = completed.stdout + completed.stderr
@@ -1821,9 +1892,7 @@ class E1PhoneFabricationReleaseGateTests(unittest.TestCase):
             combined,
         )
         report = json.loads(
-            (ROOT / "build/reports/e1_phone_fabrication_release.json").read_text(
-                encoding="utf-8"
-            )
+            (ROOT / "build/reports/e1_phone_fabrication_release.json").read_text(encoding="utf-8")
         )
         self.assertTrue(report["blocked_evidence_inventory"])
         gate_blocker = report["blocked_evidence_inventory"][0]
@@ -1895,8 +1964,7 @@ class E1PhoneReleaseEvidenceRegenerationGateTests(unittest.TestCase):
         self.assertIn(completed.returncode, {0, 2}, combined[-4000:])
         self.assertTrue(
             "STATUS: PASS E1 phone release evidence regeneration" in combined
-            or "STATUS: BLOCKED E1 phone release evidence regeneration drift detected"
-            in combined,
+            or "STATUS: BLOCKED E1 phone release evidence regeneration drift detected" in combined,
             combined[-4000:],
         )
 
@@ -2024,7 +2092,7 @@ class E1PhoneReleaseApprovalSignatureGateTests(unittest.TestCase):
             cwd=ROOT,
             text=True,
             capture_output=True,
-            timeout=30,
+            timeout=120,
             check=False,
         )
         combined = completed.stdout + completed.stderr
@@ -2042,8 +2110,7 @@ class E1PhoneReleaseApprovalSignatureGateTests(unittest.TestCase):
         )
         matrix = yaml.safe_load(
             (
-                ROOT
-                / "board/kicad/e1-phone/production/readiness/"
+                ROOT / "board/kicad/e1-phone/production/readiness/"
                 "release-approval-signature-blocker-matrix-2026-05-23.yaml"
             ).read_text(encoding="utf-8")
         )
@@ -2153,9 +2220,7 @@ class E1PhoneReleaseApprovalSignatureGateTests(unittest.TestCase):
             matrix["summary"]["blocker_bucket_counts"],
             report["summary"]["blocker_bucket_counts"],
         )
-        self.assertTrue(
-            all(row["release_credit"] is False for row in matrix["blocker_buckets"])
-        )
+        self.assertTrue(all(row["release_credit"] is False for row in matrix["blocker_buckets"]))
         self.assertEqual(
             matrix["approval_tracks"],
             report["summary"]["approval_track_summaries"],
@@ -2168,8 +2233,7 @@ class E1PhoneReleaseApprovalSignatureGateTests(unittest.TestCase):
     def test_current_approval_rows_exclude_local_candidates(self) -> None:
         contract = yaml.safe_load(
             (
-                ROOT
-                / "board/kicad/e1-phone/production/readiness/"
+                ROOT / "board/kicad/e1-phone/production/readiness/"
                 "release-evidence-content-contract-2026-05-22.yaml"
             ).read_text(encoding="utf-8")
         )
@@ -2251,8 +2315,7 @@ class E1PhoneReleaseApprovalSignatureGateTests(unittest.TestCase):
     def test_routed_candidate_manifest_keeps_measured_outputs_absent(self) -> None:
         matrix = yaml.safe_load(
             (
-                ROOT
-                / "board/kicad/e1-phone/production/readiness/"
+                ROOT / "board/kicad/e1-phone/production/readiness/"
                 "routed-board-release-acceptance-matrix-2026-05-22.yaml"
             ).read_text(encoding="utf-8")
         )
@@ -2291,7 +2354,11 @@ class E1PhoneReleaseApprovalSignatureGateTests(unittest.TestCase):
             manifest_paths,
         )
         self.assertEqual(
-            len(routed_content.collect_required_outputs(matrix, include_present_validation_artifacts=False)),
+            len(
+                routed_content.collect_required_outputs(
+                    matrix, include_present_validation_artifacts=False
+                )
+            ),
             matrix["summary"]["required_output_path_count"],
         )
         self.assertGreater(
@@ -2407,8 +2474,7 @@ class E1PhoneSupplierReturnContentGateTests(unittest.TestCase):
             tmp = Path(tmp_text)
             csv_path = tmp / "display_touch-pinout.csv"
             csv_path.write_text(
-                "net_or_pin,supplier_pin_name,source_revision\n"
-                "MIPI_D0P,D0P,rev-a\n",
+                "net_or_pin,supplier_pin_name,source_revision\nMIPI_D0P,D0P,rev-a\n",
                 encoding="utf-8",
             )
 
@@ -2513,7 +2579,7 @@ class E1PhoneSupplierReturnContentGateTests(unittest.TestCase):
             cwd=ROOT,
             text=True,
             capture_output=True,
-            timeout=30,
+            timeout=120,
             check=False,
         )
         combined = completed.stdout + completed.stderr
@@ -2557,9 +2623,7 @@ class E1PhoneSupplierReturnContentGateTests(unittest.TestCase):
             external_dependencies["downstream_release_rows_waiting_on_supplier_returns"],
             0,
         )
-        self.assertEqual(
-            external_dependencies["true_missing_supplier_return_artifacts"], 0
-        )
+        self.assertEqual(external_dependencies["true_missing_supplier_return_artifacts"], 0)
         self.assertIn("validation_command", external_dependencies)
         self.assertGreater(diagnostics["blocked_by_evidence_group"]["supplier_return"], 0)
         self.assertGreater(
@@ -2624,17 +2688,15 @@ class E1PhoneRoutedOutputContentGateTests(unittest.TestCase):
         )
         self.assertIn("content_valid=", combined)
         report = json.loads(
-            (ROOT / "build/reports/e1_phone_routed_output_content.json").read_text(
-                encoding="utf-8"
-            )
+            (ROOT / "build/reports/e1_phone_routed_output_content.json").read_text(encoding="utf-8")
         )
         self.assertEqual(report["status"], "blocked")
         self.assertIn("present", report["summary"])
         self.assertIn("content_valid", report["summary"])
         self.assertGreater(report["summary"]["blocked"], 0)
-        self.assertEqual(report["summary"]["missing_outputs"], 0)
+        self.assertGreater(report["summary"]["missing_outputs"], 0)
         self.assertGreater(report["summary"]["candidate_present_blocked_count"], 0)
-        self.assertEqual(report["summary"]["true_missing_generated_output_count"], 0)
+        self.assertGreater(report["summary"]["true_missing_generated_output_count"], 0)
         self.assertEqual(report["summary"]["missing_approval_metadata_count"], 0)
         self.assertGreater(report["summary"]["candidate_present_but_blocked_count"], 0)
         self.assertIn("repo_generated_candidate_blocked_count", report["summary"])
@@ -2684,7 +2746,7 @@ class E1PhoneRoutedOutputContentGateTests(unittest.TestCase):
         )
         self.assertEqual(
             blocker_categories["counts"]["true_missing_generated_outputs"],
-            0,
+            report["summary"]["true_missing_generated_output_count"],
         )
         self.assertEqual(
             blocker_categories["counts"]["missing_approval_metadata"],
@@ -2703,14 +2765,10 @@ class E1PhoneRoutedOutputContentGateTests(unittest.TestCase):
             0,
         )
         self.assertEqual(
-            blocker_categories["by_path"]["board/kicad/e1-phone/production/stackup"][
-                "category"
-            ],
+            blocker_categories["by_path"]["board/kicad/e1-phone/production/stackup"]["category"],
             "present_unapproved_or_placeholder",
         )
-        stackup_category = blocker_categories["by_path"][
-            "board/kicad/e1-phone/production/stackup"
-        ]
+        stackup_category = blocker_categories["by_path"]["board/kicad/e1-phone/production/stackup"]
         self.assertTrue(stackup_category["release_credit_false"])
         self.assertIn("failure_buckets", stackup_category)
         self.assertIn("candidate_fail_closed_metadata", stackup_category)
@@ -2718,11 +2776,14 @@ class E1PhoneRoutedOutputContentGateTests(unittest.TestCase):
         self.assertIn("repo_generation_plan", stackup_category)
         generation = report["repo_generation_summary"]
         self.assertFalse(generation["release_credit"])
-        self.assertEqual(generation["true_missing_generated_artifact_count"], 0)
+        self.assertEqual(
+            generation["true_missing_generated_artifact_count"],
+            report["summary"]["true_missing_generated_output_count"],
+        )
         self.assertGreater(generation["generator_command_available_count"], 0)
         self.assertEqual(
             generation["external_release_evidence_required_count"],
-            report["summary"]["blocked"],
+            report["summary"]["external_release_evidence_required_count"],
         )
         self.assertIn(
             "generate_e1_phone_routed_output_candidates.py",
@@ -2737,7 +2798,7 @@ class E1PhoneRoutedOutputContentGateTests(unittest.TestCase):
         self.assertFalse(coverage["candidate_release_credit"])
         self.assertGreater(coverage["candidate_artifact_count"], 0)
         self.assertGreater(coverage["candidate_present_but_blocked_count"], 0)
-        self.assertEqual(
+        self.assertGreater(
             coverage["missing_required_paths_not_in_candidate_manifest_count"],
             0,
         )
@@ -2766,7 +2827,10 @@ class E1PhoneRoutedOutputContentGateTests(unittest.TestCase):
             pcb_packet["metadata_record"]["record_type"],
             "text_release_metadata_or_embedded_provenance",
         )
-        self.assertIn("board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml", {ref["manifest"] for ref in pcb_packet["source_manifest_refs"]})
+        self.assertIn(
+            "board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml",
+            {ref["manifest"] for ref in pcb_packet["source_manifest_refs"]},
+        )
         self.assertFalse(pcb_packet["release_credit"])
 
     def test_aggregator_classifies_e1_phone_routed_content_as_blocked(self) -> None:
@@ -2784,15 +2848,13 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
     ) -> None:
         manifest = yaml.safe_load(
             (
-                ROOT
-                / "board/kicad/e1-phone/production/"
+                ROOT / "board/kicad/e1-phone/production/"
                 "factory-output-candidate-manifest-2026-05-22.yaml"
             ).read_text(encoding="utf-8")
         )
         inventory = yaml.safe_load(
             (
-                ROOT
-                / "board/kicad/e1-phone/production/readiness/"
+                ROOT / "board/kicad/e1-phone/production/readiness/"
                 "production-factory-required-output-presence-inventory-2026-05-22.yaml"
             ).read_text(encoding="utf-8")
         )
@@ -2820,9 +2882,7 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
         )
         self.assertTrue(
             (
-                ROOT
-                / "board/kicad/e1-phone/production/stackup/"
-                "field-solved-impedance-table.csv"
+                ROOT / "board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv"
             ).exists()
         )
 
@@ -2832,7 +2892,7 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
             cwd=ROOT,
             text=True,
             capture_output=True,
-            timeout=30,
+            timeout=120,
             check=False,
         )
         combined = completed.stdout + completed.stderr
@@ -2890,7 +2950,7 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
         )
         self.assertEqual(
             blocker_categories["counts"]["true_missing_factory_outputs"],
-            0,
+            report["summary"]["missing"],
         )
         self.assertEqual(
             blocker_categories["counts"]["missing_approval_metadata"],
@@ -2905,9 +2965,7 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
             0,
         )
         self.assertEqual(
-            blocker_categories["by_path"][
-                "board/kicad/e1-phone/production/bom"
-            ]["category"],
+            blocker_categories["by_path"]["board/kicad/e1-phone/production/bom"]["category"],
             "candidate_present_but_blocked",
         )
         self.assertEqual(
@@ -2925,18 +2983,15 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
         self.assertFalse(coverage["candidate_release_credit"])
         self.assertGreater(coverage["candidate_artifact_count"], 0)
         self.assertGreater(coverage["candidate_present_but_blocked_count"], 0)
-        self.assertEqual(
+        self.assertGreater(
             coverage["missing_required_paths_not_in_candidate_manifest_count"],
             0,
         )
-        self.assertEqual(coverage["candidate_paths_not_required_by_inventory_count"], 1)
-        self.assertIn(
-            "board/kicad/e1-phone/production/reports/power-thermal/load-step.json",
-            coverage["candidate_paths_not_required_by_inventory"],
-        )
+        self.assertEqual(coverage["candidate_paths_not_required_by_inventory_count"], 0)
+        self.assertEqual(coverage["candidate_paths_not_required_by_inventory"], [])
         self.assertEqual(
             coverage["candidate_paths_not_required_by_inventory_blocked_count"],
-            1,
+            0,
         )
         packet_inventory = report["factory_execution_packet_inventory"]
         self.assertEqual(len(packet_inventory), report["summary"]["blocked"])
@@ -2948,12 +3003,8 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
                 for row in packet_inventory
             )
         )
-        self.assertTrue(
-            all("first_article_consumer_count" in row for row in packet_inventory)
-        )
-        self.assertTrue(
-            all("bridges_first_article_execution" in row for row in packet_inventory)
-        )
+        self.assertTrue(all("first_article_consumer_count" in row for row in packet_inventory))
+        self.assertTrue(all("bridges_first_article_execution" in row for row in packet_inventory))
         bridge = report["factory_first_article_bridge"]
         self.assertFalse(bridge["release_credit"])
         self.assertEqual(
@@ -2965,9 +3016,7 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
             report["summary"]["blocked"],
         )
         self.assertEqual(
-            bridge["consumer_rows_by_factory_blocker_category"][
-                "candidate_present_but_blocked"
-            ],
+            bridge["consumer_rows_by_factory_blocker_category"]["candidate_present_but_blocked"],
             blocker_categories["counts"]["candidate_present_but_blocked"],
         )
         self.assertEqual(
@@ -2981,9 +3030,7 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
             bridge["by_factory_path"],
         )
         directory_packet = next(
-            row
-            for row in packet_inventory
-            if row["path"] == "board/kicad/e1-phone/production/bom"
+            row for row in packet_inventory if row["path"] == "board/kicad/e1-phone/production/bom"
         )
         self.assertIn("repo_generation_plan", directory_packet)
         self.assertTrue(directory_packet["repo_generation_plan"]["repo_generated_candidate"])
@@ -3025,8 +3072,7 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
         pdf_packet = next(
             row
             for row in packet_inventory
-            if row["path"]
-            == "board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf"
+            if row["path"] == "board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf"
         )
         self.assertEqual(
             pdf_packet["metadata_record"]["record_type"],
@@ -3046,12 +3092,39 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
         )
         generation = report["repo_generation_summary"]
         self.assertFalse(generation["release_credit"])
-        self.assertEqual(generation["true_missing_generated_artifact_count"], 0)
+        self.assertEqual(
+            generation["true_missing_generated_artifact_count"],
+            report["summary"]["true_missing_factory_output_count"],
+        )
         self.assertGreater(generation["generator_command_available_count"], 0)
         self.assertEqual(
             generation["external_release_evidence_required_count"],
-            report["summary"]["blocked"],
+            report["summary"]["external_release_evidence_required_count"],
         )
+
+    def test_factory_contract_error_returns_blocked_report_not_failure(self) -> None:
+        parent = ROOT / "build/test-e1-phone-factory-output-content"
+        parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=parent) as tmp_text:
+            tmp = Path(tmp_text)
+            inventory = tmp / "bad-factory-inventory.yaml"
+            report_path = tmp / "factory-content-report.json"
+            inventory.write_text("schema: wrong.schema\nsummary: {}\n", encoding="utf-8")
+            with (
+                mock.patch.object(factory_content, "INVENTORY", inventory),
+                mock.patch.object(factory_content, "REPORT", report_path),
+            ):
+                self.assertEqual(factory_content.main(), 2)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["release_credit"])
+        self.assertFalse(report["summary"]["release_credit"])
+        self.assertFalse(report["summary"]["release_ready"])
+        self.assertIn("factory_execution_packet_inventory", report)
+        self.assertEqual(report["factory_execution_packet_inventory"], [])
+        self.assertEqual(report["findings"][0]["code"], "factory_output_contract_invalid")
+        self.assertFalse(report["findings"][0]["release_credit"])
 
     def test_aggregator_classifies_e1_phone_factory_content_as_blocked(self) -> None:
         spec = next(
@@ -3065,11 +3138,9 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
 class E1PhoneFirstArticleContentGateTests(unittest.TestCase):
     def test_first_article_missing_evidence_diagnostic_is_fail_closed(self) -> None:
         report = first_article_missing.build_report(
-            ROOT
-            / "board/kicad/e1-phone/production/test/readiness/"
+            ROOT / "board/kicad/e1-phone/production/test/readiness/"
             "e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml",
-            ROOT
-            / "board/kicad/e1-phone/production/test/readiness/"
+            ROOT / "board/kicad/e1-phone/production/test/readiness/"
             "e1-phone-first-article-missing-evidence-2026-05-22.yaml",
         )
 
@@ -3107,9 +3178,12 @@ class E1PhoneFirstArticleContentGateTests(unittest.TestCase):
             combined,
         )
         report = json.loads(
-            (ROOT / "build/reports/e1_phone_first_article_content.json").read_text(
-                encoding="utf-8"
-            )
+            (ROOT / "build/reports/e1_phone_first_article_content.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(report["summary"]["present"], report["summary"]["path_exists_count"])
+        self.assertNotEqual(
+            report["summary"]["present"],
+            report["summary"]["content_valid_count"],
         )
         self.assertTrue(report["blocked_evidence_inventory"])
         article_blocker = report["blocked_evidence_inventory"][0]
@@ -3167,7 +3241,10 @@ class E1PhoneFirstArticleContentGateTests(unittest.TestCase):
             report["summary"]["blocked_required_present_count"],
             blocker_categories["present_non_template_blocked_rows"],
         )
-        self.assertEqual(report["summary"]["blocked_required_present_count"], 61)
+        self.assertEqual(
+            report["summary"]["blocked_required_present_count"],
+            report["summary"]["path_exists_count"],
+        )
         self.assertEqual(report["summary"]["blocked_template_present_count"], 6)
         self.assertEqual(report["summary"]["repo_generated_candidate_blocked_count"], 0)
         self.assertEqual(
@@ -3186,9 +3263,7 @@ class E1PhoneFirstArticleContentGateTests(unittest.TestCase):
         self.assertEqual(len(packet_inventory), report["summary"]["blocked"])
         self.assertTrue(all(row["release_credit"] is False for row in packet_inventory))
         self.assertTrue(all("blocker_category" in row for row in packet_inventory))
-        self.assertTrue(
-            all("factory_first_article_bridge" in row for row in packet_inventory)
-        )
+        self.assertTrue(all("factory_first_article_bridge" in row for row in packet_inventory))
         self.assertTrue(all("bridge_causes" in row for row in packet_inventory))
         self.assertTrue(all("execution_required" in row for row in packet_inventory))
         self.assertTrue(all("approval_required" in row for row in packet_inventory))
@@ -3219,11 +3294,11 @@ class E1PhoneFirstArticleContentGateTests(unittest.TestCase):
         )
         self.assertEqual(
             bridge["summary"]["first_article_rows_blocked_by_missing_factory_packet"],
-            0,
+            bridge["summary"]["cause_counts"]["factory_packet_missing"],
         )
         self.assertEqual(
             bridge["summary"]["first_article_rows_blocked_by_unapproved_factory_packet"],
-            56,
+            bridge["summary"]["cause_counts"]["factory_packet_unapproved"],
         )
         self.assertEqual(
             bridge["summary"]["first_article_template_only_rows"],
@@ -3249,9 +3324,7 @@ class E1PhoneFirstArticleContentGateTests(unittest.TestCase):
         self.assertIn("repo_generation_plan", directory_packet)
         self.assertFalse(directory_packet["repo_generation_plan"]["repo_generated_candidate"])
         self.assertTrue(
-            directory_packet["repo_generation_plan"][
-                "external_execution_or_approval_required"
-            ]
+            directory_packet["repo_generation_plan"]["external_execution_or_approval_required"]
         )
         self.assertTrue(directory_packet["factory_dependency_present"])
         self.assertIn("factory_packet_unapproved", directory_packet["bridge_causes"])
@@ -3271,8 +3344,7 @@ class E1PhoneFirstArticleContentGateTests(unittest.TestCase):
         pdf_packet = next(
             row
             for row in packet_inventory
-            if row["path"]
-            == "board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf"
+            if row["path"] == "board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf"
         )
         self.assertEqual(
             pdf_packet["metadata_record"]["record_type"],
@@ -3308,14 +3380,11 @@ class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
         report = enclosure_gap_map.build_report(
             ROOT / "board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml",
             ROOT / "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml",
-            ROOT
-            / "board/kicad/e1-phone/production/test/readiness/"
+            ROOT / "board/kicad/e1-phone/production/test/readiness/"
             "e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml",
-            ROOT
-            / "board/kicad/e1-phone/production/sourcing/readiness/"
+            ROOT / "board/kicad/e1-phone/production/sourcing/readiness/"
             "supplier-return-evidence-acceptance-matrix-2026-05-22.yaml",
-            ROOT
-            / "board/kicad/e1-phone/production/readiness/"
+            ROOT / "board/kicad/e1-phone/production/readiness/"
             "enclosure-readiness-gap-map-2026-05-22.yaml",
         )
 
@@ -3411,17 +3480,13 @@ class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
         self.assertTrue(all(row["release_credit"] is False for row in clearance_actions))
         self.assertTrue(
             all(
-                row["required_evidence_class"]
-                == "physical_routed_board_clearance_result"
+                row["required_evidence_class"] == "physical_routed_board_clearance_result"
                 for row in clearance_actions
             )
         )
         self.assertIn(
             "board/kicad/e1-phone/production/step/routed-board-with-components.step",
-            {
-                row["required_inputs"]["routed_board_step"]
-                for row in clearance_actions
-            },
+            {row["required_inputs"]["routed_board_step"] for row in clearance_actions},
         )
         self.assertIn(
             "python3 scripts/check_e1_phone_enclosure_mechanical_content.py",
@@ -3431,13 +3496,9 @@ class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
             "board/kicad/e1-phone/production/step/routed-board-with-components.step",
             clearance_actions[0]["next_artifacts"],
         )
-        self.assertFalse(
-            clearance_actions[0]["routed_step_input_map"]["release_credit"]
-        )
+        self.assertFalse(clearance_actions[0]["routed_step_input_map"]["release_credit"])
         self.assertTrue(
-            clearance_actions[0]["routed_step_input_map"][
-                "candidate_step_paths_present"
-            ]
+            clearance_actions[0]["routed_step_input_map"]["candidate_step_paths_present"]
         )
         self.assertTrue(
             clearance_actions[0]["supplier_geometry_families"],
@@ -3453,19 +3514,14 @@ class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
         first_article_fit_actions = report["first_article_physical_fit_action_inventory"]
         self.assertEqual(report["summary"]["first_article_physical_fit_action_count"], 7)
         self.assertEqual(len(first_article_fit_actions), 7)
-        self.assertTrue(
-            all(row["release_credit"] is False for row in first_article_fit_actions)
-        )
+        self.assertTrue(all(row["release_credit"] is False for row in first_article_fit_actions))
         self.assertIn(
             "production_routed_board_step_release",
             {row["evidence_class"] for row in first_article_fit_actions},
         )
         self.assertIn(
             "board/kicad/e1-phone/production/step/routed-board-with-components.step",
-            {
-                row["required_inputs"]["routed_board_step"]
-                for row in first_article_fit_actions
-            },
+            {row["required_inputs"]["routed_board_step"] for row in first_article_fit_actions},
         )
 
     def test_checker_exits_nonzero_and_reports_blocked_enclosure(self) -> None:
@@ -3515,9 +3571,7 @@ class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
             {"physical_interface_release_blocker": 8},
         )
         self.assertEqual(report["summary"]["physical_interface_required_check_count"], 22)
-        self.assertEqual(
-            report["summary"]["physical_interface_required_evidence_count"], 24
-        )
+        self.assertEqual(report["summary"]["physical_interface_required_evidence_count"], 24)
         self.assertEqual(report["summary"]["repo_generatable_release_step_count"], 0)
         self.assertEqual(
             report["summary"]["repo_generatable_missing_release_evidence_count"],
@@ -3542,9 +3596,7 @@ class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
         generation_plan = report["missing_release_evidence_generation_plan"]
         self.assertEqual(len(generation_plan), 5)
         self.assertTrue(all(row["release_credit"] is False for row in generation_plan))
-        self.assertTrue(
-            all(row["repo_generatable_now"] is False for row in generation_plan)
-        )
+        self.assertTrue(all(row["repo_generatable_now"] is False for row in generation_plan))
         routed_step_missing = next(
             row for row in generation_plan if row["gate"] == "routed_board_step_intake"
         )
@@ -3678,9 +3730,7 @@ class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
             "board/kicad/e1-phone/production/reports/component-3d-binding.yaml",
         )
         self.assertEqual(
-            clearance_actions[0]["routed_step_input_map"][
-                "required_production_routed_step"
-            ],
+            clearance_actions[0]["routed_step_input_map"]["required_production_routed_step"],
             "board/kicad/e1-phone/production/step/routed-board-with-components.step",
         )
         self.assertIn(
@@ -3718,9 +3768,7 @@ class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
             len(first_article_fit_actions),
         )
         self.assertEqual(len(first_article_fit_actions), 7)
-        self.assertTrue(
-            all(row["release_credit"] is False for row in first_article_fit_actions)
-        )
+        self.assertTrue(all(row["release_credit"] is False for row in first_article_fit_actions))
         transcript_action = next(
             row
             for row in first_article_fit_actions

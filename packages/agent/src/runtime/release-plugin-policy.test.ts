@@ -13,6 +13,11 @@ describe("release plugin policy", () => {
       "@elizaos/plugin-remote-manifest",
       "@elizaos/plugin-worker-runtime",
       "@elizaos/plugin-app-manager",
+      "@elizaos/plugin-imessage",
+      "@elizaos/plugin-streaming",
+      "@elizaos/ui",
+      "@elizaos/app-model-tester",
+      "@elizaos/plugin-training",
       "@elizaos/plugin-openai",
     ];
 
@@ -27,6 +32,11 @@ describe("release plugin policy", () => {
         "@elizaos/plugin-remote-manifest",
         "@elizaos/plugin-worker-runtime",
         "@elizaos/plugin-app-manager",
+        "@elizaos/plugin-imessage",
+        "@elizaos/plugin-streaming",
+        "@elizaos/ui",
+        "@elizaos/app-model-tester",
+        "@elizaos/plugin-training",
         "@elizaos/plugin-openai",
       ]),
     );

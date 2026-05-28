@@ -1,8 +1,8 @@
 {
   "reportSchema": "eliza.speculative-benchmark.v1",
   "generatedAt": "2026-05-20T17:20:23.655Z",
-  "verifier": "plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs",
-  "speculator": "dflash",
+  "verifier": "plugins/plugin-local-inference/native/verify/mtp_drafter_runtime_smoke.mjs",
+  "speculator": "mtp",
   "tier": "0_8b",
   "targetModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
   "drafterModel": "evidence/speculative/nebius-drafters/drafter-0_8b-tiny-bf16.local-stamped.tokenizer-repaired.gguf",
@@ -51,7 +51,7 @@
       "--spec-draft-p-min",
       "0.1",
       "--spec-type",
-      "dflash"
+      "mtp"
     ],
     "skippedCliFlags": [
       {
@@ -91,7 +91,7 @@
     },
     "vocabIncompatibleWarning": false,
     "draftingActive": true,
-    "dflashFailure": null,
+    "mtpFailure": null,
     "tokenizerCompatible": true,
     "outputTail": "Loading model... \n\n\n▄▄ ▄▄\n██ ██\n██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄\n██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : eliza-1-0_8b-128k.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   **Topic:** Speculative decoding (this is a slightly unusual term). Usually, it refers to interpreting data without a clear source, or sometimes related to AI, but in the context of standard NLP/LLM contexts, it often relates to the \"decoherence of the world\" or \"hallucination.\" However, in a general sense, \"speculative decoding\" can mean using machine learning models to generate new or unknown data.\n    *   **Constraint:** \"Write a short paragraph about speculative decoding.\"\n    *   **Goal\n\n[ Prompt: 666.3 t/s | Generation: 154.1 t/s ]\n[ Draft: 63 accepted / 63 generated | Acceptance: 1.0000 ]\n\nExiting..."
   },
@@ -125,7 +125,7 @@
       "--spec-draft-p-min",
       "1",
       "--spec-type",
-      "dflash"
+      "mtp"
     ],
     "skippedCliFlags": [
       {
@@ -165,7 +165,7 @@
     },
     "vocabIncompatibleWarning": false,
     "draftingActive": false,
-    "dflashFailure": null,
+    "mtpFailure": null,
     "tokenizerCompatible": true,
     "outputTail": "Loading model... \n\n\n▄▄ ▄▄\n██ ██\n██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄\n██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : eliza-1-0_8b-128k.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nHere's a thinking process that leads to the suggested paragraph about speculative decoding:\n\n1.  **Analyze the Request:**\n    *   **Topic:** Speculative decoding.\n    *   **Format:** Short paragraph.\n    *   **Goal:** Explain the concept in a clear, engaging, and concise way.\n\n2.  **Define \"Speculative Decoding\":**\n    *   What is it? It's a technique often used in coding, data analysis, or machine learning to make decisions based on *what* the data looks like rather than *what* it actually is.\n    *   Wait\n\n[ Prompt: 389.6 t/s | Generation: 93.6 t/s ]\n\nExiting..."
   },
@@ -176,14 +176,14 @@
     "generationTokensPerSecondBaseline": null,
     "targetEvalTokensPerSecondWithDrafter": null,
     "draftEvalTokensPerSecondWithDrafter": null,
-    "dflashDraftedTokens": 63,
-    "dflashAcceptedTokens": 63,
-    "dflashAcceptanceRate": 1,
-    "dflashSpeedup": 1.6463675213675215,
-    "dflashDraftingActive": true,
-    "dflashFailure": null,
+    "mtpDraftedTokens": 63,
+    "mtpAcceptedTokens": 63,
+    "mtpAcceptanceRate": 1,
+    "mtpSpeedup": 1.6463675213675215,
+    "mtpDraftingActive": true,
+    "mtpFailure": null,
     "tokenizerCompatible": true,
-    "speculator": "dflash",
+    "speculator": "mtp",
     "tier": "0_8b",
     "backend": "unknown",
     "binarySha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9",
@@ -195,5 +195,5 @@
     "failure": null
   },
   "draftingActive": true,
-  "dflashFailure": null
+  "mtpFailure": null
 }

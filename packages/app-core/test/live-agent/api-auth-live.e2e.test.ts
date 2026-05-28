@@ -331,7 +331,7 @@ describeIf(CAN_RUN)(
       const { status, data } = await req(
         server?.port ?? 0,
         "POST",
-        "/api/onboarding",
+        "/api/first-run",
         {
           name: "LiveAuthAgent",
           bio: ["A live E2E test agent with auth"],

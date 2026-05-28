@@ -1,0 +1,158 @@
+#!/bin/sh
+
+PREREQS=""
+
+prereqs() { echo "$PREREQS"; }
+
+case "$1" in
+prereqs)
+    prereqs
+    exit 0
+    ;;
+esac
+
+# Enable xtrace with timestamp
+export PS4='$(date "+%H:%M:%S.%3N") '
+set -x
+
+set -eu
+
+# Check if either "patch" or "early_patch" is in the kernel command line
+option="$(tr ' ' '\n' </proc/cmdline | grep -E '^(early_)?patch(=.*)?$')"
+
+[ -n "$option" ] || exit 0
+
+# We support the following arguments:
+# - umount: unmount the git repo after running the hooks
+# - virtiofs: use virtiofs instead of 9p to mount the git repo
+# - <hook_dir>: the name of a custom directory below config/patch/hooks/
+#               that contains hooks to run.
+# Multiple arguments can be passed as a comma-separated list.
+options="$(echo "$option" | sed -n 's/^.*=//p' | tr ',' '\n')"
+umount_option="$(echo "$options" | grep -w 'umount' || true)"
+virtiofs_option="$(echo "$options" | grep -w 'virtiofs' || true)"
+hook_dirs="$(echo "$options" | grep -v -e 'umount' -e 'virtiofs' || true)"
+
+# Set the default hook directory if none was specified
+if [ -z "$hook_dirs" ]; then
+    if [ -n "$umount_option" ]; then
+        hook_dirs="umount"
+    else
+        hook_dirs="default"
+    fi
+fi
+
+. /scripts/functions
+
+MOUNTPOINT=/root/mnt/tails.git
+HOOKS_DIR=${MOUNTPOINT}/config/patch/hooks
+
+run() {
+    # Make plymouth print the boot messages from its ring buffer to
+    # /var/log/boot.log now, to avoid that the ring buffer is overwritten
+    # by the output of the early_patch hooks, causing the boot.log to be
+    # incomplete when it's eventually written.
+    if /bin/plymouth --ping; then
+        /bin/plymouth update-root-fs --new-root-dir=/root --read-write
+    fi
+
+    if [ -n "${virtiofs_option}" ]; then
+        modprobe -vvv -d /root/ virtiofs
+        fstype=virtiofs
+    else
+        modprobe -vvv -d /root/ 9pnet
+        modprobe -vvv -d /root/ 9pnet_virtio
+        modprobe -vvv -d /root/ 9p
+        fstype=9p
+    fi
+
+    mkdir -p "$MOUNTPOINT"
+
+    set +x
+    if ! err=$(mount -t "${fstype}" tails.git "$MOUNTPOINT" 2>&1); then
+        echo >&2 "$err"
+        # If the error is that the device does not exist, print a more
+        # helpful error message.
+        if echo "$err" | grep -q "special device tails.git does not exist"; then
+            echo >&2 "
+Make sure that the libvirt domain definition file contains a passthrough
+filesystem mount like this:
+
+  <filesystem type='mount' accessmode='passthrough'>
+    <source dir='/path/to/your/tails/checkout/'/>
+    <target dir='tails.git'/>
+    <readonly/>
+  </filesystem>
+
+See https://tails.net/contribute/build/early-patch/ for more information."
+        fi
+        exit 1
+    fi
+    set -x
+
+    # Mount /proc and /dev into the chroot unless umount was requested.
+    # This is needed for the bind mount hooks to work.
+    if [ -z "${umount_option}" ]; then
+        mount -t proc /proc /root/proc
+        mount --bind /dev /root/dev
+    fi
+
+    # Avoid that git fails because of dubious ownership
+    chroot /root git config --global --add safe.directory "${MOUNTPOINT#/root}"
+
+    for hook_dir_basename in $hook_dirs; do
+        hook_dir="${HOOKS_DIR}/${hook_dir_basename}"
+        if [ ! -d "${hook_dir}" ]; then
+            echo >&2 "Hook directory not found: ${hook_dir}"
+            exit 1
+        fi
+        hooks=$(ls -1 "${hook_dir}"/* 2>/dev/null || true)
+
+        for hook in $hooks; do
+            # The #/root part makes the path relative to the chroot
+            echo >&2 "Running hook: ${hook#/root}"
+            chroot /root "${hook#/root}"
+        done
+    done
+
+    # Unmount the git repo if umount was requested. This is needed when
+    # running the test suite, because the test suite uses qemu snapshots
+    # and qemu cannot do snapshots while something is mounted from the
+    # host.
+    if [ -n "${umount_option}" ]; then
+        umount "$MOUNTPOINT"
+    fi
+}
+
+spawn_shell() {
+    # Make plymouth write the log to /root/var/log/boot.log
+    /bin/plymouth update-root-fs --new-root-dir=/root --read-write
+    # Stop plymouth, so that the user can see the shell
+    /bin/plymouth quit || true
+
+    tail -n 20 /root/var/log/boot.log >&2
+
+    # Disable xtrace to make the following output more readable
+    set +x
+    echo -e "\nThe early_patch hook failed. Spawning a shell to allow debugging..." >&2
+    echo >&2 "The log is in /root/var/log/boot.log"
+    echo >&2 "Press Ctrl-D to continue booting."
+
+    # Call panic from /usr/share/initramfs-tools/scripts/functions to
+    # spawn a shell. Note that panic does not work if set -e is active.
+    . /scripts/functions
+    panic
+}
+
+# This is necessary to have `set -e` work in the `run` function, see
+# https://stackoverflow.com/a/11092989
+set +e
+(
+    set -e
+    run
+)
+ret=$?
+
+if [ "$ret" -ne 0 ]; then
+    spawn_shell
+fi

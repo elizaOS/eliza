@@ -24,7 +24,7 @@
 #     conservative against the existing decay calibration, and the orchestrator's
 #     new prior-bundle regression gate (5% tolerance by default) catches
 #     measurement-vs-prior slips even when the threshold itself is met.
-#   - voice_rtf / asr_wer / expressive_* / dflash_* stay provisional. Those
+#   - voice_rtf / asr_wer / expressive_* / mtp_* stay provisional. Those
 #     gates require runtime engines (fused llama-server, ASR FFI, drafter)
 #     present on the publish host; until the CI matrix proves those land
 #     repeatably on the reference hardware, they record `provisional: true`.
@@ -94,7 +94,7 @@ gates:
     unit: "ms"
     manifest_field: null
     description: "Time from speech-end to the response model's first token (LatencyTracer ttftMs.p50)."
-    calibration: "BENCHMARK_2026-05-10.md §7 — single-step decode under TurboQuant Q4 + DFlash should land 50–120 ms on M4 Max; 200 ms keeps headroom."
+    calibration: "BENCHMARK_2026-05-10.md §7 — single-step decode under TurboQuant Q4 + MTP should land 50–120 ms on M4 Max; 200 ms keeps headroom."
   first_audio_latency_ms:
     op: "<="
     unit: "ms"
@@ -114,17 +114,17 @@ gates:
     op: "bool"
     manifest_field: "evals.e2eLoopOk"
     description: "One mic→speech end-to-end loop completed (all LatencyTracer checkpoints recorded)."
-  dflash_acceptance:
+  mtp_acceptance:
     op: ">="
     unit: "ratio 0..1"
-    manifest_field: "evals.dflashAcceptance"
-    description: "DFlash speculative-decode acceptance rate (n_drafted_accepted / n_drafted) over the bench run."
+    manifest_field: "evals.mtpAcceptance"
+    description: "MTP speculative-decode acceptance rate (n_drafted_accepted / n_drafted) over the bench run."
     calibration: "Depends on the trained drafter — not benchmarkable from kernel numbers; stays provisional until an e2e run with a real drafter (BENCHMARK_2026-05-10.md §7)."
-  dflash_speedup:
+  mtp_speedup:
     op: ">="
     unit: "× (drafter-on tok/s ÷ baseline tok/s)"
-    manifest_field: "evals.dflashSpeedup"
-    description: "End-to-end generation speedup from DFlash speculative decoding, measured by dflash_drafter_runtime_smoke.mjs --bench."
+    manifest_field: "evals.mtpSpeedup"
+    description: "End-to-end generation speedup from MTP speculative decoding, measured by mtp_drafter_runtime_smoke.mjs --bench."
     calibration: "Placeholder until a trained drafter exists; the bench records null on no-hardware (recorded, not faked)."
   expressive_tag_faithfulness:
     op: ">="
@@ -155,19 +155,19 @@ gates:
     description: "Fraction of a mobile voice session spent thermally throttled (mobile_peak_rss_harness.mjs — needs device)."
 
 # ---------------------------------------------------------------------------
-# DFlash speculative-decoding bench gates. Distinct section so the bench
-# report writer (`dflash_drafter_runtime_smoke.mjs --bench`) and the
+# MTP speculative-decoding bench gates. Distinct section so the bench
+# report writer (`mtp_drafter_runtime_smoke.mjs --bench`) and the
 # manifest evals writer can reference it directly. Both thresholds are
 # placeholders that become real once a trained drafter exists — a bench run
 # on hardware without the spec binary / drafter records a null entry
 # ("needs hardware"), never a fabricated number (AGENTS.md §3 / §7).
-dflash:
+mtp:
   # Minimum acceptance rate (accepted speculative tokens / drafted tokens).
   minAcceptanceRate: 0.65
   # Minimum end-to-end generation speedup (drafter-on tok/s ÷ baseline tok/s).
   minSpeedup: 1.5
   provisional: true
-  benchReportGlob: "packages/inference/reports/dflash-bench/dflash-bench-*.json"
+  benchReportGlob: "packages/inference/reports/mtp-bench/mtp-bench-*.json"
   calibration: "BENCHMARK_2026-05-10.md §7 — acceptance threshold is the published target; speedup is a placeholder. Flip provisional:false after a real drafter + e2e run reproduces both."
 
 # ---------------------------------------------------------------------------
@@ -188,8 +188,8 @@ tiers:
     barge_in_cancel_ms: { threshold: 80, required: true, provisional: false }
     thirty_turn_ok: { threshold: true, required: true, provisional: false }
     e2e_loop_ok: { threshold: true, required: true, provisional: false }
-    dflash_acceptance: { threshold: 0.60, required: false, provisional: true }
-    dflash_speedup: { threshold: 1.4, required: false, provisional: true }
+    mtp_acceptance: { threshold: 0.60, required: false, provisional: true }
+    mtp_speedup: { threshold: 1.4, required: false, provisional: true }
     expressive_tag_faithfulness: { threshold: 0.80, required: false, provisional: true }
     expressive_mos: { threshold: 3.6, required: false, provisional: true }
     expressive_tag_leakage: { threshold: 0.05, required: false, provisional: true }
@@ -208,8 +208,8 @@ tiers:
     barge_in_cancel_ms: { threshold: 70, required: true, provisional: false }
     thirty_turn_ok: { threshold: true, required: true, provisional: false }
     e2e_loop_ok: { threshold: true, required: true, provisional: false }
-    dflash_acceptance: { threshold: 0.65, required: false, provisional: true }
-    dflash_speedup: { threshold: 1.5, required: false, provisional: true }
+    mtp_acceptance: { threshold: 0.65, required: false, provisional: true }
+    mtp_speedup: { threshold: 1.5, required: false, provisional: true }
     expressive_tag_faithfulness: { threshold: 0.85, required: false, provisional: true }
     expressive_mos: { threshold: 3.8, required: false, provisional: true }
     expressive_tag_leakage: { threshold: 0.03, required: false, provisional: true }
@@ -228,8 +228,8 @@ tiers:
     barge_in_cancel_ms: { threshold: 65, required: true, provisional: false }
     thirty_turn_ok: { threshold: true, required: true, provisional: false }
     e2e_loop_ok: { threshold: true, required: true, provisional: false }
-    dflash_acceptance: { threshold: 0.65, required: false, provisional: true }
-    dflash_speedup: { threshold: 1.5, required: false, provisional: true }
+    mtp_acceptance: { threshold: 0.65, required: false, provisional: true }
+    mtp_speedup: { threshold: 1.5, required: false, provisional: true }
     expressive_tag_faithfulness: { threshold: 0.88, required: false, provisional: true }
     expressive_mos: { threshold: 3.9, required: false, provisional: true }
     expressive_tag_leakage: { threshold: 0.03, required: false, provisional: true }
@@ -248,8 +248,8 @@ tiers:
     barge_in_cancel_ms: { threshold: 65, required: true, provisional: false }
     thirty_turn_ok: { threshold: true, required: true, provisional: false }
     e2e_loop_ok: { threshold: true, required: true, provisional: false }
-    dflash_acceptance: { threshold: 0.65, required: false, provisional: true }
-    dflash_speedup: { threshold: 1.5, required: false, provisional: true }
+    mtp_acceptance: { threshold: 0.65, required: false, provisional: true }
+    mtp_speedup: { threshold: 1.5, required: false, provisional: true }
     expressive_tag_faithfulness: { threshold: 0.88, required: false, provisional: true }
     expressive_mos: { threshold: 4.0, required: false, provisional: true }
     expressive_tag_leakage: { threshold: 0.03, required: false, provisional: true }
@@ -268,8 +268,8 @@ tiers:
     barge_in_cancel_ms: { threshold: 70, required: true, provisional: false }
     thirty_turn_ok: { threshold: true, required: true, provisional: false }
     e2e_loop_ok: { threshold: true, required: true, provisional: false }
-    dflash_acceptance: { threshold: 0.65, required: false, provisional: true }
-    dflash_speedup: { threshold: 1.5, required: false, provisional: true }
+    mtp_acceptance: { threshold: 0.65, required: false, provisional: true }
+    mtp_speedup: { threshold: 1.5, required: false, provisional: true }
     expressive_tag_faithfulness: { threshold: 0.88, required: false, provisional: true }
     expressive_mos: { threshold: 4.0, required: false, provisional: true }
     expressive_tag_leakage: { threshold: 0.03, required: false, provisional: true }
@@ -288,8 +288,8 @@ tiers:
     barge_in_cancel_ms: { threshold: 75, required: true, provisional: false }
     thirty_turn_ok: { threshold: true, required: true, provisional: false }
     e2e_loop_ok: { threshold: true, required: true, provisional: false }
-    dflash_acceptance: { threshold: 0.65, required: false, provisional: true }
-    dflash_speedup: { threshold: 1.5, required: false, provisional: true }
+    mtp_acceptance: { threshold: 0.65, required: false, provisional: true }
+    mtp_speedup: { threshold: 1.5, required: false, provisional: true }
     expressive_tag_faithfulness: { threshold: 0.88, required: false, provisional: true }
     expressive_mos: { threshold: 4.0, required: false, provisional: true }
     expressive_tag_leakage: { threshold: 0.03, required: false, provisional: true }

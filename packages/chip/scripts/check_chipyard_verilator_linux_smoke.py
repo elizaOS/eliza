@@ -16,6 +16,7 @@ import stat
 import subprocess
 import time
 from pathlib import Path
+from typing import cast
 
 import locate_chipyard_linux_payload
 import repair_chipyard_generated_paths
@@ -34,9 +35,7 @@ CONFIG_PACKAGE = "eliza"
 PAYLOAD_ENV = "CHIPYARD_LINUX_BINARY"
 LARGE_LOG_SAMPLE_HEAD_BYTES = 4 * 1024 * 1024
 LARGE_LOG_SAMPLE_TAIL_BYTES = 64 * 1024 * 1024
-LARGE_LOG_FULL_READ_LIMIT_BYTES = (
-    LARGE_LOG_SAMPLE_HEAD_BYTES + LARGE_LOG_SAMPLE_TAIL_BYTES
-)
+LARGE_LOG_FULL_READ_LIMIT_BYTES = LARGE_LOG_SAMPLE_HEAD_BYTES + LARGE_LOG_SAMPLE_TAIL_BYTES
 
 REQUIRED_GENERATED_ARTIFACTS = (
     OUT_DIR / "eliza_rocket_ap.v",
@@ -126,9 +125,7 @@ SIM_OUTPUT_DIR = SIM_DIR / "output" / f"chipyard.harness.TestHarness.{CONFIG}"
 SIMAXIMEM_SOURCE = CHECKOUT / "generators/rocket-chip/src/main/scala/system/SimAXIMem.scala"
 SIMDRAM_SOURCE = CHECKOUT / "generators/testchipip/src/main/resources/testchipip/csrc/SimDRAM.cc"
 SIMDRAM_LOADMEM_ENTRY_MARKER = "SimDRAM loaded ELF entry="
-FIREMARSHAL_SMOKE_KFRAG = (
-    ROOT / "sw/firemarshal/eliza-e1-linux-smoke/eliza-e1-linux-smoke-kfrag"
-)
+FIREMARSHAL_SMOKE_KFRAG = ROOT / "sw/firemarshal/eliza-e1-linux-smoke/eliza-e1-linux-smoke-kfrag"
 FIREMARSHAL_SMOKE_LINUX_CONFIG = (
     CHECKOUT / "software/firemarshal/images/firechip/eliza-e1-linux-smoke/linux_config"
 )
@@ -199,10 +196,11 @@ def read_text_sample(path: Path) -> str:
         tail = handle.read(LARGE_LOG_SAMPLE_TAIL_BYTES)
     omitted = size - len(head) - len(tail)
     marker = (
-        f"\n[eliza-checker: omitted {omitted} bytes from middle of large log "
-        f"{rel(path)}]\n"
+        f"\n[eliza-checker: omitted {omitted} bytes from middle of large log {rel(path)}]\n"
     ).encode()
     return (head + marker + tail).decode("utf-8", errors="replace")
+
+
 KERNEL_PANIC_MARKERS = ("Kernel panic - not syncing", "panic - not syncing")
 TESTDRIVER_SUCCESS_FINISH_MARKER = "TestDriver.v:158: Verilog $finish"
 SIM_RUNTIME_MARKERS = (
@@ -986,8 +984,7 @@ def generated_fdt_audit(dts_path: Path = GENERATED_DTS) -> dict[str, object]:
 
 def parse_opensbi_domain_handoff(text: str, dtb_size_bytes: int | None = None) -> dict[str, object]:
     fields = {
-        match.group(1): match.group("value")
-        for match in OPENSBI_DOMAIN_FIELD_RE.finditer(text)
+        match.group(1): match.group("value") for match in OPENSBI_DOMAIN_FIELD_RE.finditer(text)
     }
 
     def parse_hex(value: str | None) -> int | None:
@@ -1003,7 +1000,7 @@ def parse_opensbi_domain_handoff(text: str, dtb_size_bytes: int | None = None) -
     fdt_fits_dram = (
         next_arg1 is not None
         and dtb_size_bytes is not None
-        and DRAM_BASE <= next_arg1
+        and next_arg1 >= DRAM_BASE
         and next_arg1 + dtb_size_bytes <= DRAM_END
     )
     fdt_clear_of_kernel_low_window = (
@@ -1018,9 +1015,7 @@ def parse_opensbi_domain_handoff(text: str, dtb_size_bytes: int | None = None) -
         "domain0_next_mode": fields.get("Domain0 Next Mode", ""),
         "expected_domain0_next_arg1": f"0x{EXPECTED_OPENSBI_FDT_ADDR:016x}",
         "domain0_next_arg1_matches_expected": next_arg1 == EXPECTED_OPENSBI_FDT_ADDR,
-        "domain0_next_arg1_in_dram": (
-            next_arg1 is not None and DRAM_BASE <= next_arg1 < DRAM_END
-        ),
+        "domain0_next_arg1_in_dram": (next_arg1 is not None and DRAM_BASE <= next_arg1 < DRAM_END),
         "domain0_next_arg1_fits_dram": fdt_fits_dram,
         "domain0_next_arg1_clear_of_kernel_low_window": fdt_clear_of_kernel_low_window,
         "expected_domain0_next_address": f"0x{EXPECTED_KERNEL_ENTRY:016x}",
@@ -1996,11 +1991,11 @@ def fdt_handoff_diagnosis(
     retired_raw = instruction_trace.get("retired_instruction_count")
     cycle_raw = instruction_trace.get("last_cycle")
     try:
-        retired_count = int(retired_raw) if retired_raw is not None else 0
+        retired_count = int(cast("str | float", retired_raw)) if retired_raw is not None else 0
     except (TypeError, ValueError):
         retired_count = 0
     try:
-        last_cycle = int(cycle_raw) if cycle_raw is not None else 0
+        last_cycle = int(cast("str | float", cycle_raw)) if cycle_raw is not None else 0
     except (TypeError, ValueError):
         last_cycle = 0
     in_fdt_symbol = last_symbol.startswith("fdt_") or last_symbol in FDT_LOOP_SYMBOLS
@@ -2013,10 +2008,7 @@ def fdt_handoff_diagnosis(
         instruction_trace.get("fresh_for_log")
         and instruction_trace.get("bootrom_to_payload_handoff")
         and in_fdt_symbol
-        and (
-            retired_count >= FDT_LOOP_RETIRED_THRESHOLD
-            or last_cycle >= FDT_LOOP_CYCLE_THRESHOLD
-        )
+        and (retired_count >= FDT_LOOP_RETIRED_THRESHOLD or last_cycle >= FDT_LOOP_CYCLE_THRESHOLD)
     )
     if loop_detected and generated_dtb_plausible:
         reason = (
@@ -2063,9 +2055,7 @@ def uart_console_diagnosis(
     sifive_uart_console = "console=ttySIF0" in built_cmdline
     hvc_sbi_config = False
     if FIREMARSHAL_SMOKE_LINUX_CONFIG.is_file():
-        linux_config = FIREMARSHAL_SMOKE_LINUX_CONFIG.read_text(
-            encoding="utf-8", errors="replace"
-        )
+        linux_config = FIREMARSHAL_SMOKE_LINUX_CONFIG.read_text(encoding="utf-8", errors="replace")
         hvc_sbi_config = (
             "CONFIG_RISCV_SBI_V01=y" in linux_config
             and "CONFIG_HVC_RISCV_SBI=y" in linux_config
@@ -2104,13 +2094,9 @@ def uart_console_diagnosis(
         "reconstructed_uart_size_bytes": len(reconstructed_uart.encode("utf-8")),
         "reconstructed_uart_preview": reconstructed_uart[:512],
         "reconstructed_uart_has_opensbi_banner": "OpenSBI" in reconstructed_uart,
-        "reconstructed_uart_has_opensbi_handoff": has_accepted_opensbi_markers(
-            reconstructed_uart
-        ),
+        "reconstructed_uart_has_opensbi_handoff": has_accepted_opensbi_markers(reconstructed_uart),
         "reconstructed_uart_has_linux_banner": "Linux version" in reconstructed_uart,
-        "reconstructed_uart_has_linux_boot_markers": has_accepted_linux_markers(
-            reconstructed_uart
-        ),
+        "reconstructed_uart_has_linux_boot_markers": has_accepted_linux_markers(reconstructed_uart),
         "built_cmdline": built_cmdline,
         "hvc_sbi_console": hvc_sbi_console,
         "hvc_sbi_config": hvc_sbi_config,
@@ -2165,6 +2151,11 @@ def classify_smoke_progress(
     sim_timeout = isinstance(sim_failures, list) and any(
         "timeout" in str(failure) for failure in sim_failures
     )
+    wrapper_timeout = (
+        str(log_metadata.get("exit_code") or "") == "124"
+        or "[timeout-wrapper]" in log_text
+        and "status=timeout" in log_text
+    )
     if "Linux version" in observable_text:
         if sim_timeout:
             return {
@@ -2173,6 +2164,20 @@ def classify_smoke_progress(
                     "rerun the generated AP smoke with a larger "
                     "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES budget and enough wall time "
                     "to reach Linux command line/initramfs markers"
+                ),
+            }
+        if wrapper_timeout:
+            last_progress = str(log_metadata.get("last_progress_marker") or "").strip()
+            progress_detail = f"; last progress marker: {last_progress}" if last_progress else ""
+            return {
+                "stage": "linux_early_boot_then_wall_timeout",
+                "next_step": (
+                    "generated AP reached the Linux banner but the smoke wrapper hit "
+                    "CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS before accepted command-line/"
+                    "initramfs/userspace markers appeared"
+                    f"{progress_detail}; increase the wall-clock budget only if the "
+                    "same marker is still making forward progress, otherwise debug "
+                    "the Linux early memory/platform handoff"
                 ),
             }
         return {
@@ -2233,7 +2238,10 @@ def classify_smoke_progress(
             "sbi_memcmp",
             "sbi_strncmp",
         }:
-            if retired_count >= FDT_LOOP_RETIRED_THRESHOLD or last_cycle >= FDT_LOOP_CYCLE_THRESHOLD:
+            if (
+                retired_count >= FDT_LOOP_RETIRED_THRESHOLD
+                or last_cycle >= FDT_LOOP_CYCLE_THRESHOLD
+            ):
                 return {
                     "stage": "payload_fdt_parse_loop",
                     "next_step": (
@@ -2319,8 +2327,7 @@ def classify_smoke_progress(
         and log_metadata.get("exit_code") != "0"
         and not instruction_trace.get("exists")
         and not (
-            has_accepted_opensbi_markers(observable_text)
-            or "Linux version" in observable_text
+            has_accepted_opensbi_markers(observable_text) or "Linux version" in observable_text
         )
     ):
         if log_metadata.get("disable_dramsim") == "1" and "[UART] UART0 is here" not in log_text:
@@ -2445,13 +2452,13 @@ def write_report(status: str, blockers: list[str], payload: str | None) -> None:
     fdt_audit = generated_fdt_audit()
     opensbi_fdt_handoff = parse_opensbi_domain_handoff(
         observable_boot_text(log_text),
-        fdt_audit.get("dtb_size_bytes") if isinstance(fdt_audit.get("dtb_size_bytes"), int) else None,
+        cast("int | None", fdt_audit.get("dtb_size_bytes"))
+        if isinstance(fdt_audit.get("dtb_size_bytes"), int)
+        else None,
     )
     fdt_handoff = fdt_handoff_diagnosis(instruction_trace, fdt_audit)
     diagnostic_fdt_handoff = fdt_handoff_diagnosis(diagnostic_trace, fdt_audit)
-    uart_console = uart_console_diagnosis(
-        log_text, log_metadata, instruction_trace, fdt_audit
-    )
+    uart_console = uart_console_diagnosis(log_text, log_metadata, instruction_trace, fdt_audit)
     deferred_next_command = next_command(payload)
     safe_action = next_safe_action(
         simulator_artifact, active_simulator_users, active_processes, active_attempt, payload
@@ -2605,7 +2612,9 @@ def main() -> int:
     fdt_audit = generated_fdt_audit()
     opensbi_fdt_handoff = parse_opensbi_domain_handoff(
         initial_observable_text,
-        fdt_audit.get("dtb_size_bytes") if isinstance(fdt_audit.get("dtb_size_bytes"), int) else None,
+        cast("int | None", fdt_audit.get("dtb_size_bytes"))
+        if isinstance(fdt_audit.get("dtb_size_bytes"), int)
+        else None,
     )
     fdt_handoff = fdt_handoff_diagnosis(instruction_trace, fdt_audit)
     diagnostic_fdt_handoff = fdt_handoff_diagnosis(diagnostic_trace, fdt_audit)
@@ -2823,8 +2832,7 @@ def main() -> int:
             and trace_is_fresh
             and instruction_trace.get("bootrom_to_payload_handoff")
             and not (
-                has_accepted_opensbi_markers(observable_text)
-                or "Linux version" in observable_text
+                has_accepted_opensbi_markers(observable_text) or "Linux version" in observable_text
             )
         ):
             blockers.append(
@@ -2840,8 +2848,7 @@ def main() -> int:
             and trace_is_fresh
             and instruction_trace.get("entered_kernel_virtual")
             and not (
-                has_accepted_opensbi_markers(observable_text)
-                or "Linux version" in observable_text
+                has_accepted_opensbi_markers(observable_text) or "Linux version" in observable_text
             )
         ):
             blockers.append(

@@ -1,0 +1,36 @@
+[[!meta date="Mon, 22 Nov 2009 11:20:24 +0000"]]
+[[!meta title="Use of cleartext swap partitions on local hard disks"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+At least until its version 1.157.4-1, `live-initramfs` has
+a [bug](http://lists.debian.org/debian-live/2009/09/msg00125.html)
+that makes it use any cleartext swap partition found on local
+hard disks.
+
+# Impact
+
+Any kind of information about the user's activities can be stored on
+the local hard disks of the computers being used with affected
+amnesia systems.
+
+# Mitigation of passed effects
+
+It is recommended to securely erase, using a program such as `shred`,
+any cleartext Linux swap partition present on computers having been
+used with affected amnesia systems.
+
+# Solution
+
+We fixed this hole on 20091006 (commit 00c1ff633e8958d0233) by
+installing a custom fixed `live-initramfs` package into built images.
+
+The relevant patch was then
+[integrated](http://lists.debian.org/debian-live/2009/10/msg00124.html)
+in upstream's Git.
+
+# Affected versions
+
+Releases 0.2-20090815 and 0.2-20090816 are affected, as well as any
+custom image built from Git before commit 00c1ff633e8958d0233.

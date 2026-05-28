@@ -59,18 +59,18 @@ describe("MetricsCollector", () => {
     expect(m.falseBargeInCount).toBe(1);
   });
 
-  it("populates DFlash stats when the driver supplies them", () => {
-    const c = new MetricsCollector({ fixtureId: "dflash" });
+  it("populates MTP stats when the driver supplies them", () => {
+    const c = new MetricsCollector({ fixtureId: "mtp" });
     c.record("speech-start");
     c.record("speech-end");
     c.record("audio-out-first-frame");
     const m = c.finalize({
       ...STUB_RESULT,
-      dflashAccepted: 80,
-      dflashDrafted: 100,
+      mtpAccepted: 80,
+      mtpDrafted: 100,
     });
-    expect(m.dflashAccepted).toBe(80);
-    expect(m.dflashDrafted).toBe(100);
+    expect(m.mtpAccepted).toBe(80);
+    expect(m.mtpDrafted).toBe(100);
   });
 
   it("populates rollbackCount + rollbackWasteTokens from rollback-drop events", () => {

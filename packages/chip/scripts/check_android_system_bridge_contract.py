@@ -67,7 +67,9 @@ def package_name_to_path(package_name: str) -> Path:
 
 
 GRADLE_IDENTITY = read_android_gradle_identity()
-BRAND_CONFIG = infer_vendor_identity(GRADLE_IDENTITY["appId"] if GRADLE_IDENTITY else "ai.milady.milady")
+BRAND_CONFIG = infer_vendor_identity(
+    GRADLE_IDENTITY["appId"] if GRADLE_IDENTITY else "ai.milady.milady"
+)
 APP_PACKAGE = BRAND_CONFIG["appId"] if BRAND_CONFIG else "ai.elizaos.app"
 APP_NAME = BRAND_CONFIG["appName"] if BRAND_CONFIG else "Eliza"
 VENDOR_DIR_NAME = BRAND_CONFIG["vendorDir"] if BRAND_CONFIG else "eliza"
@@ -79,9 +81,7 @@ VENDOR_ROOT = (
 SYSTEM_UI = WORKSPACE / "os/android/system-ui"
 NATIVE = SYSTEM_UI / "native"
 BRIDGE_KT = NATIVE / "src/main/java/ai/elizaos/system/bridge/SystemBridge.kt"
-BRIDGE_SERVICE_KT = (
-    NATIVE / "src/main/java/ai/elizaos/system/bridge/SystemBridgeService.kt"
-)
+BRIDGE_SERVICE_KT = NATIVE / "src/main/java/ai/elizaos/system/bridge/SystemBridgeService.kt"
 BRIDGE_MANIFEST = NATIVE / "src/main/AndroidManifest.xml"
 BRIDGE_GRADLE = NATIVE / "build.gradle.kts"
 ANDROID_PROVIDER = SYSTEM_UI / "src/providers/AndroidSystemProvider.tsx"
@@ -231,7 +231,10 @@ def stale_runtime_permission_paths(paths: Iterable[str]) -> list[str]:
     for raw in paths:
         path = str(raw)
         name = Path(path).name
-        if name.startswith(("default-permissions-", "privapp-permissions-")) and name not in expected_suffixes:
+        if (
+            name.startswith(("default-permissions-", "privapp-permissions-"))
+            and name not in expected_suffixes
+        ):
             stale.append(path)
     return sorted(stale)
 
@@ -362,10 +365,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     add_if(
         findings,
         not (
-            (
-                "__elizaAndroidBridge" in launcher_text
-                and "addJavascriptInterface" in launcher_text
-            )
+            ("__elizaAndroidBridge" in launcher_text and "addJavascriptInterface" in launcher_text)
             or (
                 "ElizaAndroidSystemBridge.install" in launcher_text
                 and "__elizaAndroidBridge" in app_bridge_text
@@ -563,9 +563,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         permission_probe_text = json.dumps(permission_evidence, sort_keys=True)
         observed_permission_paths = set(
             runtime_evidence.get("observations", {}).get("permission_file_probes", {})
-        ) | set(
-            runtime_evidence.get("observations", {}).get("permission_file_symlink_targets", {})
-        )
+        ) | set(runtime_evidence.get("observations", {}).get("permission_file_symlink_targets", {}))
         missing_runtime_permission_paths = sorted(
             EXPECTED_RUNTIME_PERMISSION_XMLS - observed_permission_paths
         )
@@ -618,8 +616,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "bridge_service_present": BRIDGE_SERVICE_KT.is_file(),
         "launcher_main_activity": rel(LAUNCHER_MAIN_ACTIVITY),
         "launcher_binds_system_bridge": (
-            "__elizaAndroidBridge" in launcher_text
-            and "addJavascriptInterface" in launcher_text
+            "__elizaAndroidBridge" in launcher_text and "addJavascriptInterface" in launcher_text
         )
         or (
             "ElizaAndroidSystemBridge.install" in launcher_text

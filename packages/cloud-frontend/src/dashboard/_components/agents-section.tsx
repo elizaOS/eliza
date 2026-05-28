@@ -119,7 +119,7 @@ function AgentsEmptyState() {
       action={
         <BrandButton
           asChild
-          className="h-9 md:h-10 bg-[#FF5800] text-white hover:bg-[#FF5800]/90 active:bg-[#FF5800]/80"
+          className="h-9 md:h-10 bg-[#FF5800] text-black hover:bg-black hover:text-white active:bg-black/90"
         >
           <Link to="/dashboard/agents">
             <Rocket className="h-4 w-4" />

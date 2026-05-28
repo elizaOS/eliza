@@ -2,9 +2,9 @@ import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
-  DFLASH_BINARY_PATH,
+  MTP_BINARY_PATH,
   expandHome,
-  probeDflashFork,
+  probeMtpFork,
   resolveLocalBaseUrl,
   startLocalServer,
 } from "../local-llama-cpp.ts";
@@ -26,15 +26,15 @@ describe("expandHome", () => {
   });
 });
 
-describe("probeDflashFork", () => {
+describe("probeMtpFork", () => {
   it("returns null when the binary is absent, otherwise the absolute path", () => {
-    const result = probeDflashFork();
+    const result = probeMtpFork();
     if (result === null) {
       // Binary not present in this environment — confirm the default path
       // was the one checked.
-      expect(existsSync(DFLASH_BINARY_PATH)).toBe(false);
+      expect(existsSync(MTP_BINARY_PATH)).toBe(false);
     } else {
-      expect(result).toBe(DFLASH_BINARY_PATH);
+      expect(result).toBe(MTP_BINARY_PATH);
       expect(existsSync(result)).toBe(true);
     }
   });
@@ -64,23 +64,23 @@ describe("resolveLocalBaseUrl", () => {
 });
 
 describe("startLocalServer", () => {
-  it("throws a helpful error when the dflash fork is not present", async () => {
-    if (probeDflashFork() !== null) {
+  it("throws a helpful error when the mtp fork is not present", async () => {
+    if (probeMtpFork() !== null) {
       // Binary IS present — skip this branch; the next test covers it.
       return;
     }
     await expect(
       startLocalServer({ bundlePath: "/nonexistent" }),
-    ).rejects.toThrow(/dflash llama-server binary not found/);
+    ).rejects.toThrow(/mtp llama-server binary not found/);
   });
 
   it("throws when the bundle path does not exist (binary present)", async () => {
-    if (probeDflashFork() === null) {
+    if (probeMtpFork() === null) {
       // No binary — covered above.
       return;
     }
     await expect(
       startLocalServer({ bundlePath: "/nonexistent-bundle-xyz.gguf" }),
-    ).rejects.toThrow(/dflash bundle path does not exist/);
+    ).rejects.toThrow(/mtp bundle path does not exist/);
   });
 });

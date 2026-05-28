@@ -1,7 +1,7 @@
 # omnivoice-merged: source-level fusion of omnivoice.cpp into elizaOS/llama.cpp
 
 This directory contains the helpers + patch material that the build script
-`packages/app-core/scripts/build-llama-cpp-dflash.mjs` invokes when one of
+`packages/app-core/scripts/build-llama-cpp-mtp.mjs` invokes when one of
 the fused targets (e.g. `darwin-arm64-metal-fused`) is requested.
 
 The fused build produces ONE shared library and ONE server binary that
@@ -15,21 +15,21 @@ contract from `packages/inference/AGENTS.md` §4.
 | ---------------- | ----------------------------------------------------- | ------------------------------------------------------------------ |
 | omnivoice.cpp    | `https://github.com/elizaOS/omnivoice.cpp` (fork of `https://github.com/ServeurpersoCom/omnivoice.cpp`) | `38f824023d12b21a7c324651b18bd90f16d8bb86` (upstream master HEAD 2026-05-10) |
 | omnivoice ggml   | `https://github.com/ServeurpersoCom/ggml.git`         | `0e3980ef205ea3639650f59e54cfeecd7d947700` (its `ggml` submodule)  |
-| eliza llama.cpp | `https://github.com/elizaOS/llama.cpp.git`          | `v0.4.0-eliza` (`08032d57`) — see `build-llama-cpp-dflash.mjs`    |
+| eliza llama.cpp | `https://github.com/elizaOS/llama.cpp.git`          | `v0.4.0-eliza` (`08032d57`) — see `build-llama-cpp-mtp.mjs`    |
 
 ## GGML pin reconciliation strategy
 
 omnivoice.cpp ships its own ggml fork as a git submodule (commit
 `0e3980ef…`), and pulls it into the build with `add_subdirectory(ggml)`.
 The elizaOS/llama.cpp fork ships its own ggml in-tree (at
-`ggml/`, NOT a submodule) with the TurboQuant + QJL + PolarQuant + DFlash
+`ggml/`, NOT a submodule) with the TurboQuant + QJL + PolarQuant + MTP
 patches that the kernels in `packages/inference/{metal,vulkan}` are
 verified against.
 
 **Two ggml trees in one build tree is illegal.** The kernels in this
 repo are checked against the eliza ggml only — the ServeurpersoCom ggml
 does not have TurboQuant centroids, QJL projections, PolarQuant
-centroids, or DFlash flash-attn entry points. Targeting both would
+centroids, or MTP flash-attn entry points. Targeting both would
 either (a) link two different ggml libraries into the same process
 (undefined-behavior territory: duplicate `ggml_*` exports, divergent
 struct layouts) or (b) silently use whichever comes first in link order
@@ -79,7 +79,7 @@ That sounds equivalent but creates a sharper failure mode: omnivoice's
 CMakeLists.txt expects to be the parent of `ggml/` and configures it
 with its own option set (`OMNIVOICE_*`, GGML_MAX_NAME=128, etc.). If we
 let omnivoice's CMake reconfigure eliza's ggml we lose the kernel-set
-and patch hooks that `build-llama-cpp-dflash.mjs` already wires. The
+and patch hooks that `build-llama-cpp-mtp.mjs` already wires. The
 graft approach keeps llama.cpp's CMake as the single point of ggml
 configuration.
 
@@ -131,8 +131,8 @@ address space — same problem, masked.
      bump omnivoice here)
 4. Update the pin table at the top of this README. Update the constants
    `OMNIVOICE_REF` / `OMNIVOICE_GGML_REF` in
-   `packages/app-core/scripts/build-llama-cpp-dflash.mjs`.
-5. Run a fused build: `node build-llama-cpp-dflash.mjs --target
+   `packages/app-core/scripts/build-llama-cpp-mtp.mjs`.
+5. Run a fused build: `node build-llama-cpp-mtp.mjs --target
    darwin-arm64-metal-fused` (or vulkan/cpu equivalent). The build
    MUST exit non-zero if symbol verification fails — do NOT add
    compatibility shims to make the new pin compile.
@@ -216,12 +216,12 @@ version at `dlopen` time and refuses to bind a mismatched library.
 | ----------------------------------------- | ----------------------------------------------------------- |
 | `eliza_inference_abi_version`             | Returns the static ABI version string ("3").                |
 | `eliza_inference_create` / `_destroy`     | Allocate / free a per-engine `EliInferenceContext`.         |
-| `eliza_inference_mmap_acquire` / `_evict` | Lazy-page / release weights for a region (`tts`/`asr`/`text`/`dflash`). |
+| `eliza_inference_mmap_acquire` / `_evict` | Lazy-page / release weights for a region (`tts`/`asr`/`text`/`mtp`). |
 | `eliza_inference_tts_synthesize`          | Synchronous OmniVoice forward → fp32 PCM @ 24 kHz (batch).  |
 | `eliza_inference_tts_stream_supported`    | 1 when this build implements streaming TTS, else 0.         |
 | `eliza_inference_tts_synthesize_stream`   | Chunked OmniVoice forward → PCM segments via `eliza_tts_chunk_cb` + a final `is_final` tail; chunk cb returns non-zero to cancel. |
 | `eliza_inference_cancel_tts`              | Hard-cancel any in-flight TTS forward pass on the context.  |
-| `eliza_inference_set_verifier_callback`   | Register the native DFlash speculative-step callback (`EliVerifierEvent` accepted / rejected-range / corrected token ids); `cb == NULL` clears it. |
+| `eliza_inference_set_verifier_callback`   | Register the native MTP speculative-step callback (`EliVerifierEvent` accepted / rejected-range / corrected token ids); `cb == NULL` clears it. |
 | `eliza_inference_asr_transcribe`          | Synchronous ASR forward → UTF-8 transcript (batch).         |
 | `eliza_inference_asr_stream_supported`    | 1 when this build implements streaming ASR, else 0.         |
 | `eliza_inference_asr_stream_open` / `_feed` / `_partial` / `_finish` / `_close` | Streaming ASR session: feed PCM frames, read a running partial transcript (+ optional text-model token ids), force-finalize, close. |
@@ -237,7 +237,7 @@ ABI v3 adds the `vad` mmap region and the native VAD entry points above.
 ### Single-process HTTP server (status: active speech route)
 
 §4 of `packages/inference/AGENTS.md` calls for ONE process serving
-`/v1/chat/completions` (+ DFlash), `/v1/audio/speech`, and an ASR route.
+`/v1/chat/completions` (+ MTP), `/v1/audio/speech`, and an ASR route.
 The fused `llama-server` mounts `/v1/audio/speech` directly through
 committed fork source (`tools/server/server.cpp` namespace `eliza_omnivoice`,
 guarded by `#ifdef ELIZA_FUSE_OMNIVOICE`), using the same in-process
@@ -258,7 +258,7 @@ Remaining HTTP follow-up:
   1. Wire a streaming ASR route once `eliza_inference_asr_stream_supported()`
      advertises a true low-latency streaming decoder. Until then the JS bridge
      uses fused batch ASR, not whisper, when an Eliza-1 ASR bundle is present.
-  2. Route native DFlash verifier callbacks into the speech scheduler so
+  2. Route native MTP verifier callbacks into the speech scheduler so
      phrase rollback no longer depends on the non-fused SSE side channel.
 
 Do NOT mark `eliza_inference_tts_synthesize` /
@@ -373,7 +373,7 @@ loader throws structurally on the no-Bun path.
 
 ## Verifying a real fused artifact
 
-After `build-llama-cpp-dflash.mjs --target <fused-target>` installs
+After `build-llama-cpp-mtp.mjs --target <fused-target>` installs
 `libelizainference`, the build runs the same verifier as this CLI:
 
 ```sh

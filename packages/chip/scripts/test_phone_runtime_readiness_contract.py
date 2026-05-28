@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
+import importlib.util
+import json
 import sys
 import tempfile
 import unittest
-import json
-import importlib.util
 from argparse import Namespace
 from pathlib import Path
 from unittest import mock
@@ -215,12 +215,8 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertEqual(blocked_file["blocker_category_label"], "live-device validation")
         group = payload["runtime_capture_area_groups"][0]
         self.assertEqual(group["capture_area"], "media")
-        self.assertEqual(
-            group["blocked_evidence_class_counts"]["live_capture_unavailable"], 1
-        )
-        self.assertEqual(
-            group["blocked_evidence_category_counts"]["live_device_validation"], 1
-        )
+        self.assertEqual(group["blocked_evidence_class_counts"]["live_capture_unavailable"], 1)
+        self.assertEqual(group["blocked_evidence_category_counts"]["live_device_validation"], 1)
         self.assertIn(
             "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py",
             group["next_commands"],
@@ -257,20 +253,15 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             "blocked_evidence_files"
         ][0]
         self.assertEqual(blocked_file["blocker_class"], "planned_evidence_incomplete")
-        self.assertEqual(
-            blocked_file["blocker_category"], "planned_incomplete_evidence"
-        )
-        self.assertEqual(
-            payload["summary"]["planned_incomplete_evidence_file_count"], 1
-        )
+        self.assertEqual(blocked_file["blocker_category"], "planned_incomplete_evidence")
+        self.assertEqual(payload["summary"]["planned_incomplete_evidence_file_count"], 1)
 
     def test_template_manifest_converts_absent_planned_file_to_incomplete(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
             missing_evidence = tmp_root / "docs/evidence/android/security/rollback_rejection.log"
             manifest = (
-                tmp_root
-                / "docs/evidence/runtime/phone_runtime_planned_evidence_templates.json"
+                tmp_root / "docs/evidence/runtime/phone_runtime_planned_evidence_templates.json"
             )
             manifest.parent.mkdir(parents=True)
             manifest.write_text(
@@ -282,9 +273,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
                             {
                                 "expected_path": "docs/evidence/android/security/rollback_rejection.log",
                                 "capture_status": "planned_incomplete",
-                                "capture_commands": [
-                                    "test -n \"$ELIZA_ROLLBACK_REJECTION_COMMAND\""
-                                ],
+                                "capture_commands": ['test -n "$ELIZA_ROLLBACK_REJECTION_COMMAND"'],
                             }
                         ],
                     }
@@ -317,9 +306,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             "blocked_evidence_files"
         ][0]
         self.assertEqual(blocked_file["blocker_class"], "planned_evidence_incomplete")
-        self.assertEqual(
-            blocked_file["blocker_category"], "planned_incomplete_evidence"
-        )
+        self.assertEqual(blocked_file["blocker_category"], "planned_incomplete_evidence")
         self.assertEqual(
             blocked_file["planned_evidence_template"]["template_manifest"],
             "docs/evidence/runtime/phone_runtime_planned_evidence_templates.json",
@@ -337,8 +324,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             required_runtime_evidence=("tamper proof",),
             required_evidence_files=(
                 gate.EvidenceSpec(
-                    path=gate.ROOT
-                    / "docs/evidence/android/security/tampered_boot_rejection.log",
+                    path=gate.ROOT / "docs/evidence/android/security/tampered_boot_rejection.log",
                     description="tampered boot proof",
                     required_tokens=("TAMPERED_BOOT_REJECTED=pass",),
                 ),
@@ -350,9 +336,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         blocked_file = payload["runtime_evidence_collection_inventory"][0][
             "blocked_evidence_files"
         ][0]
-        self.assertEqual(
-            blocked_file["blocker_category"], "planned_incomplete_evidence"
-        )
+        self.assertEqual(blocked_file["blocker_category"], "planned_incomplete_evidence")
         self.assertEqual(
             blocked_file["expected_output_files"],
             ["docs/evidence/android/security/tampered_boot_rejection.log"],
@@ -397,8 +381,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertFalse(blocked_file["release_credit"])
         self.assertTrue(
             any(
-                "capture_simulated_peripheral_evidence.py" in command
-                and "rear_camera" in command
+                "capture_simulated_peripheral_evidence.py" in command and "rear_camera" in command
                 for command in blocked_file["capture_commands"]
             )
         )
@@ -419,8 +402,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
             manifest = (
-                tmp_root
-                / "docs/evidence/android/runtime/live_runtime_capture_contracts.json"
+                tmp_root / "docs/evidence/android/runtime/live_runtime_capture_contracts.json"
             )
             manifest.parent.mkdir(parents=True)
             manifest.write_text(
@@ -432,9 +414,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
                             {
                                 "expected_path": "docs/evidence/android/peripherals/wifi_sim.log",
                                 "expected_file_schema": "fixture wifi evidence schema",
-                                "device_or_emulator_prerequisites": [
-                                    "fixture booted adb target"
-                                ],
+                                "device_or_emulator_prerequisites": ["fixture booted adb target"],
                                 "fail_closed_validation_rule": (
                                     "fixture fail closed unless PASS markers are present"
                                 ),
@@ -483,6 +463,81 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             "docs/evidence/android/runtime/live_runtime_capture_contracts.json",
         )
 
+    def test_live_capture_contract_precedence_marks_present_bad_file_as_live_blocker(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            manifest = (
+                tmp_root / "docs/evidence/android/runtime/live_runtime_capture_contracts.json"
+            )
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "schema": "eliza.android_live_runtime_capture_contracts.v1",
+                        "release_credit": False,
+                        "live_capture_contracts": [
+                            {
+                                "expected_path": "docs/evidence/android/peripherals/wifi_sim.log",
+                                "expected_file_schema": "fixture wifi evidence schema",
+                                "capture_commands": ["capture wifi fixture"],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            evidence = tmp_root / "docs/evidence/android/peripherals/wifi_sim.log"
+            evidence.parent.mkdir(parents=True)
+            evidence.write_text("eliza-evidence: status=BLOCKED\n", encoding="utf-8")
+            wifi = gate.ScopeSpec(
+                name="radio_sensor_pmic",
+                report_builder=lambda: report("radio", status="ready", allowed=True),
+                validator=lambda _report: [],
+                required_status="ready",
+                runtime_surface="wifi",
+                required_runtime_evidence=("wifi proof",),
+                required_evidence_files=(
+                    gate.EvidenceSpec(
+                        path=evidence,
+                        description="wifi proof",
+                        required_tokens=("eliza-evidence: status=PASS",),
+                    ),
+                ),
+            )
+            with (
+                mock.patch.object(gate, "ROOT", tmp_root),
+                mock.patch.object(gate, "LIVE_CAPTURE_CONTRACT_MANIFEST", manifest),
+                mock.patch.object(gate, "SCOPES", (wifi,)),
+            ):
+                payload = gate.run_check(Namespace())
+
+        blocked_file = payload["runtime_evidence_collection_inventory"][0][
+            "blocked_evidence_files"
+        ][0]
+        self.assertEqual(blocked_file["path"], "docs/evidence/android/peripherals/wifi_sim.log")
+        self.assertEqual(blocked_file["blocker_class"], "live_capture_unavailable")
+        self.assertEqual(blocked_file["blocker_category"], "live_device_validation")
+        self.assertIn("eliza-evidence: status=PASS", blocked_file["required_tokens"])
+        self.assertIn(
+            "docs/evidence/android/peripherals/wifi_sim.log missing token "
+            "'eliza-evidence: status=PASS'",
+            blocked_file["errors"],
+        )
+        self.assertEqual(
+            blocked_file["capture_contract_manifest"],
+            "docs/evidence/android/runtime/live_runtime_capture_contracts.json",
+        )
+        self.assertEqual(blocked_file["expected_file_schema"], "fixture wifi evidence schema")
+        self.assertTrue(blocked_file["capture_commands"])
+        self.assertTrue(
+            any(
+                "capture_simulated_peripheral_evidence.py" in cmd
+                for cmd in blocked_file["capture_commands"]
+            )
+        )
+
     def test_current_live_device_blockers_all_have_executable_capture_contracts(self) -> None:
         expected = {
             "docs/evidence/android/eliza_launcher_runtime_evidence.json",
@@ -505,7 +560,10 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         for path, row in blocked_files.items():
             self.assertTrue(row["capture_commands"], path)
             self.assertTrue(
-                any(command.startswith("python3 packages/chip/scripts/android/") for command in row["capture_commands"]),
+                any(
+                    command.startswith("python3 packages/chip/scripts/android/")
+                    for command in row["capture_commands"]
+                ),
                 path,
             )
             self.assertIn("expected_file_schema", row)
@@ -536,9 +594,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
                 {"ELIZA_ANDROID_PERIPHERAL_OUT_DIR": str(output_root)},
                 clear=False,
             ):
-                status, path = peripheral_helper.capture_one(
-                    spec, timeout_seconds=1, dry_run=False
-                )
+                status, path = peripheral_helper.capture_one(spec, timeout_seconds=1, dry_run=False)
 
             self.assertEqual(status, "blocked")
             self.assertEqual(path, output_root / "fixture_radio.log")
@@ -551,8 +607,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_root = Path(tmp)
             manifest = (
-                tmp_root
-                / "docs/evidence/android/runtime/live_runtime_capture_contracts.json"
+                tmp_root / "docs/evidence/android/runtime/live_runtime_capture_contracts.json"
             )
             manifest.parent.mkdir(parents=True)
             manifest.write_text(
@@ -644,7 +699,9 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             inventory["next_commands"],
         )
 
-    def test_prioritized_runtime_capture_plan_lists_live_evidence_without_release_credit(self) -> None:
+    def test_prioritized_runtime_capture_plan_lists_live_evidence_without_release_credit(
+        self,
+    ) -> None:
         with mock.patch.object(
             gate,
             "SCOPES",
@@ -686,7 +743,9 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             payload = gate.run_check(Namespace())
 
         plan = payload["prioritized_runtime_capture_plan"]
-        self.assertEqual([row["capture_area"] for row in plan], ["security_lifecycle", "power_thermal"])
+        self.assertEqual(
+            [row["capture_area"] for row in plan], ["security_lifecycle", "power_thermal"]
+        )
         self.assertTrue(all(row["release_credit"] is False for row in plan))
         security = plan[0]
         self.assertIn(

@@ -16,6 +16,7 @@ import type {
   ActionResult,
   AgentRuntime,
   Memory,
+  Plugin,
   UUID,
 } from "@elizaos/core";
 import {
@@ -297,6 +298,28 @@ function pluginIsRegistered(runtime: AgentRuntime, name: string): boolean {
     const pn = typeof p.name === "string" ? p.name : "";
     return pn === name || pn === normalized;
   });
+}
+
+async function loadRequiredPlugin(pkg: string): Promise<Plugin | null> {
+  if (pkg === "@elizaos/plugin-app-control") {
+    const mod = (await import(
+      "../../../plugins/plugin-app-control/src/actions/views.ts"
+    )) as { viewsAction?: Action };
+    if (!mod.viewsAction) return null;
+    return {
+      name: "app-control",
+      description: "App control VIEWS action",
+      actions: [mod.viewsAction],
+    };
+  }
+
+  const mod = (await import(pkg)) as Record<string, unknown>;
+  const candidate = mod.default ?? mod.elizaPlugin ?? mod.plugin;
+  return candidate !== null &&
+    typeof candidate === "object" &&
+    typeof (candidate as { name?: unknown }).name === "string"
+    ? (candidate as Plugin)
+    : null;
 }
 
 function normalizeChannelType(value: unknown): ChannelType {
@@ -1561,16 +1584,9 @@ export async function runScenario(
       if (!pkg.startsWith("@")) continue;
       if (pluginIsRegistered(runtime, pkg)) continue;
       try {
-        const mod = (await import(pkg)) as Record<string, unknown>;
-        const candidate = mod.default ?? mod.elizaPlugin ?? mod.plugin;
-        if (
-          candidate !== null &&
-          typeof candidate === "object" &&
-          typeof (candidate as { name?: unknown }).name === "string"
-        ) {
-          await runtime.registerPlugin(
-            candidate as Parameters<AgentRuntime["registerPlugin"]>[0],
-          );
+        const candidate = await loadRequiredPlugin(pkg);
+        if (candidate) {
+          await runtime.registerPlugin(candidate);
         }
       } catch (err) {
         logger.debug(

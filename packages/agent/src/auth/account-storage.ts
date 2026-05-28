@@ -1,19 +1,18 @@
 /**
  * Per-account credential storage.
  *
- * Layout: `~/.eliza/auth/{providerId}/{accountId}.json` (mode 0600,
+ * Layout: `<stateDir>/auth/{providerId}/{accountId}.json` (mode 0600,
  * atomic writes). Multiple accounts per provider are supported.
  *
  * Migration: on first read of a provider, if the legacy single-file
- * `~/.eliza/auth/{providerId}.json` exists and the per-account
+ * `<stateDir>/auth/{providerId}.json` exists and the per-account
  * directory does not, the legacy file is moved to
  * `<dir>/default.json` and the legacy file is removed.
  */
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { logger, resolveStateDir } from "@elizaos/core";
 import { writeJsonAtomicSync } from "../utils/atomic-json.ts";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
@@ -47,10 +46,7 @@ export interface AccountCredentialRecord {
 }
 
 function authRoot(): string {
-  return path.join(
-    process.env.ELIZA_HOME || path.join(os.homedir(), ".eliza"),
-    "auth",
-  );
+  return path.join(process.env.ELIZA_HOME || resolveStateDir(), "auth");
 }
 
 function providerDir(provider: AccountCredentialProvider): string {

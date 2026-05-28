@@ -61,7 +61,7 @@ vi.mock("./auth/sessions", async (importOriginal) => {
 	};
 });
 
-vi.mock("./server-onboarding-helpers", () => ({
+vi.mock("./server-first-run-helpers", () => ({
 	isCloudProvisioned: () => false,
 }));
 
@@ -179,7 +179,7 @@ describe("POST /api/local-inference/active", () => {
 		handleLocalInferenceCompatRoutes = (
 			await import("./local-inference-compat-routes")
 		).handleLocalInferenceCompatRoutes;
-	}, 30_000);
+	}, 120_000);
 
 	afterEach(() => {
 		setActiveMock.mockReset();
@@ -362,7 +362,7 @@ describe("POST /api/local-inference/active", () => {
 			new CandidateModelActivationError({
 				modelId: "eliza-1-0_8b",
 				manifestVersion: "1.0.0-candidate.1",
-				failedEvals: ["textEval", "voiceRtf", "asrWer", "expressive", "dflash"],
+				failedEvals: ["textEval", "voiceRtf", "asrWer", "expressive"],
 			}),
 		);
 

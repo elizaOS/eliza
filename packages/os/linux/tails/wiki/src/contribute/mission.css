@@ -1,0 +1,41 @@
+#mission {
+  font-size: 24px;
+  line-height: 1.5em;
+  max-width: 35em;
+}
+
+#style {
+  display: flex;
+  gap: 30px;
+}
+
+#style div {
+  flex-basis: calc(50% - 15px);
+}
+
+#personality p {
+  position: relative;
+  height: 1em;
+  font-weight: 600;
+}
+
+#personality span:first-child {
+  position: absolute;
+  left: 0;
+  text-align: left;
+}
+
+#personality span:last-child {
+  position: absolute;
+  right: 0;
+  text-align: right;
+}
+
+div.slider {
+  width: 100%;
+  margin-bottom: 3em;
+}
+
+div.slider input {
+  width: 100%;
+}

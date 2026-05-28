@@ -1,0 +1,9 @@
+[[!meta date="Sat, 12 Dec 2020 09:56:31 -0000"]]
+[[!meta title="Numerous security holes in Tails 4.13"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+[[Tails 4.14|news/version_4.14]] fixes many security issues that affect
+Tails 4.13. You should [[upgrade to Tails 4.14|news/version_4.14]] as
+soon as possible.

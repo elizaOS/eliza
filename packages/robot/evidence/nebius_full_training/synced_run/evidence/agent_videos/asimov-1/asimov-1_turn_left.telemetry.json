@@ -2,36 +2,67 @@
   "profile": "asimov-1",
   "label": "turn left",
   "task_id": "turn_left",
-  "policy_source": "sb3_smoke",
+  "policy_source": "checkpoint:checkpoints/asimov_1_alberta_full",
   "steps_requested": 40,
   "steps_executed": 40,
-  "terminated": false,
+  "terminated": true,
   "truncated": true,
   "first_done_step": 40,
-  "done_reason": "truncated",
+  "done_reason": "terminated",
   "fall_threshold": 0.378,
   "torso_z": {
-    "min": 0.6276459354111448,
-    "max": 0.6327618388783293,
-    "final": 0.6327618388783293,
-    "mean": 0.6299865431041664
+    "min": 0.37384812997836353,
+    "max": 0.6315863584501746,
+    "final": 0.37384812997836353,
+    "mean": 0.5723505187653892
   },
   "upright_proj": {
-    "min": 0.9862088905384392,
-    "max": 0.999999891611934,
-    "final": 0.9862088905384392,
-    "mean": 0.9975525292381656
+    "min": 0.5908589894602274,
+    "max": 0.9999978601890452,
+    "final": 0.5908589894602274,
+    "mean": 0.9225334958171303
   },
   "reward": {
-    "min": 3.2767194549524774,
-    "max": 3.346141947610551,
-    "final": 3.312156560675194,
-    "mean": 3.326285215422966
+    "min": -7.604881883617281,
+    "max": 3.3976799438995076,
+    "final": -7.604881883617281,
+    "mean": 2.8132431743666038
   },
-  "rollout_ok": true,
+  "delta_x_m": {
+    "min": null,
+    "max": null,
+    "final": null,
+    "mean": null
+  },
+  "delta_y_m": {
+    "min": null,
+    "max": null,
+    "final": null,
+    "mean": null
+  },
+  "delta_yaw_rad": {
+    "min": null,
+    "max": null,
+    "final": null,
+    "mean": null
+  },
+  "action_norm": {
+    "min": 3.151228189468384,
+    "max": 3.3066225051879883,
+    "final": 3.1748242378234863,
+    "mean": 3.2061908304691316
+  },
+  "nonzero_action_steps": 40,
+  "attempted_action": true,
+  "goal_success": false,
+  "goal_failed": false,
+  "goal_reason": "",
+  "rollout_ok": false,
   "checks": {
-    "no_termination": true,
-    "torso_above_fall_threshold": true,
-    "upright_positive": true
+    "no_termination": false,
+    "torso_above_fall_threshold": false,
+    "upright_positive": true,
+    "attempted_action": true,
+    "goal_success": false
   }
 }

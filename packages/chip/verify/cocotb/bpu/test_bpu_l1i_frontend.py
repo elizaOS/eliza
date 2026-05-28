@@ -239,7 +239,9 @@ async def pop_until_shim_valid(dut, max_cycles: int = 24) -> None:
     raise AssertionError("BPU fetch pop did not produce a shim L1I request")
 
 
-async def collect_shim_requests(dut, count: int, max_cycles: int = 48) -> list[tuple[int, int, int]]:
+async def collect_shim_requests(
+    dut, count: int, max_cycles: int = 48
+) -> list[tuple[int, int, int]]:
     requests: list[tuple[int, int, int]] = []
     dut.fetch_pop.value = 1
     try:
@@ -290,9 +292,7 @@ async def wait_for_fetch_stream_valid(dut, mask: int, max_cycles: int = 48) -> N
     )
 
 
-async def drive_fetch_stream_into_demand_queue(
-    dut, mask: int, max_cycles: int = 48
-) -> None:
+async def drive_fetch_stream_into_demand_queue(dut, mask: int, max_cycles: int = 48) -> None:
     dut.fetch_pop.value = 1
     try:
         for _ in range(max_cycles):
@@ -308,9 +308,7 @@ async def drive_fetch_stream_into_demand_queue(
     )
 
 
-async def drive_fetch_stream_until_wide_demand_accept(
-    dut, mask: int, max_cycles: int = 48
-) -> None:
+async def drive_fetch_stream_until_wide_demand_accept(dut, mask: int, max_cycles: int = 48) -> None:
     dut.fetch_pop.value = 1
     saw_stream = False
     try:
@@ -348,20 +346,16 @@ async def wait_for_shim_line(dut, expected_line: int, max_cycles: int = 32) -> N
     raise AssertionError(f"shim did not present expected line 0x{expected_line:x}")
 
 
-async def assert_no_prefetch_miss_to_line(
-    dut, stale_line: int, max_cycles: int = 32
-) -> None:
+async def assert_no_prefetch_miss_to_line(dut, stale_line: int, max_cycles: int = 32) -> None:
     for _ in range(max_cycles):
         await RisingEdge(dut.clk)
         if int(dut.miss_valid.value) == 1 and int(dut.miss_is_prefetch.value) == 1:
             observed_line = int(dut.miss_paddr_line.value)
             assert observed_line != stale_line, (
-                "stale queued segment escaped as an L1I prefetch miss: "
-                f"0x{observed_line:x}"
+                f"stale queued segment escaped as an L1I prefetch miss: 0x{observed_line:x}"
             )
         assert not (
-            int(dut.shim_l1i_valid.value) == 1
-            and int(dut.shim_l1i_paddr_line.value) == stale_line
+            int(dut.shim_l1i_valid.value) == 1 and int(dut.shim_l1i_paddr_line.value) == stale_line
         ), f"stale queued segment remained visible at shim: 0x{stale_line:x}"
 
 
@@ -418,12 +412,8 @@ async def two_segment_ftq_entry_serializes_l1i_prefetches_in_order(dut):
     redirect_target = block_pc + 0x300
 
     for _ in range(8):
-        await pulse_resolve(
-            dut, guard_pc, guard_target, kind=BR_COND, taken=False, misp=False
-        )
-        await pulse_resolve(
-            dut, redirect_pc, redirect_target, kind=BR_COND, taken=True, misp=False
-        )
+        await pulse_resolve(dut, guard_pc, guard_target, kind=BR_COND, taken=False, misp=False)
+        await pulse_resolve(dut, redirect_pc, redirect_target, kind=BR_COND, taken=True, misp=False)
 
     await pulse_lookup(dut, block_pc)
     assert int(dut.pred_valid.value) == 1
@@ -450,12 +440,8 @@ async def two_segment_ftq_entry_exposes_wide_l1i_bundle(dut):
     redirect_target = block_pc + 0x380
 
     for _ in range(8):
-        await pulse_resolve(
-            dut, guard_pc, guard_target, kind=BR_COND, taken=False, misp=False
-        )
-        await pulse_resolve(
-            dut, redirect_pc, redirect_target, kind=BR_COND, taken=True, misp=False
-        )
+        await pulse_resolve(dut, guard_pc, guard_target, kind=BR_COND, taken=False, misp=False)
+        await pulse_resolve(dut, redirect_pc, redirect_target, kind=BR_COND, taken=True, misp=False)
 
     await pulse_lookup(dut, block_pc)
     assert int(dut.pred_valid.value) == 1
@@ -474,12 +460,8 @@ async def two_segment_ftq_entry_exposes_wide_l1i_bundle(dut):
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)
     assert int(dut.shim_l1i_valid_vec.value) == 0
-    await serve_refill(
-        dut, expected_prefetch=True, expected_line=((guard_pc + 4) & ~0x3F)
-    )
-    await serve_refill(
-        dut, expected_prefetch=True, expected_line=(redirect_target & ~0x3F)
-    )
+    await serve_refill(dut, expected_prefetch=True, expected_line=((guard_pc + 4) & ~0x3F))
+    await serve_refill(dut, expected_prefetch=True, expected_line=(redirect_target & ~0x3F))
 
 
 @cocotb.test()
@@ -498,9 +480,7 @@ async def target_block_two_ahead_fetch_stream_exposes_lane_one(dut):
     first_target_block = 0x8001_4000
     final_target = 0x8001_8000
 
-    await pulse_resolve(
-        dut, block_pc, first_target_block, kind=BR_DIRECT, taken=True, misp=False
-    )
+    await pulse_resolve(dut, block_pc, first_target_block, kind=BR_DIRECT, taken=True, misp=False)
     await pulse_resolve(
         dut, first_target_block, final_target, kind=BR_DIRECT, taken=True, misp=False
     )
@@ -536,9 +516,7 @@ async def target_block_two_ahead_fetch_stream_drives_l1i_demand_in_order(dut):
     first_target_block = 0x8002_4000
     final_target = 0x8002_8000
 
-    await pulse_resolve(
-        dut, block_pc, first_target_block, kind=BR_DIRECT, taken=True, misp=False
-    )
+    await pulse_resolve(dut, block_pc, first_target_block, kind=BR_DIRECT, taken=True, misp=False)
     await pulse_resolve(
         dut, first_target_block, final_target, kind=BR_DIRECT, taken=True, misp=False
     )
@@ -551,9 +529,7 @@ async def target_block_two_ahead_fetch_stream_drives_l1i_demand_in_order(dut):
     assert int(dut.fetch_demand_valid.value) == 1
     assert int(dut.fetch_demand_paddr.value) == first_target_block
 
-    await serve_refill(
-        dut, expected_prefetch=False, expected_line=(first_target_block & ~0x3F)
-    )
+    await serve_refill(dut, expected_prefetch=False, expected_line=(first_target_block & ~0x3F))
     await wait_for_low(dut, "miss_valid")
     assert int(dut.miss_valid_lane1.value) == 1
     assert int(dut.miss_is_prefetch_lane1.value) == 0
@@ -575,9 +551,7 @@ async def target_block_two_ahead_fetch_stream_accepts_cold_lane_one_miss(dut):
     first_target_block = 0x8003_C000
     final_target = 0x8003_E000
 
-    await pulse_resolve(
-        dut, block_pc, first_target_block, kind=BR_DIRECT, taken=True, misp=False
-    )
+    await pulse_resolve(dut, block_pc, first_target_block, kind=BR_DIRECT, taken=True, misp=False)
     await pulse_resolve(
         dut, first_target_block, final_target, kind=BR_DIRECT, taken=True, misp=False
     )
@@ -628,9 +602,7 @@ async def target_block_two_ahead_fetch_stream_uses_wide_l1i_hit_lane(dut):
     await fill_l1i_demand_line(dut, first_target_block)
     await fill_l1i_demand_line(dut, final_target)
 
-    await pulse_resolve(
-        dut, block_pc, first_target_block, kind=BR_DIRECT, taken=True, misp=False
-    )
+    await pulse_resolve(dut, block_pc, first_target_block, kind=BR_DIRECT, taken=True, misp=False)
     await pulse_resolve(
         dut, first_target_block, final_target, kind=BR_DIRECT, taken=True, misp=False
     )
@@ -668,9 +640,7 @@ async def target_block_two_ahead_fetch_stream_flush_drops_lane_one(dut):
     first_target_block = 0x8001_C000
     final_target = 0x8001_E000
 
-    await pulse_resolve(
-        dut, block_pc, first_target_block, kind=BR_DIRECT, taken=True, misp=False
-    )
+    await pulse_resolve(dut, block_pc, first_target_block, kind=BR_DIRECT, taken=True, misp=False)
     await pulse_resolve(
         dut, first_target_block, final_target, kind=BR_DIRECT, taken=True, misp=False
     )
@@ -678,9 +648,7 @@ async def target_block_two_ahead_fetch_stream_flush_drops_lane_one(dut):
     await pulse_lookup(dut, block_pc)
     assert int(dut.pred_redirect_valid.value) == 0b11
 
-    await pulse_resolve(
-        dut, block_pc, block_pc + 0x40, kind=BR_DIRECT, taken=True, misp=True
-    )
+    await pulse_resolve(dut, block_pc, block_pc + 0x40, kind=BR_DIRECT, taken=True, misp=True)
 
     dut.fetch_pop.value = 1
     try:
@@ -706,9 +674,7 @@ async def target_block_two_ahead_fetch_demand_flush_drops_queued_lane_one(dut):
     final_target = 0x8002_E000
     final_line = final_target & ~0x3F
 
-    await pulse_resolve(
-        dut, block_pc, first_target_block, kind=BR_DIRECT, taken=True, misp=False
-    )
+    await pulse_resolve(dut, block_pc, first_target_block, kind=BR_DIRECT, taken=True, misp=False)
     await pulse_resolve(
         dut, first_target_block, final_target, kind=BR_DIRECT, taken=True, misp=False
     )
@@ -718,9 +684,7 @@ async def target_block_two_ahead_fetch_demand_flush_drops_queued_lane_one(dut):
     await drive_fetch_stream_into_demand_queue(dut, 0b11)
     assert int(dut.fetch_demand_valid.value) == 1
 
-    await pulse_resolve(
-        dut, block_pc, block_pc + 0x40, kind=BR_DIRECT, taken=True, misp=True
-    )
+    await pulse_resolve(dut, block_pc, block_pc + 0x40, kind=BR_DIRECT, taken=True, misp=True)
     await RisingEdge(dut.clk)
     assert int(dut.fetch_demand_valid.value) == 0
     assert int(dut.fetch_demand_occupancy.value) == 0
@@ -729,8 +693,7 @@ async def target_block_two_ahead_fetch_demand_flush_drops_queued_lane_one(dut):
     for _ in range(16):
         await RisingEdge(dut.clk)
         assert not (
-            int(dut.miss_valid.value) == 1
-            and int(dut.miss_paddr_line.value) == final_line
+            int(dut.miss_valid.value) == 1 and int(dut.miss_paddr_line.value) == final_line
         ), f"flushed target-block lane escaped as demand miss: 0x{final_line:x}"
 
 
@@ -758,12 +721,8 @@ async def fetch_stream_demand_backpressures_ftq_pop_without_overflow(dut):
     ]
 
     for block_pc, first_target, final_target in blocks:
-        await pulse_resolve(
-            dut, block_pc, first_target, kind=BR_DIRECT, taken=True, misp=False
-        )
-        await pulse_resolve(
-            dut, first_target, final_target, kind=BR_DIRECT, taken=True, misp=False
-        )
+        await pulse_resolve(dut, block_pc, first_target, kind=BR_DIRECT, taken=True, misp=False)
+        await pulse_resolve(dut, first_target, final_target, kind=BR_DIRECT, taken=True, misp=False)
 
     for block_pc, _, _ in blocks[:2]:
         await pulse_lookup(dut, block_pc)
@@ -774,9 +733,7 @@ async def fetch_stream_demand_backpressures_ftq_pop_without_overflow(dut):
     assert int(dut.fetch_demand_valid_lane1.value) == 1
     assert int(dut.fetch_demand_paddr.value) == blocks[0][1]
     assert int(dut.fetch_demand_paddr_lane1.value) == blocks[0][2]
-    assert int(dut.fetch_demand_ftq_idx.value) == int(
-        dut.fetch_demand_ftq_idx_lane1.value
-    )
+    assert int(dut.fetch_demand_ftq_idx.value) == int(dut.fetch_demand_ftq_idx_lane1.value)
     assert int(dut.fetch_demand_segment_idx.value) == 0
     assert int(dut.fetch_demand_segment_idx_lane1.value) == 1
     assert int(dut.fetch_demand_kind.value) == BR_DIRECT
@@ -791,8 +748,7 @@ async def fetch_stream_demand_backpressures_ftq_pop_without_overflow(dut):
             break
     else:
         raise AssertionError(
-            "fetch demand queue did not build backpressure "
-            f"(max_occupancy={max_occupancy})"
+            f"fetch demand queue did not build backpressure (max_occupancy={max_occupancy})"
         )
 
     await pulse_lookup(dut, blocks[2][0])
@@ -830,12 +786,8 @@ async def two_segment_ftq_prefetch_flush_drops_queued_second_segment(dut):
     redirected_line = redirect_target & ~0x3F
 
     for _ in range(8):
-        await pulse_resolve(
-            dut, guard_pc, guard_target, kind=BR_COND, taken=False, misp=False
-        )
-        await pulse_resolve(
-            dut, redirect_pc, redirect_target, kind=BR_COND, taken=True, misp=False
-        )
+        await pulse_resolve(dut, guard_pc, guard_target, kind=BR_COND, taken=False, misp=False)
+        await pulse_resolve(dut, redirect_pc, redirect_target, kind=BR_COND, taken=True, misp=False)
 
     dut.miss_ready.value = 0
     dut.ifu_req_valid.value = 1

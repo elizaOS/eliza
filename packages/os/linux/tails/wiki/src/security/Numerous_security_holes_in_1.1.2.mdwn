@@ -1,0 +1,22 @@
+[[!meta date="Tue, 14 Oct 2014 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 1.1.2"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 1.1.2 are now fixed in Tails 1.2.
+
+We **strongly** encourage you to [[upgrade to Tails
+1.2|news/version_1.2]] as soon as possible.
+
+Details
+=======
+
+ - Tor Browser and its bundled NSS: [[!mfsa 2014-74]],
+   [[!mfsa 2014-75]], [[!mfsa 2014-76]], [[!mfsa 2014-77]],
+   [[!mfsa 2014-79]], [[!mfsa 2014-81]] and [[!mfsa 2014-82]]
+ - NSS: [[!debsa2014 3033]] (CVE-2014-1568)
+ - bash: [[!debsa2014 3035]] (CVE-2014-7169)
+ - rsyslog: [[!debsa2014 3040]] (CVE-2014-3634) and
+   [[!debsa2014 3047]] (CVE-2014-3683)
+ - APT: [[!debsa2014 3047]] (CVE-2014-7206)

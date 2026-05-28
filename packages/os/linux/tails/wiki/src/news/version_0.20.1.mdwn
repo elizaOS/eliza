@@ -1,0 +1,78 @@
+[[!meta date="Thu, 19 Sep 2013 13:30:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.20.1 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.20.1, is out.
+
+All users must upgrade as soon as possible: this release fixes
+[[numerous security issues|security/Numerous_security_holes_in_0.20]].
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* New features
+  - Install Tor 0.2.4.17-rc.
+  - Install Iceweasel 17.0.9esr with Torbrowser patches.
+  - Install Linux kernel 3.10-3 (version 3.10.11-1).
+
+* Bugfixes
+  - Remount persistence devices read-only at shutdown/reboot time
+    ([[!tails_ticket 6228]]).
+  - Greeter: display a warning icon on admin password mismatch and on
+    persistence unlocking failure. Thanks to Andres Gomez Ramirez
+    <andres.gomez@cern.ch> for the fix!
+  - Fix the I2P IRC account.
+  - Allow installing "Priority: standard" packages that we do not install
+    by default.
+
+* Minor improvements
+  - Additional software: point to the system log on upgrade failure.
+
+* Localization
+  - Many translation updates all over the place.
+
+See the online
+Changelog
+for technical details.
+
+# Known issues
+
+No new known issue but [[longstanding known issues|support/known_issues]].
+
+## For users of the Pidgin persistence feature
+
+If you have turned on the persistent Pidgin configuration feature,
+then you have to update the following configuration in Pidgin:
+
+**Tools&nbsp;▸ Preferences&nbsp;▸ Proxy**
+
+1. Activate
+   **Use remote DNS with SOCKS4 proxies**.
+1. Choose **SOCKS5** as the
+   **Proxy type**.
+1. Type **127.0.0.1** as the
+   **Host**.
+1. Type **9050** as the
+   **Port**.
+
+Click on the **Close** button.
+
+# I want to try it or to upgrade!
+
+Go to the [[install]] page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release is scheduled for around October 29.
+
+
+Would you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!

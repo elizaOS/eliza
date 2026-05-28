@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install Flatpak tools
         run: |
@@ -59,7 +59,7 @@ jobs:
 
       - name: Upload node-sources.json
         if: steps.gen-sources.outcome == 'success'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: flatpak-node-sources
           path: packages/app-core/packaging/flatpak/node-sources.json
@@ -82,7 +82,7 @@ jobs:
           flatpak run ai.elizaos.App --help || echo "Help check completed"
 
       - name: Upload bundle artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: flatpak-test-bundle
           path: packages/app-core/packaging/flatpak/elizaos-app.flatpak

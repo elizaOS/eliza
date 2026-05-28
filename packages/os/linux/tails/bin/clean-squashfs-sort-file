@@ -1,0 +1,39 @@
+#!/bin/bash
+
+set -eu
+set -o pipefail
+set -x
+
+perl -ni \
+    -E 'chomp;
+         last if m{\Ausr/local/lib/kill-boot-profile\s}xms;
+         say unless m{(?:
+              [.]pyc\s+\d+\z
+           | \Aboot-profile[.]pid\s
+           | \Alib/firmware/
+           | \A(?:usr/)?lib/live/mount/medium/live/(?:filesystem[.]squashfs|initrd[.]img)\s
+           | \A(?:usr/)?lib/live/mount/overlay/rw/etc/fstab\s
+           | \A(?:usr/)?lib/live/mount/overlay/rw/etc/console-setup/cached_\S+[.](?:gz|sh)\s
+           | \A(?:usr/)?lib/live/mount/overlay/rw/etc/machine-id\s
+           | \A(?:usr/)?lib/live/mount/overlay/rw/etc/network/interfaces\s
+           | \A(?:usr/)?lib/live/mount/overlay/rw/var/log/wtmp\s
+           | \A(?:usr/lib/live/mount/overlay/rw/)?etc/apparmor[.]d/cache/[.]features\s
+           | \A(?:usr/lib/live/mount/overlay/rw/)?etc/(?:group|gshadow|passwd|shadow)-\s
+           | \A(?:usr/lib/live/mount/overlay/rw/)?etc/resolv-over-clearnet[.]conf\s
+           | \A(?:usr/lib/live/mount/overlay/rw/)?etc/skel/[.]config/autostart/end-profile[.]desktop\s
+           | \A(?:usr/lib/live/mount/overlay/rw/)?var/log/journal/.*/system.journal\s
+           | \A(?:usr/)lib/firmware/
+           | \A(?:usr/)lib/modules/.*/kernel/drivers/(?:cpufreq|net|thermal)/
+           | \A(?:usr/)lib/modules/.*/kernel/net/
+           | \Ausr/lib/live/mount/overlay/work/work/
+           | \Ausr/lib/live/mount/rootfs/filesystem.squashfs/etc/os-release\s
+           | \Ausr/share/pulseaudio/alsa-mixer/
+           | \Arun/
+           | \Avar/lib/AccountsService/users/Debian-gdm\s
+           | \Avar/lib/flatpak-tails/app/org.boum.tails.TorBrowser/x86_64/stable/
+           | \Avar/lib/flatpak-tails/runtime/org.boum.tails.Platform/x86_64/stable/
+           | \Avar/lib/gdm3/[#]\d+\s
+           | \Avar/log/live/config[.]pipe\s
+           | \Avar/log/htpdate.log\s
+         )}xms' \
+    "$1"

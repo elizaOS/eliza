@@ -1,0 +1,126 @@
+[[!meta title="Call for testing: 4.0~beta1"]]
+[[!meta date="Mon, 7 Aug 2019 14:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+You can help Tails by testing the first beta for the upcoming version 4.0!
+
+We are very excited about it and cannot wait to hear your feedback :)
+
+[[!toc levels=1]]
+
+# What's new in 4.0~beta1?
+
+Tails 4.0 will be the first version of Tails based on Debian 10
+(Buster). As such, it upgrades essentially all included software.
+
+We are particularly interested in detecting new problems with the following
+hardware:
+
+- Mac computers
+- Recent Nvidia and ATI/AMD graphics cards
+
+Other changes in Tails 4.0~beta1 include:
+
+- Replace *KeePassX* with [*KeePassXC*](https://keepassxc.org/). ([[!tails_ticket 15297]])
+
+- Add support for Thunderbolt devices. ([[!tails_ticket 5463]])
+
+  If you have a Thunderbolt device, please try using it.
+
+  Choose **Devices&nbsp;▸ Thunderbolt** from the
+  *Settings* utility to authorize your
+  Thunderbolt devices, if needed.
+
+  See also the design document on [Thunderbolt 3 in Fedora
+  28](https://christian.kellner.me/2018/04/23/the-state-of-thunderbolt-3-in-fedora-28/)
+  to see how Thunderbolt is integrated in GNOME.
+
+- Remove *Scribus*. ([[!tails_ticket 16290]])
+
+  You can install *Scribus* again using the
+  *Additional Software* feature.
+
+- Remove *LibreOffice Math*. ([[!tails_ticket 16911]])
+
+  You can install *LibreOffice Math* again using the
+  *Additional Software* feature.
+
+- Allow opening persistent volumes from other Tails USB sticks. ([[!tails_ticket 16789]])
+
+- Display *OpenPGP Applet* on the left of the Tor status icon. ([[!tails_ticket 14796]])
+
+- Add the *Files* browser to the list of favorite applications. ([[!tails_ticket 16799]])
+
+- Change the background of the boot menu. ([[!tails_ticket 16837]])
+
+- Use the default bookmarks from *Tor Browser* instead of our own default
+  bookmarks. ([[!tails_ticket 15895]])
+
+- Remove the *Home* launcher from the desktop. ([[!tails_ticket 16799]])
+
+- Remove the default accounts in *Pidgin*. ([[!tails_ticket 16744]])
+
+Technical details of all the changes are listed in the
+Changelog.
+
+<a id="known_issues"></a>
+
+# Known issues in 4.0~beta1
+
+* The documentation has not been updated so far.
+
+* [Open tickets for Tails 4.0](https://redmine.tails.boum.org/code/projects/tails/issues?query_id=279)
+
+* [[Longstanding known issues|support/known_issues]]
+
+# How to test Tails 4.0~beta1?
+
+We will provide security upgrades for Tails 4.0~beta1 like we do for regular
+versions of Tails.
+
+Keep in mind that this is a test image. We tested that it is not broken in
+obvious ways, but it might still contain undiscovered issues.
+
+Please, report any new problem to <tails-testers@boum.org> (public mailing list).
+
+# Get Tails 4.0~beta1
+
+## To download 4.0~beta1
+
+### Direct download
+
+Tails 4.0~beta1 ISO image
+
+Tails 4.0~beta1 USB image
+
+### BitTorrent download
+
+Tails 4.0~beta1 ISO image torrent
+
+Tails 4.0~beta1 USB image torrent
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are not available to 4.0~beta1.
+
+- You can do a [[manual upgrade|doc/upgrade#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - Install from Windows
+  - Install from macOS
+  - Install from Linux
+
+<div class="caution"><p>All the data on this USB stick will be lost.</p></div>
+
+# What's coming up?
+
+Tails 4.0 is [[scheduled|contribute/calendar]] for October 22.
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.0-beta1">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

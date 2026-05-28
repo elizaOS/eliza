@@ -142,7 +142,10 @@ def validate_full_training_job(job_dir: Path, *, create: bool = False) -> dict:
         )
         and any(
             "validate_asimov1_production_checkpoint.py" in c
-            and f"--min-steps {int(job.get('ppo', {}).get('num_timesteps', 0))}" in c
+            and (
+                f"--min-steps {int(job.get('ppo', {}).get('num_timesteps', 0))}" in c
+                or '--min-steps "$BRAX_MJX_STEPS"' in c
+            )
             and "--require-inference-check" in c
             for c in commands
         )

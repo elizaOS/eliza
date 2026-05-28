@@ -1,0 +1,18 @@
+[[!meta date="Fri, 07 Jul 2017 13:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="How to repair Tails 3.0.1"]]
+[[!tag announce]]
+
+<div class="note">
+If Tails 3.0.1 is working fine for you, please ignore this message!
+</div>
+
+If you upgraded Tails 3.0 to 3.0.1 with an **automatic upgrade** you
+most likely are experiencing problems, one of the most serious being
+that [[!tails_ticket 13426 desc="Tor does not work"]] which makes most
+Internet activity impossible.
+
+If you are affected you can repair your Tails 3.0.1 by doing a
+[[manual upgrade|doc/upgrade#manual]] to 3.0.1.
+
+Sorry for the inconvenience!

@@ -1,0 +1,135 @@
+[[!meta title="Tails report for October, 2018"]]
+[[!meta date="Tue, 13 Nov 2018 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 3.10.1 was released on October 23rd|news/version_3.10.1]] (bugfix release).
+
+* Tails 3.11 is [[scheduled for December 11th|contribute/calendar]].
+
+The following changes were introduced in Tails 3.10.1:
+
+- Hide the [[**PIM** option|doc/encryption_and_privacy/veracrypt#parameters]]
+  when unlocking *VeraCrypt* volumes because *PIM* won't be supported until
+  Tails 4.0. ([[!tails_ticket 16031]])
+
+- Rename the buttons in the confirmation dialog of *Tails Installer* to
+  **Install** (or **Upgrade**) and **Cancel** to be less confusing.
+  ([[!tails_ticket 11501]])
+
+Code
+====
+
+We finalized our work on the Additional Software feature. Small
+bugfixes will be shipped in the next release.
+
+We are very proud that our work to unlock VeraCrypt volumes has landed
+in GNOME and is being included in other distributions, as mentioned in
+the [release announcement of Ubuntu Cosmic
+Cuttlefish](https://ubuntu.com/blog/welcome-ubuntu-desktop-18-10).
+
+Distributing USB images
+-----------------------
+
+We started working on distributing USB
+images which will make
+installing Tails much easier on Windows and macOS:
+
+- We have a first version of the code to transform ISO images into USB
+  images ([[!tails_ticket 15293]]).
+
+- We wrote the instructions to install an USB image on Debian using GNOME Disks
+  ([[!tails_ticket 15659]]) and Windows ([[!tails_ticket 15808]]) and macOS
+  ([[!tails_ticket 15809]]) using Etcher.
+
+This work will be released in Tails 3.12 (January 29).
+
+Documentation and website
+=========================
+
+- We updated our roadmap for the next 2 years.
+
+Hot topics on our help desk
+===========================
+
+1. Several users reported [[!tails_ticket 14754]], Keyboard and mouse do
+   not work after upgrading, but that was fixed in Tails 3.10.1.
+
+1. Many users are suffering from [[!tails_ticket 15978]] and are unable
+   to automatically install software on their persistence, sometimes
+   after interrupting the upgrade process.
+
+Infrastructure
+==============
+
+- Following-up on a process started in September, we were able to give
+  more Tails developers access to our Jenkins CI platform. This should
+  make their work more pleasurable and efficient.
+
+- We made great progress on our new [[!wikipedia DIY]] low-power
+  backup server. We received the hardware, had great fun with Dremel
+  tools and epoxy resin to make everything fit into the case, and
+  finally installed the operating system. And what about… pictures?
+  Here they are! :)
+
+- We did most of the work that will allow us to remove the outdated
+  Gitolite instance we run on one of our systems. ([[!tails_ticket 14587]])
+
+- We ordered new drives to expand the storage capacity of our main
+  server. ([[!tails_ticket 16041]])
+
+Funding
+=======
+
+We launched our [[yearly donation campaign|/news/2018-fundraiser/]] and raised
+18% of our goal in the first 2 weeks.
+
+Outreach
+========
+
+Past events
+-----------
+
+* Tails was presented (among other tools) to journalists and journalism students in [Brittany Press Club](http://www.clubpresse-bretagne.com) (Rennes, France), [Sciences Po Rennes](http://www.sciencespo-rennes.fr/en/) (Rennes, France) and [Bordeaux Aquitaine Institute of Journalism (IJBA)](http://www.ijba.u-bordeaux-montaigne.fr/) (Bordeaux, France).
+
+* sajolida attended the OTF Summit in Taipei, Taiwan.
+
+Translation
+===========
+
+## All the website
+
+  - de: 51% (3148) strings translated, 6% strings fuzzy, 45% words translated
+  - es: 58% (3593) strings translated, 1% strings fuzzy, 48% words translated
+  - fa: 32% (1993) strings translated, 9% strings fuzzy, 34% words translated
+  - fr: 88% (5412) strings translated, 1% strings fuzzy, 87% words translated
+  - it: 33% (2063) strings translated, 4% strings fuzzy, 29% words translated
+  - pt: 26% (1622) strings translated, 7% strings fuzzy, 22% words translated
+
+Total original words: 64357
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 83% (1580) strings translated, 8% strings fuzzy, 83% words translated
+  - es: 97% (1851) strings translated, 1% strings fuzzy, 96% words translated
+  - fa: 32% (615) strings translated, 12% strings fuzzy, 31% words translated
+  - fr: 98% (1872) strings translated, 1% strings fuzzy, 98% words translated
+  - it: 70% (1337) strings translated, 13% strings fuzzy, 69% words translated
+  - pt: 45% (859) strings translated, 12% strings fuzzy, 48% words translated
+
+Total original words: 17343
+
+Metrics
+=======
+
+We wrote some code on the download page to compute download metrics in
+the future. ([[!tails_ticket 14922]]).
+
+* Tails has been started more than 743,676 times this month. This makes 23,990 boots a day on average.
+* 10,158 downloads of the OpenPGP signature of Tails ISO from our website.
+* 117 bug reports were received through WhisperBack.
+

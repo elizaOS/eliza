@@ -41,7 +41,6 @@ COPY packages/ui/package.json ./packages/ui/package.json
 COPY plugins/plugin-sql/package.json ./plugins/plugin-sql/package.json
 COPY plugins/plugin-elizacloud/package.json ./plugins/plugin-elizacloud/package.json
 COPY plugins/plugin-workflow/package.json ./plugins/plugin-workflow/package.json
-COPY packages/workflows/package.json ./packages/workflows/package.json
 COPY packages/app/package.json ./packages/app/package.json
 COPY packages/app-core/platforms/electrobun/package.json ./packages/app-core/platforms/electrobun/package.json
 COPY packages/app-core/deploy/cloud-agent-template/package.json ./packages/app-core/deploy/cloud-agent-template/package.json
@@ -65,7 +64,6 @@ const KEEP = [
   "packages/ui",
   "packages/app-core/platforms/electrobun",
   "packages/app-core/deploy/cloud-agent-template",
-  "packages/workflows",
   "plugins/plugin-sql",
   "plugins/plugin-elizacloud",
   "plugins/plugin-workflow",
@@ -77,7 +75,6 @@ const ALLOW = new Set([
   "@elizaos/app-core",
   "@elizaos/shared",
   "@elizaos/ui",
-  "@elizaos/workflows",
   "@elizaos/plugin-sql",
   "@elizaos/plugin-elizacloud",
   "@elizaos/plugin-workflow",
@@ -96,14 +93,12 @@ const VERSION_MANIFESTS = [
   "plugins/plugin-sql/package.json",
   "plugins/plugin-elizacloud/package.json",
   "plugins/plugin-workflow/package.json",
-  "packages/workflows/package.json",
 ];
 const CLOUD_AGENT_RELEASE_DEPS = [
   "@elizaos/core",
   "@elizaos/plugin-sql",
   "@elizaos/plugin-elizacloud",
   "@elizaos/plugin-workflow",
-  "@elizaos/workflows",
 ];
 
 function readJson(path) {
@@ -203,7 +198,6 @@ COPY packages/app/dist ./packages/app/dist
 COPY packages/agent ./packages/agent
 COPY packages/app-core ./packages/app-core
 COPY packages/shared ./packages/shared
-COPY packages/workflows ./packages/workflows
 COPY plugins/plugin-workflow ./plugins/plugin-workflow
 COPY package.json plugins.json ./
 COPY packages/app-core/scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
@@ -213,7 +207,7 @@ RUN set -eux; \
   # Keep bun's symlink structure intact — cp -rL breaks transitive dep resolution.
   cp -a node_modules/. /runtime/node_modules/; \
   # Overlay workspace packages with full source (not just the symlinked dist).
-  for dir in packages/agent packages/app-core packages/shared packages/workflows plugins/plugin-workflow; do \
+  for dir in packages/agent packages/app-core packages/shared plugins/plugin-workflow; do \
     name="$(node -p "require('./${dir}/package.json').name")"; \
     target="/runtime/node_modules/${name}"; \
     rm -rf "$target"; \

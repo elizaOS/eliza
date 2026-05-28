@@ -4,7 +4,7 @@
  * Shared contracts referenced by the server-side service in
  * `@elizaos/app-core` and the UI client in `@elizaos/ui`.
  *
- * Server-only logic (KV cache management, llama-server lifecycle,
+ * Server-only logic (KV cache management, native runtime lifecycle,
  * conversation registry, metrics scraping) stays in `app-core`; only
  * the type contracts live here.
  */
@@ -33,7 +33,7 @@ export interface InstalledModel {
     /**
      * Eliza-1 bundle root when this installed model came from a multi-file
      * manifest. `path` still points at the primary GGUF used for loading the
-     * model; sibling voice/cache/drafter files live under this root.
+     * model; sibling voice/cache files live under this root.
      */
     bundleRoot?: string;
     /** Absolute path to the validated `eliza-1.manifest.json`, when present. */
@@ -69,12 +69,12 @@ export interface InstalledModel {
      * must not be auto-selected as the recommended default.
      */
     bundleVerifiedAt?: string;
-    runtimeRole?: "chat" | "dflash-drafter";
+    runtimeRole?: "chat" | "mtp-drafter";
     companionFor?: string;
 }
 export type ModelBucket = "small" | "mid" | "large" | "xl";
-export type ModelCategory = "chat" | "code" | "tools" | "tiny" | "reasoning" | "drafter";
-export type LocalRuntimeBackend = "capacitor-llama" | "llama-server";
+export type ModelCategory = "chat" | "code" | "tools" | "tiny" | "reasoning";
+export type LocalRuntimeBackend = "capacitor-llama" | "llama-cpp";
 export type OpenVinoDeviceKind = "CPU" | "GPU" | "NPU";
 export interface OpenVinoHardwareProbe {
     /**
@@ -104,17 +104,17 @@ export interface OpenVinoHardwareProbe {
     warnings: string[];
 }
 /**
- * Runtime kernel/capability handles advertised by llama-server
- * `CAPABILITIES.json`. Most entries are specialised kernels shipped by the
- * buun-llama-cpp / DFlash fork. `openvino` is the upstream ggml-openvino
+ * Runtime kernel/capability handles advertised by the optimized llama.cpp
+ * runtime. Most entries are specialised kernels shipped by the
+ * buun-llama-cpp fork. `openvino` is the upstream ggml-openvino
  * backend capability; it selects CPU/GPU/NPU at runtime via
  * `GGML_OPENVINO_DEVICE` and does not satisfy the Eliza-1 W4-B kernel set.
  *
  * Models that declare a `requiresKernel` advertise that they only run
- * correctly under llama-server when the matching capability is present.
+ * correctly under optimized llama.cpp when the matching capability is present.
  *
  * The set must stay in sync with `inference/AGENTS.md` §3 mandatory
- * optimizations and with `DflashBinaryCapabilities.kernels` below — the
+ * optimizations and with the native runtime capability probe — the
  * capability probe is the runtime gate that refuses to start if a required
  * kernel is missing.
  *
@@ -122,27 +122,25 @@ export interface OpenVinoHardwareProbe {
  * bundle-manifest layer's `Eliza1Kernel`
  * (`@elizaos/app-core/src/services/local-inference/manifest/schema`):
  * `turboquant_q3↔turbo3`, `turboquant_q4↔turbo4`, `qjl↔qjl_full`, with
- * `polarquant` / `dflash` / `turbo3_tcq` shared by name. The translation is
+ * `polarquant` / `turbo3_tcq` shared by name. The translation is
  * codified there by `ELIZA1_TO_RUNTIME_KERNEL` / `RUNTIME_TO_ELIZA1_KERNEL`.
  * `openvino` intentionally has no manifest-level Eliza-1 kernel equivalent.
  */
-export type LocalRuntimeKernel = "dflash" | "turbo3" | "turbo4" | "turbo3_tcq" | "qjl_full" | "polarquant" | "openvino";
+export type LocalRuntimeKernel = "turbo3" | "turbo4" | "turbo3_tcq" | "qjl_full" | "polarquant" | "openvino";
 /**
- * llama.cpp optimization knobs that the dispatcher can wire into a
- * `llama-server` spawn. Values come from catalog metadata (per-model) and
+ * llama.cpp optimization knobs that the dispatcher can wire into the
+ * FFI runtime. Values come from catalog metadata (per-model) and
  * environment overrides (per-process). The catalog is the source of truth
  * for which knobs are *safe* on a given quant; env vars are the operator's
  * escape hatch and override the catalog when set.
  */
 export interface LocalRuntimeOptimizations {
-    /** Lookahead decoding window. Maps to `--lookahead N` on llama-server. */
+    /** Lookahead decoding window. */
     lookahead?: number;
     /**
      * Built-in n-gram drafter (no separate drafter model). Maps to
-     * `--spec-type ngram-mod` plus `--spec-ngram-mod-n-min` /
-     * `--spec-ngram-mod-n-max`. Mutually exclusive with DFlash speculative
-     * decoding. `minProb` is kept for older configs and ignored by current
-     * llama.cpp ngram-mod.
+     * Built-in n-gram speculation. `minProb` is kept for older configs and
+     * ignored by current llama.cpp ngram-mod.
      */
     ngramDraft?: {
         min: number;
@@ -155,14 +153,12 @@ export interface LocalRuntimeOptimizations {
      */
     parallel?: number;
     /**
-     * llama-server prompt-cache chunk reuse threshold. Maps to
-     * `--cache-reuse N`; useful for repeated tool/system prefixes where a
+     * Prompt-cache chunk reuse threshold. Useful for repeated tool/system prefixes where a
      * full slot restore is not available.
      */
     cacheReuse?: number;
     /**
-     * llama-server RAM budget for prompt/KV cache files. Maps to
-     * `--cache-ram N` in MiB.
+     * RAM budget for prompt/KV cache files, in MiB.
      */
     cacheRamMb?: number;
     /** `--batch-size N` logical batch size. */
@@ -175,7 +171,7 @@ export interface LocalRuntimeOptimizations {
     kvUnified?: boolean;
     /**
      * Number of runtime context checkpoints the cache bridge should keep for
-     * interruption/resume. Maps to the fused llama-server checkpoint support.
+     * interruption/resume.
      */
     ctxCheckpoints?: number;
     /** Token interval between saved context checkpoints. */
@@ -196,58 +192,42 @@ export interface LocalRuntimeOptimizations {
     mmproj?: string;
     /** `--alias <name>` for the OpenAI-compatible model id. */
     alias?: string;
-    /** `-fa on` (flash attention). Always on for DFlash. */
+    /** Flash attention. */
     flashAttention?: boolean;
+    /** Use native MTP verifier events when the runtime advertises support. */
+    nativeMtpEvents?: boolean;
     /**
-     * Bundle-level opt-in for native structured DFlash event frames. Runtime
-     * support is still capability-probed before enabling the event path.
-     */
-    nativeDflashEvents?: boolean;
-    /**
-     * Specialised kernels this model requires from the llama-server fork.
-     * The dispatcher uses this to pick `llama-server` over `capacitor-llama`
-     * regardless of `preferredBackend`, since the in-process binding cannot
+     * Specialised kernels this model requires from optimized llama.cpp.
+     * The dispatcher uses this to pick `llama-cpp` over `capacitor-llama`
+     * regardless of `preferredBackend`, since the legacy node binding cannot
      * provide these kernels.
      */
     requiresKernel?: LocalRuntimeKernel[];
     /**
-     * Kernels that must be disabled at spawn time for this model. The
-     * dflash-server reads this and emits matching `GGML_*_DISABLE` env vars
-     * before invoking llama-server. Used when a fused build co-compiles a
-     * backend (e.g. OpenVINO) that this model is known not to support.
+     * Kernels that must be disabled for this model. Used when a fused build
+     * co-compiles a backend (e.g. OpenVINO) that this model is known not to
+     * support.
      */
     unsupportedKernels?: LocalRuntimeKernel[];
 }
 export interface LocalRuntimeAcceleration {
     /**
-     * Prefer out-of-process llama-server over the node binding when the
-     * required binary and companion files are available.
+     * Prefer the optimized llama.cpp path over the node binding when the
+     * required runtime is available.
      */
     preferredBackend?: LocalRuntimeBackend;
     /** Optimization knobs declared per-model. See `LocalRuntimeOptimizations`. */
     optimizations?: LocalRuntimeOptimizations;
-    dflash?: {
-        /** Catalog id of the hidden drafter GGUF companion. */
-        drafterModelId: string;
-        specType: "dflash";
-        /** llama-server context for the target model. */
-        contextSize: number;
-        /** llama-server context for the drafter. */
-        draftContextSize: number;
-        /** Default draft range passed to llama-server. */
+    mtp?: {
+        /** Native llama.cpp MTP speculative mode. */
+        specType: "draft-mtp";
+        /** Bundle-relative path to the MTP drafter GGUF. */
+        drafterFile: string;
+        /** Default draft range passed to the native MTP runner. */
         draftMin: number;
         draftMax: number;
-        /** `--n-gpu-layers` and `--n-gpu-layers-draft` defaults. */
+        /** GPU layer placement for MTP heads when the runtime exposes it. */
         gpuLayers: number | "auto";
-        draftGpuLayers: number | "auto";
-        /** Some DFlash drafters are trained against non-thinking text. */
-        disableThinking: boolean;
-        /**
-         * When present, the runtime must launch target-only and omit the drafter
-         * (`-md` / `--spec-type dflash`). Used for catalog-level gates where a
-         * drafter may exist on disk but the native verifier path is not yet safe.
-         */
-        disabledReason?: string;
     };
     kvCache?: {
         /**
@@ -260,12 +240,8 @@ export interface LocalRuntimeAcceleration {
     };
 }
 /**
- * Tokenizer family identifier used to verify that a DFlash target and its
- * paired drafter share a vocabulary. Speculative decoding requires the
- * target and drafter to emit token ids drawn from the same vocabulary —
- * see `docs/porting/dflash-drafter-strategy.md` for why mismatched
- * tokenizers cannot be bridged by metadata repair. Add new families here
- * as the catalog grows.
+ * Tokenizer family identifier for local GGUF catalog entries. Add new
+ * families here as the catalog grows.
  */
 export type TokenizerFamily = "qwen35" | "eliza1" | "sentencepiece" | (string & {});
 export type CatalogHub = "huggingface" | "modelscope";
@@ -327,8 +303,8 @@ export interface CatalogModel {
      * but are omitted from the visible Model Hub catalog.
      */
     hiddenFromCatalog?: boolean;
-    /** Models such as DFlash drafters are not valid standalone chat choices. */
-    runtimeRole?: "chat" | "dflash-drafter";
+    /** Runtime role for non-standard entries. */
+    runtimeRole?: "chat" | "mtp-drafter";
     /** Parent chat model id when this entry is a hidden companion. */
     companionForModelId?: string;
     /** Extra catalog model ids to download alongside this model. */
@@ -342,8 +318,7 @@ export interface CatalogModel {
     /** Available text quantization variants for this tier. */
     quantization?: CatalogQuantization;
     /**
-     * Tokenizer/vocabulary family this GGUF emits. Required for any entry
-     * that participates in DFlash pairing.
+     * Tokenizer/vocabulary family this GGUF emits.
      */
     tokenizerFamily?: TokenizerFamily;
     /** Voice backends whose artifacts ship in this Eliza-1 bundle. */
@@ -362,7 +337,7 @@ export interface CatalogModel {
      */
     sourceModel?: {
         finetuned: false;
-        components: Partial<Record<"text" | "voice" | "asr" | "vad" | "embedding" | "vision" | "drafter", {
+        components: Partial<Record<"text" | "voice" | "asr" | "vad" | "embedding" | "vision" | "mtp", {
             repo: string;
             file?: string;
         }>>;
@@ -370,22 +345,19 @@ export interface CatalogModel {
     /** Runtime-specific acceleration metadata. */
     runtime?: LocalRuntimeAcceleration;
     /**
-     * Whether this tier's bundle (body + drafter + manifest) is published
+     * Whether this tier's bundle is published
      * on Hugging Face yet. Defaults to `"published"` when omitted, which
      * preserves prior behaviour for any catalog entry that doesn't set it.
      *
-     *   - `"published"`: HF repo has a real manifest + weights + drafter.
+     *   - `"published"`: HF repo has a real manifest + weights.
      *     The recommender may route first-run users here.
      *   - `"pending"`: catalog points at a tier whose HF repo is not
-     *     usable yet (404, empty manifest, `releaseState=local-standin`,
-     *     or drafter file missing). `recommendForFirstRun` falls through
+     *     usable yet (404, empty manifest, or `releaseState=local-standin`).
+     *     `recommendForFirstRun` falls through
      *     to the next ladder candidate. Used to keep the catalog reflecting
      *     the intended product shape while the publish pipeline catches up.
      *
-     * See elizaOS/eliza#7629 — published Eliza-1 Qwen3.5/3.6 tiers may
-     * lack a distilled DFlash drafter on HF for some time after their
-     * catalog entries land, so the recommender must not route users to a
-     * tier whose bundle isn't reachable.
+     * See elizaOS/eliza#7629.
      */
     publishStatus?: "published" | "pending";
 }
@@ -401,8 +373,8 @@ export interface MobileHardwareProbe {
     lowPowerMode?: boolean;
     thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
     gpuSupported?: boolean;
-    dflashSupported?: boolean;
-    dflashReason?: string;
+    mtpSupported?: boolean;
+    mtpReason?: string;
     source?: "native" | "adapter-fallback";
 }
 export interface CpuFeatureProbe {
@@ -444,7 +416,7 @@ export interface HardwareProbe {
     source: "capacitor-llama" | "os-fallback";
     /** OpenVINO CPU/GPU/NPU availability hints for Intel hosts. */
     openvino?: OpenVinoHardwareProbe;
-    /** Mobile-only details used for minspec, storage, and native DFlash gating. */
+    /** Mobile-only details used for minspec, storage, and native runtime gating. */
     mobile?: MobileHardwareProbe;
 }
 export type DownloadState = "queued" | "downloading" | "completed" | "failed" | "cancelled";

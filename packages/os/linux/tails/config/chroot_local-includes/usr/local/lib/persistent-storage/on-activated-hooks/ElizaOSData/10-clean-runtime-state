@@ -1,0 +1,17 @@
+#!/bin/sh
+
+set -e
+
+for state_dir in \
+    /home/amnesia/.eliza \
+    /home/amnesia/.cache/ai.elizaos.app \
+    /home/amnesia/.cache/ai.milady.milady \
+    /home/amnesia/.config/elizaOS \
+    /home/amnesia/.config/milady \
+    /home/amnesia/.config/Milady
+do
+    [ -d "${state_dir}" ] || continue
+    find -P "${state_dir}" -xdev \
+        \( -name 'Cache' -o -name 'Code Cache' -o -name 'GPUCache' -o -name 'DawnCache' \) \
+        -type d -prune -exec rm -rf -- {} +
+done

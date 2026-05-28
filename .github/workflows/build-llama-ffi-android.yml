@@ -13,14 +13,14 @@ name: Build libelizainference (Android, FFI)
 #
 # STATUS: SCAFFOLD. The Android NDK + cmake toolchain is wired but the
 # resulting `.so` install path under `lib/<abi>` has not been validated
-# against Electrobun's APK packaging flow. Top-level `if: false` keeps
+# against Electrobun's APK packaging flow. The `run_real_build` input keeps
 # the workflow out of the default fan-out.
 
 on:
   workflow_dispatch:
     inputs:
       run_real_build:
-        description: "Bypass the if:false guard once the build is verified"
+        description: "Run the scaffold build once it has been verified"
         required: false
         type: boolean
         default: false
@@ -54,7 +54,7 @@ jobs:
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
     steps:
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
         id: set
         with:
           script: |
@@ -73,7 +73,7 @@ jobs:
   build:
     name: ${{ matrix.abi }}
     needs: prepare-matrix
-    if: ${{ false }}
+    if: ${{ inputs.run_real_build == true }}
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     strategy:
@@ -81,18 +81,18 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: false
           show-progress: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
@@ -104,14 +104,14 @@ jobs:
           cmake --version
 
       - name: Install Android NDK
-        uses: nttld/setup-ndk@v1
+        uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779
         id: setup-ndk
         with:
           ndk-version: r26d
           add-to-path: false
 
       - name: Cache llama.cpp android build dir
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: plugins/plugin-local-inference/native/llama.cpp/build-android-${{ matrix.abi }}
           key: llama-ffi-android-${{ matrix.abi }}-${{ hashFiles('plugins/plugin-local-inference/native/llama.cpp/CMakeLists.txt') }}
@@ -186,7 +186,7 @@ jobs:
           echo "stage_dir=$STAGE_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Upload libelizainference artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: libelizainference-${{ matrix.target }}
           path: ${{ steps.stage.outputs.stage_dir }}/**

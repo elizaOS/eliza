@@ -94,7 +94,9 @@ class ChipOsObjectiveEvidenceMatrixTests(unittest.TestCase):
                     for part in parts[:-1]:
                         current = current.setdefault(part, {})
                     current[parts[-1]] = expected
-                (report_dir / req.required_report).write_text(json.dumps(data) + "\n", encoding="utf-8")
+                (report_dir / req.required_report).write_text(
+                    json.dumps(data) + "\n", encoding="utf-8"
+                )
             output = Path(tmp) / "matrix.json"
             stdout = io.StringIO()
             with contextlib.redirect_stdout(stdout):

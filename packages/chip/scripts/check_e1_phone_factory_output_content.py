@@ -5,10 +5,9 @@ from __future__ import annotations
 
 import csv
 import json
-import sys
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -22,8 +21,7 @@ CANDIDATE_MANIFEST = (
 )
 REPORT = ROOT / "build/reports/e1_phone_factory_output_content.json"
 FIRST_ARTICLE_MATRIX = (
-    ROOT
-    / "board/kicad/e1-phone/production/test/readiness/"
+    ROOT / "board/kicad/e1-phone/production/test/readiness/"
     "e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml"
 )
 EXPECTED_SCHEMA = "eliza.e1_phone_production_factory_required_output_presence_inventory.v1"
@@ -73,9 +71,7 @@ PLACEHOLDER_MARKERS = {
 }
 VALIDATION_COMMAND = "python3 scripts/check_e1_phone_factory_output_content.py"
 FIRST_ARTICLE_VALIDATION_COMMAND = "python3 scripts/check_e1_phone_first_article_content.py"
-LOCAL_CANDIDATE_GENERATOR_COMMAND = (
-    "python3 scripts/generate_e1_phone_factory_output_candidates.py"
-)
+LOCAL_CANDIDATE_GENERATOR_COMMAND = "python3 scripts/generate_e1_phone_factory_output_candidates.py"
 
 
 def rel(path: Path) -> str:
@@ -295,9 +291,7 @@ def unblock_action(path_text: str, row: dict[str, Any], failures: list[str]) -> 
         "path": path_text,
         "current_path": path_text,
         "candidate_path": path_text if row.get("candidate_present_blocked") is True else "",
-        "required_production_artifact_class": required_production_artifact_class(
-            path_text, row
-        ),
+        "required_production_artifact_class": required_production_artifact_class(path_text, row),
         "metadata_record": metadata_record_targets(path_text),
         "owner": owner,
         "source_ids": row.get("source_ids") or [],
@@ -324,14 +318,10 @@ def repo_generation_summary(
         if (row.get("repo_generation") or {}).get("repo_generated_candidate") is True
     ]
     missing_paths = [
-        path_text
-        for path_text, _row, failures in blocked
-        if "artifact_missing" in failures
+        path_text for path_text, _row, failures in blocked if "artifact_missing" in failures
     ]
     present_blocked_paths = [
-        path_text
-        for path_text, _row, failures in blocked
-        if "artifact_missing" not in failures
+        path_text for path_text, _row, failures in blocked if "artifact_missing" not in failures
     ]
     return {
         "release_credit": False,
@@ -340,8 +330,7 @@ def repo_generation_summary(
         "generator_command_available_count": len(generator_paths),
         "repo_generated_candidate_blocked_count": len(generator_paths),
         "repo_generated_candidate_blocked_paths": sorted(generator_paths),
-        "not_managed_by_local_generator_blocked_count": len(blocked)
-        - len(generator_paths),
+        "not_managed_by_local_generator_blocked_count": len(blocked) - len(generator_paths),
         "true_missing_generated_artifact_count": len(missing_paths),
         "true_missing_generated_artifact_paths": sorted(missing_paths),
         "present_fail_closed_artifact_count": len(present_blocked_paths),
@@ -405,11 +394,7 @@ def metadata_record_targets(path_text: str) -> dict[str, Any]:
 
 def missing_field_group(failures: list[str], prefix: str) -> list[str]:
     marker = f"missing_{prefix}_field:"
-    return sorted(
-        failure.split(":", 1)[1]
-        for failure in failures
-        if failure.startswith(marker)
-    )
+    return sorted(failure.split(":", 1)[1] for failure in failures if failure.startswith(marker))
 
 
 def first_article_dependency_index() -> dict[str, Any]:
@@ -484,7 +469,7 @@ def factory_first_article_bridge(
     bridged_consumer_rows = 0
     for path_text in sorted(set(first_article_by_path) & blocked_paths):
         consumers = first_article_by_path[path_text]
-        category = category_by_path.get(path_text, "unknown_factory_blocker")
+        category = cast(str, category_by_path.get(path_text, "unknown_factory_blocker"))
         counts[category] += len(consumers)
         bridged_consumer_rows += len(consumers)
         bridged[path_text] = {
@@ -548,12 +533,8 @@ def factory_execution_packet_inventory(
                     "factory_traceability": sorted(FACTORY_FIELDS),
                     "external_review_metadata": sorted(METADATA_FIELDS | FACTORY_FIELDS),
                 },
-                "missing_common_release_record_fields": missing_field_group(
-                    failures, "common"
-                ),
-                "missing_factory_traceability_fields": missing_field_group(
-                    failures, "factory"
-                ),
+                "missing_common_release_record_fields": missing_field_group(failures, "common"),
+                "missing_factory_traceability_fields": missing_field_group(failures, "factory"),
                 "missing_external_review_metadata_fields": missing_field_group(
                     failures, "external_metadata"
                 ),
@@ -568,11 +549,7 @@ def factory_execution_packet_inventory(
                 "bridges_first_article_execution": bool(first_article_consumers),
                 "validation_command": VALIDATION_COMMAND,
                 "next_validation_commands": [VALIDATION_COMMAND]
-                + (
-                    [FIRST_ARTICLE_VALIDATION_COMMAND]
-                    if first_article_consumers
-                    else []
-                ),
+                + ([FIRST_ARTICLE_VALIDATION_COMMAND] if first_article_consumers else []),
                 "release_credit": False,
                 "required_action": (
                     "Attach the exact approved factory release record, lot/serial traceability, "
@@ -591,9 +568,7 @@ def candidate_coverage(
 ) -> dict[str, Any]:
     candidate_paths = set(candidate_manifest.get("artifact_paths") or [])
     required_paths = [
-        str(row.get("path"))
-        for row in rows
-        if isinstance(row, dict) and row.get("path")
+        str(row.get("path")) for row in rows if isinstance(row, dict) and row.get("path")
     ]
     blocked_candidate_paths = sorted(
         path_text
@@ -768,10 +743,7 @@ def factory_output_blocker_categories(
     return {
         "categories": categories,
         "by_path": dict(sorted(by_path.items())),
-        "counts": {
-            category_id: category["count"]
-            for category_id, category in categories.items()
-        },
+        "counts": {category_id: category["count"] for category_id, category in categories.items()},
         "release_credit": False,
     }
 
@@ -869,7 +841,9 @@ def directory_failures(path: Path) -> list[str]:
         parsed = load_yaml_mapping(manifest)
     except Exception as exc:  # noqa: BLE001 - release gate error surface.
         return [f"directory_release_manifest_parse_failed:{type(exc).__name__}"]
-    failures = approved_record_failures(parsed, COMMON_FIELDS | FACTORY_FIELDS, "directory_manifest")
+    failures = approved_record_failures(
+        parsed, COMMON_FIELDS | FACTORY_FIELDS, "directory_manifest"
+    )
     children = [
         child
         for child in path.rglob("*")
@@ -911,7 +885,9 @@ def content_failures(path_text: str) -> list[str]:
     suffix = path.suffix.lower()
     if suffix in {".yaml", ".yml", ".json"}:
         failures.extend(approved_record_failures(parsed, COMMON_FIELDS, "common"))
-        failures.extend(f"missing_factory_field:{field}" for field in missing_fields(parsed, FACTORY_FIELDS))
+        failures.extend(
+            f"missing_factory_field:{field}" for field in missing_fields(parsed, FACTORY_FIELDS)
+        )
         failures.extend(
             f"missing_common_field:{field}" for field in missing_fields(parsed, COMMON_FIELDS)
         )
@@ -1001,30 +977,45 @@ def main() -> int:
         blocker_categories = factory_output_blocker_categories(blocked)
         generation_summary = repo_generation_summary(blocked)
         first_article_index = first_article_dependency_index()
-        factory_execution_packets = factory_execution_packet_inventory(
-            blocked, first_article_index
-        )
-        bridge = factory_first_article_bridge(
-            blocked, blocker_categories, first_article_index
-        )
+        factory_execution_packets = factory_execution_packet_inventory(blocked, first_article_index)
+        bridge = factory_first_article_bridge(blocked, blocker_categories, first_article_index)
     except ValueError as exc:
         write_report(
             {
                 "schema": "eliza.e1_phone_factory_output_content_report.v1",
-                "status": "fail",
-                "summary": {"release_ready": False},
+                "status": "blocked",
+                "release_credit": False,
+                "summary": {
+                    "release_ready": False,
+                    "release_credit": False,
+                    "blocked": 1,
+                    "contract_error_count": 1,
+                },
                 "findings": [
                     {
                         "code": "factory_output_contract_invalid",
-                        "severity": "error",
+                        "severity": "blocker",
                         "message": str(exc),
                         "evidence": rel(INVENTORY),
+                        "release_credit": False,
                     }
                 ],
+                "blocked_evidence_inventory": [],
+                "factory_execution_packet_inventory": [],
+                "factory_output_blocker_categories": {
+                    "release_credit": False,
+                    "counts": {
+                        "contract_error": 1,
+                        "true_missing_factory_outputs": 0,
+                        "missing_approval_metadata": 0,
+                        "candidate_present_but_blocked": 0,
+                        "present_unapproved_or_placeholder": 0,
+                    },
+                },
             }
         )
-        print(f"FAIL: E1 phone factory-output content contract invalid: {exc}")
-        return 1
+        print(f"STATUS: BLOCKED E1 phone factory-output content contract invalid: {exc}")
+        return 2
 
     if blocked or missing:
         write_report(
@@ -1086,8 +1077,7 @@ def main() -> int:
                     else []
                 ),
                 "blocked_evidence_inventory": [
-                    unblock_action(path_text, row, failures)
-                    for path_text, row, failures in blocked
+                    unblock_action(path_text, row, failures) for path_text, row, failures in blocked
                 ],
                 "blocker_diagnostics": blocker_diagnostics(blocked),
                 "factory_output_blocker_categories": blocker_categories,
@@ -1132,7 +1122,7 @@ def main() -> int:
             "summary": {
                 "release_ready": True,
                 "required_paths": len(rows),
-                    "present": path_exists_count,
+                "present": path_exists_count,
                 "path_exists_count": path_exists_count,
                 "content_valid_count": content_valid_count,
                 "blocked_present_count": 0,

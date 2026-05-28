@@ -72,7 +72,7 @@ jobs:
 
       - name: Deploy and restart worker
         if: steps.deploy_config.outputs.configured == 'true'
-        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ env.DEPLOY_HOST }}
           username: deploy
@@ -182,7 +182,7 @@ jobs:
 
       - name: Health check
         if: steps.deploy_config.outputs.configured == 'true'
-        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ env.DEPLOY_HOST }}
           username: deploy
@@ -257,7 +257,7 @@ jobs:
 
       - name: Notify Discord (Success)
         if: success() && steps.deploy_config.outputs.configured == 'true'
-        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708 # v1
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
           ack_no_webhook: true
@@ -270,7 +270,7 @@ jobs:
 
       - name: Notify Discord (Failure)
         if: failure() && steps.deploy_config.outputs.configured == 'true'
-        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708 # v1
+        uses: sarisia/actions-status-discord@eb045afee445dc055c18d3d90bd0f244fd062708
         with:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
           ack_no_webhook: true

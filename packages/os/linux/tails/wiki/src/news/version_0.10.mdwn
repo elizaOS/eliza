@@ -1,0 +1,106 @@
+[[!meta date="Wed, 04 Jan 2012 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.10 is out"]]
+[[!tag announce]]
+
+The Amnesic Incognito Live System, version 0.10, is out.
+
+All users must upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Tor: upgrade to 0.2.2.35-1.
+
+* Iceweasel
+  - Install Iceweasel 9.0 from the Debian Mozilla team's APT repository.
+  - Update Torbutton to 1.4.5.1-1.
+  - Support viewing any YouTube video that is available in HTML5 format.
+  - Use Scroogle (any languages) instead of Scroogle (English only) when
+    booted in English. Many users choose English because their own
+    language is not supported yet; let's not hide them search results in
+    their own language.
+  - Install the NoScript Firefox extension; configure it the same way as
+    the TBB does.
+  - Disable third-party cookies. They can be used to track users, which
+    is bad. Besides, this is what TBB has been doing for years.
+
+* Do not transparently proxy outgoing Internet connections through
+    Tor. Instead drop all non-Torified Internet traffic. Hence
+    applications has to be explicitly configured to use Tor in order
+    to reach the Internet from now on.
+
+* Software
+  - Upgrade Vidalia to 0.2.15-1+tails1. This version will not warn about
+    new Tor versions (this is handled by Tails security check instead).
+  - Upgrade MAT to 0.2.2-1~bpo60+1.
+  - Upgrade VirtualBox guest software to 4.1.6-dfsg-2~bpo60+1,
+    built against the ABI of X.Org backports.
+  - Upgrade I2P to 0.8.11; the start script (which was broken in Tails
+    0.9) is now fixed.
+  - Install unar (The Unarchiver) instead of the non-free unrar.
+  - [[Install Nautilus Wipe|doc/encryption_and_privacy/secure_deletion]] instead
+    of custom Nautilus scripts.
+
+* Hardware support
+  - Upgrade Linux kernel to 3.1.6-1.
+  - Upgrade to X.Org from squeeze-backports.
+  - Install more, and more recent b43 firmwares.
+  - Upgrade barry to 0.15-1.2~bpo60+1.
+
+* Internationalization
+  - Add basic language support for Russian, Farsi and Vietnamese.
+  - Install some Indic fonts.
+  - Install some Russian fonts.
+  - Add Alt+Shift shortcut to switch keyboard layout.
+
+* Miscellaneous
+  - Support booting in "Windows XP-like camouflage mode".
+  - Do not fetch APT translation files. Running apt-get update is heavy enough.
+  - Add MSN support thanks to msn-pecan.
+  - Add custom SSH client configuration:
+      - Prefer strong ciphers and MACs.
+      - Enable maximum compression level.
+      - Explicitly disable X11 forwarding.
+      - Connect as root by default, to prevent fingerprinting when username
+        was not specified.
+  - Replace flawed FireGPG with a home-made GnuPG encryption applet;
+    install a feature-stripped FireGPG that redirects users to
+    the
+    documentation,
+    and don't run Seahorse applet anymore.
+  - Blank screen when lid is closed, rather than shutting down the system.
+    The shutdown "feature" has caused data losses for too many people, it seems.
+    There are many other ways a Tails system can be shut down in a hurry
+    these days.
+  - Fix bug in the Pidgin nick generation that resulted in the nick
+    "XXX_NICK_XXX" once out of twenty.
+  - Pre-configure the #tor IRC discussion channel in Pidgin.
+  - Reintroduce the htpdate notification, telling users when it's safe
+    to use Tor Hidden Services.
+  - Various htpdate improvements.
+
+Plus the usual bunch of minor bug reports and improvements.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it / to upgrade!
+
+See the Getting started page.
+
+# Known issue
+
+The memory erasure on Tails shutdown cannot guarantee that all memory
+in the 2 GB to 4 GB region is wiped. The improvements made in Tails
+0.10 should at least make the situation better than previously.
+
+# A glimpse towards the future
+
+Would you want to help? As explained in our [["how to contribute"
+documentation|contribute]], here are many ways **you** can contribute
+to Tails: no need to be a hardcore developer.

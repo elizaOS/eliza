@@ -33,7 +33,7 @@ import {
 	type RamFitOptions,
 } from "./ram-budget";
 import { recommendForFirstRun } from "./recommendation";
-import { listInstalledModels, touchElizaModel } from "./registry";
+import { touchElizaModel } from "./registry";
 import type {
 	ActiveModelState,
 	CatalogModel,
@@ -211,8 +211,8 @@ export interface LocalInferenceLoader {
 		temperature?: number;
 		/**
 		 * Optional `promptCacheKey` from the runtime cache plan. Loaders
-		 * that implement prefix caching (out-of-process llama-server,
-		 * in-process node-llama-cpp session pool) use this to pin
+		 * that implement prefix caching (the in-process llama.cpp FFI slot
+		 * pool or node-llama-cpp session pool) use this to pin
 		 * subsequent calls with the same key to the same KV cache slot.
 		 * Loaders without prefix caching can ignore the field.
 		 */
@@ -234,8 +234,8 @@ export interface LocalInferenceLoader {
 
 /**
  * Per-load override fields the caller can set. Subset of `LocalInferenceLoadArgs`
- * minus `modelPath` (which the coordinator owns) and minus dflash-only
- * fields (which the catalog `runtime.dflash` block owns end-to-end). The
+ * minus `modelPath` (which the coordinator owns) and minus speculative
+ * fields (which the catalog `runtime.mtp` block owns end-to-end). The
  * route layer accepts this shape on `POST /api/local-inference/active`.
  */
 export interface LocalInferenceLoadOverrides {
@@ -470,6 +470,30 @@ export function resolveMmprojPath(
 	return candidate;
 }
 
+function resolveMtpDrafterPath(
+	installed: InstalledModel,
+	catalog: CatalogModel | undefined,
+	manifestLoader: ManifestLoader,
+): string | undefined {
+	const bundleRoot = installed.bundleRoot;
+	if (!bundleRoot) return undefined;
+
+	const manifest = manifestLoader(installed.id, installed);
+	for (const entry of manifest?.files.mtp ?? []) {
+		const candidate = pathJoin(bundleRoot, entry.path);
+		if (existsSync(candidate)) return candidate;
+	}
+
+	const catalogFile =
+		catalog?.runtime?.mtp?.drafterFile ??
+		catalog?.sourceModel?.components?.mtp?.file;
+	if (!catalogFile) return undefined;
+	const local = stripBundlePrefix(catalogFile, installed.id);
+	const candidate = pathJoin(bundleRoot, local);
+	if (!existsSync(candidate)) return undefined;
+	return candidate;
+}
+
 /**
  * Strip the `bundles/<tier-slug>/` prefix the catalog uses for HF
  * paths so the remaining string is bundle-root-relative. When the
@@ -507,27 +531,27 @@ export async function resolveLocalInferenceLoadArgs(
 		args.mmprojPath = mmprojPath;
 	}
 
-	const dflash = runtime?.dflash;
-	if (dflash) {
-		// DFlash launch defaults — per-load overrides for contextSize still win
-		// (and are layered in by `mergeOverrides` below). Do NOT replace the
-		// catalog `contextLength` here for the chat-side context; that belongs
-		// to `applyCatalogDefaults`. The dflash block owns the spec-decode
-		// launch settings only.
-		if (args.contextSize === undefined) args.contextSize = dflash.contextSize;
-		args.useGpu = true;
-		args.draftContextSize = dflash.draftContextSize;
-		args.draftMin = dflash.draftMin;
-		args.draftMax = dflash.draftMax;
-		args.speculativeSamples = dflash.draftMax;
-		args.mobileSpeculative = true;
-		args.disableThinking = dflash.disableThinking;
-
-		const installedModels = await listInstalledModels();
-		const drafter = installedModels.find(
-			(model) => model.id === dflash.drafterModelId,
+	const mtp = runtime?.mtp;
+	if (mtp) {
+		// Native MTP launch defaults. Do NOT replace catalog `contextLength`
+		// here; `applyCatalogDefaults` owns the chat-side context. The MTP
+		// block only owns the speculative draft window.
+		const drafterPath = resolveMtpDrafterPath(
+			installed,
+			catalog,
+			manifestLoader,
 		);
-		if (drafter) args.draftModelPath = drafter.path;
+		if (installed.bundleRoot && !drafterPath) {
+			throw new Error(
+				`[local-inference] ${installed.id} declares mandatory MTP but no bundled drafter GGUF was found under ${installed.bundleRoot}`,
+			);
+		}
+		args.useGpu = true;
+		args.draftModelPath = drafterPath;
+		args.draftMin = mtp.draftMin;
+		args.draftMax = mtp.draftMax;
+		args.speculativeSamples = mtp.draftMax;
+		args.mobileSpeculative = true;
 	}
 
 	mergeOverrides(args, overrides);
@@ -654,7 +678,7 @@ export class VoiceBundleDoesNotFitError extends Error {
 
 /**
  * Cross-model admission gate for the local-voice session. Sums the whole
- * co-resident bundle (LM + drafter + ASR + TTS + embedding + VAD +
+ * co-resident bundle (LM + ASR + TTS + embedding + VAD +
  * wake-word + turn-detector + emotion + speaker-encoder + transient TTS
  * peak) and refuses entry when the host can't fit it.
  *
@@ -805,7 +829,6 @@ function collectFailedEvalNames(manifest: Eliza1Manifest): string[] {
 	if (evals.expressive && evals.expressive.passed !== true) {
 		failed.push("expressive");
 	}
-	if (evals.dflash && evals.dflash.passed !== true) failed.push("dflash");
 	if (evals.turnDetector && evals.turnDetector.passed !== true) {
 		failed.push("turnDetector");
 	}

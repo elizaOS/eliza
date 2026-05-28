@@ -255,7 +255,7 @@ function CliLoginContent() {
           <>
             {sessionId ? (
               <a href={signInHref} className="w-full">
-                <Button className="w-full h-11  bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/80 text-white">
+                <Button className="w-full h-11  bg-[var(--brand-orange)] hover:bg-black hover:text-white text-white">
                   Sign In Again
                 </Button>
               </a>
@@ -283,7 +283,7 @@ function CliLoginContent() {
         actions={
           <a href={signInHref} className="w-full">
             <Button
-              className="w-full h-11  bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/80 text-white"
+              className="w-full h-11  bg-[var(--brand-orange)] hover:bg-black hover:text-white text-white"
               disabled={!ready}
             >
               {!ready ? (

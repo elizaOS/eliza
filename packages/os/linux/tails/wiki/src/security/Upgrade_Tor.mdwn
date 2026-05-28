@@ -1,0 +1,41 @@
+[[!meta date="Sun, 30 Oct 2011 15:12:13 +0000"]]
+[[!meta title="You have to upgrade Tor to fix a critical anonymity vulnerability"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+<div class="tip">
+
+<p>This security issue was fixed in Tails 0.9.</p>
+
+</div>
+
+The version of Tor
+currently shipped in Tails does not protect your anonymity as it should.
+**This vulnerability is critical.**
+
+Until a future version of Tails is released (soon), the only way to
+have Tails protect your anonymity is to **upgrade Tor every time you
+start Tails**, by following the instructions below.
+
+(Every time, really? Sure. Tails is amnesic: any change you make in it
+is lost upon restart.)
+
+To upgrade Tor, start a *Root Terminal* from the
+*Applications* → *Accessories* menu, and type the following command in
+there:
+
+	apt-get update && apt-get install tor && service tor start
+
+... then type *Enter*, and wait until the upgrade is completed, which
+may take a few minutes. At this time, the Vidalia icon on the top
+right of the screen should have changed from the usual green onion to
+a grey, red-crossed one. Right click on it and choose *Exit* in the
+menu that opens. Then, start a new Vidalia from the
+*Applications* → *Internet* menu.
+
+Once this is done, you can safely use Tails as usual.
+
+Want details? See the [Tor project's blog
+post](https://blog.torproject.org/blog/tor-02234-released-security-patches)
+about it.

@@ -178,10 +178,49 @@ describe("planner-loop responseSchema/tools collision regression", () => {
 		expect(plannerCall.toolChoice).toBe("required");
 	});
 
-	it("caps required-tool planner misses", async () => {
+	it("caps required-tool planner misses and surfaces the captured refusal text instead of throwing", async () => {
+		// Live trajectory tj-3bb6dc66be0c16.json on 2026-05-25 showed that when
+		// Stage 1 set requiresTool=true but no exposed tool could fulfill the
+		// task (chat-history search with no SEARCH_MESSAGES action), the
+		// planner produced 4 valid REPLY/messageToUser refusals across
+		// iterations, and the loop threw TrajectoryLimitExceeded — the caller
+		// then surfaced a generic apology instead of the planner's real answer.
+		// The fix captures the most recent terminal-only refusal and returns
+		// it as the final message when the limit is exhausted.
+		const runtime = {
+			useModel: vi.fn(
+				async () =>
+					`{"thought":"No available history search tool.","toolCalls":[],"messageToUser":"I don't have a way to search the message history."}`,
+			),
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [MOCK_TOOL],
+			requireNonTerminalToolCall: true,
+			config: { maxRequiredToolMisses: 1 },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(
+			"I don't have a way to search the message history.",
+		);
+		// maxRequiredToolMisses=1 allows the initial miss; the next miss
+		// exhausts the cap and returns the captured explicit refusal.
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("still throws TrajectoryLimitExceeded when the planner produces no usable refusal text", async () => {
+		// Defensive: when the planner emits neither tool calls nor any
+		// messageToUser / text across all retries, there is nothing to
+		// surface — the cap must still fire so the caller can fall back
+		// to the generic apology path rather than returning an empty reply.
 		const runtime = {
 			useModel: vi.fn(async () => ({
-				text: "I should answer later.",
+				text: "",
 				toolCalls: [],
 			})),
 		};

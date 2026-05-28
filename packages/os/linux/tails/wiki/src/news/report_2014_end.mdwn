@@ -1,0 +1,145 @@
+[[!meta title="Tails report from August to December 2014"]]
+[[!meta date="Wed, 04 Mar 2015 14:17:29 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+As you might have noticed, [[the last monthly
+report|news/report_2014_06-07]] was a long time ago, because the people
+who were doing them had really no time left. Somebody new finally takes
+over, let's hope it lasts :)
+
+So, here is a minimal report for the second half of 2014, the next ones
+will be more complete.
+
+Releases
+========
+
+* [[Tails 1.1.1 was released on September 2, 2014.|news/version_1.1.1]] (minor release)
+* [[Tails 1.2 was released on October 14, 2014.|news/version_1.2]] (major release)
+* [[Tails 1.2.1 was released on December 3, 2014.|news/version_1.2.1]] (minor release)
+* [[Tails 1.2.2 was released on December 15, 2014.|news/version_1.2.2]] (special minor release for security reasons)
+
+Code
+====
+
+For details, see each release announcement. Notable changes include:
+
+* 1.1.1: I2P now needs to be enabled with
+  a boot option. We made this choice after [[a security hole affected
+  I2P|security/Security_hole_in_I2P_0.9.13]] ; this problem is now
+  fixed, but if any other is discovered in the future, it won't affect
+  Tails users who don't use I2P.
+
+* 1.2: [[Tor Browser|doc/anonymous_internet/Tor_Browser]] replaces the
+  previous Firefox + Torbutton setup. This allows us to work more
+  closely with Tor people and provide a more unified experience to the
+  user.
+
+* Several major applications are [[confined with
+  AppArmor|contribute/design/application_isolation]]. This improves the
+  overall security provided by Tails, and AppArmor work is going on to
+  confine more applications :)
+
+* 1.2.1: finally remove
+  TrueCrypt. It was abandoned
+  upstream since a long time, and it's safer to use maintained, reviewed
+  encryption methods, like
+  [[LUKS|doc/encryption_and_privacy/encrypted_volumes]] (that's what the
+  persistence uses). You can still open
+  your TrueCrypt volumes, but we recommend you switch to LUKS volumes as
+  soon as possible.
+
+Funding
+=======
+
+- We passed a [[call for donations|news/who_are_you_helping]] on our
+  website which was quite successful. Donations are still welcome though :)
+
+- The grant proposal that we submitted to the [Digital
+  Defenders](https://digitaldefenders.org/) was approved. It will fund
+  part of our activity over 2015:
+
+  - Build our capacity to provide same-day security updates:
+    - Increase the test coverage of our automated test suite to cover
+      most of our remaining manual tests.
+    - Write automated tests for the new features to be developed during
+      2015.
+    - Buy dedicated hardware to allow core developers to be able to run
+      the test suite locally.
+  - Streamline the installation process for less tech-savvy people:
+    - Have Tails Installer available in Debian, Ubuntu, and derivatives.
+    - Write a Firefox extension to automate the ISO verification at
+      download time.
+    - Rework our download and installation instructions as a web
+      assistant to guide new users step-by-step through the process.
+  - Provide one year of help desk.
+
+- We submitted a full proposal to the Open Technology
+  Fund. It passed a first round of
+  review and is now waiting for the approval of their final committee.
+
+Outreach
+========
+
+- Several Tails contributors attended the
+  [31C3](https://events.ccc.de/category/31c3/) in Hamburg. We held a
+  Tails table where many people came to ask questions, get Tails
+  installed, start to contribute or just say thank you. We even had some
+  origami folding moments :)
+
+- We passed a call for help on [[porting Windows camouflage to GNOME
+  3.14|news/windows_camouflage_jessie]].
+
+Press & Testimonials
+====================
+
+For more information concerning the second half of 2014, see our press page.
+
+* 2014-12-29: In [Reconstructive narratives](http://media.ccc.de/browse/congress/2014/31c3_-_6258_-_en_-_saal_1_-_201412282030_-_reconstructing_narratives_-_jacob_-_laura_poitras.html#video)
+  at the 31th Chaos Communication Congress, Jacob Appelbaum and Laura
+  Poitras explained that properly implemented encryption technologies
+  such as Tor, Tails, GnuPG, OTR, and RedPhone are some of the only ones
+  that can blind the pervasive surveillance of the NSA. They are rated
+  as "catastrophic" by the NSA itself.
+
+* Tails is being used in the film
+  [Citizenfour](https://citizenfourfilm.com/) by Laura Poitras and
+  appears in the credits.
+
+Documentation
+=============
+
+- We documented a workaround to [[empty the
+  trash|doc/first_steps/desktop#empty-trash]] of the persistent volume.
+
+Metrics
+=======
+
+In August 2014:
+
+* Tails has been started more than 287,156 times in August. This makes 9,263 boots a day on average.
+* 19,910 downloads of the OpenPGP signature of Tails ISO from our website.
+* 110 bug reports were received through WhisperBack.
+
+In September 2014:
+
+* Tails has been started more than 344,639 times in September. This makes 11,488 boots a day on average.
+* 26,311 downloads of the OpenPGP signature of Tails ISO from our website.
+* 102 bug reports were received through WhisperBack.
+
+In October 2014:
+
+* Tails has been started more than 364,727 times in October. This makes 11,765 boots a day on average.
+* 27,342 downloads of the OpenPGP signature of Tails ISO from our website.
+* 160 bug reports were received through WhisperBack.
+
+In November 2014:
+
+* Tails has been started more than 337,962 times in November. This makes 11,265 boots a day on average.
+* 21,301 downloads of the OpenPGP signature of Tails ISO from our website.
+* 74 bug reports were received through WhisperBack.
+
+In December 2014:
+
+* Tails has been started more than 347,669 times in December. This makes 11,215 boots a day on average.
+* 26,549 downloads of the OpenPGP signature of Tails ISO from our website.
+* 91 bug reports were received through WhisperBack.

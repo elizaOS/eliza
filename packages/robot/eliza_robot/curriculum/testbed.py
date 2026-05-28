@@ -62,6 +62,13 @@ async def _send(backend: BridgeBackend, cmd: str, payload: dict, preempt: bool =
 
 def _sample_from_telemetry(t_s: float, data: dict, env: Any | None = None) -> TelemetrySample:
     """Build a TelemetrySample from a `telemetry.basic` event payload + optional env."""
+    extra: dict[str, Any] = {}
+    stand_height = data.get("stand_height_m")
+    if stand_height is not None:
+        try:
+            extra["stand_height_m"] = float(stand_height)
+        except (TypeError, ValueError):
+            pass
     s = TelemetrySample(
         t_s=t_s,
         imu_roll_rad=float(data.get("imu_roll", 0.0)),
@@ -70,10 +77,19 @@ def _sample_from_telemetry(t_s: float, data: dict, env: Any | None = None) -> Te
         head_tilt_rad=float(data.get("head_tilt", 0.0)),
         walk_speed=int(data.get("walk_speed", 0)),
         is_walking=bool(data.get("is_walking", False)),
+        extra=extra,
     )
     jp = data.get("joint_positions")
     if isinstance(jp, dict):
         s.joint_positions = {k: float(v) for k, v in jp.items()}
+    if data.get("root_x") is not None:
+        s.torso_x_m = float(data["root_x"])
+    if data.get("root_y") is not None:
+        s.torso_y_m = float(data["root_y"])
+    if data.get("root_z") is not None:
+        s.torso_z_m = float(data["root_z"])
+    if data.get("root_yaw") is not None:
+        s.yaw_rad = float(data["root_yaw"])
     # Pull ground-truth pose from MuJoCo env when available.
     if env is not None:
         try:
@@ -83,9 +99,29 @@ def _sample_from_telemetry(t_s: float, data: dict, env: Any | None = None) -> Te
             s.torso_z_m = float(pos[2])
             s.yaw_rad = float(env.get_robot_yaw())
             s.target_distance_m = float(env.distance_to_target())
+            s.extra.setdefault("stand_height_m", _env_stand_height_m(env, s.torso_z_m))
         except Exception:
             pass
     return s
+
+
+def _env_stand_height_m(env: Any, fallback: float | None = None) -> float | None:
+    for attr in ("_stand_height_m", "stand_height_m"):
+        value = getattr(env, attr, None)
+        if value is not None:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                pass
+    profile = getattr(env, "profile", None)
+    gait = getattr(profile, "gait", None)
+    default_height = getattr(gait, "default_height_m", None)
+    if default_height is not None:
+        try:
+            return float(default_height)
+        except (TypeError, ValueError):
+            pass
+    return fallback
 
 
 def _build_drive_command(task: TaskSpec, t_s: float) -> tuple[str, dict] | None:

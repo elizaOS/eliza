@@ -8,7 +8,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "sw/platform/e1_platform_contract.json"
 GENERATED_HEADER = ROOT / "sw/platform/generated/e1_platform_contract.h"
-LINUX_DRIVER_HEADER = ROOT / "sw/linux/drivers/e1/e1_platform_contract.h"
+LINUX_DRIVER_HEADERS = (
+    ROOT / "sw/linux/drivers/e1/e1_platform_contract.h",
+    ROOT / "sw/linux/drivers/eliza/e1_platform_contract.h",
+)
 REPORT = ROOT / "build/reports/platform_contract.json"
 
 
@@ -118,23 +121,45 @@ def check_generated_header(contract: dict, errors: list[str]) -> None:
             f"{GENERATED_HEADER.relative_to(ROOT)} is stale; regenerate it from "
             f"{CONTRACT_PATH.relative_to(ROOT)}"
         )
-    if not LINUX_DRIVER_HEADER.is_file():
-        errors.append(f"{LINUX_DRIVER_HEADER.relative_to(ROOT)} is missing")
-        return
     driver_expected = expected.replace(
         "/* Generated from sw/platform/e1_platform_contract.json. */",
         "/* Generated import copy from sw/platform/e1_platform_contract.json. */",
         1,
     )
-    if LINUX_DRIVER_HEADER.read_text() != driver_expected:
-        errors.append(
-            f"{LINUX_DRIVER_HEADER.relative_to(ROOT)} is stale; regenerate it from "
-            f"{GENERATED_HEADER.relative_to(ROOT)} for the external Linux import path"
-        )
+    for driver_header in LINUX_DRIVER_HEADERS:
+        if not driver_header.is_file():
+            errors.append(f"{driver_header.relative_to(ROOT)} is missing")
+            continue
+        if driver_header.read_text() != driver_expected:
+            errors.append(
+                f"{driver_header.relative_to(ROOT)} is stale; regenerate it from "
+                f"{GENERATED_HEADER.relative_to(ROOT)} for the external Linux import path"
+            )
 
 
 def check_bootrom_against_rtl(contract: dict, errors: list[str]) -> None:
     rtl = read_text(ROOT / "rtl/bootrom/e1_bootrom.sv")
+    e1 = contract["e1_chip"]
+    boot_size = h(e1["boot_rom"]["size"])
+    word_bytes = int(e1["word_bytes"])
+    require(boot_size % word_bytes == 0, "boot ROM size is not word aligned", errors)
+    boot_words = boot_size // word_bytes
+    require(boot_words > 0, "boot ROM size must contain at least one word", errors)
+    addr_bits = (boot_words - 1).bit_length()
+    require(
+        f"input  logic [{addr_bits - 1}:0] addr" in rtl
+        or f"input logic [{addr_bits - 1}:0] addr" in rtl,
+        (
+            "boot ROM RTL address width does not match contract "
+            f"({boot_size} bytes / {word_bytes}-byte words -> {addr_bits} bits)"
+        ),
+        errors,
+    )
+    require(
+        f"localparam int unsigned WORDS = {boot_words};" in rtl,
+        f"boot ROM RTL WORDS does not match contract ({boot_words})",
+        errors,
+    )
     constants = {
         name: h(value)
         for name, value in re.findall(
@@ -184,6 +209,12 @@ def check_decode_against_rtl(contract: dict, errors: list[str]) -> None:
     ):
         if rtl_name in REGION_RTL_NAMES:
             decoded[REGION_RTL_NAMES[rtl_name]] = h(value) << 12
+    for rtl_name, value in re.findall(
+        r"assign\s+(\w+)_sel\s*=.*?mmio_addr\[31:16\]\s*==\s*16'h([0-9A-Fa-f_]+)",
+        decode,
+    ):
+        if rtl_name in REGION_RTL_NAMES:
+            decoded[REGION_RTL_NAMES[rtl_name]] = h(value) << 16
 
     checked_regions = set(REGION_RTL_NAMES.values())
     for name, region in regions_by_name(contract).items():
@@ -198,6 +229,12 @@ def check_decode_against_rtl(contract: dict, errors: list[str]) -> None:
         )
 
     require("mmio_addr[11:8] == 4'h0" in decode, "RTL implemented-window decode changed", errors)
+    boot_size = h(contract["e1_chip"]["boot_rom"]["size"])
+    require(
+        boot_size == 0x10000 and "bootrom_sel" in decode and "mmio_addr[31:16]" in decode,
+        "RTL boot ROM decode must cover the contract 64 KiB boot aperture",
+        errors,
+    )
     unmapped = f"{h(contract['e1_chip']['unmapped_read_value']):08X}"
     rtl_unmapped_values = {
         value.replace("_", "").upper() for value in re.findall(r"32'h([0-9A-Fa-f_]+)", top)

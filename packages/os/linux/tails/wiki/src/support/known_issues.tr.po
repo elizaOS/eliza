@@ -1,0 +1,1017 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-07 22:25+0000\n"
+"PO-Revision-Date: 2024-04-27 10:36+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Known issues\"]]\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"To learn what you can do with Tails, refer to our [[documentation|doc]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"For more general questions about Tails, refer to our [[FAQ|support/faq]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"For issues with graphics cards, see our [[known issues with graphics cards|"
+"known_issues/graphics]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"not-at-all\">Tails not starting at all</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"mac-not-at-all\">Mac</h2>\n"
+msgstr "<a id=\"sandisk\"></a>\n"
+
+#. type: Plain text
+msgid "This section lists known problems with specific hardware."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails does not start at all on Mac models that use the Apple chips (M1, M2, "
+"and so on) and on many other Mac models."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Apple does not prioritize collaborating with Free Software projects. Their "
+"newest hardware is usually very hard for Free Software developers to get "
+"working with Linux, and thus Tails. PC hardware tends to be more open and "
+"work better with Linux."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See our instructions on [[starting Tails on Mac|doc/first_steps/start/mac]]\n"
+"for general troubleshooting tips.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>[[Let us know|support/talk]] if you discover a new issue or workaround.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"pc-not-at-all\">PC</h2>\n"
+msgstr "<a id=\"sandisk\"></a>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See our instructions on [[starting Tails on PC|doc/first_steps/start/pc]]\n"
+"for general troubleshooting tips.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"dell-latitude-e5250\">Dell Latitude E5250</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-04-05\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid "Does not start on Tails USB sticks."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"dell-latitude-e6430\">Dell Latitude E6430 and E6230</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2018-06-14 (wb://7653aff4f415e996567233d8c088da08)\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid "Does not start on USB sticks."
+msgstr ""
+
+#. type: Plain text
+msgid "With BIOS versions A03 06/03/2012 (and A09, A11, and A12)"
+msgstr ""
+
+#. type: Plain text
+msgid "Error message: `Invalid partition table!`"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Workaround (at least with BIOS versions A09, A11, and A12): just hit enter "
+"and it will continue with the boot."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"hp-notebook-BCM943142HM\">HP Notebook BCM943142HM</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2020-12-18\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid "Does not start Tails 4.13."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"system76-oryx-pro\">System76 Oryx Pro</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-05-02\n"
+"Specs: https://system76.com/laptops/oryx\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"This machine does not start from a Tails USB stick: the Linux kernel "
+"included in at least Tails 3.11 to 3.13.1, inclusive, does not support the "
+"hardware USB controller."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"not-entirely\">Tails not starting entirely</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"mac-not-entirely\">Mac</h2>\n"
+msgstr "<a id=\"sandisk\"></a>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See our instructions on [[starting Tails on Mac|doc/first_steps/start/mac#not-entirely]]\n"
+"for general troubleshooting tips.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated:\n"
+"- MacBook Air Retina 2019: 2019-11-01\n"
+"- MacBook Pro 8,3: 2019-11-01\n"
+"-->\n"
+msgstr ""
+
+#. type: Title ###
+#, no-wrap
+msgid "MacBook Air Retina 2018 and 2019"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To start Tails successfully, [[add the following boot option when starting "
+"Tails|doc/advanced_topics/boot_options]]:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    modprobe.blacklist=thunderbolt\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Still, the trackpad and keyboard might not work. You can use an external "
+"mouse and keyboard."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"pc-not-entirely\">PC</h2>\n"
+msgstr "<a id=\"sandisk\"></a>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See our instructions on [[starting Tails on PC|doc/first_steps/start/pc#not-entirely]]\n"
+"for general troubleshooting tips.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"lockup\">\"Soft lockup\" error</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-05-20\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid "On some laptops, Tails starts with the following error:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p class=\"code\">soft lockup - CPU#<span class=\"command-placeholder\">N</span> stuck for <span class=\"command-placeholder\">N</span>s</p>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To start Tails successfully, try to [[add the following boot option when "
+"starting Tails|doc/advanced_topics/boot_options]]:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    acpi_rev_override=1\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"microsoft-surface-laptop\">Microsoft Surface Laptop 3 and 4</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2022-09-12\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The keyboard and mouse do not work on this laptop.  If you find a "
+"workaround, please let us know."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"sbat\">Shim SBAT verification error</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"This section applies if you get the following error message, either when "
+"starting Tails or when restarting your regular Linux operating system after "
+"starting Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p class=\"code\">\n"
+"Verifying shim SBAT data failed: Security Policy Violation<br>\n"
+"Something has gone seriously wrong: SBAT self-check failed: Security Policy Violation\n"
+"</p>\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If you get this error message when starting Tails, then do a [[manual "
+"upgrade|doc/upgrade#manual]] of your Tails USB to Tails 6.7 or later."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If you get this error message when starting your regular Linux operating "
+"system, then it means that your Linux operating system is outdated."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Edit your UEFI settings to disable Secure Boot."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     With Secure Boot disabled, your regular Linux operating system should\n"
+"     start again.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     To learn how to edit the BIOS or UEFI settings, search for the user manual\n"
+"     of the computer on the support website of the manufacturer.\n"
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Update your regular Linux operating system."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Try to enable Secure Boot again in your UEFI settings."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     If your regular Linux operating system still doesn't start, then disable\n"
+"     Secure Boot again. You can try to enable Secure Boot again in the future.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     It might take several months for your Linux distribution to provide updates\n"
+"     before you can enable Secure Boot again.\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"wifi\">Networking issues</h1>\n"
+msgstr "<a id=\"sandisk\"></a>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"problematic-wifi\">Problematic Wi-Fi interfaces</h2>\n"
+msgstr "<a id=\"problematic-usb-sticks\"></a>\n"
+
+#. type: Plain text
+msgid ""
+"Check in this section if there is a workaround to get your Wi-Fi interface "
+"work in Tails."
+msgstr ""
+
+#. type: Plain text
+msgid "To know the model of your Wi-Fi interface:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Open a *Console* and execute the following command."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "       lspci -v | grep \"Network controller\"\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"88w8897\">88W8897 [AVASTAR] 802.11ac Wireless</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2018-09-19\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"On some computers with a Marvell Avastar 88W8897 Wi-Fi adapter, such as some "
+"Microsoft Surface Pro models, Tails fails to connect to Wi-Fi networks."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If you experience this problem, you can try to [[disable MAC address "
+"anonymization|doc/first_steps/welcome_screen/mac_spoofing]] that sometimes "
+"fixes it."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"rtl8723be\">RTL8723BE PCIe Wireless Network Adapter</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2017-12-24\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"On some computers with a RTL8723be Wi-Fi adapter, Tails might fail to "
+"discover Wi-Fi networks, provide unreliable Wi-Fi connections, or have poor "
+"Wi-Fi performance."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You can try to [[add the following boot options when starting Tails|doc/"
+"advanced_topics/boot_options]] until you find a combination that works for "
+"you. The exact combination of options that works depends on the computer:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "<span class=\"command\">rtl8723be.fwlps=0 rtl8723be.ips=0</span>"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "<span class=\"command\">rtl8723be.ant_sel=1</span>"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "<span class=\"command\">rtl8723be.ant_sel=2</span>"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"<span class=\"command\">rtl8723be.ant_sel=1 rtl8723be.fwlps=0 "
+"rtl8723be.ips=0</span>"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"<span class=\"command\">rtl8723be.ant_sel=2 rtl8723be.fwlps=0 "
+"rtl8723be.ips=0</span>"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"broadcom-sta-dkms\">Broadcom Wi-Fi network interface needing <code>broadcom-sta-dkms</code></h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-01-29\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Some Broadcom Wi-Fi interfaces require the [`wl`](https://wiki.debian.org/"
+"wl) driver, provided by the `broadcom-sta-dkms` Debian package, to work in "
+"Tails."
+msgstr ""
+
+#. type: Plain text
+msgid "The `wl` driver is not included in Tails because it is proprietary."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Your device requires the `wl` driver if it is in the list of devices "
+"supported by the `broadcom-sta-dkms` package on the corresponding [Debian "
+"wiki page](https://wiki.debian.org/wl). If you find your device in the list "
+"of supported devices, then it is impossible to use your Wi-Fi card in Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"broadcom-43602\">Authentication issues with Broadcom 43602</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2024-03-28\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The Broadcom 43602 Wi-Fi interface asks for the password of Wi-Fi networks "
+"in a loop when trying to connect."
+msgstr ""
+
+#. type: Plain text
+msgid "To fix this, try the following, if you have an iPhone:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Start Tails."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Set up a personal Wi-Fi hotspot from your iPhone with the **Maximize "
+"Compatibility** option turned on."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Connect to your personal Wi-Fi hotspot from Tails."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Disconnect."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Connect to any other Wi-Fi network."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"lenovo-legion-y530\">Lenovo Legion Y530</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-05-10\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid "Wi-Fi adapter does not work."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To fix this issue, [[add the following boot option when starting Tails|doc/"
+"advanced_topics/boot_options]]:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    modprobe.blacklist=ideapad_laptop\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<!--\n"
+msgstr "<!--\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"security-issues\">Security issues</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Note: If we enable again this section in the future, we should link to it "
+"from /doc/anonymous_internet/Tor_Browser#fingerprint."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"fingerprint\"></a>\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Browser fingerprint"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"There are known differences between the fingerprints of *Tor Browser* inside "
+"and outside of Tails:"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"For more detail, see our documentation about the [[fingerprint of *Tor "
+"Browser* in Tails|doc/anonymous_internet/Tor_Browser#fingerprint]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "-->\n"
+msgstr "-->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"hardware\">Other hardware issues</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"touchpad-configurations\">Touchpad configurations</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"lenovo-ideapad-3-touchpad\">Lenovo IdeaPad 3 Touchpad</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2021-03-26\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"This touchpad does not work by default. To fix this problem, [[add the "
+"following boot option when starting Tails|doc/advanced_topics/boot_options]]:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    pci=nocrs\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"lenovo-thinkpad-11e\">Lenovo ThinkPad 11e</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2018-03-22\n"
+"Specs: https://www.cnet.com/products/lenovo-thinkpad-11e/specs/\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails might be unstable and stop working regularly on some Lenovo ThinkPad "
+"11e laptops, such as the 2015 model."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To fix this problem, [[add the following boot option when starting Tails|doc/"
+"advanced_topics/boot_options]]:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    intel_idle.max_cstate=1\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"usb-gigabyte\">USB devices are not working on some <a href=\"https://www.gigabyte.com/\">GIGABYTE</a> motherboards</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-06-02\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid "To workaround this issue, you can try to:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Use other USB ports. For example, use USB 2 ports instead of USB 3 ports and "
+"vice versa."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Enable these 3 options in the BIOS"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "xHCI handoff"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "EHCI handoff"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "IOMMU controller"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[[Add the following boot option when starting Tails|doc/advanced_topics/"
+"boot_options]]:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "      amd_iommu=on iommu=pt\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Disable IOMMU in the BIOS then enable it again."
+msgstr ""
+
+#. type: Plain text
+msgid "Some of these workarounds might disable some of the USB ports."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"graphics-corruption-tor-browser\">Graphics corruption in Tor Browser and Thunderbird</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2020-02-22\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"On some computers, _Tor Browser_ and _Thunderbird_ are displayed incorrectly:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "The application window is initially empty and white."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "The icons and menus only appear when hovered by the mouse."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "The contents of the window is only displayed in stripes when scrolling."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To workaround this issue, [[add the following boot option when starting "
+"Tails|doc/advanced_topics/boot_options]]:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    intel_iommu=off\n"
+msgstr ""
+
+#. type: Plain text
+msgid "This problem affects at least the following computers:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "MacBookPro11,5"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Other MacBooks with a Radeon R9 graphics adapter"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"acer-swift-3\">Acer Swift 3</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2020-05-30\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"In order to allow Tails to use all available memory, start Tails from the "
+"*F2 EFI setup* firmware entry."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"dell-xps-15-7590-nvidia\">Dell XPS 15 7590 with Nvidia graphics card</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2023-07-07\n"
+"Debian bug: https://bugs.debian.org/1036530\n"
+"-->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"When using the Nvidia card of a Dell XPS 15 7590 laptop, the system may "
+"become unresponsive while using Tails."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To fix this, start Tails with the following [[boot option|doc/"
+"advanced_topics/boot_options]]:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    pcie_port_pm=off\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"misc\">Other issues</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"video-memory\">Tails does not erase video memory</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails doesn't erase the [[!wikipedia Video_random-access_memory desc=\"video "
+"memory\"]]."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"When you restart your computer after using Tails, it might briefly display "
+"the last screen that was displayed in Tails."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If you shut down your computer instead of restarting it, the video memory "
+"will erase itself automatically after some time."
+msgstr ""
+
+#. type: Plain text
+msgid "See [[!tails_ticket 5356 desc=\"Erase video memory on shutdown\"]]."
+msgstr ""
+
+#, fuzzy, no-wrap
+#~ msgid "<h1 id=\"problematic-usb-sticks\">Problematic USB sticks</h1>\n"
+#~ msgstr "<a id=\"problematic-usb-sticks\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!inline pages=\"doc/anonymous_internet/no-wifi.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"doc/anonymous_internet/networkmanager/no-wifi.inline.tr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<h3 id=\"sg-black-screen\">Acer Travelmate 8573T-254G50M</h3>\n"
+#~ msgstr "<a id=\"switchable_graphics_black_screen\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<h3 id=\"pny\">PNY</h3>\n"
+#~ msgstr "<a id=\"sandisk\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!inline pages=\"support/known_issues/import_broken_in_seahorse.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"support/known_issues/import_broken_in_seahorse.inline.tr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid "PNY"
+#~ msgstr "PNY"
+
+#~ msgid "Aegis Secure Key"
+#~ msgstr "Aegis Sicherheitsschlüssel"
+
+#, fuzzy
+#~ msgid ""
+#~ "<a id=\"datatraveler-2000\"></a>\n"
+#~ "<a id=\"datatraveler-100-g3\"></a>\n"
+#~ msgstr "<a id=\"partial-upgrade\"></a>\n"
+
+#, fuzzy
+#~ msgid "<a id=\"pc\">\n"
+#~ msgstr "<a id=\"sandisk\"></a>\n"
+
+#, fuzzy
+#~ msgid "<a id=\"lockup\"></a>\n"
+#~ msgstr "<a id=\"sandisk\"></a>\n"
+
+#, fuzzy
+#~ msgid "<a id=\"sg-black-screen\"></a>\n"
+#~ msgstr "<a id=\"switchable_graphics_black_screen\"></a>\n"
+
+#~ msgid "Acer Aspire 5315-ICL50"
+#~ msgstr "Acer Aspire 5315-ICL50"
+
+#~ msgid "ASUS VivoBook X202E"
+#~ msgstr "ASUS VivoBook X202E"
+
+#~ msgid "Dell Chromebook LULU"
+#~ msgstr "Dell Chromebook LULU"
+
+#~ msgid "Dell Latitude E5250"
+#~ msgstr "Dell Latitude E5250"
+
+#~ msgid "HP Compaq 615"
+#~ msgstr "HP Compaq 615"
+
+#~ msgid "HP Pavilion 15-ab277ca"
+#~ msgstr "HP Pavilion 15-ab277ca"
+
+#~ msgid "HP ProBook"
+#~ msgstr "HP ProBook"
+
+#~ msgid "Lenovo IdeaPad Y410p"
+#~ msgstr "Lenovo IdeaPad Y410p"
+
+#~ msgid "Lenovo IdeaPad z585"
+#~ msgstr "Lenovo IdeaPad z585"
+
+#~ msgid "System76 Oryx Pro"
+#~ msgstr "System76 Oryx Pro"
+
+#, fuzzy
+#~ msgid "<a id=\"broadcom-sta-dkms\"></a>\n"
+#~ msgstr "<a id=\"sandisk\"></a>\n"
+
+#~ msgid "Lenovo Legion Y530"
+#~ msgstr "Lenovo Legion Y530"
+
+#~ msgid "RTL8821CE"
+#~ msgstr "RTL8821CE"
+
+#, fuzzy
+#~ msgid "<a id=\"video-memory\"></a>\n"
+#~ msgstr "<a id=\"nvidia-maxwell\"></a>\n"
+
+#, fuzzy
+#~ msgid "<a id=\"openpgp-import\"></a>\n"
+#~ msgstr "<a id=\"xorg-driver\"></a>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "<a id=\"automatic_upgrade_fails\"></a>\n"
+#~ "<a id=\"partial-upgrade\"></a>\n"
+#~ msgstr "<a id=\"partial-upgrade\"></a>\n"
+
+#~ msgid "<a id=\"persistence-disappears\"></a>\n"
+#~ msgstr "<a id=\"persistence-disappears\"></a>\n"
+
+#, fuzzy
+#~ msgid "<a id=\"utc\"></a>\n"
+#~ msgstr "<a id=\"sandisk\"></a>\n"
+
+#, fuzzy
+#~ msgid "<a id=\"usb-gigabyte\"></a>\n"
+#~ msgstr "<a id=\"sandisk\"></a>\n"
+
+#, fuzzy
+#~ msgid "<a id=\"restart-shell\"></a>\n"
+#~ msgstr "<a id=\"sandisk\"></a>\n"
+
+#~ msgid ""
+#~ "[[!inline pages=\"doc/anonymous_internet/electrum/phishing.inline\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"doc/anonymous_internet/electrum/phishing.inline.de\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid "<a id=\"nvidia-pascal\"></a>\n"
+#~ msgstr "<a id=\"nvidia-pascal\"></a>\n"
+
+#~ msgid "<a id=\"xorg-driver\"></a>\n"
+#~ msgstr "<a id=\"xorg-driver\"></a>\n"

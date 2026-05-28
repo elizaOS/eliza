@@ -8,14 +8,14 @@ scope:
   claim_boundary: "Existing generated/concept CAD outputs are counted, but do not prove release-ready enclosure fit without routed-board, supplier, and physical evidence."
 cad_output_file_counts:
   directory: "mechanical/e1-phone/out"
-  total_files_recursive: 1293
+  total_files_recursive: 909
   top_level_files: 777
   recursive_by_extension:
     .glb: 4
     .json: 3
     .mp4: 1
     .obj: 270
-    .png: 516
+    .png: 132
     .step: 229
     .stl: 270
   top_level_by_extension:

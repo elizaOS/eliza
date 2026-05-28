@@ -348,7 +348,8 @@ describe("GgmlSileroVad", () => {
 			const build = path.join(
 				root,
 				"packages",
-				"native-plugins",
+				"native",
+				"plugins",
 				"silero-vad-cpp",
 				"build",
 			);
@@ -380,7 +381,8 @@ describe("GgmlSileroVad", () => {
 			const build = path.join(
 				root,
 				"packages",
-				"native-plugins",
+				"native",
+				"plugins",
 				"silero-vad-cpp",
 				"build",
 			);

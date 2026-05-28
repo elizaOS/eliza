@@ -19,7 +19,7 @@ function createDeps() {
     setAgentStatus: vi.fn(),
     setConnected: vi.fn(),
     setStartupError: vi.fn(),
-    setOnboardingLoading: vi.fn(),
+    setFirstRunLoading: vi.fn(),
     setAuthRequired: vi.fn(),
     setPairingEnabled: vi.fn(),
     setPairingExpiresAt: vi.fn(),
@@ -55,7 +55,7 @@ describe("runStartingRuntime", () => {
         checked: true,
         required: false,
       },
-      onboarding: {
+      firstRun: {
         checked: true,
         complete: true,
         requiredGate: null,
@@ -170,7 +170,7 @@ describe("runStartingRuntime", () => {
     expect(deps.setAuthRequired).toHaveBeenCalledWith(true);
     expect(deps.setPairingEnabled).toHaveBeenCalledWith(true);
     expect(deps.setPairingExpiresAt).toHaveBeenCalledWith(1234);
-    expect(deps.setOnboardingLoading).toHaveBeenCalledWith(false);
+    expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
     expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_AUTH_REQUIRED" });
     expect(deps.setStartupError).not.toHaveBeenCalled();
   });
@@ -197,7 +197,7 @@ describe("runStartingRuntime", () => {
       { current: null },
     );
 
-    expect(deps.setOnboardingLoading).toHaveBeenCalledWith(false);
+    expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
     expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
     expect(deps.setStartupError).not.toHaveBeenCalled();
   });
@@ -226,7 +226,7 @@ describe("runStartingRuntime", () => {
       { current: null },
     );
 
-    expect(deps.setOnboardingLoading).toHaveBeenCalledWith(false);
+    expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
     expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
     expect(deps.setStartupError).not.toHaveBeenCalled();
   });

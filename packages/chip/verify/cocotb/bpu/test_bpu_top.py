@@ -262,9 +262,7 @@ async def bpu_context_isolates_target_predictions_and_flushes(dut):
     target_b = 0x8000_3800
 
     for _ in range(2):
-        await resolve(
-            dut, pc, target_a, taken=True, kind=BR_CALL, misp=False, asid=1, vmid=0
-        )
+        await resolve(dut, pc, target_a, taken=True, kind=BR_CALL, misp=False, asid=1, vmid=0)
 
     await predict(dut, pc, asid=1, vmid=0)
     assert int(dut.pred_taken.value) == 1
@@ -277,9 +275,7 @@ async def bpu_context_isolates_target_predictions_and_flushes(dut):
     assert int(dut.pred_from_ftb.value) == 0
 
     for _ in range(2):
-        await resolve(
-            dut, pc, target_b, taken=True, kind=BR_CALL, misp=False, asid=2, vmid=0
-        )
+        await resolve(dut, pc, target_b, taken=True, kind=BR_CALL, misp=False, asid=2, vmid=0)
 
     await predict(dut, pc, asid=2, vmid=0)
     assert int(dut.pred_target.value) == target_b
@@ -768,9 +764,7 @@ async def bpu_l2_ftb_patches_ftq_and_redirects_call_after_l1_miss(dut):
     assert ((int(dut.pmu_strb.value) >> PMU_L2_FTB_HIT) & 0x1) == 1
     assert ((int(dut.pmu_strb.value) >> PMU_L2_FTB_LATE_REDIRECT) & 0x1) == 1
     assert int(dut.late_redirect_valid_lanes.value) & 0b1
-    assert packed_slot(
-        int(dut.late_redirect_pc_lanes.value), 0, VADDR_W
-    ) == target
+    assert packed_slot(int(dut.late_redirect_pc_lanes.value), 0, VADDR_W) == target
 
     await RisingEdge(dut.clk)
     assert await read_counter(dut, PMU_L2_FTB_LATE_REDIRECT) >= 1
@@ -782,9 +776,7 @@ async def bpu_l2_ftb_patches_ftq_and_redirects_call_after_l1_miss(dut):
     assert int(dut.fetch_br_taken_mask.value) != 0
     assert int(dut.fetch_segment_valid.value) & 0b1
     assert int(dut.fetch_segment_taken.value) & 0b1
-    assert packed_slot(
-        int(dut.fetch_segment_target_pc.value), 0, VADDR_W
-    ) == target
+    assert packed_slot(int(dut.fetch_segment_target_pc.value), 0, VADDR_W) == target
 
 
 @cocotb.test()
@@ -818,9 +810,7 @@ async def bpu_l2_ftb_patches_strong_taken_conditional_after_l1_miss(dut):
     assert int(dut.fetch_br_taken_mask.value) != 0
     assert int(dut.fetch_segment_valid.value) & 0b1
     assert int(dut.fetch_segment_taken.value) & 0b1
-    assert packed_slot(
-        int(dut.fetch_segment_target_pc.value), 0, VADDR_W
-    ) == target
+    assert packed_slot(int(dut.fetch_segment_target_pc.value), 0, VADDR_W) == target
 
 
 @cocotb.test()
@@ -1100,9 +1090,7 @@ async def bpu_second_conditional_slot_redirects_after_first_falls_through(dut):
     assert int(dut.pred_taken.value) == 1
     assert int(dut.pred_target.value) == redirect_target
     assert int(dut.pred_redirect_valid.value) == 0b10
-    assert packed_slot(
-        int(dut.pred_redirect_pc.value), 1, VADDR_W
-    ) == redirect_target
+    assert packed_slot(int(dut.pred_redirect_pc.value), 1, VADDR_W) == redirect_target
     await Timer(1, units="ns")
     assert int(dut.fetch_valid.value) == 1
 
@@ -1116,36 +1104,16 @@ async def bpu_second_conditional_slot_redirects_after_first_falls_through(dut):
     assert taken_offsets == {0x18}
     assert int(dut.fetch_segment_valid.value) == 0b11
     assert int(dut.fetch_segment_taken.value) == 0b10
-    assert packed_slot(
-        int(dut.fetch_segment_start_pc.value), 0, VADDR_W
-    ) == block_pc
-    assert packed_slot(
-        int(dut.fetch_segment_end_pc.value), 0, VADDR_W
-    ) == guard_pc
-    assert packed_slot(
-        int(dut.fetch_segment_target_pc.value), 0, VADDR_W
-    ) == guard_pc + 4
-    assert packed_slot(
-        int(dut.fetch_segment_branch_offset.value), 0, FETCH_BLOCK_OFF_W
-    ) == 0x04
-    assert packed_slot(
-        int(dut.fetch_segment_slot_idx.value), 0, 1
-    ) in range(MAX_BR_PER_BLOCK)
-    assert packed_slot(
-        int(dut.fetch_segment_start_pc.value), 1, VADDR_W
-    ) == guard_pc + 4
-    assert packed_slot(
-        int(dut.fetch_segment_end_pc.value), 1, VADDR_W
-    ) == redirect_pc
-    assert packed_slot(
-        int(dut.fetch_segment_target_pc.value), 1, VADDR_W
-    ) == redirect_target
-    assert packed_slot(
-        int(dut.fetch_segment_branch_offset.value), 1, FETCH_BLOCK_OFF_W
-    ) == 0x18
-    assert packed_slot(
-        int(dut.fetch_segment_slot_idx.value), 1, 1
-    ) in range(MAX_BR_PER_BLOCK)
+    assert packed_slot(int(dut.fetch_segment_start_pc.value), 0, VADDR_W) == block_pc
+    assert packed_slot(int(dut.fetch_segment_end_pc.value), 0, VADDR_W) == guard_pc
+    assert packed_slot(int(dut.fetch_segment_target_pc.value), 0, VADDR_W) == guard_pc + 4
+    assert packed_slot(int(dut.fetch_segment_branch_offset.value), 0, FETCH_BLOCK_OFF_W) == 0x04
+    assert packed_slot(int(dut.fetch_segment_slot_idx.value), 0, 1) in range(MAX_BR_PER_BLOCK)
+    assert packed_slot(int(dut.fetch_segment_start_pc.value), 1, VADDR_W) == guard_pc + 4
+    assert packed_slot(int(dut.fetch_segment_end_pc.value), 1, VADDR_W) == redirect_pc
+    assert packed_slot(int(dut.fetch_segment_target_pc.value), 1, VADDR_W) == redirect_target
+    assert packed_slot(int(dut.fetch_segment_branch_offset.value), 1, FETCH_BLOCK_OFF_W) == 0x18
+    assert packed_slot(int(dut.fetch_segment_slot_idx.value), 1, 1) in range(MAX_BR_PER_BLOCK)
 
 
 @cocotb.test()
@@ -1179,12 +1147,8 @@ async def bpu_two_ahead_target_block_direct_redirect_lane(dut):
     assert int(dut.pred_taken.value) == 1
     assert int(dut.pred_target.value) == first_target_block
     assert int(dut.pred_redirect_valid.value) == 0b11
-    assert packed_slot(
-        int(dut.pred_redirect_pc.value), 0, VADDR_W
-    ) == first_target_block
-    assert packed_slot(
-        int(dut.pred_redirect_pc.value), 1, VADDR_W
-    ) == final_target
+    assert packed_slot(int(dut.pred_redirect_pc.value), 0, VADDR_W) == first_target_block
+    assert packed_slot(int(dut.pred_redirect_pc.value), 1, VADDR_W) == final_target
     assert await read_counter(dut, PMU_TWO_AHEAD_REDIRECT) >= 1
 
 
@@ -1220,12 +1184,8 @@ async def bpu_two_ahead_target_block_strong_conditional_redirect_lane(dut):
     assert int(dut.pred_taken.value) == 1
     assert int(dut.pred_target.value) == first_target_block
     assert int(dut.pred_redirect_valid.value) == 0b11
-    assert packed_slot(
-        int(dut.pred_redirect_pc.value), 0, VADDR_W
-    ) == first_target_block
-    assert packed_slot(
-        int(dut.pred_redirect_pc.value), 1, VADDR_W
-    ) == final_target
+    assert packed_slot(int(dut.pred_redirect_pc.value), 0, VADDR_W) == first_target_block
+    assert packed_slot(int(dut.pred_redirect_pc.value), 1, VADDR_W) == final_target
     assert await read_counter(dut, PMU_TWO_AHEAD_REDIRECT) >= 1
 
 
@@ -1262,15 +1222,9 @@ async def bpu_two_ahead_target_block_return_after_call_uses_call_fallthrough(dut
     assert int(dut.pred_taken.value) == 1
     assert int(dut.pred_target.value) == function_block
     assert int(dut.pred_redirect_valid.value) == 0b11
-    assert packed_slot(
-        int(dut.pred_redirect_pc.value), 0, VADDR_W
-    ) == function_block
-    assert packed_slot(
-        int(dut.pred_redirect_pc.value), 1, VADDR_W
-    ) == return_to
-    assert packed_slot(
-        int(dut.pred_redirect_pc.value), 1, VADDR_W
-    ) != stale_ret_target
+    assert packed_slot(int(dut.pred_redirect_pc.value), 0, VADDR_W) == function_block
+    assert packed_slot(int(dut.pred_redirect_pc.value), 1, VADDR_W) == return_to
+    assert packed_slot(int(dut.pred_redirect_pc.value), 1, VADDR_W) != stale_ret_target
     assert await read_counter(dut, PMU_TWO_AHEAD_REDIRECT) >= 1
 
 

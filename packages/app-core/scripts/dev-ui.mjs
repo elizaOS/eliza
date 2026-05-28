@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-console.error("[dev-ui LOCAL PATCH START] running patched local dev-ui.mjs");
+console.log(
+  "\x1b[32m[dev-ui LOCAL PATCH START] running patched local dev-ui.mjs\x1b[0m",
+);
 
 /**
  * Development script that starts:
@@ -255,6 +257,47 @@ function shellQuoteArg(value) {
   return /^[A-Za-z0-9_./:=+-]+$/.test(value) ? value : JSON.stringify(value);
 }
 
+function isCodexBundledNode(candidate) {
+  return (
+    process.platform === "darwin" &&
+    candidate.includes(
+      `${path.sep}Applications${path.sep}Codex.app${path.sep}Contents${path.sep}Resources${path.sep}node`,
+    )
+  );
+}
+
+function isUsableNode(candidate) {
+  if (!candidate || isCodexBundledNode(candidate) || !existsSync(candidate)) {
+    return false;
+  }
+  try {
+    execFileSync(candidate, ["-e", "process.stdout.write(process.platform)"], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveApiNodeCommand(env) {
+  const pathCandidates = (env.PATH ?? "")
+    .split(path.delimiter)
+    .filter(Boolean)
+    .map((dir) =>
+      path.join(dir, process.platform === "win32" ? "node.exe" : "node"),
+    );
+  const candidates = [
+    env.ELIZA_NODE_PATH,
+    env.npm_node_execpath,
+    ...pathCandidates,
+    "/opt/homebrew/bin/node",
+    "/usr/local/bin/node",
+    "/usr/bin/node",
+  ].filter(Boolean);
+  return candidates.find(isUsableNode) ?? "node";
+}
+
 const visionDepsRetryCommand = [
   "node",
   path.relative(cwd, visionDepsScriptPath) || visionDepsScriptPath,
@@ -348,49 +391,33 @@ if (!hasNode) {
 // coerceBoolean — imported from ./lib/dev-ui-onchain.mjs
 
 function resolveElizaStateDir() {
-  const brandedStateDir = process.env.ELIZA_STATE_DIR?.trim();
-  if (brandedStateDir) {
-    return path.resolve(brandedStateDir);
-  }
+  const explicitStateDir =
+    process.env.ELIZA_STATE_DIR?.trim() || process.env.MILADY_STATE_DIR?.trim();
+  if (explicitStateDir) return path.resolve(explicitStateDir);
 
-  const upstreamStateDir = process.env.ELIZA_STATE_DIR?.trim();
-  if (upstreamStateDir) {
-    return path.resolve(upstreamStateDir);
-  }
+  const xdgStateHome = process.env.XDG_STATE_HOME?.trim();
+  const stateHome = xdgStateHome
+    ? path.isAbsolute(xdgStateHome)
+      ? xdgStateHome
+      : path.join(os.homedir(), xdgStateHome)
+    : path.join(os.homedir(), ".local", "state");
 
-  const brandedDefault = path.join(os.homedir(), ".eliza");
-  if (existsSync(brandedDefault)) {
-    return brandedDefault;
-  }
+  return path.join(stateHome, resolveElizaNamespace());
+}
 
-  return path.join(os.homedir(), ".eliza");
+function resolveElizaNamespace() {
+  return process.env.ELIZA_NAMESPACE?.trim() || cliName || "eliza";
 }
 
 function resolveElizaConfigPath() {
   const explicitConfigPath =
     process.env.ELIZA_CONFIG_PATH?.trim() ||
-    process.env.ELIZA_CONFIG_PATH?.trim();
+    process.env.MILADY_CONFIG_PATH?.trim();
   if (explicitConfigPath) {
     return path.resolve(explicitConfigPath);
   }
 
-  const brandedStateDir = process.env.ELIZA_STATE_DIR?.trim();
-  if (brandedStateDir) {
-    return path.join(path.resolve(brandedStateDir), "eliza.json");
-  }
-
-  const upstreamStateDir = process.env.ELIZA_STATE_DIR?.trim();
-  if (upstreamStateDir) {
-    return path.join(path.resolve(upstreamStateDir), "eliza.json");
-  }
-
-  const brandedDefault = path.join(os.homedir(), ".eliza", "eliza.json");
-  if (existsSync(brandedDefault)) {
-    return brandedDefault;
-  }
-
-  // Keep the legacy Eliza path as a fallback for older local dev setups.
-  return path.join(os.homedir(), ".eliza", "eliza.json");
+  return path.join(resolveElizaStateDir(), `${resolveElizaNamespace()}.json`);
 }
 
 function loadElizaConfigForDev() {
@@ -891,10 +918,15 @@ function startVite() {
           process.env.ELIZA_DEV_PLUGIN_BUILD === "always";
         const skipPlugins =
           process.env.ELIZA_DEV_PLUGIN_BUILD === "0" ||
-          process.env.ELIZA_SKIP_PLUGIN_BUILD === "1";
+          process.env.ELIZA_SKIP_PLUGIN_BUILD === "1" ||
+          (process.env.ELIZA_DEV_SOURCE === "1" && !forcePlugins);
         if (skipPlugins) {
+          const skipReason =
+            process.env.ELIZA_DEV_SOURCE === "1" && !forcePlugins
+              ? "ELIZA_DEV_SOURCE=1"
+              : "ELIZA_SKIP_PLUGIN_BUILD=1";
           console.log(
-            `  ${green(logPrefix)} ${dim("Skipping Capacitor plugin build (ELIZA_SKIP_PLUGIN_BUILD=1).")}`,
+            `  ${green(logPrefix)} ${dim(`Skipping Capacitor plugin build (${skipReason}).`)}`,
           );
         } else if (
           forcePlugins ||
@@ -1059,8 +1091,9 @@ if (uiOnly) {
     }
   }
 
+  const apiNodeCmd = resolveApiNodeCommand(process.env);
   const apiCmd = [
-    "node",
+    apiNodeCmd,
     "--conditions=eliza-source",
     "--import",
     "tsx",
@@ -1095,6 +1128,10 @@ if (uiOnly) {
     },
     apiSpawnCwd,
   );
+
+  if (apiNodeCmd !== "node") {
+    apiSpawnEnv.PATH = `${path.dirname(apiNodeCmd)}${path.delimiter}${apiSpawnEnv.PATH ?? ""}`;
+  }
 
   const apiSupervisor = createApiSupervisor({
     spawnChild: () =>
@@ -1136,6 +1173,7 @@ if (uiOnly) {
   });
 
   apiSupervisor.start();
+  startVite();
 
   const startTime = Date.now();
   let phase = "port";
@@ -1165,7 +1203,6 @@ if (uiOnly) {
       console.log(
         `\r  ${green(logPrefix)} ${green(`Agent ready`)} ${dim(`(${elapsed}s)`)}          `,
       );
-      startVite();
     })
     .catch((err) => {
       clearInterval(dots);

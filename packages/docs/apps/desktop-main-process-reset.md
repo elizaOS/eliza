@@ -55,7 +55,7 @@ Settings still uses **`handleReset`** in the renderer (confirm in webview + full
 | Suite | File | What it proves |
 |-------|------|----------------|
 | Main reset core | `apps/app/electrobun/src/__tests__/menu-reset-from-main.test.ts` | Candidate ordering, skip non-ok HTTP, poll until running, embedded vs external branches, failed POST |
-| Renderer reset | `eliza/packages/app-core/src/state/reset-main-process.test.ts` | Order of local wipes, onboarding options failure path, lifecycle busy / begin-fail / success / throw + `finishLifecycleAction` |
+| Renderer reset | `eliza/packages/app-core/src/state/reset-main-process.test.ts` | Order of local wipes, first-run options failure path, lifecycle busy / begin-fail / success / throw + `finishLifecycleAction` |
 | Payload parse | `eliza/packages/app-core/src/state/parsers.test.ts` | Valid / invalid `agentStatus` on tray payload |
 
 **Why separate from kitchen-sink string checks:** `kitchen-sink` asserts wiring in `index.ts`; **behavior** lives in the extracted modules so CI fails when reset semantics regress without loading Electrobun.

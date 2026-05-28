@@ -1,0 +1,4 @@
+b43-fwcutter	b43-fwcutter/cut_firmware	boolean	true
+firmware-ipw2x00	firmware-ipw2x00/license/accepted	boolean	true
+firmware-iwlwifi	firmware-iwlwifi/license/accepted	boolean	true
+firmware-ralink	firmware-ralink/license/accepted	boolean	true

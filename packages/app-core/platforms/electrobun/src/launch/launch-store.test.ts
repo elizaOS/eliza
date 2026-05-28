@@ -33,7 +33,7 @@ function snapshot(phase: LaunchSnapshot["phase"]): LaunchSnapshot {
       pairingEnabled: false,
       error: null,
     },
-    onboarding: {
+    firstRun: {
       checked: true,
       complete: true,
       requiredGate: null,

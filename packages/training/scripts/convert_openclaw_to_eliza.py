@@ -369,7 +369,7 @@ def main() -> None:
     elif args.dry_run:
         log.info("[dry-run] Would write %d records", len(records))
 
-    print(f"\nSummary:")
+    print("\nSummary:")
     print(f"  Total records processed : {total}")
     print(f"  Converted               : {len(records)}")
     print(f"  Dropped                 : {total - len(records)}")

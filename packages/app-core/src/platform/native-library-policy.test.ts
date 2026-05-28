@@ -34,6 +34,23 @@ describe("resolveNativeLibraryCandidate", () => {
     ).toBe(realpathSync.native(dylib));
   });
 
+  it("rejects relative candidates without a module directory instead of throwing", () => {
+    const warnings: string[] = [];
+
+    expect(
+      resolveNativeLibraryCandidate(
+        { label: "packaged bridge", path: "../libNative.dylib" },
+        {
+          env: { ELIZA_BUILD_VARIANT: "direct" },
+          expectedBasename: "libNative.dylib",
+          moduleDir: undefined,
+          warn: (message) => warnings.push(message),
+        },
+      ),
+    ).toBeNull();
+    expect(warnings.join("\n")).toContain("without a module directory");
+  });
+
   it("allows the expected dylib inside the trusted app bundle in store builds", () => {
     const root = tempRoot();
     const appRoot = path.join(root, "Eliza.app");

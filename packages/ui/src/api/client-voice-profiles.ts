@@ -12,10 +12,10 @@
  */
 
 export type VoiceProfileCohort = "owner" | "family" | "guest" | "unknown";
-export type VoiceProfileSource = "onboarding" | "auto-clustered" | "manual";
+export type VoiceProfileSource = "first-run" | "auto-clustered" | "manual";
 
 /**
- * Stable internal shape consumed by `VoiceProfileSection` and the onboarding
+ * Stable internal shape consumed by `VoiceProfileSection` and the first-run
  * voice steps. Mirrors R10 §5.1 — keep wide-compatible fields here, narrow
  * server-specific fields in the adapter.
  */
@@ -44,7 +44,7 @@ export interface VoiceProfile {
   samplePreviewUri?: string | null;
 }
 
-/** Capture step description supplied by I2 during onboarding (R10 §3.2 step 5). */
+/** Capture step description supplied by I2 during first-run (R10 §3.2 step 5). */
 export interface VoiceCapturePrompt {
   id: string;
   text: string;
@@ -147,11 +147,11 @@ export class VoiceProfilesClient {
     }
   }
 
-  /** Start onboarding capture for the OWNER profile. */
+  /** Start first-run capture for the OWNER profile. */
   async startOwnerCapture(): Promise<VoiceCaptureSession> {
     try {
       const raw = await this.client.fetch<unknown>(
-        "/api/voice/onboarding/profile/start",
+        "/api/voice/first-run/profile/start",
         { method: "POST" },
       );
       return normaliseCaptureSession(raw);
@@ -160,27 +160,27 @@ export class VoiceProfilesClient {
         return fallbackCaptureSession();
       }
       throw new VoiceProfilesUnavailableError(
-        "/api/voice/onboarding/profile/start",
+        "/api/voice/first-run/profile/start",
         err,
       );
     }
   }
 
-  /** Append a captured audio chunk to an in-progress onboarding session. */
+  /** Append a captured audio chunk to an in-progress first-run session. */
   async appendOwnerCapture(
     sessionId: string,
     payload: { promptId: string; audioBase64: string; durationMs: number },
   ): Promise<void> {
     try {
       await this.client.fetch(
-        `/api/voice/onboarding/profile/append?id=${encodeURIComponent(sessionId)}`,
+        `/api/voice/first-run/profile/append?id=${encodeURIComponent(sessionId)}`,
         { method: "POST", body: JSON.stringify(payload) },
       );
     } catch (err) {
       if (isMissingEndpointError(err)) return;
       if (isUnsupportedCaptureRouteError(err)) return;
       throw new VoiceProfilesUnavailableError(
-        "/api/voice/onboarding/profile/append",
+        "/api/voice/first-run/profile/append",
         err,
       );
     }
@@ -193,14 +193,14 @@ export class VoiceProfilesClient {
   ): Promise<VoiceCaptureSubmitResult> {
     try {
       return await this.client.fetch<VoiceCaptureSubmitResult>(
-        `/api/voice/onboarding/profile/finalize?id=${encodeURIComponent(sessionId)}`,
+        `/api/voice/first-run/profile/finalize?id=${encodeURIComponent(sessionId)}`,
         { method: "POST", body: JSON.stringify(payload) },
       );
     } catch (err) {
       if (isMissingEndpointError(err) || isUnsupportedCaptureRouteError(err))
         return fallbackOwnerSubmitResult(sessionId);
       throw new VoiceProfilesUnavailableError(
-        "/api/voice/onboarding/profile/finalize",
+        "/api/voice/first-run/profile/finalize",
         err,
       );
     }
@@ -209,15 +209,15 @@ export class VoiceProfilesClient {
   /**
    * Capture a family member's voice and create a bound non-OWNER entity.
    *
-   * Calls `POST /v1/voice/onboarding/family-member`. On 404 / 503 (encoder
-   * not available) falls back gracefully so onboarding is never blocked.
+   * Calls `POST /v1/voice/first-run/family-member`. On 404 / 503 (encoder
+   * not available) falls back gracefully so first-run is never blocked.
    */
   async captureFamilyMember(
     payload: FamilyMemberCapturePayload,
   ): Promise<FamilyMemberCaptureResult> {
     try {
       return await this.client.fetch<FamilyMemberCaptureResult>(
-        "/v1/voice/onboarding/family-member",
+        "/v1/voice/first-run/family-member",
         {
           method: "POST",
           body: JSON.stringify(payload),
@@ -237,7 +237,7 @@ export class VoiceProfilesClient {
         };
       }
       throw new VoiceProfilesUnavailableError(
-        "/v1/voice/onboarding/family-member",
+        "/v1/voice/first-run/family-member",
         err,
       );
     }
@@ -487,7 +487,7 @@ function isCohort(value: unknown): value is VoiceProfileCohort {
 
 function isSource(value: unknown): value is VoiceProfileSource {
   return (
-    value === "onboarding" || value === "auto-clustered" || value === "manual"
+    value === "first-run" || value === "auto-clustered" || value === "manual"
   );
 }
 

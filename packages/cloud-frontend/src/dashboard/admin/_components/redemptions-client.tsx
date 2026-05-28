@@ -502,7 +502,7 @@ export function AdminRedemptionsClient() {
                           href={getExplorerUrl(r.network, r.tx_hash)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="h-8 w-8 flex items-center justify-center text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/80"
+                          className="h-8 w-8 flex items-center justify-center text-white/50 hover:text-white transition-colors"
                         >
                           <ExternalLink className="h-4 w-4" />
                         </a>

@@ -14,6 +14,9 @@ export default defineConfig({
       "**/dist/**",
       "**/.git/**",
       "**/.claude/**",
+      "**/.eliza/**",
+      "**/.tmp/**",
+      "**/tmp/**",
       "**/*.e2e.test.{ts,tsx}",
       "**/*.e2e.spec.{ts,tsx}",
       "**/*.live.test.{ts,tsx}",
@@ -63,6 +66,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/vault\/(.+)$/,
         replacement: path.join(root, "packages/vault/src/$1"),
+      },
+      {
+        find: /^@elizaos\/cloud-sdk$/,
+        replacement: path.join(root, "packages/cloud-sdk/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/cloud-sdk\/(.+)$/,
+        replacement: path.join(root, "packages/cloud-sdk/src/$1"),
       },
       {
         find: /^@elizaos\/tui$/,

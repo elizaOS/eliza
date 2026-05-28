@@ -10,7 +10,7 @@ const repoRoot = path.resolve(inferenceRoot, "../../..");
 const contractPath = path.join(here, "kernel-contract.json");
 const buildScriptPath = path.join(
   repoRoot,
-  "packages/app-core/scripts/build-llama-cpp-dflash.mjs",
+  "packages/app-core/scripts/build-llama-cpp-mtp.mjs",
 );
 const manifestSchemaPath = path.join(
   repoRoot,
@@ -70,7 +70,7 @@ function findKernelEnum(node) {
   if (
     Array.isArray(node.enum) &&
     node.enum.includes("turboquant_q3") &&
-    node.enum.includes("dflash")
+    node.enum.includes("mtp")
   ) {
     return node.enum;
   }

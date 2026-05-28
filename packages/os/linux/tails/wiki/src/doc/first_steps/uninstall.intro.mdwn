@@ -1,0 +1,6 @@
+To uninstall Tails from a USB stick, and use it for something else, you have to
+format it.
+
+The content of the USB stick is lost in the operation, but an attacker
+might still be able to tell that Tails was installed on that USB stick using
+[[data recovery techniques|doc/encryption_and_privacy/secure_deletion]].

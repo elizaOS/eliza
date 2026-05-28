@@ -187,7 +187,7 @@ This is the property called out in chip §3.4 and it is the design we adopt.
 
 ### 2.3 KV-cache, prompts, user data confinement
 
-- `MILADY_STATE_DIR`/`ELIZA_STATE_DIR` (default `~/.milady`) maps to a private,
+- `MILADY_STATE_DIR`/`ELIZA_STATE_DIR` (default `~/.local/state/milady`) maps to a private,
   sealed-key-encrypted volume that only mounts after attestation-gated key
   release. (dstack does this via LUKS2 — see the LUKS2 advisory in §5; we must
   bind the volume key to attestation, not to a host-readable key.)

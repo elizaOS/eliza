@@ -17,6 +17,11 @@ on:
     types: [published]
   workflow_dispatch:
     inputs:
+      enable_removed_computeruse:
+        description: "Run this removed-package workflow after restoring packages/computeruse"
+        required: false
+        type: boolean
+        default: false
       dry_run:
         description: "Dry run (do not publish)"
         required: false
@@ -32,7 +37,7 @@ env:
 
 jobs:
   build:
-    if: ${{ false }} # packages/computeruse is no longer present in this repo.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.enable_removed_computeruse == true }} # packages/computeruse is no longer present in this repo.
     strategy:
       fail-fast: false
       matrix:
@@ -100,18 +105,18 @@ jobs:
     runs-on: ${{ matrix.settings.host }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup node (Windows ARM64)
         if: matrix.settings.host == 'windows-11-arm'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
 
       - name: Setup node (default)
         if: matrix.settings.host != 'windows-11-arm'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
@@ -129,12 +134,12 @@ jobs:
           cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
         with:
           targets: ${{ matrix.settings.target }}
 
       - name: Cache cargo registry
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: |
             ~/.cargo/registry
@@ -177,7 +182,7 @@ jobs:
         shell: bash
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: bindings-${{ matrix.settings.target }}
           path: |
@@ -186,21 +191,21 @@ jobs:
 
   publish:
     name: Publish to npm
-    if: ${{ false }} # packages/computeruse is no longer present in this repo.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.enable_removed_computeruse == true }} # packages/computeruse is no longer present in this repo.
     runs-on: ubuntu-latest
     needs: build
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           path: artifacts
 

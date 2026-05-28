@@ -1,0 +1,16 @@
+[Unit]
+Description=Prepare network namespaces
+Documentation=https://gitlab.tails.boum.org/tails/tails/-/issues/18123
+Wants=network.target
+Before=network.target
+Before=onion-grater.service
+After=ferm.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/lib/tails-create-netns start
+ExecStop=/usr/local/lib/tails-create-netns stop
+
+[Install]
+WantedBy=multi-user.target

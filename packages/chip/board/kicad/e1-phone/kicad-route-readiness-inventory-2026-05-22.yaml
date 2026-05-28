@@ -521,7 +521,85 @@ critical_net_summary:
   unique_burndown_exact_net_count: 143
   unique_burndown_exact_nets_missing_from_board_count: 0
   domains_with_missing_exact_nets: 0
-missing_production_outputs: []
+missing_production_outputs:
+- path: board/kicad/e1-phone/production/reports/audio-haptic-functional-log.json
+  required_status: required_by_split_interconnect_and_audio_haptics
+  present: false
+- path: board/kicad/e1-phone/production/reports/camera-capture-log.json
+  required_status: required_by_front_rear_camera_mipi_csi
+  present: false
+- path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  required_status: required_by_usb_c_power_sidekey_spine
+  present: false
+- path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+  required_status: required_by_display_touch_mipi_dsi
+  present: false
+- path: board/kicad/e1-phone/production/reports/drc.json
+  required_status: clean_or_signed_waivers
+  present: false
+- path: board/kicad/e1-phone/production/reports/erc.json
+  required_status: clean_or_signed_waivers
+  present: false
+- path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+  required_status: replaces_concept_density_estimate
+  present: false
+- path: board/kicad/e1-phone/production/reports/length-skew.csv
+  required_status: covers_usb2_mipi_pcie_lpddr_ufs_and_split_interconnect
+  present: false
+- path: board/kicad/e1-phone/production/reports/memory-training-log.json
+  required_status: required_by_compute_memory_storage_escape
+  present: false
+- path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  required_status: required_by_cellular_wifi_bt_rf_host
+  present: false
+- path: board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
+  required_status: required_by_cellular_wifi_bt_rf_host
+  present: false
+- path: board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
+  required_status: required_by_cellular_wifi_bt_rf_host
+  present: false
+- path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  required_status: required_by_cellular_wifi_bt_rf_host
+  present: false
+- path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  required_status: required_by_front_rear_camera_mipi_csi
+  present: false
+- path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+  required_status: required_by_display_touch_mipi_dsi
+  present: false
+- path: board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
+  required_status: required_by_front_rear_camera_mipi_csi
+  present: false
+- path: board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
+  required_status: required_by_display_touch_mipi_dsi
+  present: false
+- path: board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json
+  required_status: required_by_compute_memory_storage_escape
+  present: false
+- path: board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json
+  required_status: required_by_compute_memory_storage_escape
+  present: false
+- path: board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json
+  required_status: required_by_split_interconnect_and_audio_haptics
+  present: false
+- path: board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json
+  required_status: required_by_usb_c_power_sidekey_spine
+  present: false
+- path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+  required_status: required_by_usb_c_power_sidekey_spine
+  present: false
+- path: board/kicad/e1-phone/production/reports/ufs-link-training-log.json
+  required_status: required_by_compute_memory_storage_escape
+  present: false
+- path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  required_status: required_by_usb_c_power_sidekey_spine
+  present: false
+- path: board/kicad/e1-phone/production/reports/usb2-length-skew.csv
+  required_status: required_by_usb_c_power_sidekey_spine
+  present: false
+- path: board/kicad/e1-phone/production/reports/zone-fill.json
+  required_status: all_required_zones_filled_and_reviewed
+  present: false
 summary:
   segments_present: false
   filled_zones_present: false
@@ -530,7 +608,7 @@ summary:
   development_real_footprints_present: true
   development_remaining_placeholder_marker_count: 0
   development_placeholder_footprints_present: false
-  missing_required_output_count: 0
+  missing_required_output_count: 26
   routing_evidence_absent_or_incomplete: true
   release_state: blocked_fail_closed
 forbidden_claims:

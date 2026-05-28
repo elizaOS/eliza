@@ -1,0 +1,569 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-11-12 12:16+0100\n"
+"PO-Revision-Date: 2026-04-06 12:18+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: Spanish <http://translate.tails.net/projects/tails/"
+"first_steps_persistence_copy/es/>\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Making a backup of your Persistent Storage\"]]\n"
+msgstr "[[!meta title=\"Hacer una copia de respaldo de tu Almacenamiento Persistente\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- XXX: These instructions should be kept in sync with recover.mdwn -->\n"
+msgstr "<!-- XXX: These instructions should be kept in sync with recover.mdwn -->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<p>If your Tails is broken and you are trying to rescue your Persistent Storage,\n"
+#| "see our [[instructions on rescuing your Persistent\n"
+#| "Storage from a broken Tails|doc/first_steps/persistence/rescue]].</p>\n"
+msgid ""
+"<p>If your Tails is broken and you are trying to recover your Persistent Storage,\n"
+"see [[recovering the Persistent Storage of a broken Tails|recover]] instead.</p>\n"
+msgstr ""
+"<p>Si tu Tails está roto y estás intentando rescatar tu Almacenamiento Persistente,\n"
+"mira nuestras [[instrucciones para rescatar tu Almacenamiento Persistente de un\n"
+"Tails roto|doc/first_steps/persistence/rescue]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h1 id=\"create\">Create a new Tails to store your backup</h1>\n"
+msgid "<h1 id=\"creating\">Creating a backup Tails USB stick using <i>Tails Cloner</i></h1>\n"
+msgstr "<h1 id=\"create\">Crear un nuevo Tails para almacenar tu copia de respaldo</h1>\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "In these instructions, we recommend you to create another Tails to store "
+#| "your backup. This way, if your Tails is lost or damaged, you will be able "
+#| "to replace it immediately with your backup Tails."
+msgid ""
+"We recommend you to create another Tails to store your backup by cloning "
+"from your current Tails. This way, if your Tails is lost or damaged, you can "
+"replace it immediately with your backup Tails."
+msgstr ""
+"En estas instrucciones, recomendamos que crees otro Tails para almacenar tu "
+"copia de respaldo. De esta manera, si tu Tails se pierde o se daña, serás "
+"capaz de reemplazarlo inmediatamente con tu copia de respaldo de Tails."
+
+#. type: Bullet: '1. '
+msgid "Start on the Tails USB stick that you want to back up and clone *from*."
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Start on your current Tails and unlock the Persistent Storage."
+msgid "When starting Tails, unlock your Persistent Storage."
+msgstr "Inicia en tu Tails actual y desbloquea el Almacenamiento Persistente."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Plug in the old Tails USB stick from which you want to rescue your data."
+msgid ""
+"Plug in the new USB stick on which you want to create your backup Tails USB "
+"stick and clone *to*."
+msgstr ""
+"Conecta la memoria USB de Tails antigua de la que quieres rescatar tu "
+"información."
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ Tails&nbsp;▸ Tails Cloner**."
+msgstr "Elige **Aplicaciones&nbsp;▸ Tails&nbsp;▸ Tails Cloner**."
+
+#. type: Bullet: '1. '
+msgid ""
+"Turn on the option **Clone the current Persistent Storage** below the option "
+"**Clone the current Tails**."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img clone.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img clone.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "   Make sure that this new USB stick is at least as large as your\n"
+#| "   current Tails USB stick.\n"
+msgid ""
+"Make sure that the new USB stick is selected in the **Target USB stick** "
+"menu."
+msgstr ""
+"   Asegurate que la nueva memoria USB es al menos tan grande como\n"
+"   tu actual memoria USB de Tails.\n"
+
+#. type: Bullet: '1. '
+msgid "To start the cloning, click on the **Install** button."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Read the warning message in the confirmation dialog."
+msgstr "Lee el mensaje de advertencia en el diálogo de confirmación."
+
+#. type: Bullet: '1. '
+msgid ""
+"Enter a passphrase for the Persistent Storage on the new USB stick in the "
+"**Passphrase** text box."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Enter the same passphrase again in the **Confirm** text box."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click **Continue**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click **Delete All Data and Install** to confirm."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Cloning takes a few minutes.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"bug\">\n"
+msgstr "   <div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>The progress bar usually freezes for some time\n"
+"   while synchronizing data on disk.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h1 id=\"update\">Create or update your backup</h1>\n"
+msgid "<h1 id=\"updating\">Updating your backup Tails using the <i>Back Up Persistent Storage</i> utility</h1>\n"
+msgstr "<h1 id=\"update\">Crea o actualiza tu copia de respaldo</h1>\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Shutdown and unplug your current Tails USB stick."
+msgid "Start on your current Tails."
+msgstr "Apaga la computadora y desconecta tu memoria USB de Tails actual."
+
+#. type: Bullet: '1. '
+msgid "Plug in your backup Tails USB stick."
+msgstr "Inserta tu memoria USB Tails de respaldo."
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Back Up Persistent Storage**."
+msgstr ""
+"Elige **Aplicaciones&nbsp;▸ Herramientas del sistema&nbsp;▸ Crea una copia "
+"de seguridad del Almacenamiento Persistente**."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"note\">\n"
+msgstr "   <div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>Each time you update your backup, only the files that have changed\n"
+"   are copied.</p>\n"
+msgstr ""
+"   <p>Cada vez que actualices tu copia de respaldo, sólo los archivos que han cambiado\n"
+"   se copiarán.</p>\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "If your backup Tails is outdated, you should upgrade it by cloning your "
+#| "current Tails using *Tails Installer*.  For detailed instructions, see "
+#| "how to [[manually upgrade from another Tails|upgrade/clone#upgrade]]."
+msgid ""
+"If your backup Tails has an outdated version of Tails, we recommend you "
+"upgrade it by cloning your current Tails using *Tails Cloner*.  For detailed "
+"instructions, see how to [[manually upgrade from another Tails|upgrade/"
+"clone#upgrade]]."
+msgstr ""
+"Si tu Tails de respaldo está desactualizado, deberías actualizarlo  clonando "
+"tu Tails actual usando *Tails Installer*. Para instrucciones más detalladas, "
+"lee cómo [[actualizar manualmente desde otro Tails|upgrade/clone#upgrade]]."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "Plug in your backup Tails USB stick."
+msgid "<h1 id=\"console\">Updating your backup Tails from a <i>Console</i></h1>\n"
+msgstr "Inserta tu memoria USB Tails de respaldo."
+
+#. type: Plain text
+#, fuzzy
+#| msgid "Plug in your backup Tails USB stick."
+msgid "If you prefer updating your backup Tails from a *Console*:"
+msgstr "Inserta tu memoria USB Tails de respaldo."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Start on your current Tails, set up an [[administration password|doc/"
+#| "first_steps/welcome_screen/administration_password]], and unlock the "
+#| "Persistent Storage."
+msgid ""
+"When starting Tails, [[set up an administration password|doc/first_steps/"
+"welcome_screen/administration_password]]."
+msgstr ""
+"Arranca en tu Tails actual, configura una [[contraseña de administrador|doc/"
+"first_steps/welcome_screen/administration_password]], y desbloquea el "
+"Almacenamiento Persistente."
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ Accessories&nbsp;▸ Files** to open the *Files* browser."
+msgstr ""
+"Elige **Aplicaciones&nbsp;▸ Accesorios&nbsp;▸ Archivos** para abrir el "
+"navegador de *Archivos*."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "A new encrypted volume appears in the sidebar of the *Files* browser. Click on it and enter the passphrase of your backup Tails to unlock the volume."
+msgid ""
+"   A new encrypted volume appears in the sidebar of the\n"
+"   *Files* browser. Click on it and enter the\n"
+"   passphrase of your backup Tails to unlock the volume.\n"
+msgstr "Un nuevo volumen cifrado aparece en la barra lateral del navegador de *Archivos*. Haz click en este volumen y escribe la frase contraseña de tu Tails de respaldo para desbloquear el volumen."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Execute the following command to backup your Persistent Storage:"
+msgid "Execute the following command in a *Console*."
+msgstr ""
+"Ejecuta el siguiente comando para hacer una copia de respaldo de tu "
+"Almacenamiento Persistente:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo rsync -PaSHAXv --del /live/persistence/TailsData_unlocked/ /media/amnesia/TailsData</p>\n"
+msgstr ""
+"   <p class=\"command\">sudo rsync -PaSHAXv --del /live/persistence/"
+"TailsData_unlocked/ /media/amnesia/TailsData</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "When the command finishes, it displays a summary of the data that was copied. For example:"
+msgid ""
+"   When the command finishes, it displays a summary of the data that was\n"
+"   copied. For example:\n"
+msgstr "Cuando la orden termina te muestra un sumario de los datos que se copiaron. Por ejemplo:"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       sent 32.32M bytes  received 1.69K bytes  21.55M bytes/sec\n"
+"       total size is 32.30M  speedup is 1.00\n"
+msgstr ""
+"       sent 32.32M bytes  received 1.69K bytes  21.55M bytes/sec\n"
+"       total size is 32.30M  speedup is 1.00\n"
+
+#~ msgid "Start on your current Tails and unlock the Persistent Storage."
+#~ msgstr ""
+#~ "Inicia en tu Tails actual y desbloquea el Almacenamiento Persistente."
+
+#, no-wrap
+#~ msgid "<p>Your backup Tails must be version 4.14 or newer.</p>\n"
+#~ msgstr "<p>Tu copia de Tails tiene que ser de la versión 4.14 o posterior.</p>\n"
+
+#~ msgid ""
+#~ "Install Tails on a new USB stick on which you want to create your backup "
+#~ "Tails. For detailed instructions, see how to [[install Tails from another "
+#~ "Tails|install/clone#install-tails]].  Make sure that this new USB stick "
+#~ "is at least as large as your current Tails USB stick."
+#~ msgstr ""
+#~ "Instala Tails en una nueva memoria USB en la cual quieres crear tu copia "
+#~ "de respaldo. Para instrucciones más detalladas, mira cómo [[instalar "
+#~ "Tails desde otro Tails|install/clone#install-tails]].  Asegúrate de que "
+#~ "esta nueva memoria USB de Tails sea al menos tan grande como la que "
+#~ "tienes ahora."
+
+#~ msgid ""
+#~ "We recommend making your backup Tails USB stick look different than your "
+#~ "current Tails USB stick to avoid using your backup Tails by mistake."
+#~ msgstr ""
+#~ "Te recomendamos que uses una memoria USB de forma distinta para tu Tails "
+#~ "de respaldo, para evitar usarlo por error."
+
+#, fuzzy
+#~| msgid "Start on your current Tails and unlock the Persistent Storage."
+#~ msgid ""
+#~ "Restart on your backup Tails and [[create a Persistent Storage|"
+#~ "persistent_storage/create]] on it."
+#~ msgstr ""
+#~ "Inicia en tu Tails actual y desbloquea el Almacenamiento Persistente."
+
+#, no-wrap
+#~ msgid ""
+#~ "   <div class=\"tip\">\n"
+#~ "   <p>We recommend using the same passphrase as your current Tails\n"
+#~ "   so that the passphrase is easier to remember.</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <div class=\"tip\">\n"
+#~ "   <p>Te recomendamos que uses la misma frase contraseña que tu Tails actual\n"
+#~ "   para que sea más fácil de recordar.</p>\n"
+#~ "   </div>\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "When the Persistent Storage settings shows the list of possible "
+#~| "features, click **Save** and exit."
+#~ msgid ""
+#~ "Close the Persistent Storage settings after creation, when the list of "
+#~ "possible features is displayed."
+#~ msgstr ""
+#~ "Cuando la configuración del Almacenamiento Persistente muestre una lista "
+#~ "de las funcionalidades disponibles, haz click en el botón **Guardar** y "
+#~ "sal."
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "   The backup process described below overrides the configuration of the\n"
+#~| "   Persistent Storage. So, it does not matter which features you turn on\n"
+#~| "   when creating the Persistent Storage.\n"
+#~ msgid ""
+#~ "   The backup process described below overrides the configuration of the\n"
+#~ "   Persistent Storage. So, it does not matter which features you turn on\n"
+#~ "   after creating the Persistent Storage.\n"
+#~ msgstr ""
+#~ "   El proceso de copia de seguridad que se describe a continuación sobreescribe la configuración del\n"
+#~ "   Almacenamiento Persistente. Por lo tanto, no importa qué caracteristicas actives\n"
+#~ "   al crear el Almacenamiento Persistente.\n"
+
+#~ msgid "Shutdown and unplug your backup Tails USB stick."
+#~ msgstr "Apaga y desconecta tu memoria USB Tails de respaldo."
+
+#, fuzzy
+#~| msgid ""
+#~| "Restart on your backup Tails and create a Persistent Storage on it.  For "
+#~| "detailed instructions, see how to [[create & configure the Persistent "
+#~| "Storage|doc/first_steps/persistence/configure]]."
+#~ msgid ""
+#~ "Restart on your backup Tails and create a Persistent Storage on it.  For "
+#~ "detailed instructions, see how to [[create and configure the Persistent "
+#~ "Storage|doc/first_steps/persistence]]."
+#~ msgstr ""
+#~ "Reinicia en tu copia de respaldo de Tails y crea un Almacenamiento "
+#~ "Persistente en ella.  Para instrucciones más detalladas, mira cómo "
+#~ "[[crear y configurar el Almacenamiento Persistente|doc/first_steps/"
+#~ "persistence/configure]]."
+
+#~ msgid ""
+#~ "If you prefer updating your backup Tails from a terminal, execute the "
+#~ "following command from a *Root Terminal*:"
+#~ msgstr ""
+#~ "Si prefieres actualizar tu copia de seguridad de Tails desde una "
+#~ "terminal, ejecute el siguiente comando desde una *Terminal de Root*:"
+
+#~ msgid ""
+#~ "These instructions explain how to back up your Persistent Storage to "
+#~ "another Tails USB stick."
+#~ msgstr ""
+#~ "Estas instrucciones explican cómo hacer una copia de respaldo de tu "
+#~ "Almacenamiento Persistente a otra memoria USB de Tails."
+
+#~ msgid ""
+#~ "   Your backup shows up as\n"
+#~ "   **TailsData**.\n"
+#~ msgstr ""
+#~ "   Tu copia de respaldo se ve como\n"
+#~ "   **TailsData**.\n"
+
+#~ msgid ""
+#~ "1. Choose\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **Applications**&nbsp;▸\n"
+#~ "     **System Tools**&nbsp;▸\n"
+#~ "     **Root Terminal**\n"
+#~ "   </span>\n"
+#~ "   to open a terminal with administration rights.\n"
+#~ msgstr ""
+#~ "1. Elige\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **Aplicaciones**&nbsp;▸\n"
+#~ "     **Herramientas del Sistema**&nbsp;▸\n"
+#~ "     **Terminal de Root**\n"
+#~ "   </span>\n"
+#~ "   para abrir una terminal con derechos de administración.\n"
+
+#~ msgid "<div class=\"caution\">\n"
+#~ msgstr "<div class=\"caution\">\n"
+
+#~ msgid ""
+#~ "<p>Make sure to execute this command <strong>from the Tails that you\n"
+#~ "want to back up</strong>: your current Tails. If you run this command "
+#~ "from your\n"
+#~ "backup Tails instead, you will delete the Persistent Storage on your\n"
+#~ "current Tails.</p>\n"
+#~ msgstr ""
+#~ "<p>Asegúrate de ejecutar este comando <strong>desde el Tails que quieres\n"
+#~ "copiar</strong>: tu Tails actual. Si lo ejecutas desde tu otro Tails, "
+#~ "borrarás el Almacenamiento Persistente\n"
+#~ "de tu Tails actual.</p>\n"
+
+#~ msgid ""
+#~ "<!-- <li> are limited to 45em so I'm breaking the list here to prevent "
+#~ "wrapping the long command line. -->\n"
+#~ msgstr ""
+#~ "<!-- <li> are limited to 45em so I'm breaking the list here to prevent "
+#~ "wrapping the long command line. -->\n"
+
+#~ msgid ""
+#~ "These instructions explain how to manually copy your persistent data to a "
+#~ "new USB stick. Follow them if you have good reasons to think that your "
+#~ "persistence settings are corrupted or if you want to be extra careful."
+#~ msgstr ""
+#~ "Estas instrucciones explican como copiar manualmente tu información "
+#~ "persistente a una nueva memoria USB. Síguelas si tienes buenas razones "
+#~ "para pensar que tu configuración de persistencia está corrupta o si "
+#~ "quieres ser muy cuidadoso."
+
+#~ msgid ""
+#~ "Install the latest Tails onto a new USB stick using the usual "
+#~ "[[installing instructions|install]]. Do not use the Tails USB stick that "
+#~ "might be corrupted in the process of installing the new one."
+#~ msgstr ""
+#~ "Instala el último Tails en una memoria USB nueva usando las "
+#~ "[[instrucciones de instalación|install]] habituales. No uses la memoria "
+#~ "USB de Tails que puede estar corrupta en el proceso de instalación de la "
+#~ "nueva."
+
+#~ msgid ""
+#~ "[[Create a persistent volume|configure]] on this new USB stick. We advise "
+#~ "you to use a different passphrase to protect this new persistent volume."
+#~ msgstr ""
+#~ "[[Crea un volumen persistente|configure]] en esta nueva memoria USB. Te "
+#~ "recomendamos que uses una contraseña distinta para proteger este nuevo "
+#~ "volumen persistente."
+
+#~ msgid ""
+#~ "Enable again on this new USB stick the persistence features of your "
+#~ "choice."
+#~ msgstr ""
+#~ "Habilita nuevamente las funcionalidades de persistencia de tu elección en "
+#~ "la nueva memoria USB."
+
+#~ msgid "Rescue your files from the old Tails USB stick\n"
+#~ msgstr "Rescata tus archivos de la antigua memoria USB de Tails\n"
+
+#~ msgid "Mount the old persistent volume\n"
+#~ msgstr "Monta el antiguo volumen persistente\n"
+
+#~ msgid ""
+#~ "In the left pane, click on the USB stick corresponding to the old Tails "
+#~ "USB stick."
+#~ msgstr ""
+#~ "En el panel izquierdo, haz click en la memoria USB que corresponda a la "
+#~ "memoria USB de Tails antigua."
+
+#~ msgid ""
+#~ "In the right pane, click on the partition labeled as <span "
+#~ "class=\"guilabel\">LUKS</span>. The name of the partition must be <span "
+#~ "class=\"guilabel\">TailsData</span>."
+#~ msgstr ""
+#~ "En el panel derecho, haz click en la partición etiquetada como <span "
+#~ "class=\"guilabel\">LUKS</span>. El nombre de la partición debe ser <span "
+#~ "class=\"guilabel\">TailsData</span>."
+
+#~ msgid ""
+#~ "Click on the <span class=\"guimenu\">[[!img lib/unlock.png alt=\"Unlock\" "
+#~ "class=\"symbolic\" link=\"no\"]]</span> button to unlock the old "
+#~ "persistent volume.  Enter the passphrase of the old persistent volume and "
+#~ "click **Unlock**."
+#~ msgstr ""
+#~ "Haz click en el botón <span class=\"guimenu\">[[!img lib/unlock.png "
+#~ "alt=\"Unlock\" class=\"symbolic\" link=\"no\"]]</span> para desbloquear "
+#~ "el antiguo volumen persistente. Ingresa la contraseña del antiguo volumen "
+#~ "persistente y haz click en **Desbloquear**."
+
+#~ msgid ""
+#~ "Click on the **TailsData** partition that appears below the **LUKS** "
+#~ "partition."
+#~ msgstr ""
+#~ "Haz click en la partición **TailsData** que aparece debajo de la "
+#~ "partición **LUKS**."
+
+#~ msgid "Copy your old files to the new persistent volume\n"
+#~ msgstr "Copia tus archivos viejos al nuevo volumen persistente\n"
+
+#~ msgid "   <a id=\"feature_files\"></a>\n"
+#~ msgstr "   <a id=\"feature_files\"></a>\n"
+
+#~ msgid ""
+#~ "The *electrum* folder corresponds to the **[[Bitcoin Client|"
+#~ "configure#bitcoin]]** persistence feature."
+#~ msgstr ""
+#~ "El directorio *electrum* corresponde a la funcionalidad persistente <span "
+#~ "class=\"guilabel\">[[Bitcoin Client|configure#bitcoin]]</span>."
+
+#~ msgid ""
+#~ "The *gnupg* folder corresponds to the <span class=\"guilabel\">[[GnuPG|"
+#~ "configure#gnupg]]</span> persistence feature."
+#~ msgstr ""
+#~ "El directorio *gnupg* corresponde a la funcionalidad persistente <span "
+#~ "class=\"guilabel\">[[GnuPG|configure#gnupg]]</span>."
+
+#~ msgid "After doing the copy, close the file browser."
+#~ msgstr "Después de hacer la copia, cierra el explorador de archivos."
+
+#~ msgid ""
+#~ "<style>\n"
+#~ "pre { max-width: 100%; }\n"
+#~ "</style>\n"
+#~ msgstr ""
+#~ "<style>\n"
+#~ "pre { max-width: 100%; }\n"
+#~ "</style>\n"
+
+#~ msgid ""
+#~ "       find /live/persistence/TailsData_unlocked/ -uid 1000 -exec chown "
+#~ "-R 1000:1000 '{}' \\;\n"
+#~ msgstr ""
+#~ "       find /live/persistence/TailsData_unlocked/ -uid 1000 -exec chown "
+#~ "-R 1000:1000 '{}' \\;\n"
+
+#~ msgid ""
+#~ "The *gnome-keyring* folder corresponds to the <span "
+#~ "class=\"guilabel\">[[GNOME Keyring|configure#gnome_keyring]]</span> "
+#~ "persistence feature."
+#~ msgstr ""
+#~ "El directorio *gnome-keyring* corresponde a la funcionalidad persistente "
+#~ "<span class=\"guilabel\">[[GNOME Keyring|configure#gnome_keyring]]</span>."

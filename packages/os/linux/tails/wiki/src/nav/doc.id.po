@@ -1,0 +1,638 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-04-01 01:19+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: id\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Content of: <div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-about\"/> <label for=\"menu-"
+"about\">[[General information|doc/about]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-about-requirements\"/> <label for=\"menu-"
+"about-requirements\">[[System requirements and recommended USB sticks|doc/"
+"about/requirements]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-about-warnings\"/> <label for=\"menu-"
+"about-warnings\">[[Warnings: Tails is safe but not magic!|doc/about/"
+"warnings]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-about-warnings-identity\"/> <label "
+"for=\"menu-about-warnings-identity\">[[Protecting your identity when using "
+"Tails|doc/about/warnings/identity]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-about-warnings-tor\"/> <label for=\"menu-"
+"about-warnings-tor\">[[Limitations of the Tor network|doc/about/warnings/"
+"tor]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-about-warnings-computer\"/> <label "
+"for=\"menu-about-warnings-computer\">[[Reducing risks when using untrusted "
+"computers|doc/about/warnings/computer]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-about-features\"/> <label for=\"menu-"
+"about-features\">[[Features and included software|doc/about/features]]</"
+"label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-about-trust\"/> <label for=\"menu-about-"
+"trust\">[[How can I trust Tails?|doc/about/trust]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-about-license\"/> <label for=\"menu-about-"
+"license\">[[License and source code distribution|doc/about/license]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-about-"
+"acknowledgments_and_similar_projects\"/> <label for=\"menu-about-"
+"acknowledgments_and_similar_projects\">[[Acknowledgments and similar "
+"projects|doc/about/acknowledgments_and_similar_projects]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-about-contact\"/> <label for=\"menu-about-"
+"contact\">[[Contact|doc/about/contact]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-about-warnings-computer\"/> <label "
+"for=\"menu-about-warnings-openpgp_keys\">[[OpenPGP keys|doc/about/"
+"openpgp_keys]]</label>"
+msgstr ""
+
+#. type: Content of: <div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-first\"/> <label for=\"menu-"
+"first\">[[First steps|doc/first_steps]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-first-start\"/> <label for=\"menu-first-"
+"start\">[[Starting Tails|doc/first_steps/start]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-first-start-pc\"/> <label for=\"menu-"
+"first-start-pc\">[[Starting on PC|doc/first_steps/start/pc]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-first-start-mac\"/> <label for=\"menu-"
+"first-start-mac\">[[Starting on Mac|doc/first_steps/start/mac]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-first-accessibility\"/> <label for=\"menu-"
+"first-accessibility\">[[Accessibility|doc/first_steps/accessibility]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-first-welcome\"/> <label for=\"menu-first-"
+"welcome\">[[Welcome Screen|doc/first_steps/welcome_screen]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-first-welcome-admin\"/> <label for=\"menu-"
+"first-welcome-admin\">[[Administration password|doc/first_steps/"
+"welcome_screen/administration_password]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-first-welcome-mac\"/> <label for=\"menu-"
+"first-welcome-mac\">[[MAC address anonymization|doc/first_steps/"
+"welcome_screen/mac_spoofing]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-first-gnome\"/> <label for=\"menu-first-"
+"gnome\">[[Introduction to GNOME and the Tails desktop|doc/first_steps/"
+"desktop]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-first-gnome-time\"/> <label for=\"menu-"
+"first-gnome-time\">[[Why is the time wrong?|doc/first_steps/desktop/time]]</"
+"label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-first-whisperback\"/> <label for=\"menu-"
+"first-whisperback\">[[Reporting an error using <i>WhisperBack</i>|doc/"
+"first_steps/whisperback]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-first-shutdown\"/> <label for=\"menu-"
+"first-shutdown\">[[Shutting down Tails|doc/first_steps/shutdown]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-first-uninstall\"/> <label for=\"menu-"
+"first-uninstall\">[[Uninstalling Tails|doc/first_steps/uninstall]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-first-uninstall-windows\"/> <label "
+"for=\"menu-first-uninstall-windows\">[[Uninstalling Tails using Windows|doc/"
+"first_steps/uninstall/windows]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-first-uninstall-mac\"/> <label for=\"menu-"
+"first-uninstall-mac\">[[Uninstalling Tails using macOS|doc/first_steps/"
+"uninstall/mac]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-first-uninstall-linux\"/> <label "
+"for=\"menu-first-uninstall-linux\">[[Uninstalling Tails using Linux|doc/"
+"first_steps/uninstall/linux]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-first-uninstall-tails\"/> <label "
+"for=\"menu-first-uninstall-tails\">[[Uninstalling Tails using Tails itself|"
+"doc/first_steps/uninstall/tails]]</label>"
+msgstr ""
+
+#. type: Content of: <div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-upgrade\"/> <label for=\"menu-"
+"upgrade\">[[Upgrading|doc/upgrade]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-upgrade-automatic\"/> <label for=\"menu-"
+"upgrade-automatic\">[[Upgrading automatically|doc/upgrade#automatic]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-upgrade-tails\"/> <label for=\"menu-"
+"upgrade-tails\">[[Upgrading manually from your Tails|doc/upgrade/tails]]</"
+"label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-upgrade-windows\"/> <label for=\"menu-"
+"upgrade-windows\">[[Upgrading manually from Windows|doc/upgrade/windows]]</"
+"label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-upgrade-mac\"/> <label for=\"menu-upgrade-"
+"mac\">[[Upgrading manually from macOS|doc/upgrade/mac]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-upgrade-linux\"/> <label for=\"menu-"
+"upgrade-linux\">[[Upgrading manually from Linux|doc/upgrade/linux]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-upgrade-clone\"/> <label for=\"menu-"
+"upgrade-clone\">[[Upgrading manually by cloning from another Tails|doc/"
+"upgrade/clone]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-upgrade-repair\"/> <label for=\"menu-"
+"upgrade-repair\">[[Repairing a Tails USB stick that fails to start after an "
+"upgrade|doc/upgrade/repair]]</label>"
+msgstr ""
+
+#. type: Content of: <div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-persistent-storage\"/> <label for=\"menu-"
+"persistent-storage\">[[Persistent Storage|doc/persistent_storage]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-persistent-storage-create\"/> <label "
+"for=\"menu-persistent-storage-create\">[[Creating the Persistent Storage|doc/"
+"persistent_storage/create]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-persistent-storage-configure\"/> <label "
+"for=\"menu-persistent-storage-configure\">[[Configuring the Persistent "
+"Storage|doc/persistent_storage/configure]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-persistent-storage-use\"/> <label "
+"for=\"menu-persistent-storage-use\">[[Unlocking and using the Persistent "
+"Storage|doc/persistent_storage/use]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-persistent-storage-backup\"/> <label "
+"for=\"menu-persistent-storage-backup\">[[Making a backup of your Persistent "
+"Storage|doc/persistent_storage/backup]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-persistent-storage-delete\"/> <label "
+"for=\"menu-persistent-storage-delete\">[[Deleting the Persistent Storage|doc/"
+"persistent_storage/delete]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-persistent-storage-additional-software\"/"
+"> <label for=\"menu-persistent-storage-additional-software\">[[Installing "
+"additional software|doc/persistent_storage/additional_software]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-persistent-storage-additional-software-"
+"dangerzone\"/> <label for=\"menu-persistent-storage-additional-"
+"software\">[[Converting dangerous documents to safe PDFs using "
+"<i>Dangerzone</i>|doc/persistent_storage/additional_software/dangerzone]]</"
+"label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-persistent-storage-additional-fonts\"/> "
+"<label for=\"menu-persistent-storage-additional-fonts\">[[Installing "
+"additional fonts|doc/persistent_storage/additional_fonts]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-persistent-storage-passphrase\"/> <label "
+"for=\"menu-persistent-storage-passphrase\">[[Changing the passphrase of the "
+"Persistent Storage|doc/persistent_storage/passphrase]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-persistent-storage-open\"/> <label "
+"for=\"menu-persistent-storage-open\">[[Opening your Persistent Storage from "
+"another operating system|doc/persistent_storage/open]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-persistent-storage-recover\"/> <label "
+"for=\"menu-persistent-storage-recover\">[[Recovering data from the "
+"Persistent Storage when Tails doesn't start|doc/persistent_storage/"
+"recover]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-persistent-storage-fsck\"/> <label "
+"for=\"menu-persistent-storage-fsck\">[[Recovering data from the Persistent "
+"Storage when it has file system errors|doc/persistent_storage/fsck]]</label>"
+msgstr ""
+
+#. type: Content of: <div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-anonymous-internet\"/> <label for=\"menu-"
+"anonymous-internet\">[[Uncensored and anonymous Internet|doc/"
+"anonymous_internet]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-anonymous-internet-lan\"/> <label "
+"for=\"menu-anonymous-internet-lan\">[[Connecting to a local network|doc/"
+"anonymous_internet/networkmanager]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-anonymous-internet-lan-no-wifi\"/> <label "
+"for=\"menu-anonymous-internet-lan-no-wifi\">[[Troubleshooting Wi-Fi not "
+"working|doc/anonymous_internet/no-wifi]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-anonymous-internet-lan-unsafe-browser\"/> "
+"<label for=\"menu-anonymous-internet-lan-unsafe-browser\">[[Signing in to a "
+"network using a captive portal|doc/anonymous_internet/unsafe_browser]]</"
+"label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-anonymous-internet-tor\"/> <label "
+"for=\"menu-anonymous-internet-tor\">[[Connecting to the Tor network|doc/"
+"anonymous_internet/tor]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-anonymous-internet-tor-troubleshoot\"/> "
+"<label for=\"menu-anonymous-internet-tor-troubleshoot\">[[Troubleshooting "
+"connecting to Tor|doc/anonymous_internet/tor/troubleshoot]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-anonymous-internet-tor-why\"/> <label "
+"for=\"menu-anonymous-internet-tor-why\">[[Why does Tails use Tor?|doc/"
+"anonymous_internet/tor/why]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-anonymous-internet-tor-slow\"/> <label "
+"for=\"menu-anonymous-internet-tor-slow\">[[Why is Tor slow?|doc/"
+"anonymous_internet/tor/slow]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-anonymous-internet-tor-circuits\"/> "
+"<label for=\"menu-anonymous-internet-tor-circuits\">[[Managing the circuits "
+"of Tor|doc/anonymous_internet/tor/circuits]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-anonymous-internet-tor-browser\"/> <label "
+"for=\"menu-anonymous-internet-tor-browser\">[[Browsing the web with <i>Tor "
+"Browser</i>|doc/anonymous_internet/Tor_Browser]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-anonymous-internet-onionshare\"/> <label "
+"for=\"menu-anonymous-internet-onionshare\">[[Sharing files, websites, and "
+"chat rooms using <i>OnionShare</i>|doc/anonymous_internet/onionshare]]</"
+"label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-anonymous-internet-thunderbird\"/> <label "
+"for=\"menu-anonymous-internet-thunderbird\">[[Emailing and reading news with "
+"<i>Thunderbird</i>|doc/anonymous_internet/thunderbird]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-anonymous-internet-electrum\"/> <label "
+"for=\"menu-anonymous-internet-electrum\">[[Exchanging bitcoins using "
+"<i>Electrum</i>|doc/anonymous_internet/electrum]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-anonymous-internet-pidgin\"/> <label "
+"for=\"menu-anonymous-internet-pidgin\">[[Chatting with <i>Pidgin</i> and OTR|"
+"doc/anonymous_internet/pidgin]]</label>"
+msgstr ""
+
+#. type: Content of: <div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-encryption-and-privacy\"/> <label "
+"for=\"menu-encryption-and-privacy\">[[Encryption and privacy|doc/"
+"encryption_and_privacy]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-encryption-and-privacy-passwords\"/> "
+"<label for=\"menu-encryption-and-privacy-passwords\">[[Managing passwords "
+"using the <i>Secrets</i> password manager|doc/encryption_and_privacy/"
+"manage_passwords]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-encryption-and-privacy-luks\"/> <label "
+"for=\"menu-encryption-and-privacy-luks\">[[Creating and using <i>LUKS</i> "
+"encrypted volumes|doc/encryption_and_privacy/encrypted_volumes]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-encryption-and-privacy-veracrypt\"/> "
+"<label for=\"menu-encryption-and-privacy-veracrypt\">[[Using <i>VeraCrypt</"
+"i> encrypted volumes|doc/encryption_and_privacy/veracrypt]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-encryption-and-privacy-kleopatra\"/> "
+"<label for=\"menu-encryption-and-privacy-kleopatra\">[[Encrypting text and "
+"files using <i>GnuPG</i> and <i>Kleopatra</i>|doc/encryption_and_privacy/"
+"kleopatra]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-encryption-and-privacy-secure-deletion\"/"
+"> <label for=\"menu-encryption-and-privacy-secure-deletion\">[[Securely "
+"deleting files|doc/encryption_and_privacy/secure_deletion]]</label>"
+msgstr ""
+
+#. type: Content of: <div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-sensitive-documents\"/> <label for=\"menu-"
+"sensitive-documents\">[[Working on sensitive documents|doc/"
+"sensitive_documents]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-sensitive-documents-metadata\"/> <label "
+"for=\"menu-sensitive-documents-metadata\">[[Removing metadata from files|doc/"
+"sensitive_documents/metadata]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-sensitive-documents-office\"/> <label "
+"for=\"menu-sensitive-documents-office\">[[Office suite|doc/"
+"sensitive_documents/office_suite]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-sensitive-documents-graphics\"/> <label "
+"for=\"menu-sensitive-documents-graphics\">[[Graphics|doc/sensitive_documents/"
+"graphics]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-sensitive-documents-sound-and-video\"/> "
+"<label for=\"menu-sensitive-documents-sound-and-video\">[[Sound and video|"
+"doc/sensitive_documents/sound_and_video]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-sensitive-documents-editing-pdfs\"/> "
+"<label for=\"menu-sensitive-documents-editing-pdfs\">[[Editing PDFs|doc/"
+"sensitive_documents/pdf]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-sensitive-documents-printing-and-"
+"scanning\"/> <label for=\"menu-sensitive-documents-printing-and-"
+"scanning\">[[Printing and scanning|doc/sensitive_documents/"
+"printing_and_scanning]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-sensitive-documents-screenshot\"/> <label "
+"for=\"menu-sensitive-documents-screenshot\">[[Screenshot and screencast|doc/"
+"sensitive_documents/screenshot_and_screencast]]</label>"
+msgstr ""
+
+#. type: Content of: <div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-advanced\"/> <label for=\"menu-"
+"advanced\">[[Advanced topics|doc/advanced_topics]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-advanced-vm\"/> <label for=\"menu-"
+"advanced-vm\">[[Running Tails in a virtual machine|doc/advanced_topics/"
+"virtualization]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-advanced-vm-boxes\"/> <label for=\"menu-"
+"advanced-vm-boxes\">[[<i>GNOME Boxes</i>|doc/advanced_topics/virtualization/"
+"boxes]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-advanced-vm-virt-manager\"/> <label "
+"for=\"menu-advanced-vm-virt-manager\">[[<i>virt-manager</i>|doc/"
+"advanced_topics/virtualization/virt-manager]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-advanced-boot-options\"/> <label "
+"for=\"menu-advanced-boot-options\">[[Modifying the boot options using the "
+"Boot Loader|doc/advanced_topics/boot_options]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-advanced-external\"/> <label for=\"menu-"
+"advanced-external\">[[Starting Tails from an external hard disk or "
+"problematic USB stick|doc/advanced_topics/external_hard_disk]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-advanced-internal\"/> <label for=\"menu-"
+"advanced-internal\">[[Accessing the internal hard disk|doc/advanced_topics/"
+"internal_hard_disk]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-advanced-cold-boot\"/> <label for=\"menu-"
+"advanced-cold-boot\">[[Protection against cold boot attacks|doc/"
+"advanced_topics/cold_boot_attacks]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-advanced-lan\"/> <label for=\"menu-"
+"advanced-lan\">[[Accessing resources on the local network|doc/"
+"advanced_topics/lan]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-advanced-wireless\"/> <label for=\"menu-"
+"advanced-wireless\">[[Enabling a wireless device|doc/advanced_topics/"
+"wireless_devices]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-advanced-dino\"/> <label for=\"menu-"
+"advanced-dino\">[[Chatting with <i>Dino</i> and OMEMO|doc/advanced_topics/"
+"dino]]</label>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid ""
+"<input type=\"checkbox\" id=\"menu-advanced-feather\"/> <label for=\"menu-"
+"advanced-feather\">[[Exchanging Monero with <i>Feather</i>|doc/"
+"advanced_topics/feather]]</label>"
+msgstr ""

@@ -13,14 +13,22 @@ on:
         required: true
         type: string
     secrets:
+      # ANDROID_KEYSTORE_* are downgraded to `required: false` so the
+      # reusable-workflow secret contract does not block startup when
+      # called from release-all.yml / release-orchestrator.yml with
+      # `secrets: inherit`. The job body's signing step (gated on
+      # ANDROID_KEYSTORE_BASE64 being non-empty) skips with a clear
+      # warning when the secrets are absent, instead of aborting the
+      # whole release pipeline at workflow startup with no logs. Same
+      # pattern as publish-apt-repo.yml (PR #7976) and update-homebrew.yml.
       ANDROID_KEYSTORE_BASE64:
-        required: true
+        required: false
       ANDROID_KEYSTORE_PASSWORD:
-        required: true
+        required: false
       ANDROID_KEY_ALIAS:
-        required: true
+        required: false
       ANDROID_KEY_PASSWORD:
-        required: true
+        required: false
       PLAY_STORE_SERVICE_ACCOUNT_JSON:
         required: false
   workflow_dispatch:
@@ -59,21 +67,21 @@ jobs:
       play_store_ready: ${{ steps.play_store_credentials.outputs.ready }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Setup Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654
         with:
           distribution: "temurin"
           java-version: ${{ env.JAVA_VERSION }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: "1.3.13"
 
@@ -263,7 +271,7 @@ jobs:
           echo "SHA256: $(cat "${SIDELOAD_APK}.sha256")"
 
       - name: Upload Android release artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: eliza-android-release
           path: |
@@ -310,16 +318,16 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Download AAB
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: eliza-android-release
           path: aab/
 
       - name: Setup Ruby
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@afeafc3d1ab54a631816aba4c914a0081c12ff2f
         with:
           ruby-version: "4.0.3"
           bundler-cache: true

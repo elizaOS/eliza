@@ -4,7 +4,7 @@
  *
  * This wrapper drives the assembled local voice path through
  * `e2e_loop_bench.mjs` and records `summary.bargeInCancelMs` only when the
- * native path measured both streaming TTS cancellation and LLM/DFlash abort.
+ * native path measured both streaming TTS cancellation and LLM/MTP abort.
  * Missing bundles, missing fused builds, or missing native cancel features are
  * hard failures with precise JSON evidence, not skipped passes.
  */
@@ -314,14 +314,14 @@ function selectE2eRun(report, tier) {
   );
 }
 
-function dflashRequiredForRun(run, fallbackTier = null) {
+function mtpRequiredForRun(run, fallbackTier = null) {
   const tier = run?.request?.tier ?? run?.bundle?.tier ?? fallbackTier;
   const requiredOptimizations =
     run?.summary?.requiredOptimizations ?? run?.requiredOptimizations ?? {};
   if (
-    requiredOptimizations.dflashRequired === false ||
-    run?.summary?.dflashPolicy?.requiresDrafter === false ||
-    run?.dflashPolicy?.requiresDrafter === false ||
+    requiredOptimizations.mtpRequired === false ||
+    run?.summary?.mtpPolicy?.requiresDrafter === false ||
+    run?.mtpPolicy?.requiresDrafter === false ||
     NO_DRAFTER_TIERS.has(tier)
   ) {
     return false;
@@ -394,10 +394,10 @@ function buildBargeInReportFromE2e({
     barge.ttsStreamSupported === true ||
     run.summary?.requiredOptimizations?.streamingTtsActive === true ||
     run.requiredOptimizations?.streamingTtsActive === true;
-  const dflashRequired = dflashRequiredForRun(run, bundle?.tier ?? args.tier);
-  const dflashActive =
-    run.summary?.requiredOptimizations?.dflashDraftingActive === true ||
-    run.requiredOptimizations?.dflashDraftingActive === true;
+  const mtpRequired = mtpRequiredForRun(run, bundle?.tier ?? args.tier);
+  const mtpActive =
+    run.summary?.requiredOptimizations?.mtpDraftingActive === true ||
+    run.requiredOptimizations?.mtpDraftingActive === true;
 
   const blockers = [];
   if (run.e2eLoopOk !== true) {
@@ -414,10 +414,10 @@ function buildBargeInReportFromE2e({
         "streaming TTS cancel support was not active in the assembled voice loop",
     });
   }
-  if (dflashRequired && !dflashActive) {
+  if (mtpRequired && !mtpActive) {
     blockers.push({
-      key: "missing-dflash",
-      reason: "DFlash drafting was not active in the assembled voice loop",
+      key: "missing-mtp",
+      reason: "MTP drafting was not active in the assembled voice loop",
     });
   }
   if (rawBargeInCancelMs === null) {
@@ -435,8 +435,8 @@ function buildBargeInReportFromE2e({
   if (llmCancelMs === null) {
     blockers.push({
       key: "missing-llm-cancel-ms",
-      reason: dflashRequired
-        ? "e2e loop did not emit LLM/DFlash abort latency"
+      reason: mtpRequired
+        ? "e2e loop did not emit LLM/MTP abort latency"
         : "e2e loop did not emit LLM stream abort latency",
     });
   }
@@ -482,7 +482,7 @@ function buildBargeInReportFromE2e({
         run.voiceLoop?.backend === "kokoro"
           ? "assembled-local-kokoro-voice-e2e-loop"
           : "assembled-local-voice-e2e-loop",
-      dflashRequired,
+      mtpRequired,
     },
     summary: {
       vadVoiceDetectedToTtsCancelledMs: round1(ttsCancelMs),

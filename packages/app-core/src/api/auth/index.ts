@@ -5,6 +5,22 @@
  */
 
 export {
+  _resetAuthRateLimiter,
+  type AuthSessionOrBootstrapResult,
+  ensureAuthSessionOrBootstrap,
+  ensureCompatApiAuthorized,
+  ensureCompatApiAuthorizedAsync,
+  ensureCompatSensitiveRouteAuthorized,
+  ensureRouteAuthorized,
+  extractHeaderValue,
+  getCompatApiToken,
+  getProvidedApiToken,
+  getSessionCookieName,
+  isDevEnvironment,
+  readCookie,
+  tokenMatches,
+} from "../auth.js";
+export {
   AUDIT_LOG_FILENAME,
   AUDIT_LOG_MAX_BYTES,
   AUDIT_LOG_ROTATE_FILENAME,

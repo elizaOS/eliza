@@ -210,7 +210,9 @@ class AndroidSimulatedPeripheralEvidenceTests(unittest.TestCase):
                                 f"eliza-evidence: target=android_simulated_peripheral component={component}",
                                 "eliza-evidence: claim_boundary=adb-backed Android simulator peripheral evidence only",
                                 "eliza-evidence: command_env=ELIZA_TEST",
-                                "eliza-evidence: command_source=env" if component == "wifi" else "eliza-evidence: command_source=default",
+                                "eliza-evidence: command_source=env"
+                                if component == "wifi"
+                                else "eliza-evidence: command_source=default",
                                 f"eliza-evidence: command={command}",
                                 "eliza-evidence: started_utc=2026-05-19T20:06:41Z",
                                 f"COMPONENT={component}",

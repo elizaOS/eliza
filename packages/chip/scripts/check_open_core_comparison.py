@@ -44,6 +44,16 @@ VALID_CLAIM_LEVELS = {
 VALID_VERDICTS = {"win", "parity", "loss", "unproven"}
 
 
+def iter_evidence_paths(evidence: Any) -> Iterator[str]:
+    """Yield evidence paths from either a scalar path or a list of paths."""
+    if isinstance(evidence, str):
+        yield evidence
+    elif isinstance(evidence, list):
+        for item in evidence:
+            if isinstance(item, str):
+                yield item
+
+
 def iter_cells(node: Any, path: str = "") -> Iterator[tuple[str, dict[str, Any]]]:
     """Yield (path, cell) for every mapping that carries a ``value`` key."""
     if isinstance(node, dict):
@@ -67,8 +77,13 @@ def check_cell(path: str, cell: dict[str, Any]) -> list[str]:
         evidence = cell.get("evidence")
         if not evidence:
             errors.append(f"{path}: measured cell missing 'evidence'")
-        elif not (ROOT / evidence).exists():
-            errors.append(f"{path}: evidence file not found: {evidence}")
+        else:
+            evidence_paths = list(iter_evidence_paths(evidence))
+            if not evidence_paths:
+                errors.append(f"{path}: evidence must be a path or list of paths")
+            for evidence_path in evidence_paths:
+                if not (ROOT / evidence_path).exists():
+                    errors.append(f"{path}: evidence file not found: {evidence_path}")
     elif claim == "published":
         if not str(cell.get("source", "")).strip():
             errors.append(f"{path}: published cell missing non-empty 'source'")
@@ -80,6 +95,24 @@ def check_cell(path: str, cell: dict[str, Any]) -> list[str]:
         if not str(cell.get("blocker", "")).strip():
             errors.append(f"{path}: blocked cell missing non-empty 'blocker'")
     return errors
+
+
+def evidence_paths(value: Any) -> tuple[list[str], list[str]]:
+    if isinstance(value, str):
+        path = value.strip()
+        if path:
+            return [path], []
+        return [], ["evidence must not be empty"]
+    if isinstance(value, list):
+        paths: list[str] = []
+        errors: list[str] = []
+        for index, item in enumerate(value):
+            if isinstance(item, str) and item.strip():
+                paths.append(item.strip())
+            else:
+                errors.append(f"evidence[{index}] must be a non-empty string")
+        return paths, errors
+    return [], [f"evidence must be a string or list of strings, got {type(value).__name__}"]
 
 
 def check(comparison_path: Path) -> list[str]:
@@ -129,8 +162,12 @@ def check(comparison_path: Path) -> list[str]:
             errors.append(f"axis '{axis}': verdict={v.get('verdict')!r} invalid")
         if not str(v.get("reason", "")).strip():
             errors.append(f"axis '{axis}': missing 'reason'")
-        if v.get("verdict") == "win" and v.get("evidence") and not (ROOT / v["evidence"]).exists():
-            errors.append(f"axis '{axis}': verdict evidence not found: {v['evidence']}")
+        if v.get("verdict") == "win" and "evidence" in v:
+            paths, evidence_errors = evidence_paths(v.get("evidence"))
+            errors.extend(f"axis '{axis}': {error}" for error in evidence_errors)
+            for evidence in paths:
+                if not (ROOT / evidence).exists():
+                    errors.append(f"axis '{axis}': verdict evidence not found: {evidence}")
     for axis in sorted(set(verdicts) - axes):
         errors.append(f"verdict for unknown axis '{axis}' (not in comparison_axes)")
 

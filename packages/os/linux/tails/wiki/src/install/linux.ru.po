@@ -1,0 +1,196 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-18 09:16+0000\n"
+"PO-Revision-Date: 2025-10-10 13:19+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!meta title=\"Linux\"]]"
+msgid "[[!meta title=\"Install Tails from Linux\"]]\n"
+msgstr "[[!meta title=\"Linux\"]]"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/overview\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/overview\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/linux\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/linux\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta script=\"install/inc/js/download\"]]\n"
+msgstr "[[!meta script=\"install/inc/js/download\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!meta script=\"install/inc/js/forge.sha256.min\"]]\n"
+msgid "[[!meta script=\"install/inc/js/forge.min\"]]\n"
+msgstr "[[!meta script=\"install/inc/js/forge.sha256.min\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/overview\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/overview.ru\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/warnings.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/warnings.inline.ru\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/download.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/download.inline.ru\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/verify.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/verify.inline.ru\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"install\" class=\"step\">Install Tails using <i>GNOME Disks</i></h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"step-image\">[[!img inc/infography/install-tails.png link=\"no\" alt=\"\"]]</div>\n"
+msgstr "<div class=\"step-image\">[[!img inc/infography/install-tails.png link=\"no\" alt=\"\"]]</div>\n"
+
+#. type: Bullet: '1. '
+msgid "Install *GNOME Disks*."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"If you are using the GNOME desktop environment, *GNOME Disks* should be "
+"installed by default."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"Otherwise, install the `gnome-disk-utility` package using the usual "
+"installation method for your distribution."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     You can also install Tails using the\n"
+"     `dd` command from any Linux distribution\n"
+"     as described in our instructions for [[installing from Debian using\n"
+"     the command line|install/expert#install]].\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/install_with_gnome_disks.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/install_with_gnome_disks.inline.ru\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/restart_first_time.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/restart_first_time.inline.ru\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/welcome.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/welcome.inline.ru\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid ""
+#~ "[[!meta robots=\"noindex\"]] [[!meta stylesheet=\"bootstrap.min\" "
+#~ "rel=\"stylesheet\" title=\"\"]] [[!meta stylesheet=\"inc/stylesheets/"
+#~ "assistant\" rel=\"stylesheet\" title=\"\"]] [[!meta stylesheet=\"inc/"
+#~ "stylesheets/linux\" rel=\"stylesheet\" title=\"\"]]"
+#~ msgstr ""
+#~ "[[!meta robots=\"noindex\"]] [[!meta stylesheet=\"bootstrap.min\" "
+#~ "rel=\"stylesheet\" title=\"\"]] [[!meta stylesheet=\"inc/stylesheets/"
+#~ "assistant\" rel=\"stylesheet\" title=\"\"]] [[!meta stylesheet=\"inc/"
+#~ "stylesheets/linux\" rel=\"stylesheet\" title=\"\"]]"
+
+#~ msgid "Install from another Tails"
+#~ msgstr "Установка из другой копии Tails"
+
+#~ msgid "|install/linux/clone-overview]]"
+#~ msgstr "|install/linux/clone-overview]]"
+
+#~ msgid "Download and install"
+#~ msgstr "Скачивание и установка"
+
+#~ msgid "You need:"
+#~ msgstr "Вам понадобится:"
+
+#~ msgid "1 USB stick <small>(at least 8 GB)</small>"
+#~ msgstr "1 флешка <small>(минимум 8 Гб)</small>;"
+
+#~ msgid ""
+#~ "1 hour to download Tails (<small class=\"remove-extra-space\">[[!inline "
+#~ "pages=\"inc/stable_amd64_iso_size\" raw=\"yes\" sort=\"age\"]]</small>)"
+#~ msgstr ""
+#~ "в пределах 1 часа, чтобы скачать Tails (<small class=\"remove-extra-"
+#~ "space\">[[!inline pages=\"inc/stable_amd64_iso_size\" raw=\"yes\" "
+#~ "sort=\"age\"]]</small>);"
+
+#~ msgid "½ hour to install"
+#~ msgstr "полчаса на установку."
+
+#~ msgid "[["
+#~ msgstr "[["
+
+#~ msgid "Install from Linux"
+#~ msgstr "Установить из Linux"
+
+#~ msgid "|linux/usb-overview]] [["
+#~ msgstr "|linux/usb-overview]] [["
+
+#~ msgid "<small>Install from Debian, Ubuntu, or Mint using"
+#~ msgstr "<small>Установить из Debian, Ubuntu или Mint</small>"
+
+#~ msgid "the</small> command line <small>and</small> GnuPG"
+#~ msgstr "в командной строке <small>с</small> GnuPG"
+
+#~ msgid "|expert/usb-overview]]"
+#~ msgstr "|expert/usb-overview]]"
+
+#~ msgid "You can also:"
+#~ msgstr "Вы также можете:"
+
+#~ msgid "[[Burn Tails on a DVD|dvd-download]]"
+#~ msgstr "[[Записать Tails на DVD|dvd-download]]"
+
+#~ msgid "[[Run Tails in a virtual machine|vm-download]]"
+#~ msgstr "[[Запустить Tails на виртуальной машине|vm-download]]"

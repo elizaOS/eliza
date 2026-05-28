@@ -7,6 +7,7 @@ import subprocess
 import sys
 from argparse import ArgumentParser
 from pathlib import Path
+from typing import cast
 
 import yaml
 
@@ -21,9 +22,7 @@ REPORT = ROOT / "build/reports/kicad_artifacts.json"
 REPORT_SCHEMA = "eliza.kicad_artifacts.v1"
 LOCAL_TMP_KICAD_CLI = Path("/tmp/eliza-kicad-cli-check/root/usr/bin/kicad-cli")
 LOCAL_TMP_KICAD_LIB = Path("/tmp/eliza-kicad-cli-check/root/usr/lib/x86_64-linux-gnu")
-LOCAL_TMP_KICAD10_APPIMAGE_CLI = Path(
-    "/tmp/eliza-kicad-10/extract/AppDir/bin/kicad-cli"
-)
+LOCAL_TMP_KICAD10_APPIMAGE_CLI = Path("/tmp/eliza-kicad-10/extract/AppDir/bin/kicad-cli")
 
 REQUIRED_PROJECT_GLOBS = {
     "project": ["*.kicad_pro"],
@@ -99,7 +98,7 @@ LOCAL_TMP_UNBLOCK_COMMANDS = [
         "libocct-modeling-data-7.6t64 libocct-ocaf-7.6t64 libocct-visualization-7.6t64 "
         "libodbc2 libfreeimage3 libjxr0t64 xsltproc"
     ),
-    "mkdir -p root && for deb in *.deb; do dpkg-deb -x \"$deb\" root; done",
+    'mkdir -p root && for deb in *.deb; do dpkg-deb -x "$deb" root; done',
     (
         "PATH=/tmp/eliza-kicad-cli-check/root/usr/bin:$PATH "
         "LD_LIBRARY_PATH=/tmp/eliza-kicad-cli-check/root/usr/lib/x86_64-linux-gnu "
@@ -183,17 +182,20 @@ def diagnostic_only(path: Path) -> bool:
         text = path.read_text(encoding="utf-8", errors="ignore").lower()
     except OSError:
         return False
-    return any(
-        marker in text
-        for marker in (
-            "release_credit: false",
-            "blocked_tool_unavailable",
-            "blocked_not_executed",
-            "not release evidence",
-            "not fabrication release evidence",
-            "python erc pass for e1-demo board",
+    return (
+        any(
+            marker in text
+            for marker in (
+                "release_credit: false",
+                "blocked_tool_unavailable",
+                "blocked_not_executed",
+                "not release evidence",
+                "not fabrication release evidence",
+                "python erc pass for e1-demo board",
+            )
         )
-    ) or re.search(r"exit_code:\s*[1-9][0-9]*", text) is not None
+        or re.search(r"exit_code:\s*[1-9][0-9]*", text) is not None
+    )
 
 
 def load_manifest() -> dict[str, object]:
@@ -231,11 +233,9 @@ def command_for_label(label: str, commands: dict[str, str]) -> str | None:
 
 def tool_environment(path: Path | None) -> dict[str, str]:
     env = os.environ.copy()
-    if path is not None and LOCAL_TMP_KICAD_CLI == path and LOCAL_TMP_KICAD_LIB.is_dir():
+    if path is not None and path == LOCAL_TMP_KICAD_CLI and LOCAL_TMP_KICAD_LIB.is_dir():
         current = env.get("LD_LIBRARY_PATH")
-        env["LD_LIBRARY_PATH"] = (
-            f"{LOCAL_TMP_KICAD_LIB}{':' + current if current else ''}"
-        )
+        env["LD_LIBRARY_PATH"] = f"{LOCAL_TMP_KICAD_LIB}{':' + current if current else ''}"
     return env
 
 
@@ -303,11 +303,7 @@ def kicad_tool_availability() -> dict[str, object]:
     ):
         probes.append(probe_kicad_cli(LOCAL_TMP_KICAD10_APPIMAGE_CLI, "local_tmp_appimage"))
     release_probe = next(
-        (
-            probe
-            for probe in probes
-            if bool(probe["release_artifact_generation_feasible"])
-        ),
+        (probe for probe in probes if bool(probe["release_artifact_generation_feasible"])),
         None,
     )
     primary_probe = release_probe or (probes[0] if probes else None)
@@ -358,11 +354,7 @@ def fab_notes_inventory() -> dict[str, object]:
             "missing_markers": sorted(REQUIRED_FAB_NOTE_MARKERS),
         }
     text = path.read_text(encoding="utf-8", errors="ignore")
-    missing = [
-        key
-        for key, marker in REQUIRED_FAB_NOTE_MARKERS.items()
-        if marker not in text
-    ]
+    missing = [key for key, marker in REQUIRED_FAB_NOTE_MARKERS.items() if marker not in text]
     return {
         "path": rel_path,
         "present": True,
@@ -408,6 +400,35 @@ def release_evidence_inventory() -> dict[str, dict[str, object]]:
             "generation_command": command_for_label(label, commands),
             "local_kicad7_partial_generation_command": KICAD7_PARTIAL_COMMANDS.get(label),
         }
+    has_command_transcript = bool(
+        inventory.get("command transcript", {}).get("release_credit_paths")
+    )
+    has_tool_versions = bool(inventory.get("KiCad tool versions", {}).get("release_credit_paths"))
+    has_erc = bool(inventory.get("erc transcript", {}).get("release_credit_paths"))
+    has_drc = bool(inventory.get("drc transcript", {}).get("release_credit_paths"))
+    support_blockers = []
+    if not has_command_transcript:
+        support_blockers.append("missing release-credit command transcript")
+    if not has_tool_versions:
+        support_blockers.append("missing release-credit KiCad tool versions")
+    if not has_erc:
+        support_blockers.append("missing release-credit ERC transcript")
+    if not has_drc:
+        support_blockers.append("missing release-credit DRC transcript")
+    if support_blockers:
+        supporting_labels = {
+            "command transcript",
+            "KiCad tool versions",
+            "erc transcript",
+            "drc transcript",
+        }
+        for label, record in inventory.items():
+            if label in supporting_labels:
+                continue
+            if record["release_credit_paths"]:
+                record["release_credit_blockers"] = support_blockers
+                record["release_credit_satisfied"] = False
+                record["missing_release_credit"] = True
     return inventory
 
 
@@ -419,19 +440,13 @@ def target_status_promotion_contract(
     manifest = manifest if isinstance(manifest, dict) else load_manifest()
     artifact_groups = manifest.get("artifact_groups", {}) if isinstance(manifest, dict) else {}
     kicad_sources = (
-        artifact_groups.get("kicad_sources", {})
-        if isinstance(artifact_groups, dict)
-        else {}
+        artifact_groups.get("kicad_sources", {}) if isinstance(artifact_groups, dict) else {}
     )
     kicad_outputs = (
-        artifact_groups.get("kicad_cli_outputs", {})
-        if isinstance(artifact_groups, dict)
-        else {}
+        artifact_groups.get("kicad_cli_outputs", {}) if isinstance(artifact_groups, dict) else {}
     )
     board_reviews = (
-        artifact_groups.get("board_reviews", {})
-        if isinstance(artifact_groups, dict)
-        else {}
+        artifact_groups.get("board_reviews", {}) if isinstance(artifact_groups, dict) else {}
     )
     tool = kicad_tool_availability()
     sources = source_inventory()
@@ -462,8 +477,7 @@ def target_status_promotion_contract(
             else "missing",
             "status": (
                 "satisfied"
-                if isinstance(kicad_sources, dict)
-                and kicad_sources.get("status") == "complete"
+                if isinstance(kicad_sources, dict) and kicad_sources.get("status") == "complete"
                 else "blocked"
             ),
             "evidence_required": "Checked-in project, schematic, PCB, and reviewed vendor-derived footprint source metadata.",
@@ -479,8 +493,7 @@ def target_status_promotion_contract(
             else "missing",
             "status": (
                 "satisfied"
-                if isinstance(kicad_outputs, dict)
-                and kicad_outputs.get("status") == "complete"
+                if isinstance(kicad_outputs, dict) and kicad_outputs.get("status") == "complete"
                 else "blocked"
             ),
             "evidence_required": "Clean ERC, DRC, Gerbers, drill, BOM, position, fab drawing, command transcript, and tool-version evidence.",
@@ -496,8 +509,7 @@ def target_status_promotion_contract(
             else "missing",
             "status": (
                 "satisfied"
-                if isinstance(board_reviews, dict)
-                and board_reviews.get("status") == "complete"
+                if isinstance(board_reviews, dict) and board_reviews.get("status") == "complete"
                 else "blocked"
             ),
             "evidence_required": "Assembly DFM, stackup/return-path, and package/board cross-probe review records.",
@@ -509,11 +521,7 @@ def target_status_promotion_contract(
             "field": "tool_availability.release_artifact_generation_feasible",
             "required_value": True,
             "current_value": tool["release_artifact_generation_feasible"],
-            "status": (
-                "satisfied"
-                if tool["release_artifact_generation_feasible"]
-                else "blocked"
-            ),
+            "status": ("satisfied" if tool["release_artifact_generation_feasible"] else "blocked"),
             "evidence_required": "KiCad CLI build with native sch erc and pcb drc support.",
             "expected_command_output": {
                 "command": "kicad-cli version",
@@ -550,9 +558,7 @@ def target_status_promotion_contract(
                 "current_value": evidence["release_credit_paths"]
                 if evidence["release_credit_satisfied"]
                 else "missing",
-                "status": (
-                    "satisfied" if evidence["release_credit_satisfied"] else "blocked"
-                ),
+                "status": ("satisfied" if evidence["release_credit_satisfied"] else "blocked"),
                 "evidence_required": "Real release artifact, not a diagnostic-only placeholder.",
                 "source_manifest": MANIFEST,
                 "expected_command_output": {
@@ -593,7 +599,9 @@ def target_status_promotion_contract(
     }
 
 
-def blocker_groups(blockers: list[str], inventory: dict[str, dict[str, object]]) -> dict[str, object]:
+def blocker_groups(
+    blockers: list[str], inventory: dict[str, dict[str, object]]
+) -> dict[str, object]:
     sources = source_inventory()
     fab_notes = fab_notes_inventory()
     missing_sources = [
@@ -640,8 +648,7 @@ def blocker_groups(blockers: list[str], inventory: dict[str, dict[str, object]])
                 "detail": blocker,
             }
             for blocker in blockers
-            if blocker.startswith("manifest:")
-            or blocker.endswith("release evidence is incomplete")
+            if blocker.startswith("manifest:") or blocker.endswith("release evidence is incomplete")
         ],
         "fab_notes": []
         if fab_notes["status"] == "fail_closed_non_release"
@@ -709,7 +716,7 @@ def kicad_blocker_next_step(blocker_class: str) -> str:
 
 def write_report(status: str, failures: list[str], blockers: list[str], release: bool) -> None:
     inventory = release_evidence_inventory()
-    findings = []
+    findings: list[dict[str, object]] = []
     for failure in failures:
         findings.append(
             {
@@ -747,9 +754,7 @@ def write_report(status: str, failures: list[str], blockers: list[str], release:
         "fab_notes_inventory": fab_notes_inventory(),
         "release_commands": load_manifest_commands(),
         "release_evidence_inventory": inventory,
-        "target_status_promotion_contract": target_status_promotion_contract(
-            inventory
-        ),
+        "target_status_promotion_contract": target_status_promotion_contract(inventory),
         "repo_artifact_next_actions": {
             "release_credit": False,
             "source_manifest": MANIFEST,
@@ -823,7 +828,7 @@ def main() -> int:
         if not fab_notes["present"]:
             failures.append("missing docs/board/kicad/e1-demo/fab-notes.md")
         elif fab_notes["missing_markers"]:
-            missing = ", ".join(fab_notes["missing_markers"])
+            missing = ", ".join(cast("list[str]", fab_notes["missing_markers"]))
             failures.append(
                 "docs/board/kicad/e1-demo/fab-notes.md is missing required "
                 f"fail-closed fabrication markers: {missing}"
@@ -852,7 +857,7 @@ def main() -> int:
             continue
         diagnostic_paths = entry["diagnostic_only_paths"]
         if diagnostic_paths:
-            shown = ", ".join(diagnostic_paths)
+            shown = ", ".join(cast("list[str]", diagnostic_paths))
             blockers.append(
                 f"missing release-credit KiCad/fab release evidence: {label} "
                 f"(diagnostic-only files present: {shown})"
@@ -869,10 +874,7 @@ def main() -> int:
 
     if blockers:
         write_report("blocked", failures, blockers, args.release)
-        print(
-            "STATUS: BLOCKED KiCad release evidence is incomplete; "
-            "release_credit=false"
-        )
+        print("STATUS: BLOCKED KiCad release evidence is incomplete; release_credit=false")
         print("KiCad release blockers:")
         for blocker in blockers:
             print(f"  - {blocker}")

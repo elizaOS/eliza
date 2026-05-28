@@ -1,0 +1,102 @@
+<div>[[!meta title="Reducing risks when using untrusted computers"]]</div>
+
+<h1 class="embedded">Using untrusted computers</h1>
+
+<div class="standalone">
+
+[[!inline pages="doc/about/warning/computer.inline" raw="yes" sort="age"]]
+
+[[!toc levels=2]]
+
+</div>
+
+<h2 id="software">Install Tails from a computer that you trust</h2>
+
+<p>Tails protects you from viruses and malware on your usual
+operating system. This is because Tails runs independently from other operating systems.</p>
+
+<p>But your Tails might be corrupted if you install from a compromised
+operating system. To reduce that risk:</p>
+
+<ul>
+
+<li><p>Always install Tails from a trusted operating system.
+For example, download Tails on a computer without viruses or clone Tails
+from a trusted friend.</p></li>
+
+<li><p>Do not plug in your Tails USB stick while another operating
+system is running on the computer.</p></li>
+
+<li><p>Use your Tails USB stick only to run Tails. Do not use your Tails
+USB stick to transfer files to or from another operating system.</p></li>
+
+</ul>
+
+<p>If you worry that your Tails might be corrupted, do a [[manual
+upgrade|upgrade]] from a trusted operating system.</p>
+
+<div class="attack">
+
+<p>We don't know of any virus able to infect a Tails
+installation, but one could be created in the future.</p>
+
+</div>
+
+<h2 id="hardware">No operating system can protect against hardware alterations</h2>
+
+<p>The computer might be compromised if its physical components have been altered.
+For example, if a keylogger has been physically installed on the computer,
+your passwords, personal information, and other data typed on the keyboard could
+be stored and accessed by someone else, even if you are using Tails.</p>
+
+<p>Try to keep your computer in a safe location. Hardware alterations are more likely on public computers,
+in Internet cafés or libraries, and on desktop computers, where a device is easier to hide.</p>
+
+<p>If you worry that a computer might be modified:</p>
+
+<ul>
+
+<li><p>Use a [[password manager|doc/encryption_and_privacy/manage_passwords]] to
+paste saved passwords. This way, you don't have to type passwords that might
+be visible to people or cameras near you.</p></li>
+
+<li><p>Use the [[screen keyboard|doc/first_steps/accessibility#keyboard]],
+if you are using a public computer or worry that the computer might have
+a keylogger.</p></li>
+
+</ul>
+
+<div class="attack">
+
+<p>Keyloggers are easy to buy and hide on desktop computers but not on
+laptops. For an example, see
+<a href="https://www.youtube.com/watch?v=6JJo8qCYE8M">KeeLog: KeyGrabber
+forensic keylogger getting started</a>.</p>
+
+<p>Other hardware alterations are much more complicated and expensive
+to install. For an example, see
+<a href="https://arstechnica.com/tech-policy/2014/05/photos-of-an-nsa-upgrade-factory-show-cisco-router-getting-implant/">Ars
+Technica: Photos of an NSA “upgrade” factory show Cisco router getting
+implant</a>.</p>
+
+</div>
+
+<h2 id="firmware">No operating system can protect against BIOS and firmware attacks</h2>
+
+<p>Firmware includes the BIOS or UEFI and other software stored in electronic chips on the computer.
+All operating systems, including Tails, depend on firmware to start and run, so no operating system
+can protect against a firmware attack. In the same way that a car depends on the quality of the road
+it is driving on, operating systems depend on their firmware.</p>
+
+<p>Keeping your computer in a safe location can protect against some firmware
+attacks, but some other firmware attacks can be performed remotely.</p>
+
+<div class="attack">
+
+<p>Firmware attacks have been demonstrated, but are complicated and
+expensive to perform. We don't know of any actual use against Tails
+users. For an example, see
+<a href=https://www.youtube.com/watch?v=sNYsfUNegEA>LegbaCore: Stealing
+GPG keys/emails in Tails via remote firmware infection</a>.</p>
+
+</div>

@@ -7,8 +7,6 @@ import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-import mujoco
-
 from eliza_robot.asimov_1.cad import sha256_file, validate_cad_tree
 from eliza_robot.asimov_1.constants import (
     ASIMOV1_FIRMWARE_JOINT_ORDER,
@@ -69,6 +67,8 @@ def generate_asimov1_mjcf(
     mesh_dir: Path = ASIMOV1_SOURCE_MESH_DIR,
 ) -> Path:
     """Generate a compile-checked MJCF with elizaOS position actuators."""
+    import mujoco
+
     output_xml.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     tree = ET.parse(source_xml)
@@ -76,7 +76,10 @@ def generate_asimov1_mjcf(
     compiler = root.find("compiler")
     if compiler is None:
         compiler = ET.SubElement(root, "compiler")
-    compiler.set("meshdir", str(mesh_dir.resolve()))
+    compiler_meshdir = (
+        "../meshes" if output_xml == ASIMOV1_GENERATED_MJCF else str(mesh_dir.resolve())
+    )
+    compiler.set("meshdir", compiler_meshdir)
     _ensure_actuators(root)
     ET.indent(tree, space="  ")
     tree.write(output_xml, encoding="utf-8", xml_declaration=False)

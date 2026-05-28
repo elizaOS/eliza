@@ -468,7 +468,7 @@ const endpointConformanceFailure = assertFails(
   liveReportWriterSource,
   endpointConformanceSource.replace(
     "  if (!hasMeaningfulRouteBody(result.body)) {\n",
-    "  if (!hasOwn(result, \"body\") || result.body === undefined) {\n",
+    '  if (!hasOwn(result, "body") || result.body === undefined) {\n',
   ),
 );
 if (
@@ -532,7 +532,7 @@ const routeBodyValidatorFailure = assertFails(
   providerSmokeSource,
   liveReportValidatorSource.replace(
     "  if (!isMeaningfulJsonEvidence(routeResult.body)) {\n",
-    "  if (!Object.hasOwn(routeResult, \"body\") || routeResult.body === undefined) {\n",
+    '  if (!Object.hasOwn(routeResult, "body") || routeResult.body === undefined) {\n',
   ),
   liveReportWriterSource,
   endpointConformanceSource,
@@ -615,7 +615,7 @@ if (
 assertValidatorSelfTestFailure(
   "live report validator self-test covers non-JavaScript asset failures",
   liveReportValidatorSelfTestSource.replace(
-    "        \"conformance.assetResult.path must be a JavaScript asset\",\n",
+    '        "conformance.assetResult.path must be a JavaScript asset",\n',
     "",
   ),
 );
@@ -624,7 +624,7 @@ assertValidatorSelfTestFailure(
   "live report validator self-test covers missing route body failures",
   liveReportValidatorSelfTestSource.replace(
     "makeMissingRouteBodyReport()",
-    "makeCompleteReport(\"provider\")",
+    'makeCompleteReport("provider")',
   ),
 );
 
@@ -632,14 +632,14 @@ assertValidatorSelfTestFailure(
   "live report validator self-test covers empty route body failures",
   liveReportValidatorSelfTestSource.replace(
     "makeEmptyRouteBodyReport()",
-    "makeCompleteReport(\"provider\")",
+    'makeCompleteReport("provider")',
   ),
 );
 
 assertValidatorSelfTestFailure(
   "live report validator self-test covers manifest-mismatched asset failures",
   liveReportValidatorSelfTestSource.replace(
-    "        \"conformance.assetResult.manifestContentType must match\",\n",
+    '        "conformance.assetResult.manifestContentType must match",\n',
     "",
   ),
 );
@@ -647,7 +647,7 @@ assertValidatorSelfTestFailure(
 assertValidatorSelfTestFailure(
   "live report validator self-test covers missing asset digest failures",
   liveReportValidatorSelfTestSource.replace(
-    "        \"conformance.assetResult.sha256 must be a non-empty string\",\n",
+    '        "conformance.assetResult.sha256 must be a non-empty string",\n',
     "",
   ),
 );
@@ -655,7 +655,7 @@ assertValidatorSelfTestFailure(
 assertValidatorSelfTestFailure(
   "live report validator self-test covers malformed asset digest failures",
   liveReportValidatorSelfTestSource.replace(
-    "        \"conformance.assetResult.sha256 has invalid format\",\n",
+    '        "conformance.assetResult.sha256 has invalid format",\n',
     "",
   ),
 );
@@ -663,7 +663,7 @@ assertValidatorSelfTestFailure(
 assertValidatorSelfTestFailure(
   "live report validator self-test covers empty asset digest failures",
   liveReportValidatorSelfTestSource.replace(
-    "        \"conformance.assetResult.sha256 must not be the empty SHA-256 digest\",\n",
+    '        "conformance.assetResult.sha256 must not be the empty SHA-256 digest",\n',
     "",
   ),
 );
@@ -671,7 +671,7 @@ assertValidatorSelfTestFailure(
 assertValidatorSelfTestFailure(
   "live report validator self-test covers mismatched asset integrity failures",
   liveReportValidatorSelfTestSource.replace(
-    "        \"conformance.assetResult.integrity must match conformance.assetResult.sha256\",\n",
+    '        "conformance.assetResult.integrity must match conformance.assetResult.sha256",\n',
     "",
   ),
 );
@@ -679,7 +679,7 @@ assertValidatorSelfTestFailure(
 assertValidatorSelfTestFailure(
   "live report validator self-test covers missing sha256 asset integrity failures",
   liveReportValidatorSelfTestSource.replace(
-    "        \"conformance.assetResult.integrity must include a sha256 digest\",\n",
+    '        "conformance.assetResult.integrity must include a sha256 digest",\n',
     "",
   ),
 );
@@ -722,16 +722,24 @@ assertFails(
 assertFails(
   "cloud live smoke is observed only on manual or scheduled runs",
   workflow.replace(
-    "      - name: Remote capability cloud sandbox live smoke\n        if: steps.cloud.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')",
-    "      - name: Remote capability cloud sandbox live smoke\n        if: steps.cloud.outputs.skip != 'true'",
+    "      - name: Remote capability cloud sandbox live smoke\n        if: steps.cloud.outputs.capability_skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')",
+    "      - name: Remote capability cloud sandbox live smoke\n        if: steps.cloud.outputs.capability_skip != 'true'",
   ),
 );
 
 assertFails(
-  "cloud live credentials are required on observed runs",
+  "cloud live credentials skip cleanly when absent",
   workflow.replace(
-    '              echo "::error::No Eliza Cloud API key configured for observed cloud live E2E."\n              exit 1\n',
-    '              echo "::warning::No Eliza Cloud API key configured for observed cloud live E2E."\n              echo "skip=true" >> "$GITHUB_OUTPUT"\n',
+    '            echo "capability_skip=true" >> "$GITHUB_OUTPUT"\n            exit 0\n',
+    "",
+  ),
+);
+
+assertFails(
+  "cloud capability live smoke is explicitly configured",
+  workflow.replace(
+    '          else\n            echo "::notice::Remote capability cloud sandbox live smoke skipped because ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE_ENABLED is not configured."\n            echo "capability_skip=true" >> "$GITHUB_OUTPUT"\n          fi\n',
+    "          fi\n",
   ),
 );
 
@@ -810,7 +818,7 @@ const validatorProviderEvidenceFailure = assertFails(
   providerSmokeSource,
   liveReportValidatorSource.replace(
     'providerEvidence.agentRuntime must be "github-actions"',
-    'providerEvidence.agentRuntime disabled',
+    "providerEvidence.agentRuntime disabled",
   ),
 );
 if (
@@ -847,18 +855,18 @@ assertFails(
 );
 
 assertFails(
-  "provider live endpoints are required on observed runs",
+  "provider live endpoints skip cleanly when absent",
   workflow.replace(
-    '              echo "::error::No remote capability provider endpoints configured for observed provider live E2E."\n              exit 1\n',
-    '              echo "::warning::No remote capability provider endpoints configured for observed provider live E2E."\n              echo "skip=true" >> "$GITHUB_OUTPUT"\n',
+    '            echo "::warning::No remote capability provider endpoints configured - skipping optional provider live E2E."\n            echo "skip=true" >> "$GITHUB_OUTPUT"\n            exit 0\n',
+    '            echo "::error::No remote capability provider endpoints configured for observed provider live E2E."\n            exit 1\n',
   ),
 );
 
 assertFails(
-  "provider live primary endpoints are required on observed runs",
+  "provider live primary endpoint gaps skip cleanly",
   workflow.replace(
-    '              echo "::error::${message}"\n              exit 1\n',
-    '              echo "::notice::${message}"\n              echo "skip=true" >> "$GITHUB_OUTPUT"\n',
+    '            echo "::warning::${message}. Skipping optional provider live E2E for ${EVENT_NAME}."\n            echo "skip=true" >> "$GITHUB_OUTPUT"\n',
+    '            echo "::error::${message}"\n            exit 1\n',
   ),
 );
 
@@ -902,6 +910,14 @@ assertFails(
   ),
 );
 
+assertFails(
+  "GitHub live artifact validation skips absent live config",
+  workflow.replace(
+    '              echo "::notice title=Test gate::Live artifact validation skipped because no live report producers were configured."\n              continue\n',
+    "",
+  ),
+);
+
 const githubArtifactValidatorFailure = assertFails(
   "GitHub live artifact validator downloads and validates reports",
   workflow,
@@ -913,8 +929,8 @@ const githubArtifactValidatorFailure = assertFails(
   endpointConformanceSource,
   liveReportValidatorSelfTestSource,
   githubLiveArtifactValidatorSource.replace(
-    "      \"e2b,home-machine,mobile-companion\",\n",
-    "      \"e2b,home-machine\",\n",
+    '      "e2b,home-machine,mobile-companion",\n',
+    '      "e2b,home-machine",\n',
   ),
 );
 if (
@@ -1013,7 +1029,9 @@ function assertFails(
   candidateRemoteCapabilityRoutesSource = remoteCapabilityRoutesSource,
   candidateCoreCapabilitiesSource = coreCapabilitiesSource,
 ): ReturnType<typeof validateCapabilityRouterLiveCi>[number] {
-  const check = checks.find((candidate) => candidate.name === expectedCheckName);
+  const check = checks.find(
+    (candidate) => candidate.name === expectedCheckName,
+  );
   if (!check) throw new Error(`unknown check "${expectedCheckName}"`);
   if (process.env.DEBUG_CAPABILITY_ROUTER_AUDIT_SELF_TEST === "true") {
     console.error(`audit self-test check: ${expectedCheckName}`);
@@ -1039,9 +1057,7 @@ function assertFails(
   });
   const expectedFailure = failures[0];
   if (!expectedFailure) {
-    throw new Error(
-      `mutated workflow did not fail "${expectedCheckName}".`,
-    );
+    throw new Error(`mutated workflow did not fail "${expectedCheckName}".`);
   }
   return expectedFailure;
 }

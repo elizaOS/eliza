@@ -24,9 +24,7 @@ REPORTS = {
 REPORT = ROOT / "build/reports/linux_multiarch_gui_parity.json"
 
 SCHEMA = "eliza.linux_multiarch_gui_parity.v1"
-CLAIM_BOUNDARY = (
-    "multiarch_gui_parity_rollup_only_not_runtime_screenshot_or_chip_boot_evidence"
-)
+CLAIM_BOUNDARY = "multiarch_gui_parity_rollup_only_not_runtime_screenshot_or_chip_boot_evidence"
 REQUIRED_ARCHES = ("arm64", "riscv64")
 REQUIRED_GUI_SCHEMA = "eliza.os.linux.gui_kiosk_iso_check.v1"
 REQUIRED_MATRIX_SCHEMA = "eliza.os.linux.multiarch_boot_matrix.v1"

@@ -1,0 +1,58 @@
+{
+  "accepted": false,
+  "ok": true,
+  "redesigns": [
+    {
+      "accepted": false,
+      "available_transverse_radius_m": 0.018863608955837073,
+      "fits_current_envelope_after_redesign": true,
+      "group": "arm",
+      "joint_name": "left_wrist_yaw_joint",
+      "link": "LEFT_WRIST_YAW",
+      "manufacturing_note": "use smaller local wrist fastener circle or threaded insert pattern; preserve bore and bearing seat, then verify tool access and local boss/rib stress after source-body feature cuts",
+      "minimum_edge_distance_m": 0.004,
+      "original_fastener_swept_radius_m": 0.0211533945,
+      "original_fit_margin_m": -0.0022897855441629256,
+      "preserved_bearing_outer_radius_m": 0.0099033945,
+      "preserved_bore_radius_m": 0.0056590825,
+      "redesign_strategy": "reduce_wrist_bolt_circle_preserve_bore_and_bearing",
+      "revised_bolt_circle_diameter_m": 0.024977217911674142,
+      "revised_fastener_diameter_m": 0.0025,
+      "revised_fastener_swept_radius_m": 0.018738608955837073,
+      "revised_fit_margin_m": 0.0001250000000000001
+    },
+    {
+      "accepted": false,
+      "available_transverse_radius_m": 0.018835565353200454,
+      "fits_current_envelope_after_redesign": true,
+      "group": "arm",
+      "joint_name": "right_wrist_yaw_joint",
+      "link": "RIGHT_WRIST_YAW",
+      "manufacturing_note": "use smaller local wrist fastener circle or threaded insert pattern; preserve bore and bearing seat, then verify tool access and local boss/rib stress after source-body feature cuts",
+      "minimum_edge_distance_m": 0.004,
+      "original_fastener_swept_radius_m": 0.021138672,
+      "original_fit_margin_m": -0.002303106646799547,
+      "preserved_bearing_outer_radius_m": 0.009888672,
+      "preserved_bore_radius_m": 0.0056506695,
+      "redesign_strategy": "reduce_wrist_bolt_circle_preserve_bore_and_bearing",
+      "revised_bolt_circle_diameter_m": 0.024921130706400903,
+      "revised_fastener_diameter_m": 0.0025,
+      "revised_fastener_swept_radius_m": 0.018710565353200453,
+      "revised_fit_margin_m": 0.0001250000000000001
+    }
+  ],
+  "schema": "asimov-fembot-wrist-fastener-redesign-v1",
+  "source": {
+    "spatial_fit_schema": "asimov-fembot-mate-feature-spatial-fit-v1"
+  },
+  "summary": {
+    "acceptance_blocker": "wrist fastener pattern redesign fits the current thin envelope, but production acceptance still requires updated mate-feature tooling, exact inserts/fasteners, source-body feature cuts, tool-access validation, and post-cut structural/collision checks",
+    "accepted": false,
+    "max_bolt_circle_reduction_m": 0.0024281066467995473,
+    "min_revised_fit_margin_m": 0.0001250000000000001,
+    "redesign_candidate_links": 2,
+    "redesign_fits_current_envelope_links": 2,
+    "remaining_spatial_fit_failures_after_redesign": 0,
+    "target_links": 2
+  }
+}

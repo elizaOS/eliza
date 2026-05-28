@@ -448,7 +448,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                             selectedServer.id,
                           )
                         }
-                        className="p-3 bg-white/5 border border-white/10 hover:border-white/30 transition-colors rounded-sm"
+                        className="p-3 bg-white/5 hover:bg-white/10 transition-colors rounded-sm"
                       >
                         {copiedEndpoint === selectedServer.id ? (
                           <Check className="h-4 w-4 text-green-400" />
@@ -565,7 +565,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                     href={selectedServer.endpoint}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 text-white/70 hover:border-white/30 hover:text-white transition-colors rounded-sm text-sm"
+                    className="flex items-center gap-2 px-4 py-2 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-colors rounded-sm text-sm"
                   >
                     <ExternalLink className="h-4 w-4" />
                     <span className="hidden sm:inline">
@@ -576,7 +576,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                   </a>
                   <button
                     type="button"
-                    className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 text-white/70 hover:border-white/30 hover:text-white transition-colors rounded-sm text-sm"
+                    className="flex items-center gap-2 px-4 py-2 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white transition-colors rounded-sm text-sm"
                     onClick={() =>
                       window.open(
                         "https://modelcontextprotocol.io/introduction",
@@ -594,7 +594,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                   type="button"
                   onClick={() => testMcpServer(selectedServer)}
                   disabled={testingServer === selectedServer.id}
-                  className="flex items-center gap-2 px-6 py-2 bg-[#FF5800]/20 border border-[#FF5800]/30 text-[#FF5800] hover:bg-[#FF5800]/30 transition-colors rounded-sm text-sm disabled:opacity-50"
+                  className="flex items-center gap-2 px-6 py-2 bg-[#FF5800] text-black hover:bg-black hover:text-white transition-colors rounded-sm text-sm disabled:opacity-50"
                 >
                   {testingServer === selectedServer.id ? (
                     <span className="h-4 w-4 border-2 border-[#FF5800]/30 border-t-[#FF5800] rounded-full animate-spin" />
@@ -712,7 +712,7 @@ function MCPCard({
               )}
               <span>{server.pricing.description}</span>
             </div>
-            <span className="text-white/30 group-hover:text-[#FF5800] transition-colors">
+            <span className="text-white/30 group-hover:text-white transition-colors">
               View details
             </span>
           </div>

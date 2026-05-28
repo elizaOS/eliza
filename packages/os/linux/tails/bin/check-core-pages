@@ -1,0 +1,24 @@
+#!/bin/bash
+
+set -e
+set -u
+set -o pipefail
+
+declare -A git_files=()
+while read -r line; do
+        git_files["$line"]=1
+done < <( git ls-files )
+
+readarray -t core_po_files < <(cut -c 3- ./wiki/src/contribute/l10n_tricks/core_po_files.txt)
+fail=false
+
+for core_po_file in "${core_po_files[@]}"; do
+        mdwn="wiki/src/${core_po_file}.mdwn"
+        html="wiki/src/${core_po_file}.html"
+        if [ -z "${git_files[$mdwn]:=}" ] && [ -z "${git_files[$html]:=}" ]; then
+                echo "Error: missing page listed in core_po_files.txt: ${core_po_file}"
+                fail=true
+        fi
+done
+
+[ "${fail}" = false ]

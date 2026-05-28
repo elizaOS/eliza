@@ -1,0 +1,56 @@
+#!/usr/bin/python3 -I
+
+import argparse
+
+from tailslib.netnsdrop import run_in_netns_as_amnesia
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Run the Unsafe Browser in a sandbox"
+        "whose chroot has been prepared already."
+    )
+    parser.add_argument("--chroot", type=str, action="store")
+    parser.add_argument("--profile", type=str, action="store")
+    parser.add_argument("--chroot-user-uid", type=int, action="store")
+    parser.add_argument("--wm-class", type=str, action="store")
+    args = parser.parse_args()
+
+    run_in_netns_as_amnesia(
+        "/bin/sh",
+        "-c",
+        f". /usr/local/lib/tails-shell-library/tor-browser.sh && \
+        export TOR_TRANSPROXY=1 && \
+        export MOZ_ENABLE_WAYLAND=1 && \
+        exec_firefox_helper firefox.unsafe-browser \
+           --name '{args.wm_class}' \
+           --profile '{args.profile}'",
+        netns="clearnet",
+        root=args.chroot,
+        bind_mounts=[
+            ("/home", "/home"),
+            (f"{args.chroot}/{args.profile}", args.profile),
+            ("/etc/resolv-over-clearnet.conf", "/etc/resolv.conf"),
+            (
+                f"/run/user/{args.chroot_user_uid}/pipewire-0",
+                f"/run/user/{args.chroot_user_uid}/pipewire-0",
+            ),
+            (
+                f"/run/user/{args.chroot_user_uid}/pulse",
+                f"/run/user/{args.chroot_user_uid}/pulse",
+            ),
+            (
+                f"/run/user/{args.chroot_user_uid}/wayland-0",
+                f"/run/user/{args.chroot_user_uid}/wayland-0",
+            ),
+            (
+                f"/run/user/{args.chroot_user_uid}/user-env",
+                f"/run/user/{args.chroot_user_uid}/user-env",
+            ),
+            ("/sys", "/sys"),
+        ],
+    )
+
+
+if __name__ == "__main__":
+    main()

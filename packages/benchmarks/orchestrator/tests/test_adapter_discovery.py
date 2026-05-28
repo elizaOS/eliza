@@ -3315,18 +3315,18 @@ def test_vision_language_bundle_accepts_current_manifest_schema(
     )
     (bundle / "text").mkdir(parents=True)
     (bundle / "vision").mkdir()
-    (bundle / "dflash").mkdir()
+    (bundle / "mtp").mkdir()
     (bundle / "text" / "eliza-1-9b-128k.gguf").write_text("text", encoding="utf-8")
     (bundle / "vision" / "mmproj-9b.gguf").write_text("vision", encoding="utf-8")
-    (bundle / "dflash" / "drafter-9b.gguf").write_text("dflash", encoding="utf-8")
+    (bundle / "mtp" / "drafter-9b.gguf").write_text("mtp", encoding="utf-8")
     (bundle / "eliza-1.manifest.json").write_text(
         json.dumps(
             {
                 "id": "eliza-1-9b",
-                "runtime": {"dflash": {"enabled": True}},
-                "kernels": {"required": ["dflash"]},
+                "runtime": {"mtp": {"enabled": True}},
+                "kernels": {"required": ["mtp"]},
                 "files": {
-                    "dflash": [{"path": "dflash/drafter-9b.gguf"}],
+                    "mtp": [{"path": "mtp/drafter-9b.gguf"}],
                     "text": [{"path": "text/eliza-1-9b-128k.gguf"}],
                     "vision": [{"path": "vision/mmproj-9b.gguf"}],
                 },
@@ -3339,7 +3339,7 @@ def test_vision_language_bundle_accepts_current_manifest_schema(
     assert orchestrator_adapters._has_vision_language_bundle("eliza-1-9b") is True
 
 
-def test_vision_language_bundle_rejects_manifest_without_dflash(
+def test_vision_language_bundle_rejects_manifest_without_mtp(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

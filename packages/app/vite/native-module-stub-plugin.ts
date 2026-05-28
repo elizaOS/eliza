@@ -221,6 +221,9 @@ export function nativeModuleStubPlugin(
     // renderer must resolve the symbol surface without bundling the server
     // registry package and its agent-only dependency graph.
     "@elizaos/plugin-registry",
+    // Vault is server/native-only; browser reaches it through optional
+    // autofill paths and must not resolve the OS-keychain dependency graph.
+    "@elizaos/vault",
     // Native argon2 bindings (server-side password hashing in
     // app-core/api/auth/passwords.ts). Pulled into the browser graph
     // through the dist-barrel re-export. The `*-wasm32-wasi` sibling is
@@ -571,6 +574,24 @@ export function nativeModuleStubPlugin(
         ].join("\n");
       }
 
+      if (strippedId === "@elizaos/vault") {
+        return [
+          "const asyncNull = async () => null;",
+          "const asyncFalse = async () => false;",
+          "const vault = {",
+          "  getSecret: asyncNull,",
+          "  setSecret: async () => undefined,",
+          "  deleteSecret: async () => undefined,",
+          "  listSecrets: async () => [],",
+          "};",
+          "export const createManager = () => ({ vault });",
+          "export const getAutofillAllowed = asyncFalse;",
+          "export const getSavedLogin = asyncNull;",
+          "export const listSavedLogins = async () => [];",
+          "export default { createManager, getAutofillAllowed, getSavedLogin, listSavedLogins };",
+        ].join("\n");
+      }
+
       // @elizaos/plugin-local-inference sub-paths used by app-core sources.
       // The plugin is server-only (Node llama.cpp bindings, fs paths, etc.) but
       // app-core's `api/server.ts` and `runtime/eliza.ts` import named symbols
@@ -850,8 +871,8 @@ export function nativeModuleStubPlugin(
       const missingExports: Record<string, string> = {
         resolveSecretKeyAlias: "function(k){return k}",
         SECRET_KEY_ALIASES: "{}",
-        OnboardingStateMachine: "function(){}",
-        isOnboardingComplete: "function(){return false}",
+        SetupStateMachine: "function(){}",
+        isSetupComplete: "function(){return false}",
         AgentEventService: "function(){}",
         AutonomyService: "function(){}",
         createBasicCapabilitiesPlugin: "function(){return{name:'stub'}}",

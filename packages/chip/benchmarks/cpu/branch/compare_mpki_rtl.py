@@ -139,8 +139,7 @@ def build_evidence() -> dict:
     rtl = _collect_rtl_mpki()
     if not rtl:
         raise FileNotFoundError(
-            "no E1 RTL MPKI evidence found; run the cocotb harness "
-            "(make mpki-eval-rtl) first"
+            "no E1 RTL MPKI evidence found; run the cocotb harness (make mpki-eval-rtl) first"
         )
 
     model_per_trace = model_doc["per_trace"]
@@ -314,8 +313,7 @@ def main() -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n")
     print(
-        f"eliza-evidence: status={evidence['comparison_status']} "
-        f"path={args.out.relative_to(ROOT)}"
+        f"eliza-evidence: status={evidence['comparison_status']} path={args.out.relative_to(ROOT)}"
     )
     return 0
 

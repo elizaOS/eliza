@@ -123,7 +123,7 @@ export default function PublicChatPage() {
             {error ?? "This shared agent link is unavailable or private."}
           </p>
           <Link
-            className="text-sm text-[#FF5800] hover:text-[#FF5800]/80"
+            className="text-sm text-white/70 hover:text-white transition-colors"
             to="/dashboard/chat"
           >
             Open chat

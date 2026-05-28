@@ -148,12 +148,21 @@ describe("resolveBenchmarkResultsDbPath", () => {
     }
   });
 
-  it("defaults to ~/.eliza/benchmarks/results.db", () => {
+  it("defaults to the XDG state-dir benchmarks database", () => {
     expect(
       resolveBenchmarkResultsDbPath({
         ELIZA_BENCHMARK_RESULTS_DB: undefined,
       } as NodeJS.ProcessEnv),
-    ).toBe(path.join(os.homedir(), ".eliza", "benchmarks", "results.db"));
+    ).toBe(
+      path.join(
+        os.homedir(),
+        ".local",
+        "state",
+        "eliza",
+        "benchmarks",
+        "results.db",
+      ),
+    );
   });
 
   it("honors ELIZA_BENCHMARK_RESULTS_DB", () => {

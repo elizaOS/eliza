@@ -96,6 +96,16 @@ def semantic_errors() -> list[str]:
         errors,
     )
     require(
+        re.search(r"input\s+logic\s+\[13:0\]\s+addr", rtl) is not None,
+        "RTL boot ROM must expose the full 64 KiB word address range",
+        errors,
+    )
+    require(
+        "WORDS = 16384" in rtl,
+        "RTL boot ROM must allocate the full 64 KiB secure-ROM aperture",
+        errors,
+    )
+    require(
         "placeholder" not in rtl.lower(),
         "RTL boot ROM must not describe the handoff word as a placeholder",
         errors,
@@ -130,6 +140,11 @@ def artifact_errors() -> list[str]:
     require(
         0 < len(data) <= 65536,
         "secure boot ROM binary must be non-empty and fit in the 64 KiB aperture",
+        errors,
+    )
+    require(
+        len(HEX.read_text(encoding="utf-8").splitlines()) <= 16384,
+        "boot ROM hex must fit in the 64 KiB RTL aperture",
         errors,
     )
     require(

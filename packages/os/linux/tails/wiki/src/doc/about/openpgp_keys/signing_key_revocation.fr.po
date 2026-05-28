@@ -1,0 +1,976 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2025-06-10 17:59+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: \n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Revocation of the Tails signing key\"]]\n"
+msgstr "[[!meta title=\"Révocation de la clé de signature de Tails\"]]\n"
+
+#. type: Plain text
+msgid ""
+"This document proposes a mechanism for the distribution and activation of "
+"the revocation certificate of the Tails signing key."
+msgstr ""
+"Ce document propose un mécanisme de distribution et d'activation du "
+"certificat de révocation de la clé de signature de Tails."
+
+#. type: Title =
+#, no-wrap
+msgid "Status"
+msgstr "Statut"
+
+#. type: Plain text
+msgid "This document is obsolete."
+msgstr "Ce document est obsolète."
+
+#. type: Plain text
+msgid ""
+"It will be simplified or removed by [[!tails_gitlab tails/summit/-/issues/"
+"36]]."
+msgstr ""
+"Il sera simplifié ou supprimé par [[!tails_gitlab tails/summit/-/issues/36]]."
+
+#. type: Title =
+#, no-wrap
+msgid "Goals"
+msgstr "Objectifs"
+
+#. type: Plain text
+msgid "Covered by the current proposal:"
+msgstr "Couverts par la proposition actuelle :"
+
+#. type: Bullet: '- '
+msgid "Prevent any single individual from revoking our signing key."
+msgstr "Éviter qu'une seule personne puisse révoquer notre clé de signature."
+
+#. type: Bullet: '- '
+msgid ""
+"Allow a coalition of people from the Board to revoke our signing key in case "
+"most of the people from the Board become unavailable."
+msgstr ""
+"Permettre à un regroupement de personnes du Board de révoquer notre clé de "
+"signature dans le cas où la plupart des personnes du Board deviendraient "
+"indisponibles."
+
+#. type: Bullet: '- '
+msgid ""
+"Allow a coalition of people, not necessarily from the Board, to revoke our "
+"signing key in case everybody or almost everybody from the Board becomes "
+"unavailable."
+msgstr ""
+"Permettre à un regroupement de personnes, pas nécessairement du Board, de "
+"révoquer notre clé de signature dans le cas où tout le monde ou presque tout "
+"le Board deviendrait indisponible."
+
+#. type: Bullet: '- '
+msgid ""
+"Make it hard for a coalition of people not from the Board to revoke our "
+"signing key unless everybody or almost everybody from the Board becomes "
+"unavailable."
+msgstr ""
+"Rendre difficile à un regroupement de personnes n'étant pas du Board de "
+"révoquer notre clé de signature à moins que tout le monde ou presque tout le "
+"Board ne devienne indisponible."
+
+#. type: Bullet: '- '
+msgid ""
+"People not from the Board shouldn't know how the shares are spread and who "
+"has them."
+msgstr ""
+"Les personnes n'étant pas du Board ne doivent pas savoir comment les parts "
+"sont distribuées et qui en a."
+
+#. type: Bullet: '- '
+msgid ""
+"People in possession of a share of the revocation certificate of the signing "
+"key should have instructions on how to use it if needed."
+msgstr ""
+"Une personne en possession d'une part du certificat de révocation de la clé "
+"de signature doit avoir des instructions sur comment l'utiliser en cas de "
+"besoin."
+
+#. type: Title =
+#, no-wrap
+msgid "Groups"
+msgstr "Groupes"
+
+#. type: Plain text
+msgid "We define four complementary groups of trusted people:"
+msgstr ""
+"Nous définissons quatre groupes complémentaires de personnes de confiance :"
+
+#. type: Bullet: '  - '
+msgid "Group A: people from the Board themselves"
+msgstr "Groupe A : les personnes du Board"
+
+#. type: Bullet: '  - '
+msgid "Group B"
+msgstr "Groupe B"
+
+#. type: Bullet: '  - '
+msgid "Group C"
+msgstr "Groupe C"
+
+#. type: Bullet: '  - '
+msgid "Group D"
+msgstr "Groupe D"
+
+#. type: Plain text
+msgid ""
+"All these people should have an OpenPGP key and understand what a revocation "
+"certificate is."
+msgstr ""
+"Toutes ces personnes doivent avoir une clé OpenPGP et comprendre ce qu'est "
+"un certificat de révocation."
+
+#. type: Title =
+#, no-wrap
+msgid "Cryptographic shares"
+msgstr "Parts cryptographiques"
+
+#. type: Plain text
+msgid ""
+"We generate a revocation certificate of the signing key and split it into a "
+"number of cryptographic shares, using for example Shamir's secret sharing "
+"scheme implemented by `gfshare`."
+msgstr ""
+"Nous générons un certificat de révocation de la clé de signature et le "
+"découpons en un certain nombre de parts cryptographiques, par exemple en "
+"utilisant la méthode du partage de clé secrète de Shamir, implémentée par "
+"`gfshare`."
+
+#. type: Plain text
+msgid ""
+"The following combinations of people could get together and reassemble their "
+"shares to reconstruct a complete revocation certificate:"
+msgstr ""
+"Les combinaisons suivantes de personnes pourraient se regrouper et "
+"réassembler leurs parts pour reconstruire un certificat de révocation "
+"complet :"
+
+#. type: Bullet: '  - '
+msgid "Three people from the Board: A{3}"
+msgstr "Trois personnes du Board : A{3}"
+
+#. type: Bullet: '  - '
+msgid ""
+"Two people from the Board and one person not from the Board: A{2}+(B|C|D)"
+msgstr ""
+"Deux personnes du Board et une autre personne n'appartenant pas au Board : "
+"A{2}+(B|C|D)"
+
+#. type: Bullet: '  - '
+msgid ""
+"One person from the Board, and two people not from the Board but from two "
+"different groups: A+(B|C|D){2}"
+msgstr ""
+"Une personne du Board et deux personnes n'appartenant pas au Board mais de "
+"deux groupes différents : A+(B|C|D){2}"
+
+#. type: Bullet: '  - '
+msgid ""
+"Three people not from the Board but from three different groups: (B+C+D){3}"
+msgstr ""
+"Trois personnes n'appartenant pas au Board mais de trois groupes "
+"différents : (B+C+D){3}"
+
+#. type: Plain text
+msgid "We generate these shares:"
+msgstr "Nous générons ces parts :"
+
+#. type: Bullet: '  - '
+msgid "N shares, one for each person from the Board"
+msgstr "N parts, une pour chaque personne du Board"
+
+#. type: Bullet: '  - '
+msgid "1 share for people in group B"
+msgstr "1 part pour les personnes du groupe B"
+
+#. type: Bullet: '  - '
+msgid "1 share for people in group C"
+msgstr "1 part pour les personnes du groupe C"
+
+#. type: Bullet: '  - '
+msgid "1 share for people in group D"
+msgstr "1 part pour les personnes du groupe D"
+
+#. type: Title =
+#, no-wrap
+msgid "Who knows what"
+msgstr "Qui sait quoi"
+
+#. type: Bullet: '  - '
+msgid "People from the Board know the composition of each group"
+msgstr "Les personnes du Board connaissent la composition de chaque groupe"
+
+#. type: Bullet: '  - '
+msgid "People not from the Board:"
+msgstr "Trois personnes ne faisant pas partie du Board :"
+
+#. type: Bullet: '    - '
+msgid "Are explained in which circumstances they should revoke the signing key"
+msgstr ""
+"Il leur a été expliqué dans quelles circonstances elles doivent révoquer la "
+"clé de signature"
+
+#. type: Bullet: '    - '
+msgid ""
+"Are told to write to a certain contact email address if they decide to "
+"revoke the signing key"
+msgstr ""
+"Elles sont invitées à écrire à certaines adresses de courrier électronique "
+"si elles décident de révoquer la clé de signature"
+
+#. type: Bullet: '    - '
+msgid ""
+"Are told that they need three different shares to reassemble the revocation "
+"certificate"
+msgstr ""
+"On leur a indiqué que trois morceaux différents sont nécessaires pour "
+"reconstituer le certificat de révocation"
+
+#. type: Title =
+#, no-wrap
+msgid "Infrastructure"
+msgstr "Infrastructure"
+
+#. type: Bullet: '  - '
+msgid "Everybody who owns a share is subscribed to a mailing list."
+msgstr ""
+"Toutes les personnes ayant une part sont inscrites à une liste de diffusion."
+
+#. type: Bullet: '  - '
+msgid ""
+"This mailing list is hosted on a trusted server different from boum.org to "
+"be more resilient than our usual communication channels."
+msgstr ""
+"Cette liste de diffusion est hébergée sur un serveur de confiance différent "
+"de boum.org afin d'être plus résilient que nos canaux habituels de "
+"communication."
+
+#. type: Bullet: '  - '
+msgid ""
+"Someone hosting the mailing list is part of group B, C, or D so they can "
+"ensure that the list keeps working even if it never used."
+msgstr ""
+"La personne hébergeant la liste de diffusion fait partie du groupe B, C ou "
+"D, ainsi elle peut s'assurer que la liste continue de fonctionner même si "
+"elle n'est jamais utilisée."
+
+#. type: Title =
+#, no-wrap
+msgid "Changing the members of the groups B, C, or D"
+msgstr "Changer les membres des groupes B, C, ou D"
+
+#. type: Plain text
+msgid "To add someone to a given group:"
+msgstr "Pour ajouter une personne à un groupe donné :"
+
+#. type: Bullet: '  - '
+msgid ""
+"Request someone from that group to send her share to the new person in the "
+"group."
+msgstr ""
+"Demander à une personne de ce groupe d'envoyer sa part à la nouvelle "
+"personne."
+
+#. type: Plain text
+msgid "To remove someone from a given group:"
+msgstr "Pour retirer une personne d'un groupe :"
+
+#. type: Bullet: '  - '
+msgid "Send new shares to everybody except to the person who is being removed."
+msgstr ""
+"Envoyer de nouvelles parts à tout le monde sauf à la personne qui est "
+"retirée."
+
+#. type: Bullet: '  - '
+msgid ""
+"Request everybody to delete their previous share and track this.  Once "
+"everybody in 2 groups amongst B, C, or D have deleted their share, it "
+"becomes impossible for them to reassemble the revocation certificate with "
+"the previous set of shares."
+msgstr ""
+"Demander à tout le monde de supprimer leur part précédente et garder une "
+"trace de ceci. Une fois que tous les membres de 2 groupes parmi les groupes "
+"B, C ou D ont supprimé leur part, il est impossible de reconstituer le "
+"certificat avec les anciennes parts."
+
+#. type: Bullet: '  - '
+msgid "Let's hope that this doesn't happen very often :)"
+msgstr "Espérons que cela n'arrive pas souvent :)"
+
+#. type: Title =
+#, no-wrap
+msgid "Expiry"
+msgstr "Expiration"
+
+#. type: Plain text
+msgid ""
+"There is no expiry date on revocation certificates. One way of cancelling "
+"the revocation power is to destroy all copies of shares of 2 groups amongst "
+"B, C, or D."
+msgstr ""
+"Les certificats de révocation n'ont pas de date d'expiration. Une manière "
+"d'annuler le pouvoir de révocation est de détruire toutes les copies des "
+"parts de deux groupes parmi les groupes B, C ou D."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"invitation\"></a>\n"
+msgstr "<a id=\"invitation\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Invitation email"
+msgstr "Courrier électronique d'invitation"
+
+#. type: Plain text
+msgid ""
+"Someone who has a personal trust relationship with the person being invited "
+"sends this email."
+msgstr ""
+"Une personne qui a une relation de confiance personnelle avec la personne "
+"invitée envoi ce courrier électronique."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<pre>\n"
+"Subject: distribution\n"
+msgstr ""
+"<pre>\n"
+"Sujet : distribution\n"
+
+#. type: Plain text
+msgid "Hi,"
+msgstr "Salut,"
+
+#. type: Plain text
+msgid ""
+"We want to propose you to be part of a distributed mechanism for the "
+"revocation certificate of the Tails signing key."
+msgstr ""
+"Nous voulons vous proposer de faire partie de notre mécanisme de "
+"distribution du certificat de révocation de la clé de signature de Tails."
+
+#. type: Plain text
+msgid ""
+"The idea is to distribute cryptographic shares of this revocation "
+"certificate to people that we trust. These cryptographic shares can be put "
+"together to reassemble the revocation certificate and revoke the Tails "
+"signing key. This may be needed in case something really bad happens to us "
+"and we are not able to do the revocation ourselves."
+msgstr ""
+"L'idée est de distribuer des parts cryptographiques du certificat de "
+"révocation à des personnes en qui nous avons confiance. Ces parts "
+"cryptographiques peuvent être mises ensemble pour réassembler le certificat "
+"de révocation et révoquer la clé de signature de Tails. Cela peut être "
+"nécessaire dans le cas où quelque chose de vraiment mauvais nous arriverais "
+"et où nous ne serions pas capable de faire la révocation nous-mêmes."
+
+#. type: Plain text
+msgid "Note: In all this document, 'us' refers to the Board."
+msgstr "Note : dans tout ce document, « nous » fait référence au Board."
+
+#. type: Plain text
+msgid "You can read a complete description of the distribution mechanism on:"
+msgstr ""
+"Vous pouvez lire la description complète du mécanisme de distribution sur :"
+
+#. type: Plain text
+msgid "https://tails.net/doc/about/openpgp_keys/signing_key_revocation."
+msgstr ""
+"https://tails.net/doc/about/openpgp_keys/signing_key_revocation/"
+"index.fr.html."
+
+#. type: Plain text
+msgid ""
+"The recipe is public and the only secret component is the list of people who "
+"are in possession of the cryptographic material."
+msgstr ""
+"La procédure est publique et le seul élément secret est la liste des "
+"personnes en possession du matériel cryptographique."
+
+#. type: Plain text
+msgid ""
+"We are proposing this to you because we trust in both your technical "
+"abilities to store your share in a safe place and manipulate it as required. "
+"But also because we trust you as a human being to make informed judgment on "
+"when to use your share and act only in the interest of Tails."
+msgstr ""
+"Nous vous proposons cela car nous vous faisons confiance à la fois pour vos "
+"capacités techniques à stocker votre part dans un lieu sûr et à faire les "
+"manipulations nécessaires. Mais également car nous vous faisons confiance en "
+"tant qu'être humain pour avoir un jugement éclairé sur quand utiliser cette "
+"part et pour agir uniquement dans l'intérêt de Tails."
+
+#. type: Plain text
+msgid "The bad things that could happen if the mechanism fails are:"
+msgstr "Les pires choses qui pourraient arriver si le mécanisme échoue sont :"
+
+#. type: Plain text
+msgid ""
+"A. The signing key is not revoked when it should be. This could allow "
+"possible attackers to distribute malicious Tails images or publish malicious "
+"information on our name."
+msgstr ""
+"A. La clé de signature n'est pas révoquée lorsqu'elle le devrait. Cela "
+"pourrait rendre possible à des attaquants de distribuer des images Tails "
+"malveillantes ou de publier des informations malveillantes en notre nom."
+
+#. type: Plain text
+msgid ""
+"B. The signing key is revoked when it should not have been. This would "
+"prevent people from verifying our images with OpenPGP until we publish a new "
+"signing key and build trust in it."
+msgstr ""
+"B. La clé de signature est révoquée alors qu'elle n'aurait pas dû. Cela "
+"pourrait empêcher des personnes de vérifier nos images avec OpenPGP jusqu'à "
+"ce que nous publions une nouvelle clé de signature et construisions la "
+"confiance en elle."
+
+#. type: Title =
+#, no-wrap
+msgid "Distribution of the shares"
+msgstr "Distribution des parts"
+
+#. type: Plain text
+msgid ""
+"Each person from the Board, group A, has a *different* share, A1, A2, ..., "
+"An."
+msgstr ""
+"Chaque personne du Board, groupe A, a une part *différente*, A1, A2, ..., An."
+
+#. type: Plain text
+msgid ""
+"On top of this, we defined three complementary groups, B, C, and D of "
+"trusted people who have a close relationship with Tails but different "
+"interests and different access to information about us. You are part of one "
+"of these groups."
+msgstr ""
+"En plus de ça, nous définissons trois groupes complémentaires, B, C, et D de "
+"personnes de confiance qui sont proches de Tails mais avec des intérêts "
+"différents et des accès différents aux informations nous concernant. Vous "
+"faites partie d'un de ces groupes."
+
+#. type: Plain text
+msgid "Everybody in group B has an *identical* share B."
+msgstr "Tout le monde dans le groupe B a une part B *identique*."
+
+#. type: Plain text
+msgid "Everybody in group C has an *identical* share C."
+msgstr "Tout le monde dans le groupe C a une part C *identique*."
+
+#. type: Plain text
+msgid "Everybody in group D has an *identical* share D."
+msgstr "Tout le monde dans le groupe D a une part D *identique*."
+
+#. type: Plain text
+msgid ""
+"Three different shares are needed to reassemble the revocation certificate. "
+"For example, shares A1, A2, and A3, or shares A1, B, and C."
+msgstr ""
+"Trois parts différentes sont nécessaires pour réassembler le certificat de "
+"révocation. Par exemple, les parts A1, A2 et A3, ou les parts A1, B et C."
+
+#. type: Title =
+#, no-wrap
+msgid "How to store your share"
+msgstr "Comment stocker vos parts"
+
+#. type: Plain text
+msgid ""
+"Please keep your share in an encrypted storage and make it as hard as you "
+"can for untrusted people to get a copy of it."
+msgstr ""
+"Veillez conserver votre part dans un stockage chiffré et rendre aussi "
+"difficile que possible à une personne non-fiable d'en faire une copie."
+
+#. type: Plain text
+msgid ""
+"You can rename the file as long as you keep the number in the file name of "
+"your share as it is needed to use the share."
+msgstr ""
+"Vous pouvez renommer le fichier tant que vous conservez le nombre dans le "
+"nom du fichier de votre part car il est nécessaire pour utiliser la part."
+
+#. type: Plain text
+msgid ""
+"Feel free to back up the file but we might also request you to delete it at "
+"some point and you should be able to know whether you still have a copy of "
+"it or not. It is all-right to lose your share as long as you tell us that "
+"you have lost it. It is actually worse to still have a copy of the share "
+"\"somewhere\" while thinking that you don't, than to lose it by mistake."
+msgstr ""
+"N'hésitez pas à faire une sauvegarde du fichier mais à un moment nous "
+"pourrions vous demander de le supprimer et vous devrez pouvoir être en "
+"mesure de savoir si vous avez encore une copie ou non. Ce n'est pas grave de "
+"perde votre part si vous nous prévenez que vous l'avez perdu. Il est "
+"actuellement pire de continuer à avoir une copie de votre part \"quelque "
+"part\" en pensant ne pas en avoir que de l'avoir perdu par erreur."
+
+#. type: Plain text
+msgid ""
+"Don't hesitate to ask us if you need clarification on the technical aspects "
+"of this."
+msgstr ""
+"N'hésitez pas à nous demander si vous avez besoin de clarification sur les "
+"aspects techniques de cela."
+
+#. type: Title =
+#, no-wrap
+msgid "When to use your share"
+msgstr "Quand utiliser votre part"
+
+#. type: Plain text
+msgid "Everybody in possession of a share is subscribed to a mailing list."
+msgstr ""
+"Tout le monde en possession d'une part est inscrit à une liste de diffusion."
+
+#. type: Plain text
+msgid ""
+"If someone in possession of a share gets to learn about a very bad event "
+"that happened to many of us and really thinks that we are not capable of "
+"revoking the Tails signing key ourselves anymore, then this person should "
+"write to the mailing list explaining why she thinks that the signing key "
+"needs to be revoked."
+msgstr ""
+"Si une personne en possession d'une part apprenait qu'un très mauvais "
+"événement était arrivé à un grand nombre d'entre nous et pense vraiment que "
+"nous ne serons plus capable de révoquer la clé de signature de Tails nous-"
+"mêmes, alors cette personne doit écrire à la liste de diffusion en "
+"expliquant pourquoi elle pense que la clé de signature doit être révoquée."
+
+#. type: Plain text
+msgid ""
+"Yes, there is no mathematically proven algorithm for this and here is where "
+"your judgment as a human being is needed. The description of the very bad "
+"event should be checked or backed by enough people to be plausible."
+msgstr ""
+"Oui, il y a un algorithme mathématiquement prouvé pour cela et c'est ici que "
+"votre jugement en tant qu'être humain est nécessaire. La description du très "
+"mauvais évènement doit être vérifié ou soutenu par suffisamment de personnes "
+"pour être plausible."
+
+#. type: Plain text
+msgid ""
+"People on the list who are also convinced that the signing key should be "
+"revoked share their shares until they have 3 different shares. Then they can "
+"assemble the revocation certificate and publish it to revoke the signing key."
+msgstr ""
+"Les personnes de cette liste qui sont convaincues que la clé de signature "
+"doit être révoquée partagent leurs parts jusqu'à avoir 3 parts différentes. "
+"Ensuite elles peuvent assembler le certificat de révocation et le publier "
+"pour révoquer la clé de signature."
+
+#. type: Plain text
+msgid ""
+"Keep in mind that we could still revoke the signing key ourselves as long as "
+"three of us are able to communicate and gather their shares. So we only need "
+"your help if no more than two of us are still able to communicate."
+msgstr ""
+"Gardez en tête que nous pouvons toujours révoquer la clé de signature nous-"
+"mêmes si trois d'entre nous sont capables de communiquer et d'échanger leurs "
+"parts. Donc nous avons besoin de votre aide seulement si pas plus de deux "
+"d'entre nous sont capables de communiquer."
+
+#. type: Plain text
+msgid ""
+"Unless you really want to start the key revocation process, do not write to "
+"this mailing list."
+msgstr ""
+"À moins que n’ayez réellement besoin de commencer le processus de révocation "
+"de la clé, n'écrivez pas à la liste de diffusion."
+
+#. type: Title =
+#, no-wrap
+msgid "Further communications"
+msgstr "Communications futures"
+
+#. type: Plain text
+msgid ""
+"In case we need to communicate with you about this revocation mechanism in "
+"the future, we will always do it through the tails@boum.org mailing list. We "
+"might do so for example to:"
+msgstr ""
+"Dans le cas où nous aurions besoin à l'avenir de communiquer avec vous à "
+"propos de ce mécanisme de révocation, nous le ferons toujours par la liste "
+"de diffusion tails@boum.org. Nous pourrions faire ça pour par exemple :"
+
+#. type: Bullet: '  - '
+msgid "Ask you to send your share to a new member of your group."
+msgstr ""
+"Vous demander d'envoyer votre part à un nouveau membre de votre groupe."
+
+#. type: Bullet: '  - '
+msgid ""
+"Ask you to delete your share. This could be needed to cancel the power of "
+"others people's share: as long as enough of you delete their shares, the few "
+"people that might not delete them would end up with unusable shares."
+msgstr ""
+"Vous demander de supprimer votre part. Cela peut-être nécessaire pour "
+"annuler le fonctionnement de la part d'une autre personne : dès que "
+"suffisamment d'entre vous avez supprimé votre part, les quelques personnes "
+"ne l'ayant pas supprimé se retrouvent avec des parts inutilisables."
+
+#. type: Plain text
+msgid ""
+"The tails@boum.org mailing list has its own OpenPGP key, which is signed by "
+"the Tails signing key itself:"
+msgstr ""
+"La liste de diffusion tails@boum.org a sa propre clé OpenPGP, qui est signée "
+"par la clé de signature de Tails elle-même :"
+
+#. type: Plain text
+#, no-wrap
+msgid "    https://tails.net/tails-email.key\n"
+msgstr "    https://tails.net/tails-email.key\n"
+
+#. type: Plain text
+msgid "So, can we count on you for this?"
+msgstr "Donc, pouvons-nous compter sur vous ?"
+
+#. type: Plain text
+msgid ""
+"If you answer positively, we will send you your share and subscribe you to "
+"the mailing list."
+msgstr ""
+"Si vous répondez positivement, nous allons vous envoyer votre part et vous "
+"inscrire à la liste de diffusion."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"Thanks, and may the force be with you!\n"
+"</pre>\n"
+msgstr ""
+"Merci et que la force soit avec vous !\n"
+"</pre>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Keeping the members of the groups B, C, and D up-to-date"
+msgstr "Garder les membres des groupes B, C et D à jour"
+
+#. type: Plain text
+msgid "At least every 2 years, we make sure that the mechanism still works:"
+msgstr ""
+"Au moins tous les 2 ans, nous nous assurons que le mécanisme fonctionne "
+"toujours :"
+
+#. type: Bullet: '1. '
+msgid ""
+"We review internally the list of members of each group and decide possible "
+"additions to, and removals from, each group."
+msgstr ""
+"Nous vérifions en interne la liste des membres de chaque groupe et décidons "
+"de possibles ajouts ou retraits de chaque groupe."
+
+#. type: Bullet: '1. '
+msgid ""
+"We write to every individual member of each group to ask them to check that "
+"they still have their share and the number in the file name."
+msgstr ""
+"Nous écrivons individuellement à chaque membre de chaque groupe pour "
+"demander de vérifier si il a toujours sa part et le numéro dans le nom du "
+"fichier."
+
+#. type: Bullet: '1. '
+msgid ""
+"We log in to the administration interface of the mailing list, make sure "
+"that it still exists, and is configured correctly."
+msgstr ""
+"Nous nous connectons à l'interface d'administration de la liste de diffusion "
+"pour s'assurer qu'elle existe toujours et qu'elle est configurée "
+"correctement."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"update\"></a>\n"
+msgstr "<a id=\"update\"></a>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Update email"
+msgstr "Courrier électronique de mise à jour"
+
+#. type: Plain text
+msgid ""
+"We send these emails through tails@boum.org to avoid the need for a personal "
+"trust relationship between the person sending the mail and the recipient. We "
+"don't send shares from groups B, C, or D with tails@boum.org by doing so."
+msgstr ""
+"Nous envoyons ces courriers électroniques depuis tails@boum.org pour éviter "
+"d'avoir besoin d'une relation de confiance personnelle entre la personne "
+"envoyant le courrier et celle le recevant. Nous n'envoyons pas les parts des "
+"groupes B, C ou D avec tails@boum.org de cette façon."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<pre>\n"
+"Subject: update\n"
+msgstr ""
+"<pre>\n"
+"Sujet : mise à jour\n"
+
+#. type: Plain text
+msgid ""
+"Some years ago, you agreed to be part of a distributed mechanism for the "
+"revocation certificate of the Tails signing key and we sent you a "
+"cryptographic share of this revocation certificate."
+msgstr ""
+"Il y a plusieurs années, vous avez accepté de faire partie de notre "
+"mécanisme de distribution du certificat de révocation de la clé de signature "
+"de Tails et nous vous avions envoyé une part cryptographique du certificat "
+"de révocation."
+
+#. type: Plain text
+msgid "Today, we are asking you to:"
+msgstr "Aujourd’hui, nous vous demandons de :"
+
+#. type: Bullet: '1. '
+msgid ""
+"Verify the authenticity of this email, either by verifying that it is signed "
+"by the tails@boum.org mailing or by talking directly to someone from the "
+"Board."
+msgstr ""
+"Vérifier l'authenticité de ce courrier électronique, au choix en vérifiant "
+"qu'il soit signé par tails@boum.org ou en discutant directement avec une "
+"personne du Board."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The tails@boum.org mailing list has its own OpenPGP key, which is\n"
+"   signed by the Tails signing key itself:\n"
+msgstr ""
+"   La liste de diffusion tails@boum.org a sa propre clé OpenPGP, qui est\n"
+"   signée par la clé de signature de Tails elle-même :\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   https://tails.net/tails-email.key\n"
+msgstr "   https://tails.net/tails-email.key\n"
+
+#. type: Bullet: '2. '
+msgid "Confirm whether you still have in your possession:"
+msgstr "Confirmer que vous avez toujours en votre possession :"
+
+#. type: Bullet: '   - '
+msgid "Your share of the revocation certificate."
+msgstr "Votre part du certificat de révocation."
+
+#. type: Bullet: '   - '
+msgid "The number NNN in the file name of your share."
+msgstr "Le numéro NNN dans le nom de fichier de votre part."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     The file was named tails-signing-key-revocation-cert.asc.NNN, where\n"
+"     NNN is a 3 digit number.\n"
+msgstr ""
+"     Le fichier est nommé tails-signing-key-revocation-cert.asc.NNN, où\n"
+"     NNN est un numéro à 3 chiffres.\n"
+
+#. type: Plain text
+msgid ""
+"For the record, the address of the mailing list that you should write to in "
+"case you want to assemble the revocation certificate is:"
+msgstr ""
+"Pour votre information, l’adresse de la liste de diffusion où vous devez "
+"écrire dans le cas où vous voulez assembler le certificat de révocation est :"
+
+#. type: Plain text
+#, no-wrap
+msgid "    address@example.org\n"
+msgstr "    adresse@exemple.org\n"
+
+#. type: Plain text
+msgid ""
+"Do not write to this mailing list unless you really want to start the key "
+"revocation process."
+msgstr ""
+"N'écrivez pas à cette liste de diffusion à moins que n’ayez réellement "
+"besoin de commencer le processus de révocation de la clé."
+
+#. type: Plain text
+msgid "We are also copying below a summary of the mechanism."
+msgstr "Nous avons également copié ci-dessous le résumé du mécanisme."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"XXX: Copy the invitation email:\n"
+"XXX: - Include \"You can read a complete description of the distribution mechanism on:\"\n"
+"XXX: - Stop before \"So, can we count on you for this?\"\n"
+"</pre>\n"
+msgstr ""
+"XXX : Copier le courrier électronique d'invitation :\n"
+"XXX : - Inclure \"Vous pouvez lire la description complète du mécanisme de distribution sur :\"\n"
+"XXX : - Arrêter avant \"Donc, pouvons-nous compter sur vous ?\"\n"
+"</pre>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Adding a new member"
+msgstr "Ajouter une nouvelle personne"
+
+#. type: Bullet: '1. '
+msgid ""
+"Send the [[invitation email|signing_key_revocation#invitation]] to the new "
+"member."
+msgstr ""
+"Envoyer le [[courrier électronique d'invitation|"
+"signing_key_revocation#invitation]] à la nouvelle personne."
+
+#. type: Bullet: '1. '
+msgid ""
+"If they agree, ask someone else from the same group to send them their share "
+"of the key."
+msgstr ""
+"Si elle est d'accord, demander à une autre personne du même groupe de lui "
+"envoyer sa part de la clé."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Unfortunately, this reveals some membership information to these two\n"
+"   people.\n"
+msgstr ""
+"   Malheureusement, cela révèle certaines informations à ces deux\n"
+"   personnes.\n"
+
+#. type: Bullet: '1. '
+msgid "Ask the new member to confirm the reception of their share."
+msgstr "Demander à la nouvelle personne de confirmer la réception de sa part."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"sharing\"></a>\n"
+msgstr "<a id=\"sharing\"></a>\n"
+
+#. type: Title ###
+#, no-wrap
+msgid "Sharing email"
+msgstr "Courrier électronique de partage"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<pre>\n"
+"Subject: sharing\n"
+msgstr ""
+"<pre>\n"
+"Sujet : partage\n"
+
+#. type: Plain text
+msgid "We asked someone else from your group to send you a copy of your share."
+msgstr ""
+"Nous avons demandé à une autre personne de votre groupe de vous envoyer une "
+"copie de votre part."
+
+#. type: Plain text
+msgid "Please tell us once you receive it."
+msgstr "Veuillez nous prévenir quand vous l'aurez reçu."
+
+#. type: Plain text
+msgid ""
+"The address of the mailing list that you should write to in case you want to "
+"assemble the revocation certificate is:"
+msgstr ""
+"L’adresse de la liste de diffusion où vous devez écrire dans le cas où vous "
+"voulez assembler le certificat de révocation est :"
+
+#, no-wrap
+#~ msgid ""
+#~ "  - People not from the Board:\n"
+#~ "    - Are explained in which circumstances they should revoke the signing key\n"
+#~ "    - Are told to write to a certain contact email address if they decide to revoke the signing key\n"
+#~ "    - Are told that they need three different shares to reassemble the revocation certificate\n"
+#~ msgstr ""
+#~ "  - Les personnes extérieures au conseil d'administration :\n"
+#~ "    - Sont informées des circonstances dans lesquelles elles devraient révoquer la clé de signature\n"
+#~ "    - Sont invitées à contacter une certaine adresse de courrier électronique si elles décident de révoquer la clé de signature\n"
+#~ "    - Sont informées qu'elles ont besoin de trois parts différentes pour réassembler le certificat de révocation\n"
+
+#~ msgid ""
+#~ "Note: In all this document, 'us' refers to the set of people subscribed "
+#~ "to tails@boum.org which is a Schleuder mailing list."
+#~ msgstr ""
+#~ "Note : dans la totalité de ce document, 'nous' correspond au groupe de "
+#~ "personnes inscrites à tails@boum.org, c'est une liste de diffusion "
+#~ "Schleuder."
+
+#~ msgid ""
+#~ "   XXX: someone did not understand whether \"Confirm\" meant \"Check\"\n"
+#~ "   or \"Confirm and tell us\".\n"
+#~ msgstr ""
+#~ "   XXX: une personne n'a pas compris que \"Confirmer\" veut dire "
+#~ "\"vérifier\"\n"
+#~ "   ou \"Confirmer et nous dire\".\n"
+
+#~ msgid ""
+#~ "  A. Prevent any single individual from revoking our signing key.\n"
+#~ "  B. Allow a coalition of people from tails@boum.org to revoke our "
+#~ "signing key\n"
+#~ "     in case most of the people from tails@boum.org become unavailable.\n"
+#~ "  C. Allow a coalition of people, not necessarily from tails@boum.org, "
+#~ "to\n"
+#~ "     revoke our signing key in case everybody or almost everybody from\n"
+#~ "     tails@boum.org becomes unavailable.\n"
+#~ "  D. Make it hard for a coalition of people not from tails@boum.org to "
+#~ "revoke\n"
+#~ "     our signing key unless everybody or almost everybody from "
+#~ "tails@boum.org\n"
+#~ "     becomes unavailable.\n"
+#~ "  E. People not from tails@boum.org shouldn't know how the shares are "
+#~ "spread\n"
+#~ "     and who has them.\n"
+#~ "  F. People in possession of a share of the revocation certificate\n"
+#~ "     of the signing key should have instructions on how to use it if "
+#~ "needed.\n"
+#~ msgstr ""
+#~ "  A. Empêcher une personne seule de révoquer notre clé de signature.\n"
+#~ "  B. Permettre à un groupe de personnes appartenant à tails@boum.org\n"
+#~ "    de révoquer notre clé de signature dans le cas où la plupart des "
+#~ "personnes\n"
+#~ "    de tails@boum.org deviennent injoignables.\n"
+#~ "  C. Permettre à un groupe de personnes, pas nécessairement de "
+#~ "tails@boum.org,\n"
+#~ "    de révoquer notre clé de signature dans le cas où tous ou presque "
+#~ "tous les membres\n"
+#~ "    de tails@boum.org deviennent injoignables.\n"
+#~ "  D. Rendre difficile à un groupe de personnes n'appartenant pas à "
+#~ "tails@boum.org\n"
+#~ "    de révoquer notre clé à moins que tous ou presque tous les membres de "
+#~ "tails@boum.org\n"
+#~ "    soient injoignables.\n"
+#~ "  E. Les personnes n'appartenant pas à tails@boum.org ne devraient pas "
+#~ "savoir comment\n"
+#~ "    les parts sont distribuées, et qui en a.\n"
+#~ "  F. Les personnes possédant une part du certificat de révocation de la "
+#~ "clé de signature\n"
+#~ "    devraient avoir des instructions pour s'en servir si nécessaire.\n"
+
+#~ msgid "Email to members of the groups\n"
+#~ msgstr "Email envoyé aux membres des groupes\n"

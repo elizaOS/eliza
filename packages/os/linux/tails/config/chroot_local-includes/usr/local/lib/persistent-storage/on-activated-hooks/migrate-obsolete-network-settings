@@ -1,0 +1,12 @@
+#!/bin/sh
+
+set -eu
+
+# Migrate obsolete network setting to offline mode setting
+CONF="/live/persistence/TailsData_unlocked/greeter-settings/tails.network"
+if [ -e "${CONF}" ]; then
+    . "${CONF}"
+    if [ "${TAILS_NETCONF:-}" = disabled ]; then
+        echo 'TAILS_NETWORK=false' > "${CONF}"
+    fi
+fi

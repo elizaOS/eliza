@@ -1,6 +1,6 @@
 import type { AgentRuntime } from "@elizaos/core";
 import {
-  normalizeOnboardingProviderId,
+  normalizeFirstRunProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
@@ -117,7 +117,7 @@ export function detectRuntimeModel(
     (config ?? null) as Record<string, unknown> | null,
   );
   const llmText = routing?.llmText;
-  const backend = normalizeOnboardingProviderId(llmText?.backend);
+  const backend = normalizeFirstRunProviderId(llmText?.backend);
 
   if (llmText?.transport === "direct") {
     const provider = backend && backend !== "elizacloud" ? backend : undefined;

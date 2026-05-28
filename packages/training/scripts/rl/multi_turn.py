@@ -161,7 +161,6 @@ class EpisodeBuffer:
 
         # Check success based on final reward
         if self.turns:
-            final_turn = self.turns[-1]
             # Episode is successful if total reward is positive
             self.success = self.total_reward > 0
 

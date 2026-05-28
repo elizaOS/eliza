@@ -246,9 +246,9 @@ export type ModelsConfig = {
   mode?: "merge" | "replace";
   providers?: Record<string, ModelProviderConfig>;
   bedrockDiscovery?: BedrockDiscoveryConfig;
-  /** Selected small model ID for fast tasks (e.g. "claude-haiku"). Set during onboarding. */
+  /** Selected small model ID for fast tasks (e.g. "claude-haiku"). Set during first-run setup. */
   small?: string;
-  /** Selected large model ID for complex reasoning (e.g. "claude-sonnet-4-6"). Set during onboarding. */
+  /** Selected large model ID for complex reasoning (e.g. "claude-sonnet-4-6"). Set during first-run setup. */
   large?: string;
 };
 
@@ -422,7 +422,7 @@ export type MemoryQmdLimitsConfig = {
 // --- Database types ---
 
 export type PgliteConfig = {
-  /** Custom PGLite data directory. Default: ~/.eliza/workspace/.eliza/.elizadb */
+  /** Custom PGLite data directory. Default: <stateDir>/workspace/.elizadb */
   dataDir?: string;
 };
 
@@ -553,7 +553,7 @@ export type CloudServiceToggles = {
 export type CloudConfig = {
   /** Enable Eliza Cloud integration. Default: false. */
   enabled?: boolean;
-  /** Selected cloud provider ID (e.g. "elizacloud"). Set during onboarding. */
+  /** Selected cloud provider ID (e.g. "elizacloud"). Set during first-run setup. */
   provider?: string;
   /** Remote API base URL used when the app is attached to a remote backend. */
   remoteApiBase?: string;
@@ -563,13 +563,13 @@ export type CloudConfig = {
   baseUrl?: string;
   /** Cached API key (stored encrypted via gateway auth). */
   apiKey?: string;
-  /** ID of the cloud agent created during onboarding. */
+  /** ID of the cloud agent created during first-run setup. */
   agentId?: string;
   /** Inference mode: cloud (proxied), byok (user keys), local (no cloud). */
   inferenceMode?: CloudInferenceMode;
   /** Granular service toggles — pick which cloud services to use. */
   services?: CloudServiceToggles;
-  /** Runtime mode chosen during onboarding: "cloud" or "local". */
+  /** Runtime mode chosen during first-run setup: "cloud" or "local". */
   runtime?: "cloud" | "local";
   /** Auto-deploy agents to cloud on creation. Default: false. */
   autoProvision?: boolean;
@@ -684,8 +684,8 @@ export type ConnectorConfig = { [key: string]: ConnectorFieldValue };
 
 export type ElizaConfig = {
   meta?: {
-    /** Explicit onboarding completion marker. Reset clears the entire state dir. */
-    onboardingComplete?: boolean;
+    /** Explicit first-run completion marker. Reset clears the entire state dir. */
+    firstRunComplete?: boolean;
     /** Last Eliza version that wrote this config. */
     lastTouchedVersion?: string;
     /** ISO timestamp when this config was last written. */
@@ -722,7 +722,7 @@ export type ElizaConfig = {
   ui?: {
     /** Accent color for Eliza UI chrome (hex). */
     seamColor?: string;
-    /** User's preferred UI theme. Set during onboarding. */
+    /** User's preferred UI theme. Set during first-run setup. */
     theme?:
       | "eliza"
       | "eliza"
@@ -743,7 +743,7 @@ export type ElizaConfig = {
     language?: string;
     /** Selected built-in character preset id. */
     presetId?: string;
-    /** Owner display name set during onboarding or via LifeOps. */
+    /** Owner display name set during first-run setup or via LifeOps. */
     ownerName?: string;
     /**
      * Pinned/favorite apps shown in the dashboard header. Owned by the
@@ -805,7 +805,7 @@ export type ElizaConfig = {
   /**
    * Legacy linked-account flags persisted in `eliza.json` (e.g.
    * `linkedAccounts.elizacloud.status === "linked"`). Per-account
-   * credential records live under `~/.eliza/auth/{providerId}/...`
+   * credential records live under `<stateDir>/auth/{providerId}/...`
    * and are surfaced via the WS3 accounts API, not this config.
    */
   linkedAccounts?: LinkedAccountFlagsConfig;

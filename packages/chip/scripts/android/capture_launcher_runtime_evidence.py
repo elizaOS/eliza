@@ -18,9 +18,11 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUTPUT = ROOT / "docs/evidence/android/eliza_launcher_runtime_evidence.json"
@@ -54,8 +56,7 @@ AOSP_EXPECTED_EVIDENCE = (
     ROOT / "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
 )
 AOSP_PRODUCT_OUT = (
-    Path(os.environ.get("AOSP_DIR", "/home/shaw/aosp"))
-    / "out/target/product/eliza_ai_soc"
+    Path(os.environ.get("AOSP_DIR", "/home/shaw/aosp")) / "out/target/product/eliza_ai_soc"
 )
 AOSP_EXPECTED_ARTIFACT_NAMES = (
     "vendor.img",
@@ -136,9 +137,12 @@ def file_snapshot(path: Path, *, tail_lines: int = 0) -> dict[str, object]:
         return record
     stat = path.stat()
     record["size_bytes"] = stat.st_size
-    record["mtime_utc"] = datetime.fromtimestamp(stat.st_mtime, UTC).replace(
-        microsecond=0
-    ).isoformat().replace("+00:00", "Z")
+    record["mtime_utc"] = (
+        datetime.fromtimestamp(stat.st_mtime, UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
     if tail_lines:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
         record["tail"] = lines[-tail_lines:]
@@ -288,7 +292,9 @@ def matching_lines(text: str, needles: tuple[str, ...], limit: int = 80) -> list
     return lines[-limit:]
 
 
-def role_holders(prefix: list[str], timeout_seconds: int, roles: tuple[str, ...]) -> dict[str, list[str]]:
+def role_holders(
+    prefix: list[str], timeout_seconds: int, roles: tuple[str, ...]
+) -> dict[str, list[str]]:
     holders: dict[str, list[str]] = {}
     for role in roles:
         probe = adb_shell(prefix, timeout_seconds, "cmd", "role", "holders", role)
@@ -363,7 +369,9 @@ def write_transcript(path: Path, commands: list[dict[str, object]], health_body:
         f"eliza-evidence: claim_boundary={CLAIM_BOUNDARY}",
     ]
     for item in commands:
-        lines.append(f"$ {' '.join(str(part) for part in item['command'])}")
+        lines.append(
+            f"$ {' '.join(str(part) for part in cast('Iterable[object]', item['command']))}"
+        )
         lines.append(str(item["output"]).rstrip())
         lines.append(f"[ok={item['ok']}]")
     lines.append("$ host-http /api/health")
@@ -372,7 +380,11 @@ def write_transcript(path: Path, commands: list[dict[str, object]], health_body:
 
 
 def choose_ready_serial(adb_devices_output: str) -> str | None:
-    ready = [target["serial"] for target in parse_adb_targets(adb_devices_output) if target["state"] == "device"]
+    ready = [
+        target["serial"]
+        for target in parse_adb_targets(adb_devices_output)
+        if target["state"] == "device"
+    ]
     return ready[0] if len(ready) == 1 else None
 
 
@@ -384,10 +396,14 @@ def build_report(args: argparse.Namespace) -> dict[str, object]:
         commands.append({"command": command, "ok": probe.ok, "output": probe.output.strip()})
         return probe
 
-    adb_devices = record(["adb", "devices", "-l"], run(["adb", "devices", "-l"], args.timeout_seconds))
+    adb_devices = record(
+        ["adb", "devices", "-l"], run(["adb", "devices", "-l"], args.timeout_seconds)
+    )
     if not args.adb_serial and not choose_ready_serial(adb_devices.output):
         for address in args.adb_connect:
-            record(["adb", "connect", address], run(["adb", "connect", address], args.timeout_seconds))
+            record(
+                ["adb", "connect", address], run(["adb", "connect", address], args.timeout_seconds)
+            )
         if args.adb_connect:
             adb_devices = record(
                 ["adb", "devices", "-l"],
@@ -397,12 +413,29 @@ def build_report(args: argparse.Namespace) -> dict[str, object]:
     prefix = adb_prefix(selected_serial)
     host_runtime = host_runtime_diagnostics(adb_devices, args.timeout_seconds)
     adb_state = record(prefix + ["get-state"], run(prefix + ["get-state"], args.timeout_seconds))
-    boot = record(prefix + ["shell", "getprop", "sys.boot_completed"], adb_shell(prefix, args.timeout_seconds, "getprop", "sys.boot_completed"))
-    cpu_abi = record(prefix + ["shell", "getprop", "ro.product.cpu.abi"], adb_shell(prefix, args.timeout_seconds, "getprop", "ro.product.cpu.abi"))
-    cpu_abilist = record(prefix + ["shell", "getprop", "ro.product.cpu.abilist"], adb_shell(prefix, args.timeout_seconds, "getprop", "ro.product.cpu.abilist"))
-    uname_m = record(prefix + ["shell", "uname", "-m"], adb_shell(prefix, args.timeout_seconds, "uname", "-m"))
-    build_id = record(prefix + ["shell", "getprop", "ro.build.id"], adb_shell(prefix, args.timeout_seconds, "getprop", "ro.build.id"))
-    sdk = record(prefix + ["shell", "getprop", "ro.build.version.sdk"], adb_shell(prefix, args.timeout_seconds, "getprop", "ro.build.version.sdk"))
+    boot = record(
+        prefix + ["shell", "getprop", "sys.boot_completed"],
+        adb_shell(prefix, args.timeout_seconds, "getprop", "sys.boot_completed"),
+    )
+    cpu_abi = record(
+        prefix + ["shell", "getprop", "ro.product.cpu.abi"],
+        adb_shell(prefix, args.timeout_seconds, "getprop", "ro.product.cpu.abi"),
+    )
+    cpu_abilist = record(
+        prefix + ["shell", "getprop", "ro.product.cpu.abilist"],
+        adb_shell(prefix, args.timeout_seconds, "getprop", "ro.product.cpu.abilist"),
+    )
+    uname_m = record(
+        prefix + ["shell", "uname", "-m"], adb_shell(prefix, args.timeout_seconds, "uname", "-m")
+    )
+    build_id = record(
+        prefix + ["shell", "getprop", "ro.build.id"],
+        adb_shell(prefix, args.timeout_seconds, "getprop", "ro.build.id"),
+    )
+    sdk = record(
+        prefix + ["shell", "getprop", "ro.build.version.sdk"],
+        adb_shell(prefix, args.timeout_seconds, "getprop", "ro.build.version.sdk"),
+    )
     system_apk = record(
         prefix + ["shell", "ls", "-l", args.system_apk_path],
         adb_shell(prefix, args.timeout_seconds, "ls", "-l", args.system_apk_path),
@@ -414,11 +447,17 @@ def build_report(args: argparse.Namespace) -> dict[str, object]:
     )
     package_list_eliza = record(
         prefix + ["shell", "sh", "-c", "pm list packages -f | grep -i eliza || true"],
-        adb_shell(prefix, args.timeout_seconds, "sh", "-c", "pm list packages -f | grep -i eliza || true"),
+        adb_shell(
+            prefix, args.timeout_seconds, "sh", "-c", "pm list packages -f | grep -i eliza || true"
+        ),
     )
-    pm_path = record(prefix + ["shell", "pm", "path", args.package], adb_shell(prefix, args.timeout_seconds, "pm", "path", args.package))
+    pm_path = record(
+        prefix + ["shell", "pm", "path", args.package],
+        adb_shell(prefix, args.timeout_seconds, "pm", "path", args.package),
+    )
     home_resolve = record(
-        prefix + [
+        prefix
+        + [
             "shell",
             "cmd",
             "package",
@@ -442,19 +481,42 @@ def build_report(args: argparse.Namespace) -> dict[str, object]:
             "android.intent.category.HOME",
         ),
     )
-    activity_dump = record(prefix + ["shell", "dumpsys", "activity", "activities"], adb_shell(prefix, args.timeout_seconds, "dumpsys", "activity", "activities"))
-    window_dump = record(prefix + ["shell", "dumpsys", "window"], adb_shell(prefix, args.timeout_seconds, "dumpsys", "window"))
-    service_dump = record(prefix + ["shell", "dumpsys", "activity", "services", args.package], adb_shell(prefix, args.timeout_seconds, "dumpsys", "activity", "services", args.package))
-    pid_probe = record(prefix + ["shell", "pidof", args.package], adb_shell(prefix, args.timeout_seconds, "pidof", args.package))
-    forward_probe = record(prefix + ["forward", f"tcp:{args.host_port}", f"tcp:{args.agent_port}"], run(prefix + ["forward", f"tcp:{args.host_port}", f"tcp:{args.agent_port}"], args.timeout_seconds))
-    logcat_probe = record(prefix + ["shell", "logcat", "-d", "-b", "all"], adb_shell(prefix, args.timeout_seconds, "logcat", "-d", "-b", "all"))
+    activity_dump = record(
+        prefix + ["shell", "dumpsys", "activity", "activities"],
+        adb_shell(prefix, args.timeout_seconds, "dumpsys", "activity", "activities"),
+    )
+    window_dump = record(
+        prefix + ["shell", "dumpsys", "window"],
+        adb_shell(prefix, args.timeout_seconds, "dumpsys", "window"),
+    )
+    service_dump = record(
+        prefix + ["shell", "dumpsys", "activity", "services", args.package],
+        adb_shell(prefix, args.timeout_seconds, "dumpsys", "activity", "services", args.package),
+    )
+    pid_probe = record(
+        prefix + ["shell", "pidof", args.package],
+        adb_shell(prefix, args.timeout_seconds, "pidof", args.package),
+    )
+    forward_probe = record(
+        prefix + ["forward", f"tcp:{args.host_port}", f"tcp:{args.agent_port}"],
+        run(
+            prefix + ["forward", f"tcp:{args.host_port}", f"tcp:{args.agent_port}"],
+            args.timeout_seconds,
+        ),
+    )
+    logcat_probe = record(
+        prefix + ["shell", "logcat", "-d", "-b", "all"],
+        adb_shell(prefix, args.timeout_seconds, "logcat", "-d", "-b", "all"),
+    )
 
     args.logcat.parent.mkdir(parents=True, exist_ok=True)
     args.logcat.write_text(logcat_probe.output, encoding="utf-8")
 
     health_url = f"http://127.0.0.1:{args.host_port}/api/health"
     health_http, health_ready, health_body = (
-        http_health(health_url, args.timeout_seconds) if forward_probe.ok else (0, False, forward_probe.output)
+        http_health(health_url, args.timeout_seconds)
+        if forward_probe.ok
+        else (0, False, forward_probe.output)
     )
     roles = role_holders(
         prefix,
@@ -480,7 +542,9 @@ def build_report(args: argparse.Namespace) -> dict[str, object]:
             "INSTALL_FAILED",
         ),
     )
-    fatal_count = count_lines(logcat, ("FATAL EXCEPTION", "signal 11 (SIGSEGV)", "--------- beginning of crash"))
+    fatal_count = count_lines(
+        logcat, ("FATAL EXCEPTION", "signal 11 (SIGSEGV)", "--------- beginning of crash")
+    )
     avc_count = count_lines(logcat, ("avc: denied",))
     try:
         service_pid = int(last_line(pid_probe).split()[0])
@@ -529,7 +593,9 @@ def build_report(args: argparse.Namespace) -> dict[str, object]:
         "app": {
             "package_name": args.package,
             "system_apk_path": args.system_apk_path,
-            "system_apk_present": "present" if system_apk.ok and args.system_apk_path in system_apk.output else "missing",
+            "system_apk_present": "present"
+            if system_apk.ok and args.system_apk_path in system_apk.output
+            else "missing",
             "system_apk_probe": system_apk.output.strip(),
             "permission_file_probes": permission_file_probes,
             "permission_file_symlink_targets": permission_file_symlink_targets,
@@ -622,7 +688,7 @@ def main(argv: list[str] | None = None) -> int:
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"{report['status']}: android.launcher_runtime ({rel(args.output)})")
     if report["status"] != "PASS":
-        missing = report.get("observations", {}).get("missing_or_false", [])
+        missing = cast("dict[str, Any]", report.get("observations", {})).get("missing_or_false", [])
         print("missing_or_false=" + ",".join(str(item) for item in missing))
     return 0 if report["status"] == "PASS" else 2
 

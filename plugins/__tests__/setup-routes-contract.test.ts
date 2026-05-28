@@ -2,7 +2,7 @@
  * Connector setup-routes contract test.
  *
  * This test pins the intended shared shape for connector setup routes.
- * Today most connectors diverge — see docs/onboarding-contracts.md §5.
+ * Today most connectors diverge — see docs/first-run-contracts.md §5.
  * Normalization is tracked as a follow-up; failures here are expected
  * for now and use `test.fails(...)` so the suite produces useful signal
  * without blocking CI.
@@ -123,9 +123,10 @@ function parseExport(source: string, exportName: string): ParsedExport | null {
   // Direct array literal form: [{ type: "GET", path: "/x", ... }, ...]
   const entryRegex =
     /\{\s*type:\s*"(GET|POST|PUT|PATCH|DELETE|STATIC)"\s*,\s*path:\s*"([^"]+)"/g;
-  let match: RegExpExecArray | null;
-  while ((match = entryRegex.exec(body)) !== null) {
+  let match = entryRegex.exec(body);
+  while (match !== null) {
     routes.push({ type: match[1], path: match[2] });
+    match = entryRegex.exec(body);
   }
 
   // app-documents declares routes by mapping over a DOCUMENT_ROUTES list.
@@ -133,8 +134,10 @@ function parseExport(source: string, exportName: string): ParsedExport | null {
   if (routes.length === 0) {
     const tableRegex =
       /\{\s*type:\s*"(GET|POST|PUT|PATCH|DELETE|STATIC)"\s*,\s*path:\s*"([^"]+)"\s*\}/g;
-    while ((match = tableRegex.exec(source)) !== null) {
+    match = tableRegex.exec(source);
+    while (match !== null) {
       routes.push({ type: match[1], path: match[2] });
+      match = tableRegex.exec(source);
     }
   }
 

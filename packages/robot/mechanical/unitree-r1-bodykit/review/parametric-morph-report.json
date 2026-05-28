@@ -1,6 +1,6 @@
 {
   "verdict": "pass",
-  "applied_count": 38,
+  "applied_count": 39,
   "skipped_count": 0,
   "applied": [
     {
@@ -985,9 +985,9 @@
         {
           "axis_index": 1,
           "base": -0.045,
-          "target": -0.044,
-          "delta": 0.001,
-          "percent": -2.222
+          "target": -0.052,
+          "delta": -0.007,
+          "percent": 15.556
         },
         {
           "axis_index": 2,
@@ -1007,21 +1007,21 @@
         {
           "section_index": 0,
           "axis": "z",
-          "position_delta": 0.008,
+          "position_delta": 0.032,
           "scale_delta": [
             {
               "axis_index": 0,
               "base": 0.0035,
-              "target": 0.0026,
-              "delta": -0.0009,
-              "percent": -25.714
+              "target": 0.0014,
+              "delta": -0.0021,
+              "percent": -60.0
             },
             {
               "axis_index": 1,
               "base": 0.0075,
-              "target": 0.0055,
-              "delta": -0.002,
-              "percent": -26.667
+              "target": 0.0028,
+              "delta": -0.0047,
+              "percent": -62.667
             }
           ]
         },
@@ -1033,37 +1033,37 @@
             {
               "axis_index": 0,
               "base": 0.0052,
-              "target": 0.0042,
-              "delta": -0.001,
-              "percent": -19.231
+              "target": 0.0022,
+              "delta": -0.003,
+              "percent": -57.692
             },
             {
               "axis_index": 1,
               "base": 0.0105,
-              "target": 0.008,
-              "delta": -0.0025,
-              "percent": -23.81
+              "target": 0.0042,
+              "delta": -0.0063,
+              "percent": -60.0
             }
           ]
         },
         {
           "section_index": 2,
           "axis": "z",
-          "position_delta": -0.008,
+          "position_delta": -0.032,
           "scale_delta": [
             {
               "axis_index": 0,
               "base": 0.0035,
-              "target": 0.0026,
-              "delta": -0.0009,
-              "percent": -25.714
+              "target": 0.0014,
+              "delta": -0.0021,
+              "percent": -60.0
             },
             {
               "axis_index": 1,
               "base": 0.0075,
-              "target": 0.0055,
-              "delta": -0.002,
-              "percent": -26.667
+              "target": 0.0028,
+              "delta": -0.0047,
+              "percent": -62.667
             }
           ]
         }
@@ -1072,16 +1072,16 @@
         {
           "axis_index": 0,
           "base": 0.066,
-          "target": 0.066,
-          "delta": 0.0,
-          "percent": 0.0
+          "target": 0.055,
+          "delta": -0.011,
+          "percent": -16.667
         },
         {
           "axis_index": 1,
           "base": -0.024,
-          "target": -0.024,
-          "delta": 0.0,
-          "percent": -0.0
+          "target": -0.03,
+          "delta": -0.006,
+          "percent": 25.0
         },
         {
           "axis_index": 2,
@@ -1089,6 +1089,100 @@
           "target": -0.168,
           "delta": 0.0,
           "percent": -0.0
+        }
+      ]
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "right_shin_shell",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.002,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.011,
+              "target": 0.0085,
+              "delta": -0.0025,
+              "percent": -22.727
+            },
+            {
+              "axis_index": 1,
+              "base": 0.003,
+              "target": 0.0016,
+              "delta": -0.0014,
+              "percent": -46.667
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.015,
+              "target": 0.0115,
+              "delta": -0.0035,
+              "percent": -23.333
+            },
+            {
+              "axis_index": 1,
+              "base": 0.004,
+              "target": 0.0022,
+              "delta": -0.0018,
+              "percent": -45.0
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.002,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.011,
+              "target": 0.0085,
+              "delta": -0.0025,
+              "percent": -22.727
+            },
+            {
+              "axis_index": 1,
+              "base": 0.003,
+              "target": 0.0016,
+              "delta": -0.0014,
+              "percent": -46.667
+            }
+          ]
+        }
+      ],
+      "center_delta": [
+        {
+          "axis_index": 0,
+          "base": -0.004,
+          "target": -0.004,
+          "delta": 0.0,
+          "percent": -0.0
+        },
+        {
+          "axis_index": 1,
+          "base": 0.048,
+          "target": 0.048,
+          "delta": 0.0,
+          "percent": 0.0
+        },
+        {
+          "axis_index": 2,
+          "base": -0.12,
+          "target": -0.124,
+          "delta": -0.004,
+          "percent": 3.333
         }
       ]
     },
@@ -2081,21 +2175,21 @@
         {
           "section_index": 0,
           "axis": "z",
-          "position_delta": 0.002,
+          "position_delta": 0.01,
           "scale_delta": [
             {
               "axis_index": 0,
               "base": 0.011,
-              "target": 0.0095,
-              "delta": -0.0015,
-              "percent": -13.636
+              "target": 0.0055,
+              "delta": -0.0055,
+              "percent": -50.0
             },
             {
               "axis_index": 1,
               "base": 0.003,
-              "target": 0.0024,
-              "delta": -0.0006,
-              "percent": -20.0
+              "target": 0.0014,
+              "delta": -0.0016,
+              "percent": -53.333
             }
           ]
         },
@@ -2107,42 +2201,64 @@
             {
               "axis_index": 0,
               "base": 0.014,
-              "target": 0.0115,
-              "delta": -0.0025,
-              "percent": -17.857
+              "target": 0.007,
+              "delta": -0.007,
+              "percent": -50.0
             },
             {
               "axis_index": 1,
               "base": 0.004,
-              "target": 0.003,
-              "delta": -0.001,
-              "percent": -25.0
+              "target": 0.0018,
+              "delta": -0.0022,
+              "percent": -55.0
             }
           ]
         },
         {
           "section_index": 2,
           "axis": "z",
-          "position_delta": -0.002,
+          "position_delta": -0.01,
           "scale_delta": [
             {
               "axis_index": 0,
               "base": 0.011,
-              "target": 0.0095,
-              "delta": -0.0015,
-              "percent": -13.636
+              "target": 0.0055,
+              "delta": -0.0055,
+              "percent": -50.0
             },
             {
               "axis_index": 1,
               "base": 0.003,
-              "target": 0.0024,
-              "delta": -0.0006,
-              "percent": -20.0
+              "target": 0.0014,
+              "delta": -0.0016,
+              "percent": -53.333
             }
           ]
         }
       ],
-      "center_delta": []
+      "center_delta": [
+        {
+          "axis_index": 0,
+          "base": -0.008,
+          "target": -0.008,
+          "delta": 0.0,
+          "percent": -0.0
+        },
+        {
+          "axis_index": 1,
+          "base": 0.058,
+          "target": 0.07,
+          "delta": 0.012,
+          "percent": 20.69
+        },
+        {
+          "axis_index": 2,
+          "base": -0.076,
+          "target": -0.076,
+          "delta": 0.0,
+          "percent": -0.0
+        }
+      ]
     },
     {
       "morph": "feminine_compact_v1",
@@ -2368,63 +2484,84 @@
       "section_deltas": [
         {
           "section_index": 0,
-          "axis": "z",
-          "position_delta": 0.002,
+          "axis": "x",
+          "position_delta": 0.01,
           "scale_delta": [
             {
               "axis_index": 0,
-              "base": 0.094,
-              "target": 0.072,
-              "delta": -0.022,
-              "percent": -23.404
+              "base": 0.012,
+              "target": 0.01,
+              "delta": -0.002,
+              "percent": -16.667
             },
             {
               "axis_index": 1,
-              "base": 0.03,
-              "target": 0.022,
-              "delta": -0.008,
-              "percent": -26.667
+              "base": 0.0035,
+              "target": 0.003,
+              "delta": -0.0005,
+              "percent": -14.286
             }
           ]
         },
         {
           "section_index": 1,
-          "axis": "z",
-          "position_delta": 0.0,
+          "axis": "x",
+          "position_delta": 0.002,
           "scale_delta": [
             {
               "axis_index": 0,
-              "base": 0.086,
-              "target": 0.074,
-              "delta": -0.012,
-              "percent": -13.953
+              "base": 0.018,
+              "target": 0.016,
+              "delta": -0.002,
+              "percent": -11.111
             },
             {
               "axis_index": 1,
-              "base": 0.027,
-              "target": 0.023,
-              "delta": -0.004,
-              "percent": -14.815
+              "base": 0.006,
+              "target": 0.005,
+              "delta": -0.001,
+              "percent": -16.667
             }
           ]
         },
         {
           "section_index": 2,
-          "axis": "z",
-          "position_delta": -0.002,
+          "axis": "x",
+          "position_delta": -0.004,
           "scale_delta": [
             {
               "axis_index": 0,
-              "base": 0.069,
-              "target": 0.058,
-              "delta": -0.011,
-              "percent": -15.942
+              "base": 0.02,
+              "target": 0.018,
+              "delta": -0.002,
+              "percent": -10.0
             },
             {
               "axis_index": 1,
-              "base": 0.021,
-              "target": 0.018,
-              "delta": -0.003,
+              "base": 0.007,
+              "target": 0.006,
+              "delta": -0.001,
+              "percent": -14.286
+            }
+          ]
+        },
+        {
+          "section_index": 3,
+          "axis": "x",
+          "position_delta": -0.01,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.011,
+              "target": 0.01,
+              "delta": -0.001,
+              "percent": -9.091
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0035,
+              "target": 0.003,
+              "delta": -0.0005,
               "percent": -14.286
             }
           ]
@@ -2956,6 +3093,7 @@
         "right_foot_heel_black",
         "left_shin_shell",
         "left_shin_front_armor",
+        "right_shin_shell",
         "left_forearm_outer_blade",
         "right_forearm_outer_blade",
         "left_wrist_separated_cuff",

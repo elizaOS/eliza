@@ -1,0 +1,31 @@
+[[!meta date="Mon, 26 Dec 2016 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Thank you and see you in Hamburg!"]]
+[[!tag announce]]
+
+As part of our donation campaign we already explained you [[why we need
+donations|news/why_we_need_donations]], [[what we do with your
+money|news/what_we_do_with_your_money]], and that [[Mediapart is the
+first news organization to commit to support Tails every
+year|news/mediapart]].
+
+But today we are just writing to give you all a big thank you!
+
+**Since October 13, we have received $98 579 in donations.**
+
+This is our first donation campaign and we are completely blown away by the
+results! It feels really good to see that our community of users
+understands the real value of Tails and why it is important for them to
+help us back and keep the project alive and independent.
+
+Starting from today we will be present at the [33rd Chaos Communication
+Congress in Hamburg](https://events.ccc.de/congress/2016/wiki/Main_Page).
+You are encouraged to pass by and meet us at the [Secure Desktops
+assembly](https://events.ccc.de/congress/2016/wiki/Assembly:Secure_Desktops).
+
+We accept donations in cash and people donating more than 50€ in Hamburg
+will get a Tails t-shirt!
+
+[[!img t-shirt.jpg link="no"]]
+
+[Donate](https://tails.net/donate/)

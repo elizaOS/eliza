@@ -69,11 +69,11 @@ describe("getGpuProfile", () => {
     expect(p?.features).toContain("fp8");
     expect(p?.features).not.toContain("fp4");
     expect(p?.ctx_size_tokens).toBe(65536);
-    expect(p?.dflash.enabled).toBe(true);
+    expect(p?.mtp.enabled).toBe(true);
     expect(p?.recommended_tiers.primary).toBe("eliza-1-27b");
     expect(p?.recommended_tiers.secondary).toBe("eliza-1-9b");
-    expect(p?.dflash.drafter_tier).toBe("eliza-1-2b");
-    expect(p?.dflash.speculative_window).toBe(6);
+    expect(p?.mtp.drafter_tier).toBe("eliza-1-2b");
+    expect(p?.mtp.speculative_window).toBe(6);
   });
 
   it("returns null for an unknown profile id", () => {
@@ -335,9 +335,9 @@ describe("profile data integrity", () => {
     }
   });
 
-  it("all dflash.enabled are true for all profiles", () => {
+  it("all mtp.enabled are true for all profiles", () => {
     for (const profile of Object.values(GPU_PROFILES)) {
-      expect(profile.dflash.enabled).toBe(true);
+      expect(profile.mtp.enabled).toBe(true);
     }
   });
 
@@ -347,8 +347,8 @@ describe("profile data integrity", () => {
     if (!rtx3090 || !rtx5090) {
       throw new Error("expected RTX 3090 and RTX 5090 GPU profiles to exist");
     }
-    const w3090 = rtx3090.dflash.speculative_window;
-    const w5090 = rtx5090.dflash.speculative_window;
+    const w3090 = rtx3090.mtp.speculative_window;
+    const w5090 = rtx5090.mtp.speculative_window;
     expect(w5090).toBeGreaterThan(w3090);
   });
 });

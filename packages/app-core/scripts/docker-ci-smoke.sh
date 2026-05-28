@@ -245,8 +245,6 @@ else
   node "$APP_CORE_SCRIPTS_DIR/patch-deps.mjs" || true
   node "$APP_CORE_SCRIPTS_DIR/ensure-type-package-aliases.mjs" || true
 fi
-node packages/scripts/patch-tsup-dts.mjs || true
-
 # @elizaos/contracts must be built BEFORE @elizaos/core: core's
 # tsconfig.declarations.json maps `@elizaos/contracts` to
 # `../contracts/dist/index.d.ts`, so the declarations build aborts with

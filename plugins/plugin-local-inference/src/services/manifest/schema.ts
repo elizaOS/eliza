@@ -11,23 +11,13 @@
 // Coupling notes:
 // - The kernel names here are *manifest-level* capabilities (what the bundle
 //   advertises), not the lower-level llama.cpp kernel handles in `../types.ts`
-//   (`turbo3` / `turbo4` / `turbo3_tcq` / `qjl_full` / `dflash`). The two
+//   (`turbo3` / `turbo4` / `turbo3_tcq` / `qjl_full`). The two
 //   layers map but are not the same enum.
 // - The schema URL `https://elizaos.ai/schemas/eliza-1.manifest.v1.json` is
 //   exported as a JSON Schema sibling file in this directory.
-// - Shared-vocabulary invariant: every speculative-decoding GGUF in an
-//   Eliza-1 bundle — the text/vision model and the DFlash drafter — shares
-//   the same Eliza-1 BPE vocabulary and merges table. This is what makes
-//   (a) DFlash speculative decoding correct (spec decoding only works if token
-//   ids match), and (b) the drafter GGUFs ship without
-//   their own `tokenizer.ggml.merges` (repaired at load time from the text GGUF
-//   by `resolveDflashDrafter` in `../dflash-server.ts`). The shared *vocabulary*
-//   is not the same thing as a shared *token-embedding tensor*: each component
-//   carries its own `token_embd.weight` (different fine-tunes, often different
-//   hidden sizes), so the vocab matrix is duplicated per GGUF and cannot be
-//   deduplicated without a fused-architecture container — out of scope. See
-//   `plugins/plugin-local-inference/native/reports/porting/2026-05-11/` for
-//   the in-tree porting reports.
+// - Eliza-1 speculative decoding is native llama.cpp MTP. MTP-enabled tiers
+//   ship a bundled drafter GGUF under `files.mtp`; the runtime resolves it at
+//   load time and passes it as the draft model.
 // - Per-sub-model versioning (kokoro, omnivoice, turn-detector, voice-emotion,
 //   diarizer, speaker-encoder, vad, wakeword, embedding, asr) lives in
 //   `packages/shared/src/local-inference/voice-models.ts` and the matching
@@ -42,8 +32,7 @@ export const ELIZA_1_MANIFEST_SCHEMA_VERSION = "1" as const;
 export const ELIZA_1_MANIFEST_SCHEMA_URL =
 	"https://elizaos.ai/schemas/eliza-1.manifest.v1.json" as const;
 
-// The shared Eliza-1 BPE vocabulary every text/drafter component in an
-// Eliza-1 bundle uses. Exported so runtime code can assert it.
+// The shared Eliza-1 BPE vocabulary exported so runtime code can assert it.
 export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
@@ -59,7 +48,7 @@ export const ELIZA_1_TIERS = [
 export type Eliza1Tier = (typeof ELIZA_1_TIERS)[number];
 
 // Manifest-level kernel capability names. Per AGENTS.md §3:
-// `turboquant_q3`, `turboquant_q4`, `qjl`, `polarquant`, `dflash` are
+// `turboquant_q3`, `turboquant_q4`, `qjl`, `polarquant` are
 // the named optimizations the bundle declares. `turbo3_tcq` is required
 // for any long-context text variant. The C-level llama.cpp kernel handles in
 // `../types.ts` are an implementation detail of the runtime; the manifest
@@ -75,7 +64,6 @@ export const ELIZA_1_KERNELS = [
 	"turboquant_q4",
 	"qjl",
 	"polarquant",
-	"dflash",
 	"turbo3_tcq",
 ] as const;
 export type Eliza1Kernel = (typeof ELIZA_1_KERNELS)[number];
@@ -96,11 +84,10 @@ export type Eliza1RequiredRuntimeKernel = Exclude<
 //   turboquant_q4  ↔ turbo4       (Q4 KV-cache quant kernel)
 //   qjl            ↔ qjl_full     (QuIP#-JL fused-attention kernel)
 //   polarquant     ↔ polarquant   (same name on both layers)
-//   dflash         ↔ dflash       (same name on both layers)
 //   turbo3_tcq     ↔ turbo3_tcq   (same name on both layers)
 //
 // Every Eliza-1 custom-kernel member is covered (both are total maps over the
-// custom W4-B/DFlash kernel set). `openvino` is a runtime backend capability,
+// custom W4-B kernel set). `openvino` is a runtime backend capability,
 // not an Eliza-1 bundle optimization, so it intentionally stays outside this
 // bridge. When code needs to translate between the catalog's custom
 // `requiresKernel` entries and the manifest's `kernels.required:
@@ -112,7 +99,6 @@ export const ELIZA1_TO_RUNTIME_KERNEL: Readonly<
 	turboquant_q4: "turbo4",
 	qjl: "qjl_full",
 	polarquant: "polarquant",
-	dflash: "dflash",
 	turbo3_tcq: "turbo3_tcq",
 };
 
@@ -123,7 +109,6 @@ export const RUNTIME_TO_ELIZA1_KERNEL: Readonly<
 	turbo4: "turboquant_q4",
 	qjl_full: "qjl",
 	polarquant: "polarquant",
-	dflash: "dflash",
 	turbo3_tcq: "turbo3_tcq",
 };
 
@@ -138,8 +123,6 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 
 // Required-kernel set per tier. Mirrors the active Eliza-1 release policy:
 // - All tiers require turboquant + qjl + polarquant.
-// - DFlash is required on 2B+ tiers; 0.8B currently has no production
-//   drafter companion/source and remains the low-memory non-DFlash tier.
 // - All current text GGUFs ship at the 128k half-context floor or the 262k
 //   native tier, so every tier requires `turbo3_tcq`. The validator also
 //   enforces the same requirement dynamically for any bundle that declares
@@ -152,11 +135,11 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
 	"0_8b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
-	"2b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
-	"4b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
-	"9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
-	"27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
-	"27b-256k": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+	"2b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
+	"4b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
+	"9b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
+	"27b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
+	"27b-256k": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
 };
 
 // Backends each tier is expected to support on shipped hardware.
@@ -231,7 +214,7 @@ export const Eliza1FilesSchema = z.object({
 	voice: z.array(Eliza1FileEntrySchema).min(1),
 	asr: z.array(Eliza1FileEntrySchema),
 	vision: z.array(Eliza1FileEntrySchema),
-	dflash: z.array(Eliza1FileEntrySchema),
+	mtp: z.array(Eliza1FileEntrySchema),
 	cache: z.array(Eliza1FileEntrySchema).min(1),
 	// Wave-6 (2026-05-10): the omni bundle ships a per-bundle dedicated
 	// embedding model (Qwen3-Embedding-GGUF on non-lite tiers), a
@@ -247,7 +230,7 @@ export const Eliza1FilesSchema = z.object({
 	embedding: z.array(Eliza1FileEntrySchema).optional(),
 	// Optional image-generation artifacts. Most Eliza-1 base bundles do not
 	// carry diffusion weights; those are documented in
-	// docs/ELIZA_1_BUNDLE_EXTRAS.json and downloaded on first use. When a
+	// packages/chip/ELIZA_1_BUNDLE_EXTRAS.json and downloaded on first use. When a
 	// future bundle does ship local image-gen weights inline, list them here
 	// and provide matching `lineage.imagegen`.
 	imagegen: z.array(Eliza1FileEntrySchema).optional(),
@@ -337,8 +320,7 @@ export const Eliza1KernelsSchema = z.object({
 		cpu: Eliza1VerifiedBackendStatusSchema,
 	}),
 	recipeManifest: z.record(z.string(), Eliza1RecipeKernelPinsSchema).optional(),
-	// Optional EAGLE3 capability metadata. This is intentionally separate from
-	// the DFlash kernel capability and is never added to REQUIRED_KERNELS_BY_TIER.
+	// Optional EAGLE3 capability metadata.
 	eagle3: Eliza1Eagle3KernelSchema.optional(),
 });
 
@@ -448,23 +430,14 @@ export const Eliza1EvalsSchema = z.object({
 			passed: z.boolean(),
 		})
 		.optional(),
-	// DFlash speculative-decoding bench. Optional — a bundle whose DFlash
-	// drafter is still a stand-in records this as `passed: false` with
-	// `acceptanceRate: null` / `speedup: null` ("needs hardware / needs a
-	// trained drafter" — recorded, not faked, per AGENTS.md §3 / §7). The
-	// gate thresholds live in the `dflash:` section of `eliza1_gates.yaml`;
-	// the bench numbers come from `dflash_drafter_runtime_smoke.mjs --bench`.
-	dflash: z
+	mtp: z
 		.object({
-			/** accepted/drafted; null when no hardware/drafter was available. */
 			acceptanceRate: z.number().min(0).max(1).nullable(),
-			/** drafter-on tok/s ÷ baseline tok/s; null when not measured. */
 			speedup: z.number().nonnegative().nullable(),
 			passed: z.boolean(),
 		})
 		.optional(),
-	// Optional EAGLE3 speculative-decoding bench metadata. This is independent
-	// from DFlash and does not make EAGLE3 required for any tier.
+	// Optional EAGLE3 speculative-decoding bench metadata.
 	eagle3: Eliza1Eagle3EvalSchema.optional(),
 	// Voice Wave 2 (2026-05-14): semantic end-of-turn detector eval gates.
 	// Required when `files.turn` is non-empty (validator enforces). Thresholds

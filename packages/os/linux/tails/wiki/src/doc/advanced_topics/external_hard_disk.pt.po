@@ -1,0 +1,69 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2023-12-22 04:29+0000\n"
+"PO-Revision-Date: 2024-05-21 20:54+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Starting Tails from an external hard disk or problematic USB stick\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"When starting Tails from an external hard disk or problematic USB stick, "
+"Tails might return the following error message:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p class=\"code\">Unable to find a medium containing a live file system</p>\n"
+msgstr ""
+"<p class=\"code\">Unable to find a medium containing a live file system</p>\n"
+
+#. type: Plain text
+msgid ""
+"In such cases, choose the **External Hard Disk** entry if it appears in the "
+"Boot Loader."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If the **External Hard Disk** entry does not appear in the Boot Loader, then "
+"remove the `live-media=removable` boot option. To do so, see our "
+"instructions on [[modifying the boot options using the Boot Loader|doc/"
+"advanced_topics/boot_options]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Choosing the <b>External Hard Disk</b> entry in the Boot Loader or removing\n"
+"the <code>live-media=removable</code> boot\n"
+"option might be dangerous. If an adversary had access to the computer\n"
+"and installed a malicious Tails on the internal hard disk, the computer\n"
+"might start on the malicious Tails instead of on the USB stick.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"

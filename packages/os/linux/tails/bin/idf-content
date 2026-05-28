@@ -1,0 +1,76 @@
+#! /usr/bin/python3
+
+import hashlib
+import io
+import json
+import sys
+
+from pathlib import Path, PurePath
+
+def sha256_file(filename):
+    sha256 = hashlib.sha256()
+    with io.open(filename, mode="rb") as fd:
+        content = fd.read()
+        sha256.update(content)
+    return sha256.hexdigest()
+
+def to_json(data):
+    return json.dumps(data, indent=4, sort_keys=True)
+
+def target_file_url(channel, filename):
+    basename = PurePath(filename).name
+    return '%(baseurl)s/%(channel)s/%(subdir)s/%(basename)s' % {
+        'baseurl':  'https://download.tails.net/tails',
+        'channel':  channel,
+        'subdir':   PurePath(basename).stem,
+        'basename': basename,
+    }
+
+def idf_content(build_target, channel, product_name, version, img, iso):
+    return to_json({
+        'build_target':  build_target,
+        'channel':       channel,
+        'product-name':  product_name,
+        'installations': [{
+            'version': version,
+            'installation-paths': [
+                {
+                    'type': 'img',
+                    'target-files': [{
+                        'url':    target_file_url(channel, img),
+                        'sha256': sha256_file(img),
+                        'size':   Path(img).stat().st_size,
+                    }],
+                },
+                {
+                    'type': 'iso',
+                    'target-files': [{
+                        'url':    target_file_url(channel, iso),
+                        'sha256': sha256_file(iso),
+                        'size':   Path(iso).stat().st_size,
+                    }],
+                },
+            ],
+        }],
+    })
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--build-target', dest='build_target', default='amd64')
+    parser.add_argument('--channel', default='stable')
+    parser.add_argument('--product-name', dest='product_name', default='Tails')
+    parser.add_argument('--version', default=None, required=True,
+                        help='Version of Tails .')
+    parser.add_argument('--img', default=None, required=True,
+                        help='Path to the USB image.')
+    parser.add_argument('--iso', default=None, required=True,
+                        help='Path to the ISO file.')
+    args = parser.parse_args()
+
+    print(idf_content(build_target=args.build_target,
+                      channel=args.channel,
+                      product_name=args.product_name,
+                      version=args.version,
+                      img=args.img,
+                      iso=args.iso))

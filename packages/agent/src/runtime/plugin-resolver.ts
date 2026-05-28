@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 import { type Dirent, existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { logger, type Plugin } from "@elizaos/core";
 import {
@@ -100,7 +100,7 @@ export function resolveRuntimePluginImportSpecifier(
   pluginName: string,
 ): string {
   if (pluginName.startsWith("@elizaos/plugin-")) {
-    return resolveElizaPluginImportSpecifier(pluginName);
+    return resolveRuntimeElizaPluginImportSpecifier(pluginName);
   }
 
   return runtimePluginImportSpecifier(pluginName);
@@ -589,6 +589,18 @@ function runtimePluginImportSpecifier(pluginName: string): string {
     : pluginName;
 }
 
+function resolveRuntimeElizaPluginImportSpecifier(pluginName: string): string {
+  const resolved = resolveElizaPluginImportSpecifier(pluginName);
+  if (!RUNTIME_APP_PLUGIN_SUBPATHS.has(pluginName)) return resolved;
+  if (resolved === pluginName) return runtimePluginImportSpecifier(pluginName);
+  if (!resolved.startsWith("file://")) return resolved;
+
+  const indexPath = fileURLToPath(resolved);
+  if (path.basename(indexPath) !== "index.js") return resolved;
+  const pluginPath = path.join(path.dirname(indexPath), "plugin.js");
+  return existsSync(pluginPath) ? pathToFileURL(pluginPath).href : resolved;
+}
+
 async function hasNonSymlinkWorkspaceNodeModulesPackage(
   pluginName: string,
 ): Promise<boolean> {
@@ -685,7 +697,7 @@ function wrapPluginWithErrorBoundary(
  *   1. npm layout:  <installPath>/node_modules/@scope/package/  (from `bun add`)
  *   2. git layout:  <installPath>/ is the package root directly  (from `git clone`)
  *
- * @param installPath  Root directory of the installation (e.g. ~/.eliza/plugins/installed/foo/).
+ * @param installPath  Root directory of the installation (e.g. <stateDir>/plugins/installed/foo/).
  * @param packageName  The npm package name (e.g. "@elizaos/plugin-discord") — used
  *                     to navigate directly into node_modules when present.
  */
@@ -1356,8 +1368,8 @@ async function discoverPluginCandidates(): Promise<PluginManifestCandidate[]> {
  *
  * Handles three categories of plugins:
  * 1. Built-in/npm plugins — imported by package name
- * 2. User-installed plugins — from ~/.eliza/plugins/installed/
- * 3. Custom/drop-in plugins — from ~/.eliza/plugins/custom/ and plugins.load.paths
+ * 2. User-installed plugins — from <stateDir>/plugins/installed/
+ * 3. Custom/drop-in plugins — from <stateDir>/plugins/custom/ and plugins.load.paths
  *
  * Each plugin is loaded inside an error boundary so a single failing plugin
  * cannot crash the entire agent startup.
@@ -1530,20 +1542,32 @@ export async function resolvePlugins(
     const importOfficialPluginFromNodeModules =
       async (): Promise<PluginModuleShape> =>
         (await import(
-          resolveElizaPluginImportSpecifier(pluginName)
+          resolveRuntimePluginImportSpecifier(pluginName)
         )) as PluginModuleShape;
 
-    // Pre-flight: ensure native dependencies are available for special plugins.
-    // For plugin-browser, the stagehand-server binary is only needed by the
-    // `stagehand` backend; the workspace (Electrobun) and bridge (Chrome/Safari
-    // extension) backends do not require it. So a missing server is a warning,
-    // not a fatal load error — the plugin still registers BROWSER + its routes
-    // for the backends that work without stagehand.
+    // Pre-flight: opportunistically prepare special plugin dependencies.
+    // For plugin-browser, stagehand-server is only needed by the optional
+    // `stagehand` backend. The app workspace and Chrome/Safari bridge backends
+    // do not require it, and native mobile should prefer the app browser
+    // surface anyway.
     if (pluginName === "@elizaos/plugin-browser") {
       if (!ensureBrowserServerLink()) {
-        logger.warn(
-          "[eliza] plugin-browser: stagehand-server binary not found — loading anyway; the workspace and bridge backends do not need it, but the `stagehand` backend will be unavailable. To enable stagehand, build/link plugins/plugin-browser/stagehand-server.",
-        );
+        const platform = (
+          process.env.ELIZA_MOBILE_PLATFORM ??
+          process.env.ELIZA_PLATFORM ??
+          process.env.CAPACITOR_PLATFORM ??
+          ""
+        ).toLowerCase();
+        const mobile =
+          platform === "ios" || platform === "android" || platform === "mobile";
+        const message =
+          "[eliza] plugin-browser: stagehand-server binary not found — loading app workspace and bridge browser backends anyway. " +
+          "The optional `stagehand` fallback will stay disabled until plugins/plugin-browser/stagehand-server is built or a STAGEHAND_SERVER_URL is configured.";
+        if (mobile) {
+          logger.debug(`${message} Native mobile prefers the app browser.`);
+        } else {
+          logger.info(message);
+        }
       }
     }
 
@@ -1798,8 +1822,8 @@ export async function resolvePlugins(
   const diagnostic = diagnoseNoAIProvider(loadedNames, failedPlugins);
   if (diagnostic) {
     if (opts?.quiet) {
-      // In headless/GUI mode before onboarding, this is expected — the user
-      // will configure a provider through the onboarding wizard and restart.
+      // In headless/GUI mode before first-run setup, this is expected — the user
+      // will configure a provider through first-run setup and restart.
       logger.info(`[eliza] ${diagnostic}`);
     } else {
       logger.error(`[eliza] ${diagnostic}`);

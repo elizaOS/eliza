@@ -14,7 +14,7 @@ Usage:
         --tier 2b \
         --text-gguf checkpoints/eliza-1-2b-apollo-<run>/eliza1-optimized/gguf/final-Q4_POLAR.gguf \
         --text-sidecar checkpoints/eliza-1-2b-apollo-<run>/eliza1-optimized/gguf/final-Q4_POLAR.gguf.eliza1.json \
-        --drafter-gguf /tmp/eliza1-eval-models/qwen3_5-dflash-drafter-2b.gguf \
+        --drafter-gguf /tmp/eliza1-eval-models/qwen3_5-mtp-drafter-2b.gguf \
         --drafter-source <license-reviewed drafter source> \
         --vision-gguf /tmp/eliza1-eval-models/mmproj-2b.gguf \
         --out /tmp/eliza1-stage/eliza-1-2b
@@ -72,9 +72,9 @@ TEXT_CTX_BY_TIER = {
 DRAFTER_SOURCE_BY_TIER = {
     "0_8b": None,
     "2b": None,
-    "4b": "z-lab/Qwen3.5-4B-DFlash",
-    "9b": "z-lab/Qwen3.5-9B-DFlash",
-    "27b": "spiritbuun/Qwen3.6-27B-DFlash-GGUF",
+    "4b": "z-lab/Qwen3.5-4B-MTP",
+    "9b": "z-lab/Qwen3.5-9B-MTP",
+    "27b": "spiritbuun/Qwen3.6-27B-MTP-GGUF",
 }
 
 # Frozen tier-agnostic voice/ASR/VAD/cache bytes live in the canonical model repo.
@@ -159,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=(
             "Upstream HF repo the drafter GGUF was converted from (provenance). "
-            "Defaults to the tier's known DFlash source when one exists; required "
+            "Defaults to the tier's known MTP source when one exists; required "
             "for 0_8b/2b until a license-reviewed upstream source is wired."
         ),
     )
@@ -178,13 +178,13 @@ def main(argv: list[str] | None = None) -> int:
     if drafter_source is None:
         raise SystemExit(
             f"--drafter-source is required for tier {tier}; no license-reviewed "
-            "upstream DFlash source is wired for this tier yet."
+            "upstream MTP source is wired for this tier yet."
         )
     out = args.out.resolve()
     text_rel = PP.text_artifact_name(tier, TEXT_CONTEXT_BY_TIER[tier])
     if out.exists():
         shutil.rmtree(out)
-    for sub in ("text", "tts", "asr", "vad", "vision", "dflash", "cache", "evals",
+    for sub in ("text", "tts", "asr", "vad", "vision", "mtp", "cache", "evals",
                 "licenses", "evidence/platform", "checksums"):
         (out / sub).mkdir(parents=True, exist_ok=True)
 
@@ -222,10 +222,10 @@ def main(argv: list[str] | None = None) -> int:
         }
 
     # --- drafter GGUF (honest provenance) ---
-    drafter_dest = out / "dflash" / f"drafter-{tier}.gguf"
+    drafter_dest = out / "mtp" / f"drafter-{tier}.gguf"
     shutil.copy2(args.drafter_gguf, drafter_dest)
     drafter_sha = sha256_file(drafter_dest)
-    (out / "dflash" / "target-meta.json").write_text(json.dumps({
+    (out / "mtp" / "target-meta.json").write_text(json.dumps({
         "schemaVersion": 2,
         "tier": tier,
         "status": "base-v1-candidate",
@@ -237,11 +237,11 @@ def main(argv: list[str] | None = None) -> int:
             "finalElizaWeights": True,
         },
         "drafter": {
-            "path": f"dflash/drafter-{tier}.gguf",
+            "path": f"mtp/drafter-{tier}.gguf",
             "sha256": drafter_sha,
             "source": drafter_source,
             "note": (
-                f"DFlash drafter for the {tier} Qwen3.5/Qwen3.6 text target. "
+                f"MTP drafter for the {tier} Qwen3.5/Qwen3.6 text target. "
                 "It must share the 248320-token Qwen3.5/Qwen3.6-family tokenizer with the target "
                 "so speculative decoding is correct. See the drafter source repo "
                 "for whether this candidate is distilled or a tokenizer-compatible "
@@ -280,9 +280,9 @@ def main(argv: list[str] | None = None) -> int:
     for repo, remote, dest in asset_map:
         download_asset(repo, remote, dest)
 
-    # extra licenses (text / dflash / vision / eliza-1) from a local bundle dir if given
+    # extra licenses (text / mtp / vision / eliza-1) from a local bundle dir if given
     if args.licenses_from and args.licenses_from.is_dir():
-        for name in ("LICENSE.text", "LICENSE.dflash", "LICENSE.vision", "LICENSE.eliza-1"):
+        for name in ("LICENSE.text", "LICENSE.mtp", "LICENSE.vision", "LICENSE.eliza-1"):
             src = args.licenses_from / name
             if src.is_file():
                 shutil.copy2(src, out / "licenses" / name)
@@ -300,9 +300,9 @@ def main(argv: list[str] | None = None) -> int:
     ]
     vad_files = [f_sha(out / "vad" / "silero-vad-v5.gguf")]
     cache_files = [f_sha(out / "cache" / "voice-preset-default.bin")]
-    dflash_files = [
-        {"path": f"dflash/drafter-{tier}.gguf", "sha256": drafter_sha},
-        f_sha(out / "dflash" / "target-meta.json"),
+    mtp_files = [
+        {"path": f"mtp/drafter-{tier}.gguf", "sha256": drafter_sha},
+        f_sha(out / "mtp" / "target-meta.json"),
     ]
     vision_files = [
         {"path": f"vision/mmproj-{tier}.gguf", "sha256": vision_sha},
@@ -350,7 +350,7 @@ def main(argv: list[str] | None = None) -> int:
     vad_med = num("vad_latency_ms")
     e2e_ok = bool(eval_results.get("e2e_loop_ok", False))
     thirty_ok = bool(eval_results.get("thirty_turn_ok", False))
-    dflash_accept = num("dflash_acceptance")
+    mtp_accept = num("mtp_acceptance")
 
     # Persist the bundle-side eval blobs (the manifest cites these paths).
     # When the eval suite ran, keep its full output (results + gateReport +
@@ -382,7 +382,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
         "voice": M.LineageEntry(base=voice_source_note(tier), license="apache-2.0"),
         "drafter": M.LineageEntry(
-            base=f"{drafter_source} (upstream DFlash source; used as self/cross-drafter — not distilled)",
+            base=f"{drafter_source} (upstream MTP source; used as self/cross-drafter — not distilled)",
             license="mit",
         ),
         "vision": M.LineageEntry(
@@ -441,7 +441,7 @@ def main(argv: list[str] | None = None) -> int:
             "vad": {"repo": A.VAD_NATIVE_REPO, "note": "frozen native Silero v5 GGUF"},
             "drafter": {
                 "repo": drafter_source,
-                "note": "DFlash drafter must share the Qwen3.5/Qwen3.6-family tokenizer with the target; record whether this exact artifact is distilled or a smoke stand-in in dflash/target-meta.json.",
+                "note": "MTP drafter must share the Qwen3.5/Qwen3.6-family tokenizer with the target; record whether this exact artifact is distilled or a smoke stand-in in mtp/target-meta.json.",
             },
             "vision": {
                 "repo": TEXT_BASE_BY_TIER[tier],
@@ -469,7 +469,7 @@ def main(argv: list[str] | None = None) -> int:
             "voice": [M.FileEntry(**f) for f in voice_files],
             "asr": [M.FileEntry(**f) for f in asr_files],
             "vision": [M.FileEntry(**f) for f in vision_files],
-            "dflash": [M.FileEntry(**f) for f in dflash_files],
+            "mtp": [M.FileEntry(**f) for f in mtp_files],
             "cache": [M.FileEntry(**f) for f in cache_files],
             "vad": [M.FileEntry(**f) for f in vad_files],
         },
@@ -493,10 +493,10 @@ def main(argv: list[str] | None = None) -> int:
         expressive_mos=0.0,
         expressive_tag_leakage=1.0,
         expressive_passed=False,
-        dflash_eval=True,
-        dflash_acceptance_rate=dflash_accept,
-        dflash_speedup=None,
-        dflash_passed=False,
+        mtp_eval=True,
+        mtp_acceptance_rate=mtp_accept,
+        mtp_speedup=None,
+        mtp_passed=False,
         voice_capabilities=["tts", "emotion-tags", "singing"],
         recipe_manifest={
             "turbo3": {"blockLayoutVersion": "block_turbo3_0:v1", "codebookHash": "turbo_centroids_3bit:8xfp32:seed42:v1", "perBlockTolerance": 0.05},
@@ -566,10 +566,10 @@ def _render_readme(
     te = ev.get("text_eval")
     vr = ev.get("voice_rtf")
     aw = ev.get("asr_wer")
-    da = ev.get("dflash_acceptance")
+    da = ev.get("mtp_acceptance")
     eval_line = (
         f"  Latest eval-suite numbers (CPU stand-in engine): text_eval={te}, "
-        f"voice_rtf={vr}, asr_wer={aw}, dflash_acceptance={da}, "
+        f"voice_rtf={vr}, asr_wer={aw}, mtp_acceptance={da}, "
         f"e2e_loop_ok={ev.get('e2e_loop_ok')}, thirty_turn_ok={ev.get('thirty_turn_ok')}."
         if ev else
         "  Eval suite has not been run against this bundle yet."
@@ -594,10 +594,10 @@ release bar (every supported backend kernel-verified, every eval green) is met.
   {", ".join(M.VOICE_BACKENDS_BY_TIER[tier])} TTS, Qwen3-ASR, native
   Silero-VAD v5.1.2, and the default speaker preset. Not fine-tuned.
   Licenses in `licenses/`.
-- **DFlash drafter** (`dflash/drafter-{tier}.gguf`): the **upstream
+- **MTP drafter** (`mtp/drafter-{tier}.gguf`): the **upstream
   `{drafter_source}` artifact** — it must share the Qwen3.5/Qwen3.6-family tokenizer with the
   text target so speculative decoding is correct. The exact distilled-vs-standin
-  status is recorded in `dflash/target-meta.json` and
+  status is recorded in `mtp/target-meta.json` and
   `provenance.sourceModels.drafter`.
 
 ## Verified

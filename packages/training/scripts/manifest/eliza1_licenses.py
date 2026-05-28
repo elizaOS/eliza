@@ -100,7 +100,7 @@ class LicenseAttestation:
         return header + body
 
 
-# The text backbone, the DFlash drafter (distilled from the text
+# The text backbone, the MTP drafter (distilled from the text
 # backbone) and the embedding model are all Apache-2.0 (Qwen3 family on
 # HuggingFace ships the Apache-2.0 LICENSE). Voice artifacts are tiered:
 # 0_8b/2b/4b/9b ship OmniVoice first with Kokoro fallback, and 27B-class
@@ -204,17 +204,17 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         ),
     ),
     LicenseAttestation(
-        bundle_file="LICENSE.dflash",
-        component="DFlash speculative-decode drafter",
+        bundle_file="LICENSE.mtp",
+        component="MTP speculative-decode drafter",
         spdx="Apache-2.0",
         text_file=_APACHE,
         upstream_repo="elizaos/eliza-1/bundles/<tier> (distilled from the text backbone)",
         upstream_url="https://huggingface.co/elizaos/eliza-1",
         copyright_holder="elizaOS / Eliza Labs (drafter); Alibaba Cloud (Qwen team) (text lineage)",
         note=(
-            "The DFlash drafter is a small student model aligned to the Eliza-1 "
-            "text checkpoint (target sha256 recorded in dflash/target-meta.json). "
-            "It inherits the text backbone's Apache-2.0 lineage. The DFlash "
+            "The MTP drafter is a small student model aligned to the Eliza-1 "
+            "text checkpoint (target sha256 recorded in mtp/target-meta.json). "
+            "It inherits the text backbone's Apache-2.0 lineage. The MTP "
             "speculative-decoding method is open research (see "
             "packages/inference/AGENTS.md §3). Speculative decoding is mandatory "
             "in the Eliza-1 runtime, not optional."
@@ -410,13 +410,13 @@ def attestations_for_components(components: Sequence[str]) -> tuple[LicenseAttes
     """The license attestations a bundle with `components` must ship.
 
     `components` is the set of component-kind names actually present in
-    the bundle (e.g. {"text", "voice", "asr", "vad", "dflash",
+    the bundle (e.g. {"text", "voice", "asr", "vad", "mtp",
     "embedding", "vision", "wakeword"}). LICENSE.text / LICENSE.voice /
-    LICENSE.dflash / LICENSE.eliza-1 are always required. The rest are
+    LICENSE.mtp / LICENSE.eliza-1 are always required. The rest are
     conditional on the component being present.
     """
 
-    required_always = {"LICENSE.text", "LICENSE.voice", "LICENSE.dflash", "LICENSE.eliza-1"}
+    required_always = {"LICENSE.text", "LICENSE.voice", "LICENSE.mtp", "LICENSE.eliza-1"}
     conditional = {
         "asr": "LICENSE.asr",
         "vad": "LICENSE.vad",
@@ -562,12 +562,12 @@ def verify_bundle_licenses(
 def _detect_components(bundle_dir: Path) -> list[str]:
     """Infer which component kinds a bundle directory contains.
 
-    text/voice/asr/vad/dflash are always present in a §2 bundle; vision/
+    text/voice/asr/vad/mtp are always present in a §2 bundle; vision/
     embedding/wakeword are tier-dependent (detected from the
     corresponding subdir / file).
     """
 
-    components = ["text", "voice", "asr", "vad", "dflash"]
+    components = ["text", "voice", "asr", "vad", "mtp"]
     tts_dir = bundle_dir / "tts"
     if (tts_dir / "kokoro").is_dir() and any((tts_dir / "kokoro").iterdir()):
         components.append("kokoro")

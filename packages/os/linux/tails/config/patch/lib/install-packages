@@ -1,0 +1,132 @@
+#!/bin/bash
+
+# This script applies changes made to config/chroot_local-includes/ to
+# the root filesystem. It compares the current state of the git repo
+# with the commit which the Tails image was built from or the last
+# commit which this script was run with. Any removed files are removed
+# from the root filesystem, any added or modified files are bind mounted
+# to the root filesystem. It also applies any modified patches in
+# config/chroot_local-patches.
+#
+# For some changes this script also makes sure that the changes take
+# effect immediately. For example, it reloads the dconf database if any
+# dconf files were changed.
+
+set -eu -o pipefail
+shopt -s inherit_errexit
+
+# Enable xtrace with timestamp
+export PS4='+ $(date "+%H:%M:%S.%3N") '
+set -x
+
+if [ "${EUID}" -ne 0 ]; then
+  echo >&2 "This script must be run as root"
+  exit 1
+fi
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PACKAGES_DIR="${DIR}/../packages"
+
+# Avoid updating man-db which takes a long time. The man pages of the
+# installed packages can still be viewed, it just might take a bit
+# longer for them to open
+rm -rf /var/lib/man-db/auto-update
+
+# Get the major Tails version number from the VERSION variable in
+# /etc/os-release
+source /etc/os-release
+major_version="$(echo "${VERSION}" | cut -d. -f1)"
+package_dir="${PACKAGES_DIR}/${major_version}"
+if [ ! -d "${package_dir}" ]; then
+  exit 0
+fi
+
+# Group package files by package name
+declare -A package_files
+while IFS= read -r -d '' package_file; do
+  package_name="$(dpkg-deb -f "${package_file}" Package)"
+  package_files["${package_name}"]+=" ${package_file}"
+done < <(find "${package_dir}" -maxdepth 1 -name '*.deb' -print0)
+
+package_files_to_install=()
+
+check_deps() {
+  local package_file="${1}"
+  local dep
+
+  echo "Checking dependencies for ${package_file}"
+  while IFS= read -r dep; do
+    local regex='^([[:alnum:].+-]+)([[:space:]]+\((>=|=|<=)[[:space:]]+([[:alnum:].+-~:]+)\))?$'
+    if ! [[ $dep =~ $regex ]]; then
+      echo "Could not parse dependency: ${dep}"
+      exit 1
+    fi
+
+    local dep_name=${BASH_REMATCH[1]}
+    local dep_op=${BASH_REMATCH[3]}
+    local dep_version=${BASH_REMATCH[4]}
+    echo "Checking dependency: ${dep_name} ${dep_op} ${dep_version}"
+
+    # Check if the dependency is already installed and satisfies the
+    # version requirement
+    local installed_version
+    installed_version=$(dpkg-query -W -f='${Version}' "${dep_name}" 2>/dev/null || true)
+    if [ -n "${installed_version}" ]; then
+      if [ -z "${dep_op}" ]; then
+        echo "Dependency '${dep_name}' already installed"
+        continue
+      fi
+      if dpkg --compare-versions "${installed_version}" "${dep_op}" "${dep_version}"; then
+        echo "Dependency '${dep_name}' already installed and satisfies version requirement (${installed_version} ${dep_op} ${dep_version})"
+        continue
+      fi
+    fi
+
+    # Check if the dependency is in the list of packages to install
+    local other_package_name
+    for other_package_name in "${!package_files[@]}"; do
+      echo "Checking '${dep_name}' against '${other_package_name}'"
+      if [ "${dep_name}" = "${other_package_name}" ]; then
+        local package_file
+        package_file=$(echo "${package_files[${other_package_name}]}" | tr -d ' ')
+        local package_version
+        package_version=$(dpkg-deb -f "${package_file}" Version)
+        if dpkg --compare-versions "${package_version}" "${dep_op}" "${dep_version}"; then
+          continue
+        fi
+      fi
+    done
+
+    return 1
+  done < <(dpkg-deb -f "${package_file}" Depends | sed 's/, /\n/g')
+}
+
+# For any package which has more than one installation candidate, choose
+# the one whose dependencies we can satisfy
+for package_name in "${!package_files[@]}"; do
+  if [ "$(wc -w <<< "${package_files[$package_name]}")" -eq 1 ]; then
+    echo "Only one installation candidate for ${package_name}: ${package_files[$package_name]}"
+    file=$(echo "${package_files[$package_name]}" | tr -d ' ')
+    package_files_to_install+=("${file}")
+    continue
+  fi
+
+  found=0
+  for value in ${package_files[$package_name]}; do
+    file=$(echo "${value}" | tr -d ' ')
+    if check_deps "${file}"; then
+      echo "Found suitable installation candidate for ${package_name}: ${file}"
+      package_files_to_install+=("${file}")
+      found=1
+      break
+    fi
+  done
+
+  if [ "${found}" -eq 0 ]; then
+    echo "Could not find a suitable installation candidate for ${package_name}"
+    exit 1
+  fi
+done
+
+# Install the packages
+dpkg -i "${package_files_to_install[@]}"

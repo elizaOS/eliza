@@ -74,10 +74,12 @@ export async function assertScreenshotNotBlank(
   }
   if (issues.length > 0) {
     throw new Error(
-      `${label}: screenshot quality failed: ${issues.join("; ")}; metrics=${JSON.stringify({
-        byteLength: buffer.length,
-        ...quality,
-      })}`,
+      `${label}: screenshot quality failed: ${issues.join("; ")}; metrics=${JSON.stringify(
+        {
+          byteLength: buffer.length,
+          ...quality,
+        },
+      )}`,
     );
   }
 }

@@ -93,10 +93,7 @@ function catalogById(catalog: CatalogModel[]): Map<string, CatalogModel> {
 }
 
 function chatCandidates(catalog: CatalogModel[]): CatalogModel[] {
-	return catalog.filter(
-		(model) =>
-			!model.hiddenFromCatalog && model.runtimeRole !== "dflash-drafter",
-	);
+	return catalog.filter((model) => !model.hiddenFromCatalog);
 }
 
 export function classifyRecommendationPlatform(
@@ -123,11 +120,8 @@ export function catalogDownloadSizeGb(
 	model: CatalogModel,
 	catalog: CatalogModel[] = MODEL_CATALOG,
 ): number {
-	const byId = catalogById(catalog);
-	return (model.companionModelIds ?? []).reduce((total, companionId) => {
-		const companion = byId.get(companionId);
-		return total + (companion?.sizeGb ?? 0);
-	}, model.sizeGb);
+	void catalog;
+	return model.sizeGb;
 }
 
 export function catalogDownloadSizeBytes(
@@ -198,10 +192,6 @@ export function assessCatalogModelFit(
 	catalog: CatalogModel[] = MODEL_CATALOG,
 	options: { installed?: InstalledModel; manifestLoader?: ManifestLoader } = {},
 ): HardwareFitLevel {
-	if (model.runtime?.dflash) {
-		const byId = catalogById(catalog);
-		if (!byId.has(model.runtime.dflash.drafterModelId)) return "wontfit";
-	}
 	const isMobile = classifyRecommendationPlatform(hardware) === "mobile";
 	const memGb = isMobile ? hardware.totalRamGb : effectiveMemoryGb(hardware);
 	// Single source of truth for the RAM floor + fits-vs-tight cutoff:
@@ -253,7 +243,7 @@ function hasUsableCpuBackendForRecommendation(
  * backend (OpenVINO-only Intel build for an Eliza-1 text tier), drop the
  * tier so the recommender doesn't suggest a path that has no kernel route.
  * A binary that already satisfies `requiresKernel` stays eligible even
- * when it also advertises an unsupported backend (e.g. DFlash + OpenVINO
+ * when it also advertises an unsupported backend (e.g. OpenVINO
  * co-compiled — the dispatcher steers the spawn off OpenVINO via
  * `applyUnsupportedKernelEnv` at runtime).
  */
@@ -441,7 +431,7 @@ export function selectRecommendedModelForSlot(
  * Stable sort that pulls long-context models toward the front while
  * preserving relative order within each group. Used only on hosts with
  * the long-context RAM/VRAM headroom — the ladder order remains the
- * tie-breaker so DFlash-first preferences survive.
+ * tie-breaker so native-runtime preferences survive.
  */
 function rankLadderByLongContext(ladder: CatalogModel[]): CatalogModel[] {
 	return ladder
@@ -625,9 +615,7 @@ export function recommendForFirstRun(
 ): CatalogModel | null {
 	const byId = catalogById(catalog);
 	const isEligibleChat = (model: CatalogModel): boolean =>
-		!model.hiddenFromCatalog &&
-		model.runtimeRole !== "dflash-drafter" &&
-		DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id);
+		!model.hiddenFromCatalog && DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id);
 	const publishStatusFor = (model: CatalogModel): "published" | "pending" =>
 		model.publishStatus ?? eliza1TierPublishStatus(model.id as Eliza1TierId);
 	const isPublishedEligibleChat = (model: CatalogModel): boolean =>

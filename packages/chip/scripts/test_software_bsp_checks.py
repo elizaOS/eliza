@@ -110,9 +110,7 @@ def test_log_parser_requires_provenance_metadata() -> None:
 
 def write_minimal_aosp_product_inputs(device: Path) -> Path:
     device.mkdir(parents=True, exist_ok=True)
-    (device / "AndroidProducts.mk").write_text(
-        "COMMON_LUNCH_CHOICES := eliza_ai_soc-userdebug\n"
-    )
+    (device / "AndroidProducts.mk").write_text("COMMON_LUNCH_CHOICES := eliza_ai_soc-userdebug\n")
     (device / "eliza_ai_soc.mk").write_text(
         "$(call inherit-product, device/google/cuttlefish/vsoc_riscv64/phone/aosp_cf.mk)\n"
     )
@@ -178,8 +176,7 @@ def test_aosp_product_glue_allows_e1_hal_and_inherited_modern_graphics() -> None
         e1_hal = write_minimal_aosp_product_inputs(device)
         (device / "manifest.xml").write_text("<manifest></manifest>\n")
         (device / "device.mk").write_text(
-            "PRODUCT_PACKAGES += \\\n"
-            "    vendor.eliza.e1_npu@1.0-service\n"
+            "PRODUCT_PACKAGES += \\\n    vendor.eliza.e1_npu@1.0-service\n"
         )
         for path in [
             e1_hal / "Android.bp",

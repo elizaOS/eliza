@@ -8,7 +8,7 @@ against:
   slices, Metal embedded, baked from the eliza-controlled
   [`elizaOS/llama.cpp`](https://github.com/elizaOS/llama.cpp) fork — carries
   Q4_POLAR / QJL1_256 / TBQ4_0 / TBQ3_0 GGML types + Metal/Vulkan/CUDA
-  kernels and DFlash spec-decode on top of stock upstream).
+  kernels and MTP spec-decode on top of stock upstream).
 - **sqlite-vec** → static lib + headers (vector storage + KNN extension
   that replaces pgvector for the on-device SQLite backend; PGlite cannot
   run inside JSContext on iOS 16.4+ because WebAssembly is gated off).

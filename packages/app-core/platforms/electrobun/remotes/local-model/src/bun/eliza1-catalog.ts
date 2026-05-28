@@ -46,7 +46,7 @@ const TIER_SNAPSHOTS: TierSnapshot[] = [
 		roles: ["chat", "voice", "tts", "stt", "vad", "vision", "image"],
 		capabilities: [
 			"text-generation",
-			"dflash",
+			"mtp",
 			"text-to-speech",
 			"speech-to-text",
 			"voice-activity-detection",
@@ -74,7 +74,7 @@ const TIER_SNAPSHOTS: TierSnapshot[] = [
 		roles: ["chat", "voice", "tts", "stt", "vad", "vision", "image"],
 		capabilities: [
 			"text-generation",
-			"dflash",
+			"mtp",
 			"text-to-speech",
 			"speech-to-text",
 			"voice-activity-detection",
@@ -103,7 +103,7 @@ const TIER_SNAPSHOTS: TierSnapshot[] = [
 		capabilities: [
 			"text-generation",
 			"text-embedding",
-			"dflash",
+			"mtp",
 			"text-to-speech",
 			"speech-to-text",
 			"voice-activity-detection",
@@ -132,7 +132,7 @@ const TIER_SNAPSHOTS: TierSnapshot[] = [
 		capabilities: [
 			"text-generation",
 			"text-embedding",
-			"dflash",
+			"mtp",
 			"text-to-speech",
 			"speech-to-text",
 			"voice-activity-detection",
@@ -161,7 +161,7 @@ const TIER_SNAPSHOTS: TierSnapshot[] = [
 		capabilities: [
 			"text-generation",
 			"text-embedding",
-			"dflash",
+			"mtp",
 			"text-to-speech",
 			"speech-to-text",
 			"voice-activity-detection",
@@ -190,7 +190,7 @@ const TIER_SNAPSHOTS: TierSnapshot[] = [
 		capabilities: [
 			"text-generation",
 			"text-embedding",
-			"dflash",
+			"mtp",
 			"text-to-speech",
 			"speech-to-text",
 			"voice-activity-detection",

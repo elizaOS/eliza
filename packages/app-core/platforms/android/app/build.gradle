@@ -109,7 +109,7 @@ android {
         noCompress += ['gguf', 'tar.gz', 'so', 'tar']
     }
 }
-// Bundle the DFlash Android llama.cpp stack into the APK so mobile
+// Bundle the MTP Android llama.cpp stack into the APK so mobile
 // gets Eliza-1/Qwen3.5 support across every supported Android ABI
 // (arm64-v8a, x86_64, riscv64). The arm64-v8a slice is mandatory for
 // local-agent capable builds; x86_64 and riscv64 ship when their
@@ -135,14 +135,14 @@ def resolveForkLlamaLibDir = { String abi ->
     // backwards compatibility; other ABIs use the suffixed forms.
     def propSuffix = abi == 'arm64-v8a' ? '' : ".${abi}"
     def envSuffix = abi == 'arm64-v8a' ? '' : "_${abi.replace('-', '_').toUpperCase()}"
-    def fromProp = project.findProperty("eliza.dflash.android.libdir${propSuffix}")
+    def fromProp = project.findProperty("eliza.mtp.android.libdir${propSuffix}")
     if (fromProp) return fromProp.toString()
-    def fromEnv = System.getenv("ELIZA_DFLASH_ANDROID_LIBDIR${envSuffix}")
+    def fromEnv = System.getenv("ELIZA_MTP_ANDROID_LIBDIR${envSuffix}")
     if (fromEnv) return fromEnv
     def stateDir = System.getenv('ELIZA_STATE_DIR') ?: "${System.getProperty('user.home')}/.eliza"
     def abiToken = project.ext.forkLlamaAbiTokens[abi]
     def candidates = ['vulkan', 'cpu'].collect { backend ->
-        "${stateDir}/local-inference/bin/dflash/${abiToken}-${backend}"
+        "${stateDir}/local-inference/bin/mtp/${abiToken}-${backend}"
     }
     return candidates.find { new File(it).isDirectory() }
 }
@@ -201,7 +201,7 @@ task copyForkLlamaLib {
             if (!libDir) {
                 if (abi == 'arm64-v8a') {
                     // arm64-v8a is the mandatory baseline ABI; missing it is a hard error.
-                    throw new GradleException("[copyForkLlamaLib] no DFlash Android lib dir configured for arm64-v8a. Run packages/app-core/scripts/build-llama-cpp-dflash.mjs --target android-arm64-vulkan or set -Peliza.dflash.android.libdir / ELIZA_DFLASH_ANDROID_LIBDIR.")
+                    throw new GradleException("[copyForkLlamaLib] no MTP Android lib dir configured for arm64-v8a. Run packages/app-core/scripts/build-llama-cpp-mtp.mjs --target android-arm64-vulkan or set -Peliza.mtp.android.libdir / ELIZA_MTP_ANDROID_LIBDIR.")
                 }
                 logger.lifecycle("[copyForkLlamaLib] no fork lib dir for ABI ${abi}; skipping")
                 return
@@ -209,7 +209,7 @@ task copyForkLlamaLib {
             def srcDir = new File(libDir.toString())
             if (!srcDir.isDirectory()) {
                 if (abi == 'arm64-v8a') {
-                    throw new GradleException("[copyForkLlamaLib] DFlash Android lib dir does not exist for arm64-v8a: ${libDir}")
+                    throw new GradleException("[copyForkLlamaLib] MTP Android lib dir does not exist for arm64-v8a: ${libDir}")
                 }
                 logger.lifecycle("[copyForkLlamaLib] fork lib dir ${libDir} does not exist for ABI ${abi}; skipping")
                 return
@@ -240,7 +240,7 @@ task copyForkLlamaLib {
                 copied++
                 println "[copyForkLlamaLib] staged Android OpenMP runtime for ${abi} from ${libomp}"
             } else if (abi == 'arm64-v8a') {
-                throw new GradleException("[copyForkLlamaLib] Android arm64 libomp.so not found in the configured NDK; DFlash CPU backend cannot load without it.")
+                throw new GradleException("[copyForkLlamaLib] Android arm64 libomp.so not found in the configured NDK; MTP CPU backend cannot load without it.")
             } else {
                 logger.lifecycle("[copyForkLlamaLib] no libomp.so found for ${abi}; the .so set may not link on-device")
             }

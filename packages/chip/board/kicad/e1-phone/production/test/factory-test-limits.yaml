@@ -1,25 +1,18 @@
-schema: eliza.e1_phone_factory_output_candidate.v1
+schema: eliza.e1_phone_factory_test_limits_candidate.v1
 artifact_id: factory_test_limits_candidate
-source_requirement_id: board/kicad/e1-phone/production/test/factory-test-limits.yaml
-owner: local-factory-output-candidate-generator
+source_requirement_id: factory_test_limits
+owner: local-routing-candidate-generator
 created_at: '2026-05-22'
-tool_or_supplier_revision: generate_e1_phone_factory_output_candidates.py
+tool_or_supplier_revision: generate_e1_phone_routed_output_candidates.py
 input_artifact_hashes:
-  board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb: ed022f26f2ab500c01a92e7d214b9c9683fcc6b0e376f4045eda359501640a8f
-  board/kicad/e1-phone/component-height-step-integration.yaml: 82f219b73e48c4f998b172714edd0d94593094c706fae7a02ff9e0c3aa63d63b
-  board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml: 509ade0d8f5c5f3491a67a61e6f5f28a7b719dbc4b49bb03dabf9d0adc2b8398
+  board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb: ed022f26f2ab500c01a92e7d214b9c9683fcc6b0e376f4045eda359501640a8f
+  board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
 reviewer: unreviewed
 reviewed_at: unreviewed_local_candidate_2026-05-22
 disposition: blocked_candidate_not_approved
-release_package_revision: local_candidate_not_release
-fab_vendor_or_assembler: missing_external_supplier_or_factory
-program_or_fixture_revision: not_run
-limits_revision: not_approved
-calibration_state: not_calibrated
-lot_or_serial_traceability: missing
-release_allowed: false
-claim_boundary: Local candidate artifact only. Not supplier, factory, lab, first-article, quote, fabrication,
-  enclosure, or end-to-end release evidence.
+external_review_authority: missing_external_review_authority
+signature_or_approval_record: missing_signature_or_approval_record
+artifact_sha256: ed022f26f2ab500c01a92e7d214b9c9683fcc6b0e376f4045eda359501640a8f
 kicad_project_revision: development_real_footprint_snapshot
 routed_pcb_hash: ed022f26f2ab500c01a92e7d214b9c9683fcc6b0e376f4045eda359501640a8f
 erc_result: not_run
@@ -31,8 +24,6 @@ si_pi_rf_report_references:
 - board/kicad/e1-phone/production/reports/rf/release-manifest.yaml
 fab_output_manifest: board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
 routed_step_reference: board/kicad/e1-phone/production/step/routed-board-with-components.step
-routed_step_sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
-routed_step_metadata: board/kicad/e1-phone/production/step/routed-board-with-components.step.metadata.yaml
 routed_step_visual_detail:
   source_step_intake: board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml
   routed_development_intake: board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml
@@ -1166,4 +1157,79 @@ cad_connection_coverage:
     bend_radius_requirement_defined: true
     pass: true
     release_credit: false
-source_snapshot: null
+kicad_cad_traceability:
+  traceability_matrix: board/kicad/e1-phone/kicad-cad-traceability-matrix-2026-05-22.yaml
+  status: local_traceability_complete_not_release
+  footprint_library_count: 32
+  pad_audit_record_count: 32
+  board_bound_instance_count: 89
+  step_footprint_instance_count: 89
+  captured_pinout_file_count: 21
+  captured_pinout_declared_pin_count_total: 1178
+  captured_pinout_record_count_total: 868
+  captured_pinout_public_source_count: 21
+  pinout_bound_footprint_count: 21
+  all_pinout_bound_footprints_have_terminal_contract: true
+  cad_connection_count: 21
+  cad_connection_represented_net_count_total: 94
+  cad_connection_visual_route_span_total_mm: 374.0
+  cad_connection_terminal_marker_count: 42
+  cad_connection_terminal_pair_count: 21
+  cad_connection_solid_step_part_count: 63
+  cad_connection_solid_step_part_set_count: 21
+  cad_connection_solid_step_part_bytes_total: 982305
+  cad_connection_physical_medium_counts:
+    battery_power_flex: 1
+    board_to_board_edge_connector: 1
+    flexible_antenna_loop: 1
+    flexible_printed_circuit: 10
+    insulated_wire_pair: 2
+    rf_50ohm_feed: 5
+    rf_tuner_interconnect: 1
+  cad_connection_electrical_class_counts:
+    antenna_aperture_tuning: 1
+    audio_power_pair: 1
+    audio_receiver_pair: 1
+    battery_power_sense: 1
+    cellular_wifi_rf: 5
+    compute_board_to_board_mixed_speed: 1
+    digital_microphone: 2
+    haptic_drive: 1
+    low_speed_gpio: 1
+    mipi_csi_camera_control: 2
+    mipi_dsi_touch_control: 1
+    nfc_loop_rf: 1
+    sim_esim_low_speed: 1
+    top_bottom_board_mixed_signal: 1
+    usb2_pd_vbus: 1
+  cad_connection_controlled_impedance_count: 13
+  cad_connection_controlled_impedance_requirement_defined_count: 21
+  cad_connection_bend_radius_requirement_defined_count: 21
+  cad_connection_supplier_release_required_count: 21
+  incomplete_footprint_count: 0
+  incomplete_cad_connection_count: 0
+  missing_captured_pinout_file_count: 0
+  incomplete_captured_pinout_detail_count: 0
+  release_credit: false
+  gaps:
+    incomplete_footprints: []
+    incomplete_cad_connections: []
+    captured_pinout_files_missing: []
+    incomplete_captured_pinout_details: []
+release_package_revision: local_candidate_not_release
+fab_vendor_or_assembler: missing_external_supplier_or_factory
+program_or_fixture_revision: not_run
+limits_revision: not_approved
+calibration_state: not_calibrated
+lot_or_serial_traceability: missing
+release_allowed: false
+claim_boundary: Local routed-output candidate only. Not approved release evidence; requires real DRC/ERC/SI/PI/RF/fabricator/supplier
+  review.
+status: blocked_local_limits_template_not_factory_approved
+limits_release_allowed: false
+fixture_revision: not_run
+limits:
+- domain: routed_board_candidate
+  measurement: all_limits
+  limit: not_approved
+  result: blocked

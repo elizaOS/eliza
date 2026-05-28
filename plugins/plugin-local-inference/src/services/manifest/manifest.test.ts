@@ -10,7 +10,6 @@ import {
 import type { Eliza1DeviceCaps, Eliza1Manifest, Eliza1Tier } from "./types";
 
 const SHA = "0".repeat(64);
-const DFLASH_TIERS = new Set<Eliza1Tier>(["2b", "4b", "9b", "27b", "27b-256k"]);
 const VISION_TIERS = new Set<Eliza1Tier>([
 	"0_8b",
 	"2b",
@@ -43,7 +42,6 @@ function textFileForTier(tier: Eliza1Tier): { path: string; ctx: number } {
 }
 
 function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
-	const hasDflash = DFLASH_TIERS.has(tier);
 	const hasVision = VISION_TIERS.has(tier);
 	const manifest: Eliza1Manifest = {
 		id: `eliza-1-${tier}`,
@@ -55,13 +53,14 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 			voice: { base: "eliza-1-voice-backbone", license: "apache-2.0" },
 			asr: { base: "eliza-1-asr", license: "apache-2.0" },
 			vad: { base: "eliza-1-vad", license: "apache-2.0" },
+			drafter: { base: "eliza-1-mtp-drafter", license: "apache-2.0" },
 		},
 		files: {
 			text: [{ ...textFileForTier(tier), sha256: SHA }],
 			voice: [{ path: "tts/omnivoice-base-Q4_K_M.gguf", sha256: SHA }],
 			asr: [{ path: "asr/asr.gguf", sha256: SHA }],
 			vision: [],
-			dflash: [],
+			mtp: [{ path: `mtp/drafter-${tier}.gguf`, sha256: SHA }],
 			cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA }],
 			vad: [{ path: "vad/silero-vad-v5.gguf", sha256: SHA }],
 		},
@@ -81,26 +80,13 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 				falseBargeInRate: 0.01,
 				passed: true,
 			},
+			mtp: { acceptanceRate: 0.72, speedup: 1.8, passed: true },
 			e2eLoopOk: true,
 			thirtyTurnOk: true,
 		},
 		ramBudgetMb: { min: 7000, recommended: 9500 },
 		defaultEligible: true,
 	};
-	if (hasDflash) {
-		manifest.lineage.drafter = {
-			base: "eliza-1-drafter",
-			license: "apache-2.0",
-		};
-		manifest.files.dflash = [
-			{ path: `dflash/drafter-${tier}.gguf`, sha256: SHA },
-		];
-		manifest.evals.dflash = {
-			acceptanceRate: 0.72,
-			speedup: 1.8,
-			passed: true,
-		};
-	}
 	if (hasVision) {
 		manifest.lineage.vision = {
 			base: "eliza-1-vision",
@@ -211,7 +197,6 @@ describe("validateManifest — valid input", () => {
 		};
 
 		const result = validateManifest(m);
-		expect([...REQUIRED_KERNELS_BY_TIER["2b"]] as string[]).toContain("dflash");
 		expect([...REQUIRED_KERNELS_BY_TIER["0_8b"]] as string[]).not.toContain(
 			"eagle3",
 		);
@@ -349,11 +334,11 @@ describe("validateManifest — schema-level rejections", () => {
 describe("validateManifest — contract rejections", () => {
 	it("rejects a manifest missing a required kernel for its tier", () => {
 		const m = baseManifest("9b");
-		m.kernels.required = ["turboquant_q4", "qjl", "polarquant"]; // missing dflash
+		m.kernels.required = ["turboquant_q4", "qjl", "polarquant"];
 		const result = validateManifest(m);
 		expect(result.ok).toBe(false);
 		if (!result.ok) {
-			expect(result.errors.some((e) => e.includes("dflash"))).toBe(true);
+			expect(result.errors.some((e) => e.includes("turbo3_tcq"))).toBe(true);
 		}
 	});
 
@@ -597,7 +582,32 @@ describe("canSetAsDefault", () => {
 
 	it("returns false when the manifest fails contract checks even if defaultEligible=true", () => {
 		const m = baseManifest("9b");
-		m.kernels.required = ["turboquant_q4"]; // missing qjl/polarquant/dflash
+		m.kernels.required = ["turboquant_q4"];
+		expect(canSetAsDefault(m, device)).toBe(false);
+	});
+
+	it("does not auto-default version-only staged bundles without release provenance", () => {
+		const m = baseManifest("0_8b");
+		m.version = "1.0.0-weights-staged.2";
+		m.defaultEligible = false;
+		m.evals.asrWer = { wer: 1.4444, passed: false };
+		m.evals.expressive = {
+			tagFaithfulness: 0,
+			mosExpressive: 0,
+			tagLeakage: 1,
+			passed: false,
+		};
+		m.voice = {
+			version: "1",
+			frozen: true,
+			cache: {
+				speakerPreset: "cache/voice-preset-default.bin",
+				phraseCacheSeed: "cache/voice-preset-default.bin",
+			},
+			capabilities: ["tts", "emotion-tags", "singing"],
+		};
+
+		expect(validateManifest(m).ok).toBe(true);
 		expect(canSetAsDefault(m, device)).toBe(false);
 	});
 });

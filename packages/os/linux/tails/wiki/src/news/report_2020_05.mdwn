@@ -1,0 +1,136 @@
+[[!meta title="Tails report for May, 2020"]]
+[[!meta date="Thu, 11 Jun 2020 07:21:15 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+We stand in solidarity with Black people around the world. No justice, no peace.
+Please be safe while protesting and also when communicating online.
+
+Releases
+========
+
+* [[Tails 4.6 was released on May 5|news/version_4.6]].
+
+* [[Tails 4.7 was released on June 2|news/version_4.7]].
+
+* Tails 4.8 is [[scheduled for June 30|contribute/calendar]].
+
+The following changes were introduced in Tails:
+
+* Update Tor Browser to [[9.0.10|https://blog.torproject.org/new-release-tor-browser-9010]].
+
+* Add support for Universal 2nd Factor USB security keys.
+
+* *Configure persistent volume*, *Tails documentation*, *WhisperBack Error
+  Reporting*, and *Tails Installer* are now in the submenu of
+  Favorites applications.
+
+* Change the input method for Japanese from Anthy to Mozc.
+
+Code
+====
+
+- Onboarded a new maintainer for our Debian packages. Welcome
+  [nodens](https://nodens.github.io/resume/)!
+
+* Fixed a [[!tails_ticket 17278 desc="bug"]] that often broke the Additional
+  Software feature.
+
+Documentation and website
+=========================
+
+- Published a job offer for a [[technical writer|jobs/technical_writer]].
+  This is a paid offer for self-employed freelancers.
+
+- Released new [[Home|index]] and [[About|about]] pages. Drawings are by
+  [Andrés Fernández Cordón](https://anhdres.com/).
+
+[[!img index/city.svg link="no" alt="" size="300x"]]
+[[!img index/camping.svg link="no" alt="" size="300x"]]
+
+- Documented how to include screenshots when [[reporting an error|doc/first_steps/whisperback#screenshot]].
+
+- Documented how to import OpenPGP
+  keys from the *Files*
+  browser. ([[!tails_ticket 17183]])
+
+User experience
+===============
+
+- Discussed the UX implications of [dropping our time sync
+  hacks](https://lists.autistici.org/message/20200520.002000.3f43e667.en.html).
+
+- Discussed possible strategies around the [[!tails_ticket
+  17183#note_149643 desc="degrading state"]] of the *Passwords and Keys*
+  utility.
+
+Hot topics on our help desk
+===========================
+
+1. We saw more problems for Mac computers this month, some users could not use [[!tails_ticket 13576 desc="their keyboard and touchpad"]], and others could not start Tails. If you plan to use a laptop for Tails, try to test it before buying it.
+
+1. Many Electrum users had to restore their wallet as explained in [[our documentation|doc/anonymous_internet/electrum/]].
+
+1. Some ATI Radeon cards [[!tails_ticket 17759 desc="have problems to start Tails 4.7"]].
+
+Infrastructure
+==============
+
+- Completed our migration to [[contribute/working_together/GitLab]].
+
+- Onboarded kibi and emmapeel in the team maintaining our pool of
+  mirrors.
+
+Funding
+=======
+
+- Received an invitation to submit a full proposal to the OTF Core Infrastructure
+  Fund to
+  improve the user experience of [[!tails_blueprint desc="connecting to
+  Tor" network_connection]] and using Tails to circumvent
+  censorship.
+
+- Improved how corporate donation matching programs and Benevity are
+  explained on our Donate page. ([[!tails_ticket 17698]])
+
+Outreach
+========
+
+We are discussing
+a [proposal](https://lists.autistici.org/message/20200513.105600.fe3a74d8.en.html)
+to make Tails' [[presence in the
+Fediverse|https://fosstodon.org/@tails/104105188198142765]] official.
+
+On-going discussions
+====================
+
+We are sharing feedback and tips about [[using GitLab|https://lists.autistici.org/message/20200529.160541.cf87071d.en.html]].
+
+Translations
+============
+
+## All the website
+
+  - de: 30% (1988) strings translated, 13% strings fuzzy
+  - es: 47% (3072) strings translated, 8% strings fuzzy
+  - fa: 22% (1474) strings translated, 13% strings fuzzy
+  - fr: 84% (5415) strings translated, 8% strings fuzzy
+  - it: 28% (1808) strings translated, 10% strings fuzzy
+  - pt: 22% (1418) strings translated, 9% strings fuzzy
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 50% (1041) strings translated, 21% strings fuzzy
+  - es: 77% (1585) strings translated, 10% strings fuzzy
+  - fa: 20% (415) strings translated, 15% strings fuzzy
+  - fr: 83% (1709) strings translated, 10% strings fuzzy
+  - it: 50% (1043) strings translated, 20% strings fuzzy
+  - pt: 39% (815) strings translated, 14% strings fuzzy
+
+
+Metrics
+=======
+
+* Tails has been started more than 981&#8239;624 times this month. This makes 31&#8239;665 boots a day on average.
+

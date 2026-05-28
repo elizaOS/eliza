@@ -17,6 +17,7 @@
 
 import path from "node:path";
 
+import { resolveStateDir } from "../../config/paths.ts";
 import { DiskStore } from "./disk-store.ts";
 import { buildCacheKey } from "./key.ts";
 import { Lru } from "./lru.ts";
@@ -29,7 +30,7 @@ import type {
 } from "./types.ts";
 
 export interface ToolCallCacheOptions {
-  /** Root directory for the on-disk tier. Defaults to ~/.eliza/tool-cache. */
+  /** Root directory for the on-disk tier. Defaults to `<stateDir>/tool-cache`. */
   diskRoot?: string;
   /** Maximum entries in the in-memory tier. Default 1000. */
   memoryCapacity?: number;
@@ -45,13 +46,7 @@ export class ToolCallCache {
   private readonly now: () => number;
 
   constructor(options: ToolCallCacheOptions) {
-    const root =
-      options.diskRoot ??
-      path.join(
-        process.env.HOME ?? process.env.USERPROFILE ?? "/tmp",
-        ".eliza",
-        "tool-cache",
-      );
+    const root = options.diskRoot ?? path.join(resolveStateDir(), "tool-cache");
     this.memory = new Lru(options.memoryCapacity ?? 1000);
     this.disk = new DiskStore(root, options.redact);
     this.now = options.now ?? Date.now;

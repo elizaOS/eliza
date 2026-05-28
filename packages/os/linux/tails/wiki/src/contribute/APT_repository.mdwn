@@ -1,0 +1,129 @@
+[[!toc levels=2]]
+
+# Our APT repositories
+
+We have three kinds of APT repositories:
+
+* our [[custom APT repository|contribute/APT_repository/custom]],
+  that stores our custom Debian packages;
+
+* (full) [[contribute/APT_repository/time-based snapshots]] of the
+  upstream APT repositories we use, so that we can use frozen
+  versions thereof when needed;
+
+* (partial) [[contribute/APT_repository/tagged snapshots]] of upstream
+  APT repositories we need, so that one can rebuild a released ISO in
+  the future, and we keep the corresponding source code around.
+
+# Snapshots and branches
+
+Here we discuss what APT snapshots of upstream repositories are used
+when building a Tails ISO image. This a is function of the branch we
+build from, as well as if we are building an ISO that is meant to be released (i.e.
+whether there is a tag in Git corresponding the last entry in
+debian/changelog).
+
+Note: when we say "building an ISO from the `B` branch" below, we only
+refer to the base branch, i.e. `B` is encoded in `config/base_branch`.
+Hence such statements also refers to topic branches with `B` as base
+branch.
+
+Building an ISO from the `devel` branch always uses the freshest set
+of APT repository snapshots available. Resolving what's the set of
+freshest APT repository snapshots is done at the beginning of the
+build ([[!tails_gitweb auto/config]],
+[[!tails_gitweb auto/scripts/apt-mirror]]), so that the entire build
+uses the exact same state of these
+repositories. This is needed for reproducible builds, and has a nice
+side effect: so long, `Hashsum mismatch`, and thanks for the fish.
+
+When building an ISO from the branch used to prepare the next major
+release (`testing`):
+
+ * **outside of the freeze period**: the `testing` branch is not used;
+
+ * **freeze period**: at freeze time, the RM encodes in the Git
+   `testing` branch the set of APT repository snapshots (via their
+   serial numbers) that shall be used during the freeze; the only
+   exception is security.debian.org, for which we always use our
+   latest snapshot;
+
+ * **at release time**: when building from a tagged branch, similarly to
+   what we do for our
+   [[custom APT repository|contribute/APT_repository/custom]], instead
+   of using time-based APT repository snapshots, we use snapshots
+   labeled with the Git tag (note that this is not needed, strictly speaking,
+   as the APT sources used at Tails runtime will anyway be the
+   official (and not frozen) Debian ones; this is mostly needed for
+   legal purposes (this allows to distribute for a long
+   time the source packages needed to build a given Tails ISO image),
+   and it will be useful when we want to be able to reproduce a given
+   Tails ISO build).
+
+When building an ISO from the branch used to prepare the next
+bugfix release (`stable`) we use the same time-based snapshots that
+were used to prepare the latest Tails release, except:
+
+ * we use our latest snapshot of security.debian.org;
+
+ * at release time: when building from a tagged branch, similarly to
+   what we do for our
+   [[custom APT repository|contribute/APT_repository/custom]], instead
+   of using time-based APT repository snapshots, we use snapshots
+   labeled with the Git tag.
+
+# Design notes
+
+## Miscellaneous
+
+A given APT repository snapshot is immutable after it's been taken.
+We
+[[deal with freeze exceptions separately|contribute/APT_repository/time-based_snapshots#design-freeze-exceptions]].
+
+We want to have reproducible builds some day. Therefore, the APT
+`sources.list` shipped in the ISO must be stable across rebuilds from
+the same release Git tag.
+
+<a id="runtime-sources"></a>
+
+## APT sources used inside Tails
+
+A running Tails' APT must be pointed at the official, live Debian
+archive, and not to a Tails-specific and already obsolete snapshot.
+
+Say `kedit` is a package shipped in Debian, but not in Tails. Then,
+when run inside Tails, `apt install kedit` must fetch `kedit` from
+current Debian, as opposed to installing it from a Tails-specific, and
+generally obsolete, snapshot of the Debian APT repository.
+
+To achieve that we tweak `sources.list` in
+[[!tails_gitweb config/chroot_local-includes/lib/live/config/1500-reconfigure-APT]].
+
+## Upgrading to a new snapshot
+
+In other words: bumping, in Git, the pointers to the set of snapshots
+that shall be used by a given branch.
+
+Let's use, as an example of a situation in which we might want to do
+that, upgrading to a new Debian point-release.
+
+With this design:
+
+ * `devel` gets them automatically because it closely tracks the
+   Debian archive;
+
+ * for release branches (`stable`, `testing`): on a case-by-case
+   basis, depending on the respective Debian/Tails release schedule
+   timing, we can choose whether to switch to using a new snapshot of
+   the Debian archive for the next release. Note that this can be done
+   via a topic-branch since this information is encoded in Git. If we
+   choose not to manually pick the point release, which is the default
+   if we don't act at all, then:
+
+   - `testing` will start using the new Debian point-release as soon
+     as it is unfrozen, that is as soon as it has been used to release
+     a new major version of Tails;
+
+   - `stable` will start using the new Debian point-release once
+     a `testing` branch that uses that point-release is merged into
+     `stable`.

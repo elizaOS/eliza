@@ -1,0 +1,47 @@
+{
+  "schema": "robot-nebius-stage-status-v1",
+  "stage": "20_nebius_compare_backends",
+  "script": "/root/robot/evidence/full_training_preflight/scripts/20_nebius_compare_backends.sh",
+  "state": "complete",
+  "started_at": "2026-05-24T05:42:25.816999Z",
+  "heartbeat_at": "2026-05-24T05:45:01.737119Z",
+  "log": "/root/robot/logs/20_nebius_compare_backends.log",
+  "ended_at": "2026-05-24T05:45:01.737119Z",
+  "returncode": 0,
+  "upload_results": [
+    {
+      "ok": true,
+      "source": "/root/robot/logs",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/logs",
+      "returncode": 0,
+      "stdout_tail": "Completed 127.1 KiB/127.1 KiB (7.7 MiB/s) with 1 file(s) remaining\nupload: logs/20_nebius_compare_backends.log to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/logs/20_nebius_compare_backends.log\n",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "source": "/root/robot/status",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status",
+      "returncode": 0,
+      "stdout_tail": "Completed 429 Bytes/429 Bytes (33.5 KiB/s) with 1 file(s) remaining\nupload: status/20_nebius_compare_backends.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status/20_nebius_compare_backends.json\n",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "source": "/root/robot/checkpoints",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/checkpoints",
+      "returncode": 0,
+      "stdout_tail": "",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "source": "/root/robot/evidence",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence",
+      "returncode": 0,
+      "stdout_tail": "imov-1/comparison.json\nCompleted 280.5 KiB/959.8 KiB (4.6 MiB/s) with 6 file(s) remaining\nCompleted 956.1 KiB/959.8 KiB (15.0 MiB/s) with 6 file(s) remaining\nCompleted 957.9 KiB/959.8 KiB (12.5 MiB/s) with 6 file(s) remaining\nupload: evidence/backend_compare/asimov-1/validation_report.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/backend_compare/asimov-1/validation_report.json\nCompleted 957.9 KiB/959.8 KiB (12.5 MiB/s) with 5 file(s) remaining\nupload: evidence/backend_compare/asimov-1/ppo/policy.zip to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/backend_compare/asimov-1/ppo/policy.zip\nCompleted 957.9 KiB/959.8 KiB (12.5 MiB/s) with 4 file(s) remaining\nCompleted 958.1 KiB/959.8 KiB (12.3 MiB/s) with 4 file(s) remaining\nupload: evidence/full_training_preflight/scripts/40_nebius_brax_baseline.sh to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/full_training_preflight/scripts/40_nebius_brax_baseline.sh\nCompleted 958.1 KiB/959.8 KiB (12.3 MiB/s) with 3 file(s) remaining\nCompleted 958.7 KiB/959.8 KiB (12.2 MiB/s) with 3 file(s) remaining\nupload: evidence/full_training_preflight/scripts/20_nebius_compare_backends.sh to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/full_training_preflight/scripts/20_nebius_compare_backends.sh\nCompleted 958.7 KiB/959.8 KiB (12.2 MiB/s) with 2 file(s) remaining\nCompleted 959.2 KiB/959.8 KiB (12.1 MiB/s) with 2 file(s) remaining\nupload: evidence/full_training_preflight/scripts/10_nebius_train_alberta.sh to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/full_training_preflight/scripts/10_nebius_train_alberta.sh\nCompleted 959.2 KiB/959.8 KiB (12.1 MiB/s) with 1 file(s) remaining\nCompleted 959.8 KiB/959.8 KiB (11.8 MiB/s) with 1 file(s) remaining\nupload: evidence/backend_compare/asimov-1/ppo/manifest.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/backend_compare/asimov-1/ppo/manifest.json\n",
+      "stderr_tail": ""
+    }
+  ],
+  "upload_ok": true,
+  "final_status_upload_ok": true
+}

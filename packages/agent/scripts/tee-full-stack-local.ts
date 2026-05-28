@@ -401,7 +401,12 @@ type ReasonVector = {
 
 const reasonVectors: ReasonVector[] = [
   // Trusted reasons.
-  { reason: "no-policy", evidence: reasonBaseEvidence, policy: undefined, trusted: true },
+  {
+    reason: "no-policy",
+    evidence: reasonBaseEvidence,
+    policy: undefined,
+    trusted: true,
+  },
   {
     reason: "not-required",
     evidence: undefined,

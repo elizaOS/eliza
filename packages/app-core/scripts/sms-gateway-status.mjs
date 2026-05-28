@@ -138,7 +138,7 @@ function main() {
   const blockersPath = writeBlockerBundle(evidence, evidencePath);
   const proven = [
     ["homepage bundle", /PROVEN homepage-bundle/],
-    ["production Cloud onboarding", /PROVEN cloud-onboarding/],
+    ["production Cloud onboarding", /PROVEN cloud-first-run/],
     ["routing contracts", /PROVEN routing-contracts/],
     ["provisioning handoff", /PROVEN provisioning-handoff/],
     ["Android APK", /PROVEN android-apk/],

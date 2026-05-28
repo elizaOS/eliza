@@ -1,11 +1,13 @@
 # `packages/os`
 
-The elizaOS distribution. Linux live USB plus AOSP variants for Android.
+The elizaOS distribution. The canonical Linux build is the Tails-derived
+elizaOS Debian fork under `linux/`; Android lives under `android/` as the
+separate AOSP fork.
 
 ## Layout
 
 ```
-linux/             Tails-derived live USB build scripts and variants
+linux/             canonical Tails-derived elizaOS Debian fork
 android/           AOSP system images, installer, fastboot/ADB tools
 setup/             Install harness (cross-platform)
 usb-installer/     USB flasher utility
@@ -15,15 +17,27 @@ shared-system/     Cross-target shared components
 docs/              Internal engineering notes
 ```
 
-## Variants
+## Linux
 
-The active Linux build ships under `linux/elizaos/`: one multi-arch live-build (amd64/arm64/riscv64) selected via `ELIZAOS_ARCH`, with an optional `ELIZAOS_PROFILE=secure` hardening overlay (RAM-only home, MAC randomization, Tor, AppArmor) built from standard Debian packages, plus the elizaOS desktop app pinned as the home surface.
+The active Linux build ships directly under `linux/`: one multi-arch
+live-build selected via `ELIZAOS_ARCH`. It is the canonical elizaOS Debian
+fork. There are no distro variants in this repo; amd64/arm64/riscv64 are
+architecture targets of the same build.
 
-The Android side targets a curated list of devices where AOSP can be flashed safely. Manifests in `release/` enumerate supported devices, channels (alpha / beta / stable), and signing keys.
+The upstream-derived source remains in `linux/tails/` because inherited
+Tails live-OS plumbing, AppArmor policy, Greeter code, Persistent Storage,
+and update hooks key off those names. Product identity is elizaOS; Tails
+references are retained only for provenance, licenses, and internal plumbing.
+
+The Android side targets a curated list of devices where AOSP can be flashed
+safely. Manifests in `release/` enumerate supported devices, channels
+(`alpha` / `beta` / `stable`), and signing keys.
 
 ## Building locally
 
-Building a live image requires a Debian-based host, root, and ~20 GB free disk. See the variant README under `linux/variants/<name>/` for full prerequisite list and step-by-step build instructions.
+Building a live image requires Docker, root-equivalent container privileges,
+and ~20 GB free disk. See `linux/README.md` for prerequisites and the
+step-by-step build flow.
 
 ## Flashing
 

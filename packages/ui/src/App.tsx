@@ -58,24 +58,22 @@ import {
 } from "./components/shell/ShellControllerContext";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
-import { StartupShell } from "./components/shell/StartupShell";
+import { StartupScreen } from "./components/shell/StartupScreen";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
 import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { ErrorBoundary } from "./components/ui/error-boundary";
 import { VoiceWaveform } from "./components/voice/VoiceWaveform";
-import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
+import {
+  AppWorkspaceChrome,
+  type AppWorkspaceChromeProps,
+} from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react";
 import type { CompanionShellComponentProps } from "./config/boot-config-store";
 import {
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
 } from "./events";
-import {
-  BugReportProvider,
-  useBugReportState,
-  useContextMenu,
-  useRenderGuard,
-} from "./hooks";
+import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
@@ -276,15 +274,11 @@ function useShellMode(): ShellMode {
  * chrome — over a transparent background.
  */
 function ChatOverlayShell() {
-  const controller = useShellControllerContext();
   return (
     <div
       data-testid="chat-overlay-shell"
-      className="fixed inset-0 flex items-end justify-center bg-transparent"
+      className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
     >
-      <div className="pointer-events-none mb-20 flex items-center justify-center">
-        <VoiceWaveform mode={controller?.waveformMode ?? "idle"} size={160} />
-      </div>
       <ShellFoundationMount />
     </div>
   );
@@ -549,10 +543,10 @@ function renderStaticViewRouterTab({
   onCharacterHeaderActionsChange?: (actions: ReactNode | null) => void;
   LifeOpsPageView: ComponentType | null | undefined;
 }): ReactNode {
-  const directViews: Record<string, ReactNode> = {
-    chat: <ChatView />,
-    home: <HomeView />,
-    browser: <BrowserWorkspaceView />,
+	  const directViews: Record<string, ReactNode> = {
+	    home: <HomeView />,
+	    chat: <ChatView />,
+	    browser: <BrowserWorkspaceView />,
     companion: <ChatView />,
     stream: <StreamView />,
     tasks: (
@@ -1120,11 +1114,10 @@ function shouldSuppressShellPill(tab: string): boolean {
 }
 
 export function App() {
-  useRenderGuard("App");
   const {
     startupError,
     startupCoordinator,
-    onboardingComplete,
+    firstRunComplete,
     retryStartup,
     tab,
     setTab,
@@ -1143,7 +1136,7 @@ export function App() {
   const isPopout = useIsPopout();
   const shellMode = useShellMode();
   // Auth gate — only active after the coordinator reaches "ready".
-  // During onboarding / pairing / startup phases the StartupShell handles
+  // During first-run setup / pairing / startup phases the StartupScreen handles
   // its own gate (bootstrap step), so we skip the check.
   const isCoordinatorReady = startupCoordinator.phase === "ready";
   const { state: authState, refetch: refetchAuth } = useAuthStatus({
@@ -1315,8 +1308,8 @@ export function App() {
     };
   }, [isChat, isChatMobileLayout, mobileChatSurface, t]);
 
-  // Keep hook order stable across onboarding/auth state transitions.
-  // Otherwise React can throw when onboarding completes and the main shell mounts.
+  // Keep hook order stable across first-run/auth state transitions.
+  // Otherwise React can throw when first-run setup completes and the main shell mounts.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handler = () => setCustomActionsPanelOpen((v) => !v);
@@ -1484,7 +1477,7 @@ export function App() {
   );
 
   const bugReport = useBugReportState();
-  // Loading is handled entirely by StartupShell — no separate loader needed.
+  // Loading is handled entirely by StartupScreen.
 
   useEffect(() => {
     // Safety-net watchdog: the coordinator has its own timeouts per phase, but
@@ -1583,22 +1576,28 @@ export function App() {
     );
   }
 
+  // OS chat-overlay window — render JUST the floating assistant pill +
+  // waveform over a transparent background, no app chrome or onboarding gate.
+  if (shellMode === "chat-overlay") {
+    return (
+      <BugReportProvider value={bugReport}>
+        <ShellControllerProvider>
+          <ChatOverlayShell />
+        </ShellControllerProvider>
+        <BugReportModal />
+      </BugReportProvider>
+    );
+  }
+
   // StartupCoordinator gate — the coordinator is the sole startup authority.
-  // Non-ready phases are handled by StartupShell (which renders the appropriate
-  // view for each coordinator phase: loading, pairing, onboarding, or error).
-  if (startupCoordinator.phase !== "ready" || !onboardingComplete) {
-    // Pre-agent / onboarding surface: the cloud loop is a true full-viewport
+  // Non-ready phases are handled by StartupScreen.
+  if (startupCoordinator.phase !== "ready" || !firstRunComplete) {
+    // Pre-agent / first-run setup surface: the cloud loop is a true full-viewport
     // background (poster first, video streamed in once the client is loaded);
-    // the onboarding shell layers above it in Z and scrolls within itself.
+    // the first-run shell layers above it in Z and scrolls within itself.
     return (
       <BugReportProvider value={bugReport}>
         <CloudVideoBackground
-          speed="8x"
-          basePath="/clouds"
-          poster="/clouds/poster-960.jpg"
-          posterSrcSet="/clouds/poster-640.jpg 640w, /clouds/poster-960.jpg 960w"
-          posterSizes="100vw"
-          animated={false}
           scrim={0.05}
           style={{ position: "fixed", inset: 0 }}
         >
@@ -1607,7 +1606,7 @@ export function App() {
             className="flex h-full min-h-0 w-full flex-col overflow-y-auto text-txt"
             style={{ borderRadius: "var(--radius-xs, 2px)" }}
           >
-            <StartupShell />
+            <StartupScreen />
           </div>
         </CloudVideoBackground>
         <BugReportModal />
@@ -1650,20 +1649,7 @@ export function App() {
     // rendering (avoids a flash of login screen on refresh when cookies are valid).
   }
 
-  // OS chat-overlay window — render JUST the floating assistant pill +
-  // waveform over a transparent background, no app chrome.
-  if (shellMode === "chat-overlay") {
-    return (
-      <BugReportProvider value={bugReport}>
-        <ShellControllerProvider>
-          <ChatOverlayShell />
-        </ShellControllerProvider>
-        <BugReportModal />
-      </BugReportProvider>
-    );
-  }
-
-  // OS kiosk window — the locked appliance shell: a fullscreen in-window
+	  // OS kiosk window — the locked appliance shell: a fullscreen in-window
   // view-manager canvas plus an always-visible bottom chat pill. No app
   // chrome, no tabs. The pill is enabled here regardless of web/native gating.
   if (shellMode === "kiosk") {
@@ -1677,7 +1663,7 @@ export function App() {
     );
   }
 
-  // Coordinator is at "ready" — the app shell renders. No legacy onboarding
+  // Coordinator is at "ready" — the app shell renders. No deprecated first-run
   // overlays — the coordinator handled all of that before reaching ready.
 
   return (

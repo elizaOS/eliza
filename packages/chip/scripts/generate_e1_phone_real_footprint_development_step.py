@@ -7,6 +7,7 @@ import hashlib
 import math
 import re
 from pathlib import Path
+from typing import TypedDict
 
 import yaml
 
@@ -14,7 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]
 BOARD = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb"
 LIB = ROOT / "board/kicad/e1-phone/e1-phone-dev.pretty"
 PARAMS = ROOT / "mechanical/e1-phone/cad/e1_phone_params.yaml"
-OUT_STEP = ROOT / "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step"
+OUT_STEP = (
+    ROOT / "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step"
+)
 MANIFEST = ROOT / "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml"
 
 HEIGHTS_MM = {
@@ -96,7 +99,7 @@ def footprint_size(name: str) -> tuple[float, float]:
         flags=re.S,
     )
     if not rects:
-        rects = re.findall(r'\(fp_rect \(start ([^)]+)\) \(end ([^)]+)\)', mod, flags=re.S)
+        rects = re.findall(r"\(fp_rect \(start ([^)]+)\) \(end ([^)]+)\)", mod, flags=re.S)
     if not rects:
         return (1.0, 1.0)
     start, end = rects[-1]
@@ -112,8 +115,72 @@ def rotate_size(width: float, height: float, degrees: float) -> tuple[float, flo
     return (width * c + height * s, width * s + height * c)
 
 
-def parse_pads(block: str, footprint_x: float, footprint_y: float, footprint_rot: float) -> list[dict[str, object]]:
-    pads: list[dict[str, object]] = []
+class Point2D(TypedDict):
+    x: float
+    y: float
+
+
+class PadPose(TypedDict):
+    x: float
+    y: float
+    rotation: float
+
+
+class Size2D(TypedDict):
+    width: float
+    height: float
+
+
+class PadRecord(TypedDict):
+    name: str
+    type: str
+    shape: str
+    at_mm: PadPose
+    size_mm: Size2D
+    layers: str
+
+
+class FootprintPose(TypedDict):
+    x: float
+    y: float
+    rotation: float
+
+
+class Envelope(TypedDict):
+    width: float
+    depth: float
+    height: float
+
+
+class FootprintRecord(TypedDict):
+    reference: str
+    footprint: str
+    layer: str
+    at_mm: FootprintPose
+    envelope_mm: Envelope
+    pad_count: int
+    pads: list[PadRecord]
+
+
+class SegmentRecord(TypedDict):
+    start_mm: Point2D
+    end_mm: Point2D
+    width_mm: float
+    layer: str
+
+
+class ViaRecord(TypedDict):
+    at_mm: Point2D
+    size_mm: float
+    drill_mm: float
+    layers: list[str]
+    net_id: int
+
+
+def parse_pads(
+    block: str, footprint_x: float, footprint_y: float, footprint_rot: float
+) -> list[PadRecord]:
+    pads: list[PadRecord] = []
     pad_re = re.compile(
         r'\(pad "([^"]*)" ([^\s)]+) ([^\s)]+) \(at ([^)]+)\) \(size ([^)]+)\)[\s\S]*?\(layers ([^)]+)\)',
         re.S,
@@ -146,11 +213,11 @@ def parse_pads(block: str, footprint_x: float, footprint_y: float, footprint_rot
     return pads
 
 
-def parse_footprints(text: str) -> list[dict[str, object]]:
-    records = []
+def parse_footprints(text: str) -> list[FootprintRecord]:
+    records: list[FootprintRecord] = []
     for block in blocks(text):
         header = re.search(r'\(footprint "e1-phone-dev:([^"]+)" \(layer "([^"]+)"\)', block)
-        at = re.search(r'\(at ([^\)]+)\)', block)
+        at = re.search(r"\(at ([^\)]+)\)", block)
         ref = re.search(r'\(fp_text reference "([^"]+)"', block)
         if not header or not at:
             continue
@@ -180,8 +247,8 @@ def parse_footprints(text: str) -> list[dict[str, object]]:
     return records
 
 
-def parse_segments(text: str) -> list[dict[str, object]]:
-    segments: list[dict[str, object]] = []
+def parse_segments(text: str) -> list[SegmentRecord]:
+    segments: list[SegmentRecord] = []
     segment_re = re.compile(
         r'\(segment \(start ([^)]+)\) \(end ([^)]+)\) \(width ([^\s)]+)\) \(layer "([^"]+)"\)',
         re.S,
@@ -201,8 +268,8 @@ def parse_segments(text: str) -> list[dict[str, object]]:
     return segments
 
 
-def parse_vias(text: str) -> list[dict[str, object]]:
-    vias: list[dict[str, object]] = []
+def parse_vias(text: str) -> list[ViaRecord]:
+    vias: list[ViaRecord] = []
     via_re = re.compile(
         r'\(via \(at ([^)]+)\) \(size ([^\s)]+)\) \(drill ([^\s)]+)\) \(layers "([^"]+)" "([^"]+)"\) \(net (\d+)\)',
         re.S,
@@ -238,8 +305,16 @@ def main() -> int:
 
     assembly = cq.Assembly(name="e1_phone_real_footprint_development_board")
     board_color = cq.Color(0.05, 0.28, 0.12, 1.0)
-    assembly.add(cq.Workplane("XY").box(top_w, top_h, board_t).translate((0, top_y, 0)), name="pcb_top_island", color=board_color)
-    assembly.add(cq.Workplane("XY").box(bot_w, bot_h, board_t).translate((0, bot_y, 0)), name="pcb_bottom_island", color=board_color)
+    assembly.add(
+        cq.Workplane("XY").box(top_w, top_h, board_t).translate((0, top_y, 0)),
+        name="pcb_top_island",
+        color=board_color,
+    )
+    assembly.add(
+        cq.Workplane("XY").box(bot_w, bot_h, board_t).translate((0, bot_y, 0)),
+        name="pcb_bottom_island",
+        color=board_color,
+    )
 
     records = parse_footprints(board_text)
     segments = parse_segments(board_text)
@@ -254,19 +329,38 @@ def main() -> int:
         x = float(item["at_mm"]["x"]) - board_w / 2.0
         y = board_h / 2.0 - float(item["at_mm"]["y"])
         h = max(float(env["height"]), 0.02)
-        z = z_top + copper_thickness + h / 2.0 if item["layer"] == "F.Cu" else z_bot - copper_thickness - h / 2.0
-        color = metal_color if item["footprint"] in {"TESTPOINT_1MM_DEV", "FIDUCIAL_1MM_DEV", "MOUNTING_HOLE_1P2_DEV"} else comp_color
-        shape = cq.Workplane("XY").box(max(float(env["width"]), 0.05), max(float(env["depth"]), 0.05), h).translate((x, y, z))
+        z = (
+            z_top + copper_thickness + h / 2.0
+            if item["layer"] == "F.Cu"
+            else z_bot - copper_thickness - h / 2.0
+        )
+        color = (
+            metal_color
+            if item["footprint"]
+            in {"TESTPOINT_1MM_DEV", "FIDUCIAL_1MM_DEV", "MOUNTING_HOLE_1P2_DEV"}
+            else comp_color
+        )
+        shape = (
+            cq.Workplane("XY")
+            .box(max(float(env["width"]), 0.05), max(float(env["depth"]), 0.05), h)
+            .translate((x, y, z))
+        )
         assembly.add(shape, name=f"{idx:02d}_{item['reference']}_{item['footprint']}", color=color)
         for pad_idx, pad in enumerate(item["pads"], start=1):
             pad_x = float(pad["at_mm"]["x"]) - board_w / 2.0
             pad_y = board_h / 2.0 - float(pad["at_mm"]["y"])
-            pad_z = z_top + copper_thickness / 2.0 if "F.Cu" in str(pad["layers"]) else z_bot - copper_thickness / 2.0
+            pad_z = (
+                z_top + copper_thickness / 2.0
+                if "F.Cu" in str(pad["layers"])
+                else z_bot - copper_thickness / 2.0
+            )
             pad_w = max(float(pad["size_mm"]["width"]), 0.035)
             pad_h = max(float(pad["size_mm"]["height"]), 0.035)
             pad_rot = -float(pad["at_mm"]["rotation"])
             if pad["shape"] == "circle":
-                pad_shape = cq.Workplane("XY").circle(max(pad_w, pad_h) / 2.0).extrude(copper_thickness)
+                pad_shape = (
+                    cq.Workplane("XY").circle(max(pad_w, pad_h) / 2.0).extrude(copper_thickness)
+                )
                 pad_shape = pad_shape.translate((pad_x, pad_y, pad_z - copper_thickness / 2.0))
             else:
                 pad_shape = (
@@ -295,7 +389,11 @@ def main() -> int:
         mid_y = board_h / 2.0 - (sy + ey) / 2.0
         angle = -math.degrees(math.atan2(dy, dx))
         width = max(float(segment["width_mm"]), 0.035)
-        route_z = z_top + copper_thickness * 1.7 if segment["layer"] == "F.Cu" else z_bot - copper_thickness * 1.7
+        route_z = (
+            z_top + copper_thickness * 1.7
+            if segment["layer"] == "F.Cu"
+            else z_bot - copper_thickness * 1.7
+        )
         route_shape = (
             cq.Workplane("XY")
             .box(length, width, copper_thickness)

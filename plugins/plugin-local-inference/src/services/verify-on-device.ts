@@ -33,6 +33,7 @@ type VerifyEngine = Pick<
 	typeof localInferenceEngine,
 	| "load"
 	| "generate"
+	| "ensureActiveBundleVoiceReady"
 	| "startVoice"
 	| "armVoice"
 	| "synthesizeSpeech"
@@ -61,9 +62,10 @@ async function manifestDeclaresVoice(
 
 async function verifyText(
 	engine: VerifyEngine,
+	modelId: string,
 	textGgufPath: string,
 ): Promise<void> {
-	await engine.load(textGgufPath);
+	await engine.load(textGgufPath, { modelPath: textGgufPath, modelId });
 	const out = await engine.generate({
 		prompt: VERIFY_PROMPT,
 		maxTokens: 1,
@@ -78,15 +80,10 @@ async function verifyText(
 
 async function verifyVoice(
 	engine: VerifyEngine,
-	bundleRoot: string,
+	_bundleRoot: string,
 ): Promise<void> {
-	// `useFfiBackend: true` is the production path — it loads the fused
-	// `libelizainference` and hard-fails (`VoiceStartupError`) when the fused
-	// build is absent. That is the intended behaviour: a voice bundle that
-	// cannot run voice on this device is not verified.
-	engine.startVoice({ bundleRoot, useFfiBackend: true });
+	await engine.ensureActiveBundleVoiceReady();
 	try {
-		await engine.armVoice();
 		// One real synthesis through the voice bridge.
 		const pcm = await engine.synthesizeSpeech(VERIFY_PHRASE);
 		if (!(pcm instanceof Uint8Array) || pcm.byteLength === 0) {
@@ -111,9 +108,9 @@ export function createVerifyBundleOnDevice(
 		parseManifest: deps.parseManifest ?? parseManifestOrThrow,
 	};
 
-	return async ({ bundleRoot, manifestPath, textGgufPath }) => {
+	return async ({ modelId, bundleRoot, manifestPath, textGgufPath }) => {
 		try {
-			await verifyText(engine, textGgufPath);
+			await verifyText(engine, modelId, textGgufPath);
 			if (await manifestDeclaresVoice(manifestPath, manifestDeps)) {
 				await verifyVoice(engine, bundleRoot);
 			}

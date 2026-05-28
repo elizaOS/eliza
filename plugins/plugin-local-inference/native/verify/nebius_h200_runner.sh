@@ -7,7 +7,7 @@
 #
 # Required:
 #   NEBIUS_PROJECT_ID        defaults to `nebius configure get parent-id`
-#   ELIZA_DFLASH_SMOKE_MODEL local GGUF to upload for graph smoke
+#   ELIZA_MTP_SMOKE_MODEL local GGUF to upload for graph smoke
 #
 # Optional:
 #   NEBIUS_VM_NAME           default eliza-inference-h200
@@ -159,7 +159,7 @@ provision() {
 }
 
 sync_repo() {
-  : "${ELIZA_DFLASH_SMOKE_MODEL:?must set ELIZA_DFLASH_SMOKE_MODEL to a local GGUF}"
+  : "${ELIZA_MTP_SMOKE_MODEL:?must set ELIZA_MTP_SMOKE_MODEL to a local GGUF}"
   local target; target="$(ssh_target)"
   echo "[nebius_h200] syncing focused checkout to $target:$NEBIUS_REMOTE_DIR"
   ssh -o StrictHostKeyChecking=no "$target" \
@@ -178,13 +178,13 @@ sync_repo() {
   rsync -az --delete "$REPO_ROOT/packages/native/plugins/qjl-cpu/" "$target:$NEBIUS_REMOTE_DIR/packages/native/plugins/qjl-cpu/"
   rsync -az --delete "$REPO_ROOT/packages/native/plugins/polarquant-cpu/" "$target:$NEBIUS_REMOTE_DIR/packages/native/plugins/polarquant-cpu/"
   rsync -az --delete "$REPO_ROOT/plugins/plugin-local-inference/native/cuda/" "$target:$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native/cuda/"
-  rsync -az --delete "$REPO_ROOT/plugins/plugin-local-inference/native/dflash/" "$target:$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native/dflash/"
+  rsync -az --delete "$REPO_ROOT/plugins/plugin-local-inference/native/mtp/" "$target:$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native/mtp/"
   rsync -az --delete "$REPO_ROOT/plugins/plugin-local-inference/native/include/" "$target:$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native/include/"
   rsync -az --delete "$REPO_ROOT/plugins/plugin-local-inference/native/reference/" "$target:$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native/reference/"
   rsync -az --delete "$REPO_ROOT/plugins/plugin-local-inference/native/verify/" "$target:$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native/verify/"
   echo "[nebius_h200] syncing smoke model to $target:$NEBIUS_REMOTE_MODEL"
   ssh -o StrictHostKeyChecking=no "$target" "sudo mkdir -p $(dirname "$NEBIUS_REMOTE_MODEL"); sudo chown -R $NEBIUS_SSH_USER:$NEBIUS_SSH_USER $(dirname "$NEBIUS_REMOTE_MODEL")"
-  rsync -az "$ELIZA_DFLASH_SMOKE_MODEL" "$target:$NEBIUS_REMOTE_MODEL"
+  rsync -az "$ELIZA_MTP_SMOKE_MODEL" "$target:$NEBIUS_REMOTE_MODEL"
 }
 
 run_remote() {
@@ -192,7 +192,7 @@ run_remote() {
   target="$(ssh_target)"
   report="hardware-results/nebius-h200-$(date -u +%Y%m%dT%H%M%SZ).json"
   echo "[nebius_h200] running cuda_runner on $target"
-  ssh -o StrictHostKeyChecking=no "$target" "set -euo pipefail; cd '$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native/verify'; ELIZA_DFLASH_SMOKE_MODEL='$NEBIUS_REMOTE_MODEL' CUDA_TARGET=linux-x64-cuda ./cuda_runner.sh --report '$report'"
+  ssh -o StrictHostKeyChecking=no "$target" "set -euo pipefail; cd '$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native/verify'; ELIZA_MTP_SMOKE_MODEL='$NEBIUS_REMOTE_MODEL' CUDA_TARGET=linux-x64-cuda ./cuda_runner.sh --report '$report'"
 }
 
 fetch_reports() {

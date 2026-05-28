@@ -42,7 +42,7 @@ Android consumer App Actions coverage:
 
 Each Android App Actions capability keeps a fallback fulfillment without a
 required parameter. Feature-specific requests route through
-`eliza://feature/open?...`; vague requests fall back to the chat route so
+`elizaos://feature/open?...`; vague requests fall back to the chat route so
 the runtime can disambiguate instead of executing native-only behavior.
 
 The Play/Pixel build does not request `ROLE_ASSISTANT`,

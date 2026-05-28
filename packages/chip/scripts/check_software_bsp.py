@@ -564,7 +564,9 @@ def check_aosp_product_glue(errors: list[str]) -> None:
     if e1_vintf_fragment.is_file():
         e1_fragment_text = e1_vintf_fragment.read_text(errors="ignore")
         if "vendor.eliza.e1_npu" not in e1_fragment_text or "IE1Npu" not in e1_fragment_text:
-            errors.append("AOSP e1 NPU VINTF fragment missing vendor.eliza.e1_npu IE1Npu declaration")
+            errors.append(
+                "AOSP e1 NPU VINTF fragment missing vendor.eliza.e1_npu IE1Npu declaration"
+            )
     else:
         errors.append("AOSP e1 NPU per-service VINTF fragment is missing")
     if matrix.is_file():

@@ -15,9 +15,9 @@
  */
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
+import { client } from "../api";
 import { isElectrobunRuntime } from "../bridge";
 import { isAndroid, isElizaOS, isIOS, isNative } from "../platform";
-import { loadPersistedOnboardingComplete } from "./persistence";
 import {
   createAndroidPolicy,
   createDesktopPolicy,
@@ -31,6 +31,7 @@ import {
   type PlatformPolicy,
   type RuntimeTarget,
   type StartupEvent,
+  type StartupErrorReason,
   type StartupState,
   startupReducer,
   toLegacyStartupPhase,
@@ -55,6 +56,52 @@ import {
   type StartingRuntimeDeps,
 } from "./startup-phase-runtime";
 
+function isRecoverableStartupErrorReason(reason: StartupErrorReason): boolean {
+  return (
+    reason === "backend-timeout" ||
+    reason === "backend-unreachable" ||
+    reason === "agent-timeout" ||
+    reason === "agent-error" ||
+    reason === "unknown"
+  );
+}
+
+export async function recoverTerminalStartupError(
+  deps: StartupCoordinatorDeps,
+  dispatch: (event: StartupEvent) => void,
+  cancelled: { current: boolean },
+): Promise<boolean> {
+  let status: Awaited<ReturnType<typeof client.getStatus>>;
+  try {
+    status = await client.getStatus();
+  } catch {
+    return false;
+  }
+  if (cancelled.current || status.state !== "running") return false;
+
+  let firstRunComplete = deps.firstRunCompletionCommittedRef.current;
+  try {
+    const firstRunStatus = await client.getFirstRunStatus();
+    firstRunComplete = firstRunComplete || firstRunStatus.complete === true;
+  } catch {
+    return false;
+  }
+  if (cancelled.current) return false;
+
+  deps.setAgentStatus(status);
+  deps.setConnected(true);
+  deps.setStartupError(null);
+  deps.setFirstRunLoading(false);
+  deps.setFirstRunComplete(firstRunComplete);
+
+  if (firstRunComplete) {
+    dispatch({ type: "AGENT_RUNNING" });
+  } else {
+    dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
+  }
+  return true;
+}
+
 // ── Deps interface ──────────────────────────────────────────────────
 // Composed from per-phase slices defined in each startup-phase-*.ts module.
 // The only member unique to the hook itself is `setStartupPhase` (legacy sync).
@@ -78,7 +125,7 @@ export interface StartupCoordinatorHandle {
   retry: () => void;
   reset: () => void;
   pairingSuccess: () => void;
-  onboardingComplete: () => void;
+  firstRunComplete: () => void;
   policy: PlatformPolicy;
   legacyPhase: "starting-backend" | "initializing-agent" | "ready";
   loading: boolean;
@@ -125,19 +172,6 @@ export function useStartupCoordinator(
     if (!depsReady) return;
     depsRef.current?.setStartupPhase(legacyPhase);
   }, [legacyPhase, depsReady]);
-
-  // ── Phase: splash — auto-skip for returning users, mark loaded for new users
-  // Fresh installs stay on splash until the user explicitly continues.
-  useEffect(() => {
-    if (state.phase !== "splash") return;
-    if (!depsReady) return;
-
-    if (loadPersistedOnboardingComplete()) {
-      dispatch({ type: "SPLASH_CONTINUE" });
-      return;
-    }
-    dispatch({ type: "SPLASH_LOADED" });
-  }, [state.phase, depsReady]);
 
   // ── Phase: restoring-session ────────────────────────────────────
   useEffect(() => {
@@ -247,6 +281,35 @@ export function useStartupCoordinator(
     };
   }, [readyPhaseReached, depsReady]);
 
+  // Desktop cold starts can briefly report an agent failure while the embedded
+  // runtime is still settling, especially when the renderer loads before the
+  // health/status routes are ready. Once the backend later reports a running
+  // agent, recover automatically instead of leaving the user stuck on the
+  // startup failure card until they manually press Retry.
+  useEffect(() => {
+    if (state.phase !== "error" || !depsReady) return;
+    if (!isRecoverableStartupErrorReason(state.reason)) return;
+    if (typeof window === "undefined") return;
+
+    const currentDeps = depsRef.current;
+    if (!currentDeps) return;
+    const cancelled = { current: false };
+
+    const attemptRecovery = () => {
+      void recoverTerminalStartupError(currentDeps, dispatch, cancelled).catch(
+        () => {},
+      );
+    };
+
+    attemptRecovery();
+    const interval = window.setInterval(attemptRecovery, 2_500);
+
+    return () => {
+      cancelled.current = true;
+      window.clearInterval(interval);
+    };
+  }, [state, depsReady]);
+
   // ── Public interface ─────────────────────────────────────────────
 
   const retry = useCallback(() => dispatch({ type: "RETRY" }), []);
@@ -259,8 +322,8 @@ export function useStartupCoordinator(
     () => dispatch({ type: "PAIRING_SUCCESS" }),
     [],
   );
-  const onboardingCompleteFn = useCallback(
-    () => dispatch({ type: "ONBOARDING_COMPLETE" }),
+  const firstRunCompleteFn = useCallback(
+    () => dispatch({ type: "FIRST_RUN_COMPLETE" }),
     [],
   );
 
@@ -274,7 +337,7 @@ export function useStartupCoordinator(
     retry,
     reset,
     pairingSuccess,
-    onboardingComplete: onboardingCompleteFn,
+    firstRunComplete: firstRunCompleteFn,
     policy,
     legacyPhase: toLegacyStartupPhase(state),
     loading: isStartupLoading(state),

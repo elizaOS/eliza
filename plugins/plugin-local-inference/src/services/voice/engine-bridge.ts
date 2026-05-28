@@ -1,16 +1,16 @@
 /**
  * Engine ↔ voice scheduler bridge.
  *
- * Adapts the live `LocalInferenceEngine` (`engine.ts`) plus the DFlash
- * llama-server (`dflash-server.ts`) onto the voice scaffold's
+ * Adapts the live `LocalInferenceEngine` (`engine.ts`) plus the MTP
+ * llama-server (`ffi-streaming-backend.ts`) onto the voice scaffold's
  * `VoiceScheduler`. See `packages/inference/AGENTS.md` §4 for the
  * streaming graph this implements:
  *
- *   ASR → text tokens → DFlash drafter ↔ target verifier (text model)
+ *   ASR → text tokens → MTP drafter ↔ target verifier (text model)
  *        → phrase chunker → speaker preset cache + phrase cache
  *        → OmniVoice TTS → PCM ring buffer → audio out
  *
- * Plus rollback queue (DFlash rejection → cancel pending TTS chunks)
+ * Plus rollback queue (MTP rejection → cancel pending TTS chunks)
  * and barge-in cancellation (mic VAD → drain ring buffer + cancel TTS).
  *
  * Two TTS backends are exposed:
@@ -72,10 +72,10 @@ import {
 	type VoicePipelineEvents,
 } from "./pipeline";
 import {
-	type DflashTextRunner,
-	LlamaServerDraftProposer,
-	LlamaServerTargetVerifier,
 	MissingAsrTranscriber,
+	MtpDraftProposer,
+	MtpTargetVerifier,
+	type MtpTextRunner,
 } from "./pipeline-impls";
 import type { VoiceProfileStore } from "./profile-store";
 import { type SchedulerEvents, VoiceScheduler } from "./scheduler";
@@ -116,10 +116,10 @@ const RING_BUFFER_CAPACITY_DEFAULT = SAMPLE_RATE_DEFAULT * 4; // 4s
 /**
  * Runtime default for the no-punctuation phrase cap (`PhraseChunker.maxTokensPerPhrase`).
  * Punctuation (`, . ! ?`) is still the primary boundary; this only bounds
- * a run-on token stream. Kept small — equal to the DFlash draft window
+ * a run-on token stream. Kept small — equal to the MTP draft window
  * (`DEFAULT_VOICE_MAX_DRAFT_TOKENS` in `engine.ts`) — so first-audio latency
  * is bounded (a phrase ≈ one draft round of audio, not 30 words) and a
- * DFlash-reject rollback drops at most one un-spoken chunk (AGENTS.md §4 —
+ * MTP-reject rollback drops at most one un-spoken chunk (AGENTS.md §4 —
  * "small chunk = low latency cost on rollback"). Override per bridge via
  * `maxTokensPerPhrase` or `ELIZA_VOICE_MAX_TOKENS_PER_PHRASE`. The
  * `PhraseChunker` primitive keeps the AGENTS-spec 30-word default for
@@ -202,7 +202,7 @@ export interface TtsPcmChunk {
  * phrase-chunk → TTS within one scheduler tick); returning `true` from
  * `onChunk` (or flipping `cancelSignal.cancelled`) hard-cancels the
  * in-flight forward pass at the next kernel boundary (barge-in /
- * DFlash-rejected tail).
+ * MTP-rejected tail).
  *
  * Both `OmniVoiceBackend` implementations in this module satisfy it:
  *   - `FfiOmniVoiceBackend` forwards to
@@ -547,7 +547,7 @@ export interface EngineVoiceBridgeOptions {
 	/** Override ring buffer capacity (samples). Defaults to 4 s @ 24 kHz. */
 	ringBufferCapacity?: number;
 	/** Phrase chunker `maxTokensPerPhrase` (no-punctuation run-on cap). Defaults to
-	 *  `ELIZA_VOICE_MAX_TOKENS_PER_PHRASE` or 8 (one DFlash draft round). */
+	 *  `ELIZA_VOICE_MAX_TOKENS_PER_PHRASE` or 8 (one MTP draft round). */
 	maxTokensPerPhrase?: number;
 	/** Max concurrent TTS phrase dispatches. Defaults to env or scheduler default. */
 	maxInFlightPhrases?: number;
@@ -655,7 +655,7 @@ export interface EngineVoiceBridgeOptions {
 	optimisticPolicyOptions?: OptimisticPolicyOptions;
 	/**
 	 * W3-9 / F1 — optional LM slot-abort callback for the cancellation
-	 * coordinator. Production wires this to `DflashLlamaServer.abortSlot`
+	 * coordinator. Production wires this to `MtpLlamaServer.abortSlot`
 	 * once a slot id is known per turn. The bridge passes this directly
 	 * into the coordinator; the bridge itself does not own slot ids.
 	 *
@@ -963,7 +963,7 @@ export class EngineVoiceBridge {
 			if (!existsSync(libPath)) {
 				throw new VoiceStartupError(
 					"missing-ffi",
-					`[voice] Fused omnivoice library not found under ${path.join(opts.bundleRoot, "lib")} (tried ${libraryFilenames().join(", ")}). Build via packages/app-core/scripts/build-llama-cpp-dflash.mjs (omnivoice-fuse target).`,
+					`[voice] Fused omnivoice library not found under ${path.join(opts.bundleRoot, "lib")} (tried ${libraryFilenames().join(", ")}). Build via packages/app-core/scripts/build-llama-cpp-mtp.mjs (omnivoice-fuse target).`,
 				);
 			}
 			ffiHandle = loadElizaInferenceFfi(libPath);
@@ -1232,7 +1232,7 @@ export class EngineVoiceBridge {
 	}
 
 	/**
-	 * DFlash rejection → rollback queue. The scheduler cancels any
+	 * MTP rejection → rollback queue. The scheduler cancels any
 	 * in-flight TTS forward pass for phrases that overlap the rejected
 	 * token range and emits an `onRollback` event for observability.
 	 * Already-played audio cannot be unplayed; the chunker is sized so
@@ -1357,10 +1357,10 @@ export class EngineVoiceBridge {
 	}
 
 	/**
-	 * True when the loaded fused `libelizainference` runs the DFlash
+	 * True when the loaded fused `libelizainference` runs the MTP
 	 * speculative loop in-process and can emit native accept/reject
 	 * verifier events. When true, callers (W9's turn controller /
-	 * `dflash-server.ts` wiring) should subscribe via
+	 * `ffi-streaming-backend.ts` wiring) should subscribe via
 	 * `subscribeNativeVerifier()` and SKIP the `llama-server` SSE
 	 * `{"verifier":{"rejected":[a,b]}}` side-channel — the SSE path stays
 	 * only as the non-fused desktop text fallback. False whenever there is
@@ -1369,14 +1369,14 @@ export class EngineVoiceBridge {
 	hasNativeVerifier(): boolean {
 		// ABI v3 exports `eliza_inference_set_verifier_callback`, but the
 		// current generated adapter returns ELIZA_ERR_NOT_IMPLEMENTED until the
-		// native DFlash speculative loop is ported into libelizainference. Do
+		// native MTP speculative loop is ported into libelizainference. Do
 		// not let callers skip the SSE verifier fallback merely because the
 		// symbol exists.
 		return false;
 	}
 
 	/**
-	 * Register the native DFlash verifier callback on the fused runtime
+	 * Register the native MTP verifier callback on the fused runtime
 	 * and adapt each `NativeVerifierEvent` into the rollback-queue domain:
 	 * accepted/corrected token-id ranges become `VerifierStreamEvent`s and
 	 * rejected ranges become `RejectedTokenRange`s fed to `pushRejectedRange`.
@@ -1573,12 +1573,12 @@ export class EngineVoiceBridge {
 	/**
 	 * Run one fused mic→speech turn through the overlapped `VoicePipeline`
 	 * (AGENTS.md §4): ASR streams; the instant its last token lands the
-	 * DFlash drafter and the target verifier kick off concurrently, accepted
+	 * MTP drafter and the target verifier kick off concurrently, accepted
 	 * tokens flow into this bridge's phrase chunker → TTS → ring buffer on
 	 * the same tick, rejected draft tails roll back not-yet-spoken audio, and
 	 * a mic-VAD barge-in cancels everything at the next kernel boundary.
 	 *
-	 * The drafter + verifier are wired against the running DFlash llama-server
+	 * The drafter + verifier are wired against the running MTP llama-server
 	 * (`textRunner`); the transcriber is the fused ABI's ASR when this bridge
 	 * was started with the FFI backend and the bundle ships an `asr/` region.
 	 * In voice mode a missing ASR region is a hard `VoiceStartupError` — no
@@ -1590,7 +1590,7 @@ export class EngineVoiceBridge {
 	 */
 	async runVoiceTurn(
 		audio: TranscriptionAudio,
-		textRunner: DflashTextRunner,
+		textRunner: MtpTextRunner,
 		config: VoicePipelineConfig,
 		events?: VoiceTurnEvents,
 	): Promise<"done" | "token-cap" | "cancelled"> {
@@ -1632,7 +1632,7 @@ export class EngineVoiceBridge {
 
 	/** Construct the `VoicePipeline` for this bridge (no-run). Exposed for tests. */
 	buildPipeline(
-		textRunner: DflashTextRunner,
+		textRunner: MtpTextRunner,
 		config: VoicePipelineConfig,
 		events?: VoicePipelineEvents,
 	): VoicePipeline {
@@ -1640,8 +1640,8 @@ export class EngineVoiceBridge {
 		const deps: VoicePipelineDeps = {
 			scheduler: this.scheduler,
 			transcriber,
-			drafter: new LlamaServerDraftProposer(textRunner),
-			verifier: new LlamaServerTargetVerifier(textRunner),
+			drafter: new MtpDraftProposer(textRunner),
+			verifier: new MtpTargetVerifier(textRunner),
 		};
 		return new VoicePipeline(deps, config, events);
 	}
@@ -2038,5 +2038,5 @@ function managedFusedRuntimeDirs(): string[] {
 		`${platform}-${arch}-cuda-fused`,
 		`${platform}-${arch}-cpu-fused`,
 	];
-	return candidates.map((target) => path.join(root, "bin", "dflash", target));
+	return candidates.map((target) => path.join(root, "bin", "mtp", target));
 }

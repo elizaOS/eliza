@@ -116,6 +116,7 @@ morphs:
       - right_foot_heel_black
       - left_shin_shell
       - left_shin_front_armor
+      - right_shin_shell
       - left_forearm_outer_blade
       - right_forearm_outer_blade
       - left_wrist_separated_cuff
@@ -182,17 +183,23 @@ morphs:
           - {z: 0.000, scale: [0.0025, 0.016]}
           - {z: 0.064, scale: [0.0018, 0.010]}
       left_shin_shell:
-        center: [-0.001, -0.044, -0.139]
+        center: [-0.001, -0.052, -0.139]
         sections:
-          - {z: -0.058, scale: [0.0090, 0.0024]}
-          - {z: 0.000, scale: [0.0125, 0.0032]}
-          - {z: 0.058, scale: [0.0090, 0.0024]}
+          - {z: -0.078, scale: [0.013, 0.0035]}
+          - {z: 0.000, scale: [0.018, 0.005]}
+          - {z: 0.078, scale: [0.013, 0.0035]}
       left_shin_front_armor:
-        center: [0.062, -0.024, -0.168]
+        center: [0.055, -0.030, -0.168]
         sections:
-          - {z: -0.036, scale: [0.0018, 0.0035]}
-          - {z: 0.000, scale: [0.0028, 0.0052]}
-          - {z: 0.036, scale: [0.0018, 0.0035]}
+          - {z: -0.032, scale: [0.0014, 0.0028]}
+          - {z: 0.000, scale: [0.0022, 0.0042]}
+          - {z: 0.032, scale: [0.0014, 0.0028]}
+      right_shin_shell:
+        center: [-0.004, 0.048, -0.124]
+        sections:
+          - {z: -0.050, scale: [0.0085, 0.0016]}
+          - {z: 0.000, scale: [0.0115, 0.0022]}
+          - {z: 0.050, scale: [0.0085, 0.0016]}
       rear_back_spine_plate:
         sections:
           - {z: -0.108, scale: [0.0100, 0.032]}
@@ -261,10 +268,11 @@ morphs:
           - {z: 0.000, scale: [0.0042, 0.0052]}
           - {z: 0.040, scale: [0.0034, 0.0042]}
       right_thigh_side_armor:
+        center: [-0.008, 0.070, -0.076]
         sections:
-          - {z: -0.032, scale: [0.0095, 0.0024]}
-          - {z: 0.000, scale: [0.0115, 0.0030]}
-          - {z: 0.032, scale: [0.0095, 0.0024]}
+          - {z: -0.024, scale: [0.0055, 0.0014]}
+          - {z: 0.000, scale: [0.0070, 0.0018]}
+          - {z: 0.024, scale: [0.0055, 0.0014]}
       left_foot_toe_armor:
         sections:
           - {z: -0.0025, scale: [0.0026, 0.0026]}
@@ -282,9 +290,10 @@ morphs:
           - {z: 0.008, scale: [0.009, 0.011]}
       right_foot_top_shell:
         sections:
-          - {z: -0.010, scale: [0.072, 0.022]}
-          - {z: 0.000, scale: [0.074, 0.023]}
-          - {z: 0.010, scale: [0.058, 0.018]}
+          - {x: -0.086, scale: [0.010, 0.0030]}
+          - {x: -0.028, scale: [0.016, 0.0050]}
+          - {x: 0.036, scale: [0.018, 0.0060]}
+          - {x: 0.086, scale: [0.010, 0.0030]}
       right_foot_toe_armor:
         sections:
           - {z: -0.004, scale: [0.0055, 0.0055]}
@@ -318,6 +327,351 @@ morphs:
         center: [0.070, 0.020, -0.006]
         centerline_radii_yz: [0.00744, 0.00744]
         tube_radii_x_radial: [0.001656, 0.000864]
+
+source_robot_subassemblies:
+  torso_chest_core_shell:
+    region: hips_torso_chest_back
+    source_robot_anchor:
+      mounted_body: torso_link
+      source_bodies: [torso_link, waist_yaw_link]
+      oem_baseline_meshes: [torso_collision.stl, waist_yaw_link.STL]
+      anchor_role: front torso chest core shell
+    parts:
+      - torso_chest_shell
+  central_chest_bridge_trim:
+    region: hips_torso_chest_back
+    source_robot_anchor:
+      mounted_body: torso_link
+      source_bodies: [torso_link, waist_yaw_link]
+      oem_baseline_meshes: [torso_collision.stl, waist_yaw_link.STL]
+      anchor_role: central chest bridge and black trim inserts
+    parts:
+      - chest_upper_bridge_armor
+      - chest_lower_bridge_armor
+      - chest_sensor_black
+      - chest_panel_seam_black
+      - chest_under_bust_black
+  left_chest_side_panel:
+    region: hips_torso_chest_back
+    source_robot_anchor:
+      mounted_body: torso_link
+      source_bodies: [torso_link, waist_yaw_link]
+      oem_baseline_meshes: [torso_collision.stl, waist_yaw_link.STL]
+      anchor_role: left mirrored chest side panel
+    parts:
+      - left_chest_contour_armor
+      - left_chest_outer_armor_skin
+      - left_chest_vent_black
+  right_chest_side_panel:
+    region: hips_torso_chest_back
+    source_robot_anchor:
+      mounted_body: torso_link
+      source_bodies: [torso_link, waist_yaw_link]
+      oem_baseline_meshes: [torso_collision.stl, waist_yaw_link.STL]
+      anchor_role: right mirrored chest side panel
+    parts:
+      - right_chest_contour_armor
+      - right_chest_outer_armor_skin
+      - right_chest_vent_black
+  waist_abdomen:
+    region: hips_torso_chest_back
+    source_robot_anchor:
+      mounted_body: torso_link
+      source_bodies: [torso_link, waist_yaw_link, waist_roll_link]
+      oem_baseline_meshes: [waist_yaw_link.STL, waist_roll_link.STL, torso_collision.stl]
+      anchor_role: waist torso bridge
+    parts:
+      - torso_abdomen_black
+      - abdomen_center_armor
+      - abdomen_panel_rib_1
+      - abdomen_panel_rib_2
+  rear_torso_back_panel:
+    region: hips_torso_chest_back
+    source_robot_anchor:
+      mounted_body: torso_link
+      source_bodies: [torso_link, waist_yaw_link]
+      oem_baseline_meshes: [torso_collision.stl, waist_yaw_link.STL]
+      anchor_role: rear torso back spine panel and black cut inserts
+    parts:
+      - rear_back_spine_plate
+      - rear_spine_black_channel
+      - rear_left_back_cut_black
+      - rear_right_back_cut_black
+  front_pelvis:
+    region: hips_torso_chest_back
+    source_robot_anchor:
+      mounted_body: pelvis
+      source_bodies: [pelvis]
+      oem_baseline_meshes: [pelvis_link.STL]
+      anchor_role: front pelvis shell
+    parts:
+      - pelvis_front_shell
+      - pelvis_center_plate
+      - pelvis_lower_nose_plate
+  rear_pelvis_bridge:
+    region: hips_torso_chest_back
+    source_robot_anchor:
+      mounted_body: pelvis
+      source_bodies: [pelvis]
+      oem_baseline_meshes: [pelvis_link.STL]
+      anchor_role: rear seat bridge
+    parts:
+      - rear_seat_bridge_armor
+  left_rear_hip_fairing:
+    region: hips_torso_chest_back
+    source_robot_anchor:
+      mounted_body: pelvis
+      source_bodies: [pelvis, left_hip_yaw_link]
+      oem_baseline_meshes: [pelvis_link.STL]
+      anchor_role: left posterior hip fairing
+    parts:
+      - left_rear_hip_fairing
+  right_rear_hip_fairing:
+    region: hips_torso_chest_back
+    source_robot_anchor:
+      mounted_body: pelvis
+      source_bodies: [pelvis, right_hip_yaw_link]
+      oem_baseline_meshes: [pelvis_link.STL]
+      anchor_role: right posterior hip fairing
+    parts:
+      - right_rear_hip_fairing
+  left_glute_backside:
+    region: hips_torso_chest_back
+    source_robot_anchor:
+      mounted_body: pelvis
+      source_bodies: [pelvis]
+      oem_baseline_meshes: [pelvis_link.STL]
+      anchor_role: left glute/backside skin
+    parts:
+      - left_rear_glute_armor_skin
+  right_glute_backside:
+    region: hips_torso_chest_back
+    source_robot_anchor:
+      mounted_body: pelvis
+      source_bodies: [pelvis]
+      oem_baseline_meshes: [pelvis_link.STL]
+      anchor_role: right glute/backside skin
+    parts:
+      - right_rear_glute_armor_skin
+  neck_carrier:
+    region: neck_head_face
+    source_robot_anchor:
+      mounted_body: torso_link
+      source_bodies: [torso_link, head_yaw_link, head_pitch_link]
+      oem_baseline_meshes: [head_yaw_link.STL, head_pitch_link.STL, torso_collision.stl]
+      anchor_role: black neck carrier between R1 torso and head envelope
+    parts:
+      - head_mount_neck_black
+  face_plate_details:
+    region: neck_head_face
+    source_robot_anchor:
+      mounted_body: torso_link
+      source_bodies: [head_yaw_link, head_pitch_link]
+      oem_baseline_meshes: [head_yaw_link.STL, head_pitch_link.STL]
+      anchor_role: donor-derived hard-plastic face and seated eye/lip inserts
+    parts:
+      - face_shell
+      - left_eye_insert
+      - right_eye_insert
+      - lip_insert
+  hair_reference_alignment:
+    region: neck_head_face
+    source_robot_anchor:
+      mounted_body: null
+      source_bodies: []
+      oem_baseline_meshes: []
+      anchor_role: reference-only hair silhouette, not generated geometry
+    parts: []
+  left_hip_upper_leg:
+    region: legs
+    source_robot_anchor:
+      mounted_body: left_hip_yaw_link
+      source_bodies: [left_hip_pitch_link, left_hip_roll_link, left_hip_yaw_link]
+      oem_baseline_meshes: [left_hip_pitch_link.STL, left_hip_roll_link.STL, left_hip_yaw_link.STL]
+      anchor_role: left hip yaw upper-leg shell
+    parts:
+      - left_thigh_shell
+      - left_thigh_front_armor
+      - left_thigh_side_armor
+  right_hip_upper_leg:
+    region: legs
+    source_robot_anchor:
+      mounted_body: right_hip_yaw_link
+      source_bodies: [right_hip_pitch_link, right_hip_roll_link, right_hip_yaw_link]
+      oem_baseline_meshes: [right_hip_pitch_link.STL, right_hip_roll_link.STL, right_hip_yaw_link.STL]
+      anchor_role: right hip yaw upper-leg shell
+    parts:
+      - right_thigh_shell
+      - right_thigh_front_armor
+      - right_thigh_side_armor
+  left_knee_shin:
+    region: legs
+    source_robot_anchor:
+      mounted_body: left_knee_link
+      source_bodies: [left_knee_link]
+      oem_baseline_meshes: [left_knee_link.STL, left_knee_collision.STL]
+      anchor_role: left knee-link shin sleeve and split armor skins
+      connection_method: offset shell to knee/shin OEM body envelope
+    parts:
+      - left_shin_shell
+      - left_shin_front_armor
+      - left_shin_side_armor
+  right_knee_shin:
+    region: legs
+    source_robot_anchor:
+      mounted_body: right_knee_link
+      source_bodies: [right_knee_link]
+      oem_baseline_meshes: [right_knee_link.STL, right_knee_collision.STL]
+      anchor_role: right knee-link shin sleeve and split armor skins
+      connection_method: offset shell to knee/shin OEM body envelope
+    parts:
+      - right_shin_shell
+      - right_shin_front_armor
+      - right_shin_side_armor
+  left_foot_ankle:
+    region: feet_ankles
+    source_robot_anchor:
+      mounted_body: left_ankle_roll_link
+      source_bodies: [left_ankle_roll_link]
+      oem_baseline_meshes: [left_ankle_roll_link.STL]
+      anchor_role: left ankle roll boot shell and outsole
+    parts:
+      - left_foot_top_shell
+      - left_foot_toe_armor
+      - left_foot_sole_black
+      - left_foot_heel_black
+  right_foot_ankle:
+    region: feet_ankles
+    source_robot_anchor:
+      mounted_body: right_ankle_roll_link
+      source_bodies: [right_ankle_roll_link]
+      oem_baseline_meshes: [right_ankle_roll_link.STL]
+      anchor_role: right ankle roll boot shell and outsole
+    parts:
+      - right_foot_top_shell
+      - right_foot_toe_armor
+      - right_foot_sole_black
+      - right_foot_heel_black
+  left_shoulder:
+    region: arms
+    source_robot_anchor:
+      mounted_body: left_shoulder_pitch_link
+      source_bodies: [torso_link, left_shoulder_pitch_link, left_shoulder_roll_link]
+      oem_baseline_meshes: [left_shoulder_pitch_link.STL, left_shoulder_roll_link.STL]
+      anchor_role: left shoulder pitch/roll cap
+      connection_method: source-body-mounted shoulder cosmetic shell
+    parts:
+      - left_shoulder_cap
+      - left_shoulder_fastener_front
+  right_shoulder:
+    region: arms
+    source_robot_anchor:
+      mounted_body: right_shoulder_pitch_link
+      source_bodies: [torso_link, right_shoulder_pitch_link, right_shoulder_roll_link]
+      oem_baseline_meshes: [right_shoulder_pitch_link.STL, right_shoulder_roll_link.STL]
+      anchor_role: right shoulder pitch/roll cap
+      connection_method: source-body-mounted shoulder cosmetic shell
+    parts:
+      - right_shoulder_cap
+      - right_shoulder_fastener_front
+  left_upper_arm:
+    region: arms
+    source_robot_anchor:
+      mounted_body: left_shoulder_yaw_link
+      source_bodies: [left_shoulder_pitch_link, left_shoulder_roll_link, left_shoulder_yaw_link]
+      oem_baseline_meshes: [left_shoulder_yaw_link.STL]
+      anchor_role: left shoulder-yaw upper-arm sleeve
+      connection_method: offset shell to shoulder-yaw OEM body envelope
+    parts:
+      - left_upper_arm_shell
+      - left_upper_arm_outer_blade
+      - left_upper_arm_front_armor
+  right_upper_arm:
+    region: arms
+    source_robot_anchor:
+      mounted_body: right_shoulder_yaw_link
+      source_bodies: [right_shoulder_pitch_link, right_shoulder_roll_link, right_shoulder_yaw_link]
+      oem_baseline_meshes: [right_shoulder_yaw_link.STL]
+      anchor_role: right shoulder-yaw upper-arm sleeve
+      connection_method: offset shell to shoulder-yaw OEM body envelope
+    parts:
+      - right_upper_arm_shell
+      - right_upper_arm_outer_blade
+      - right_upper_arm_front_armor
+  left_forearm:
+    region: arms
+    source_robot_anchor:
+      mounted_body: left_elbow_link
+      source_bodies: [left_shoulder_yaw_link, left_elbow_link]
+      keepout_bodies: [left_wrist_roll_link]
+      oem_baseline_meshes: [left_elbow_link.STL]
+      keepout_oem_meshes: [left_wrist_roll_link.STL]
+      anchor_role: left elbow-link forearm sleeve
+      connection_method: offset shell to elbow-link OEM body envelope before wrist roll
+    parts:
+      - left_forearm_shell
+      - left_forearm_outer_blade
+      - left_forearm_inner_detail
+  right_forearm:
+    region: arms
+    source_robot_anchor:
+      mounted_body: right_elbow_link
+      source_bodies: [right_shoulder_yaw_link, right_elbow_link]
+      keepout_bodies: [right_wrist_roll_link]
+      oem_baseline_meshes: [right_elbow_link.STL]
+      keepout_oem_meshes: [right_wrist_roll_link.STL]
+      anchor_role: right elbow-link forearm sleeve
+      connection_method: offset shell to elbow-link OEM body envelope before wrist roll
+    parts:
+      - right_forearm_shell
+      - right_forearm_outer_blade
+      - right_forearm_inner_detail
+  left_wrist_cuff:
+    region: arms
+    source_robot_anchor:
+      mounted_body: left_elbow_link
+      source_bodies: [left_elbow_link, left_wrist_roll_link]
+      keepout_bodies: [left_wrist_roll_link]
+      oem_baseline_meshes: [left_elbow_link.STL]
+      keepout_oem_meshes: [left_wrist_roll_link.STL]
+      anchor_role: left forearm-end wrist cuff
+      connection_method: forearm-end collar with moving wrist roll kept clear
+    parts:
+      - left_wrist_separated_cuff
+  right_wrist_cuff:
+    region: arms
+    source_robot_anchor:
+      mounted_body: right_elbow_link
+      source_bodies: [right_elbow_link, right_wrist_roll_link]
+      keepout_bodies: [right_wrist_roll_link]
+      oem_baseline_meshes: [right_elbow_link.STL]
+      keepout_oem_meshes: [right_wrist_roll_link.STL]
+      anchor_role: right forearm-end wrist cuff
+      connection_method: forearm-end collar with moving wrist roll kept clear
+    parts:
+      - right_wrist_separated_cuff
+  left_hand_keepout:
+    region: arms
+    source_robot_anchor:
+      mounted_body: null
+      source_bodies: [left_wrist_roll_link]
+      keepout_bodies: [left_wrist_roll_link]
+      oem_baseline_meshes: [left_wrist_roll_link.STL]
+      keepout_oem_meshes: [left_wrist_roll_link.STL]
+      anchor_role: left hand/wrist source keepout
+      connection_method: reference-only end-effector keepout; no cosmetic hand shell generated
+    parts: []
+  right_hand_keepout:
+    region: arms
+    source_robot_anchor:
+      mounted_body: null
+      source_bodies: [right_wrist_roll_link]
+      keepout_bodies: [right_wrist_roll_link]
+      oem_baseline_meshes: [right_wrist_roll_link.STL]
+      keepout_oem_meshes: [right_wrist_roll_link.STL]
+      anchor_role: right hand/wrist source keepout
+      connection_method: reference-only end-effector keepout; no cosmetic hand shell generated
+    parts: []
 
 parts:
   - name: torso_chest_shell
@@ -1064,7 +1418,7 @@ parts:
     shape: section_loft
     source_kind: parametric_loft
     oem_baseline_meshes: [right_knee_link.STL]
-    center: [-0.006, 0.048, -0.176]
+    center: [-0.006, 0.052, -0.176]
     axis: z
     sections:
       - {z: -0.045, scale: [0.0025, 0.0005]}
@@ -1079,6 +1433,11 @@ parts:
     shape: section_loft
     source_kind: parametric_loft
     oem_baseline_meshes: [left_ankle_roll_link.STL]
+    source_robot_anchor:
+      source_body: left_ankle_roll_link
+      source_mesh: left_ankle_roll_link.STL
+      anchor_role: dorsal_boot_upper
+      connection_method: offset_shell_with_ankle_roll_bosses
     center: [0.047, -0.016, -0.050]
     axis: x
     sections:
@@ -1093,6 +1452,11 @@ parts:
     shape: section_loft
     source_kind: parametric_loft
     oem_baseline_meshes: [left_ankle_roll_link.STL]
+    source_robot_anchor:
+      source_body: left_ankle_roll_link
+      source_mesh: left_ankle_roll_link.STL
+      anchor_role: toe_cap
+      connection_method: tied_to_foot_shell_front_edge
     center: [0.132, 0.007, -0.024]
     axis: z
     sections:
@@ -1106,6 +1470,11 @@ parts:
     shape: section_loft
     source_kind: parametric_loft
     oem_baseline_meshes: [left_ankle_roll_link.STL]
+    source_robot_anchor:
+      source_body: left_ankle_roll_link
+      source_mesh: left_ankle_roll_link.STL
+      anchor_role: outsole_band
+      connection_method: underside_wrap_with_screw_boss_allowance
     center: [0.057, -0.008, -0.062]
     axis: z
     sections:
@@ -1119,6 +1488,11 @@ parts:
     shape: section_loft
     source_kind: parametric_loft
     oem_baseline_meshes: [left_ankle_roll_link.STL]
+    source_robot_anchor:
+      source_body: left_ankle_roll_link
+      source_mesh: left_ankle_roll_link.STL
+      anchor_role: rear_heel_block
+      connection_method: rear_outsole_return_with_heel_boss_allowance
     center: [-0.032, 0.0, -0.064]
     axis: z
     sections:
@@ -1132,12 +1506,18 @@ parts:
     shape: section_loft
     source_kind: parametric_loft
     oem_baseline_meshes: [right_ankle_roll_link.STL]
-    center: [0.040, 0.0, -0.026]
-    axis: z
+    source_robot_anchor:
+      source_body: right_ankle_roll_link
+      source_mesh: right_ankle_roll_link.STL
+      anchor_role: dorsal_boot_upper
+      connection_method: offset_shell_with_ankle_roll_bosses
+    center: [0.047, -0.004, -0.050]
+    axis: x
     sections:
-      - {z: -0.012, scale: [0.094, 0.030]}
-      - {z: 0.000, scale: [0.086, 0.027]}
-      - {z: 0.012, scale: [0.069, 0.021]}
+      - {x: -0.096, scale: [0.012, 0.0035]}
+      - {x: -0.030, scale: [0.018, 0.0060]}
+      - {x: 0.040, scale: [0.020, 0.0070]}
+      - {x: 0.096, scale: [0.011, 0.0035]}
   - name: right_foot_toe_armor
     body: right_ankle_roll_link
     role: armor
@@ -1145,6 +1525,11 @@ parts:
     shape: section_loft
     source_kind: parametric_loft
     oem_baseline_meshes: [right_ankle_roll_link.STL]
+    source_robot_anchor:
+      source_body: right_ankle_roll_link
+      source_mesh: right_ankle_roll_link.STL
+      anchor_role: toe_cap
+      connection_method: tied_to_foot_shell_front_edge
     center: [0.126, 0.0, -0.016]
     axis: z
     sections:
@@ -1158,7 +1543,12 @@ parts:
     shape: section_loft
     source_kind: parametric_loft
     oem_baseline_meshes: [right_ankle_roll_link.STL]
-    center: [0.064, -0.004, -0.056]
+    source_robot_anchor:
+      source_body: right_ankle_roll_link
+      source_mesh: right_ankle_roll_link.STL
+      anchor_role: outsole_band
+      connection_method: underside_wrap_with_screw_boss_allowance
+    center: [0.064, -0.004, -0.062]
     axis: z
     sections:
       - {z: -0.004, scale: [0.104, 0.032]}
@@ -1171,7 +1561,12 @@ parts:
     shape: section_loft
     source_kind: parametric_loft
     oem_baseline_meshes: [right_ankle_roll_link.STL]
-    center: [-0.031, -0.004, -0.058]
+    source_robot_anchor:
+      source_body: right_ankle_roll_link
+      source_mesh: right_ankle_roll_link.STL
+      anchor_role: rear_heel_block
+      connection_method: rear_outsole_return_with_heel_boss_allowance
+    center: [-0.031, -0.004, -0.064]
     axis: z
     sections:
       - {z: -0.010, scale: [0.015, 0.018]}

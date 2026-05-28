@@ -43,6 +43,7 @@ import { ActivityTrackerService } from "./activity-profile/activity-tracker-serv
 import { PresenceSignalBridgeService } from "./activity-profile/presence-signal-bridge-service.js";
 import {
   ensureProactiveAgentTask,
+  isAppFirstRunComplete,
   PROACTIVE_TASK_NAME,
   registerProactiveTaskWorker,
 } from "./activity-profile/proactive-worker.js";
@@ -823,6 +824,7 @@ const rawAppLifeOpsPlugin: Plugin = {
         prefix: "[proactive]",
         label: "task",
         ensure: async () => {
+          if (!isAppFirstRunComplete()) return;
           await ensureProactiveAgentTask(runtime);
         },
       });

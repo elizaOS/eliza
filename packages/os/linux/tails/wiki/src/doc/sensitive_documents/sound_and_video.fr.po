@@ -1,0 +1,197 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-01-06 19:05+0000\n"
+"PO-Revision-Date: 2026-04-01 22:22+0000\n"
+"Last-Translator: Chre <tor@renaudineau.org>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Sound and video\"]]\n"
+msgstr "[[!meta title=\"Son et vidéo\"]]\n"
+
+#. type: Plain text
+msgid "Tails includes several sound and video applications:"
+msgstr "Tails inclut plusieurs applications pour le son et la vidéo :"
+
+#. type: Bullet: '  - '
+msgid ""
+"[*Audacity*](https://www.audacityteam.org/), a multi-track audio editor."
+msgstr ""
+"[*Audacity*](https://www.audacityteam.org/), un éditeur audio multi-piste."
+
+#. type: Plain text
+#, no-wrap
+msgid "    See the [official documentation](http://manual.audacityteam.org/).\n"
+msgstr "    Voir la [documentation officielle](http://manual.audacityteam.org/).\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"[*Brasero*](https://wiki.gnome.org/Apps/Brasero), an application to burn, "
+"copy, and erase CDs and DVDs."
+msgstr ""
+"[*Brasero*](https://wiki.gnome.org/Apps/Brasero), une application pour "
+"graver, copier et effacer des CD et DVD."
+
+#. type: Bullet: '  - '
+msgid ""
+"[*Sound Juicer*](https://wiki.gnome.org/Apps/SoundJuicer), a CD ripper "
+"application."
+msgstr ""
+"[*Sound Juicer*](https://wiki.gnome.org/Apps/SoundJuicer), un logiciel "
+"permettant d'encoder les CD."
+
+#. type: Bullet: '  - '
+msgid ""
+"[*Sound Recorder*](https://wiki.gnome.org/Apps/SoundRecorder), a sound "
+"recorder."
+msgstr ""
+"[*Enregistreur de son*](https://wiki.gnome.org/Apps/SoundRecorder), un "
+"enregistreur de son."
+
+#. type: Bullet: '  - '
+msgid "[*Videos*](https://apps.gnome.org/Totem/), an audio and video player."
+msgstr ""
+"[*Vidéos*](https://apps.gnome.org/fr/Totem/), un lecteur audio et vidéo."
+
+#. type: Plain text
+msgid ""
+"These applications are available in the **Apps&nbsp;▸ Sound & Video** "
+"submenu."
+msgstr ""
+"Ces applications sont disponibles dans le sous-menu **Applications&nbsp;▸ "
+"Son et vidéo**."
+
+#. type: Plain text
+msgid ""
+"You can also install using the [[Additional Software|persistent_storage/"
+"additional_software]] feature:"
+msgstr ""
+"Vous pouvez aussi installer des [[Logiciels supplémentaires|"
+"persistent_storage/additional_software]] :"
+
+#. type: Bullet: '- '
+msgid ""
+"[*VLC*](https://www.videolan.org/vlc/), a multimedia player with advanced "
+"features."
+msgstr ""
+"[*VLC*](https://www.videolan.org/vlc/), un lecteur multimédia avec des "
+"fonctionnalités avancées."
+
+#. type: Plain text
+#, no-wrap
+msgid "  <div class=\"bug\">\n"
+msgstr "  <div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  <p>Watching [[!wikipedia IPTV]] channels from <i>VLC</i> in Tails doesn't work.</p>\n"
+msgstr "  <p>Regarder des chaînes de [[!wikipedia_fr Télévision_IP desc=\"télévision IP (IPTV)\"]] depuis <i>VLC</i> dans Tails ne fonctionne pas.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  </div>\n"
+msgstr "  </div>\n"
+
+#. type: Bullet: '- '
+msgid "[*Pitivi*](https://www.pitivi.org/), a video editor."
+msgstr "[*Pitivi*](https://www.pitivi.org/), un éditeur vidéo."
+
+#. type: Bullet: '- '
+msgid ""
+"[*GNOME Camera*](https://apps.gnome.org/Snapshot/), from the `gnome-"
+"snapshot` package, an application to take pictures and videos from your "
+"webcam."
+msgstr ""
+"[*GNOME Caméra*](https://apps.gnome.org/fr/Snapshot/), du paquet `gnome-"
+"snapshot`, une application pour prendre des photos et des vidéos depuis "
+"votre webcam."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/persistence\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/persistence.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/metadata.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/metadata.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "    See the [official documentation](https://help.gnome.org/users/brasero/stable/).\n"
+#~ msgstr "    Voir la [documentation officielle](https://help.gnome.org/users/brasero/stable/).\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "    Sound clips recorded using *Sound Recorder* are saved to the *Recordings*\n"
+#~ "    folder.\n"
+#~ msgstr ""
+#~ "    Les morceaux de son enregistrés avec *Sound Recorder* sont enregistrés dans le dossier\n"
+#~ "     *Enregistrements*.\n"
+
+#~ msgid ""
+#~ "**<span class=\"application\">[Audacity](https://www.audacityteam.org/)</"
+#~ "span>** is a multi-track audio editor designed for recording, playing and "
+#~ "editing of digital audio.  See the [official documentation](http://"
+#~ "manual.audacityteam.org/)."
+#~ msgstr ""
+#~ "**<span class=\"application\">[Audacity](https://www.audacityteam.org/)</"
+#~ "span>** est un éditeur audio multipistes permettant l'enregistrement, la "
+#~ "lecture et la modification de données audio de manière intuitive. "
+#~ "Consultez la [documentation officielle](http://manual.audacityteam.org/) "
+#~ "(en anglais)."
+
+#~ msgid ""
+#~ "**<span class=\"application\">[Brasero](https://wiki.gnome.org/Apps/"
+#~ "Brasero)</span>** is an application to burn, copy, and erase CD and DVD "
+#~ "media: audio, video, or data.  See the [official documentation](https://"
+#~ "help.gnome.org/users/brasero/stable/)."
+#~ msgstr ""
+#~ "**<span class=\"application\">[Brasero](https://wiki.gnome.org/Apps/"
+#~ "Brasero)</span>** est une application permettant de graver, copier et "
+#~ "effacer des CD et DVD contenant de la vidéo, du son ou des données. Voir "
+#~ "la [documentation officielle](https://help.gnome.org/users/brasero/stable/"
+#~ "index.html.fr)."
+
+#~ msgid ""
+#~ "***Sound Recorder*** is a simple application to record sound. Sound clips "
+#~ "recorded using <span class=\"application\">Sound Recorder</span> are "
+#~ "saved to the <span class=\"filename\">Recordings</span> folder."
+#~ msgstr ""
+#~ "***Enregistreur de son*** est une application simple pour enregistrer du "
+#~ "son. Les séquences audio enregistrées avec l'<span "
+#~ "class=\"application\">Enregistreur de son</span> sont sauvegardées dans "
+#~ "le dossier <span class=\"filename\">Enregistrements</span>."
+
+#~ msgid "***Videos*** is an audio and video player."
+#~ msgstr "***Vidéos*** est un lecteur audio et vidéo."
+
+#, no-wrap
+#~ msgid ""
+#~ "    For more advanced features, you can install the\n"
+#~ "    [*VLC* media player](https://www.videolan.org/vlc/)\n"
+#~ "    using the [[Additional Software|doc/first_steps/additional_software]] feature.\n"
+#~ msgstr ""
+#~ "    Pour des fonctionnalités plus avancées, vous pouvez installer le\n"
+#~ "    [lecteur multimédia *VLC*](https://www.videolan.org/vlc/index.fr.html)\n"
+#~ "    en utilisant la fonctionnalité [[Logiciels additionnels|doc/first_steps/additional_software]].\n"
+
+#~ msgid ""
+#~ "***[Pitivi](http://pitivi.org/)*** is a video editor.  See the [official "
+#~ "documentation](http://pitivi.org/manual/)."
+#~ msgstr ""
+#~ "***[Pitivi](http://pitivi.org/)*** est un logiciel de montage vidéo. Voir "
+#~ "la [documentation officielle](http://pitivi.org/manual/) (en anglais)."

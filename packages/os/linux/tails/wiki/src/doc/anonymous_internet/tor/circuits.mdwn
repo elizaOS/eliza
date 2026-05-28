@@ -1,0 +1,81 @@
+[[!meta title="Managing the circuits of Tor"]]
+
+*Onion Circuits* displays information about
+the current Tor circuits and connections.
+
+To open **Onion Circuits**, click on the
+Tor status icon ([[!img lib/symbolic/tor-disconnected.png alt="Tor status menu" link="no" class="symbolic"]]
+or [[!img lib/symbolic/tor-connected.png alt="Tor status menu" link="no"
+class="symbolic"]]) in the top-right corner and choose **View Tor Circuits**.
+
+[[!toc]]
+
+<h1 id="view">Understanding Tor circuits</h1>
+
+If Tails is already [[connected to the Tor
+network|doc/anonymous_internet/tor]], a list of Tor circuits appears in the
+left pane of *Onion Circuits*.
+
+<!-- Note for translators: the entry guards in use when you take the screenshot
+onion-circuits.png is in a position to identify you. You might prefer to leave it
+untranslated. -->
+
+When you connect to a destination server, for example, when visiting a website,
+the connection appears in the list below the circuit it uses.
+
+Click on a circuit to display the technical details about each relay in the right pane.
+
+[[!img onion-circuits.png class="screenshot" alt=""]]
+
+Each Tor circuit is made of 3 Tor relays. In the example above, the connection
+to **tails.net** goes through the 3 relays **drk**, **kicka**, and
+**Quetzalcoatl**.
+
+1. The first relay, here **drk**, is called the *entry guard*.
+
+   If you use a Tor bridge:
+
+   - Tor uses the bridge as your entry guard.
+
+   If you don't use a Tor bridge:
+
+   - Tor uses only 2 different relays as your entry guards, as a way of
+     [protecting against *end-to-end correlation*
+     attacks](https://support.torproject.org/about-tor/how-tor-works/entry-guards/).
+
+   - Your entry guards change every time you restart Tails.
+
+     To keep the same entry guard across different Tails sessions, use a
+     Tor bridge instead.
+
+2. The second relay, here **kicka**, is called the *middle relay*.
+
+3. The third relay, here **Quetzalcoatl**, is called the *exit node*.
+
+[[!img doc/anonymous_internet/tor/tor.png link="no" class="svg" alt="Schematics of a connection to Tor with the client, the 3 relays, and the destination server."]]
+
+<h1 id="change">Closing and replacing a Tor circuit</h1>
+
+You can close a given Tor circuit to help replace a particularly slow Tor
+circuit or troubleshoot issues on the Tor network. To do so:
+
+1. Right-click (on Mac, click with two fingers) on the circuit that you want to close.
+
+1. Choose **Close this circuit** in the shortcut menu.
+
+   When you close a circuit that is being used by an application, your
+   application gets disconnected from this destination service.
+
+   For example, when you close a circuit while <i>Tor Browser</i> is
+   downloading a file, the download fails.
+
+1. If you connect to the same destination server again, Tor uses a different
+   circuit to replace the circuit that you closed.
+
+   For example, if you download the same file again, Tor uses a new circuit.
+
+<h1 id="restart">Closing and replacing all Tor circuits</h1>
+
+Tails restarts Tor and all circuits are replaced if you disconnect and
+reconnect from your local network, for example, by turning the Wi-Fi off and on
+again.

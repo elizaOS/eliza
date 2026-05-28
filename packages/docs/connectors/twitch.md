@@ -23,7 +23,7 @@ Connect your agent to Twitch for live chat monitoring, channel events, and audie
 
 The connector auto-enables when `accessToken`, `clientId`, or `enabled: true` is set in the connector config.
 
-Configure in `~/.eliza/eliza.json`:
+Configure in `~/.local/state/eliza/eliza.json`:
 
 ```json
 {

@@ -1,0 +1,104 @@
+[[!meta title="Rafael, May 2022"]]
+
+**Can you tell us a bit about who you are and what you do?**
+
+I'm an activist and I organize workshops about digital security for
+grassroots organizations in Mexico City.
+
+I studied computer science for some years. I've always been interested in
+computers and Free Software in particular.
+
+I participate in events organized by the Free Software community in
+Mexico City, but my activism is on other topics, student events and
+human rights in particular.
+
+**How did you discover Tails and what do you use it for?**
+
+I discovered Tails some years ago in a digital self-defense guide from
+Tactical Tech.
+
+I use Tails to organize events with my collective. We use Inkscape in
+Tails to create the graphics and flyers, also to publish the activity on
+blogs or over email.
+
+We decided to use Tails to avoid leaving traces of these activities on
+our computers. We generate the documents from Tails and export them after
+erasing the metadata. We also rely on Tails to hide our location when we
+publish on blogs.
+
+We don't think that such a high level of security is necessary for the
+kind of events that we organize, but we're interested in having a better
+security culture in general. For example, when we organize a workshop
+about PGP, even if the workshop is public, we organize it from Tails.
+
+It's a policy of the entire collective to do this effort. I use Tails
+about once a month.
+
+**What do you like the most in Tails?**
+
+The fact that it is Free Software distribution that is live. It's very
+convenient to use on any computer and not necessarily on a dedicated or
+very recent one.
+
+The integration of the Metadata Anonmization Tool makes it easy to clean
+metadata from images and other files.
+
+**What do you think needs to be improved in Tails?**
+
+We sometimes had problems using the data persistence. It's been hard to
+configure for some new users. The learning curve is longer.
+
+For example, people think that they configured the data persistence
+already and can use it, but then realize that they didn't, and have to
+configure it again. It was not clear enough for them whether the data
+persistence was already activated or not.
+
+Sometimes automatic upgrades are not available on some USB sticks that
+are very outdated. But we can solve this easily with a manual
+installation of the last version.
+
+Other than that, it's good that each upgrade explains the changes and
+why. The frequency of upgrades is good. Downloading is easy. 
+
+For me, these are the 2 main pitfalls, but they are easy to solve.
+
+**What do you think is the biggest problem to Tails being adopted by more
+activists?**
+
+In terms of interest in the tool, many people don't think that using
+Tails is necessary in their context. Maybe because they think that it's
+too complicated, sometimes before they even try it. Tails could explain
+better why it's important to limit the traces on your computer.
+
+In terms of technicalities, how to start Tails once it's installed on a
+USB stick. On some computers, how to select to boot from USB is more
+difficult than on others. Especially on Windows, which gets started very
+quickly and there is no time to enter the BIOS or the Boot Menu.
+
+I teach people how to either enter the Boot Menu when starting or
+configure the laptop to always boot from the USB stick. I know the UEFI
+options screen of Windows and use to troubleshoot computers, but I'm more
+familiar with the Boot Menu key.
+
+**Who do you know who really needs Tails but is not using it yet?**
+
+A collective of lawyers and some journalists.
+
+They know that they are spied upon and surveilled in the Mexican context.
+Still, sometimes they think that they have nothing to hide and are not
+interested in using such tools for their work.
+
+To change this, workshops are a good opportunity to raise awareness. The
+Tails website explains well who can benefit from Tails and these people
+could identify with these use cases. Maybe Tails needs more outreach as
+well.
+
+**What if these people didn't have to restart the computer to use
+Tails?**
+
+It would make the starting process easier, and more people would use it.
+But other users might find it more suspicious since they would still be
+inside the other operating system and didn't restart on Tails.
+
+I'm also not sure how easy it would be for users to start Tails in a
+virtual machine.

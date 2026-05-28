@@ -81,7 +81,7 @@ pricing model.
 
 The canonical destination is a single consolidated bundle repo
 `elizaos/eliza-1` with per-tier subdirectories. `scripts/publish/orchestrator.py`
-uploads each tier under `bundles/<tier>/` (text + tts + asr + vad + dflash +
+uploads each tier under `bundles/<tier>/` (text + tts + asr + vad + mtp +
 cache + evals + licenses + quantization + checksums + manifest + lineage).
 See `packages/inference/AGENTS.md §2` for the full bundle contract.
 

@@ -7,25 +7,9 @@ import {
   useState,
 } from "react";
 
-export type CloudVideoSpeed = "1x" | "4x" | "8x";
-
-type VideoSource = {
-  src: string;
-  type: string;
-  media?: string;
-};
-
 export type CloudVideoBackgroundProps = {
   /** Static image shown immediately, before the video can play. */
   poster?: string;
-  /** Public base path for the speed-based cloud loop assets. */
-  basePath?: string;
-  /** Cloud loop speed for synced `/clouds/clouds_<speed>_<size>.*` assets. */
-  speed?: CloudVideoSpeed;
-  /** Responsive poster candidates for the static image layer. */
-  posterSrcSet?: string;
-  /** Responsive poster sizes for the static image layer. */
-  posterSizes?: string;
   /** Cloud loop video for desktop / wide viewports. */
   videoSrc?: string;
   /** Smaller cloud loop for narrow viewports (cellular friendly). */
@@ -48,34 +32,6 @@ export type CloudVideoBackgroundProps = {
   style?: CSSProperties;
 };
 
-function joinAssetPath(basePath: string, filename: string): string {
-  const base = basePath.replace(/\/+$/, "");
-  const name = filename.replace(/^\/+/, "");
-  return base ? `${base}/${name}` : `/${name}`;
-}
-
-function cloudLoopSources(basePath: string, speed: CloudVideoSpeed): VideoSource[] {
-  const variants = [
-    { size: "1080p", media: "(min-width: 1440px)" },
-    { size: "720p", media: "(min-width: 768px)" },
-    { size: "480p", media: "(min-width: 481px)" },
-    { size: "360p", media: "(max-width: 480px)" },
-  ] as const;
-
-  return variants.flatMap(({ size, media }) => [
-    {
-      src: joinAssetPath(basePath, `clouds_${speed}_${size}.webm`),
-      type: "video/webm",
-      media,
-    },
-    {
-      src: joinAssetPath(basePath, `clouds_${speed}_${size}.mp4`),
-      type: "video/mp4",
-      media,
-    },
-  ]);
-}
-
 /**
  * Full-bleed cloud background.
  *
@@ -86,10 +42,6 @@ function cloudLoopSources(basePath: string, speed: CloudVideoSpeed): VideoSource
  */
 export function CloudVideoBackground({
   poster = CLOUD_BACKGROUND_ASSETS.poster,
-  basePath,
-  speed = "8x",
-  posterSrcSet,
-  posterSizes,
   videoSrc = CLOUD_BACKGROUND_ASSETS.source1080pMp4,
   videoSrcMobile = CLOUD_BACKGROUND_ASSETS.sourceMobile480pMp4,
   mobileMaxWidth = 640,
@@ -105,6 +57,7 @@ export function CloudVideoBackground({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [loadVideo, setLoadVideo] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
+  const [useMobileVideo, setUseMobileVideo] = useState(false);
 
   useEffect(() => {
     if (!preloadPoster || typeof document === "undefined" || !poster) return;
@@ -132,8 +85,9 @@ export function CloudVideoBackground({
       return;
     }
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
-    let timer = 0;
-    const start = () => {
+    let startTimer = 0;
+    let fallbackTimer = 0;
+    const begin = () => {
       if (reduced.matches) {
         setLoadVideo(false);
         setVideoReady(false);
@@ -142,21 +96,36 @@ export function CloudVideoBackground({
       }
       // Defer a beat past `load` so first paint stays on the poster and the
       // video fetch never competes with the initial app load.
-      timer = window.setTimeout(() => setLoadVideo(true), 120);
+      startTimer = window.setTimeout(() => setLoadVideo(true), 120);
     };
-    const onReady = () => start();
-    reduced.addEventListener("change", start);
+    reduced.addEventListener("change", begin);
     if (document.readyState === "complete") {
-      start();
+      begin();
     } else {
-      window.addEventListener("load", onReady, { once: true });
+      window.addEventListener("load", begin, { once: true });
+      // Safety net: if `load` already fired before this mounted (common when
+      // the component mounts mid-session), kick off shortly anyway.
+      fallbackTimer = window.setTimeout(begin, 400);
     }
     return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("load", onReady);
-      reduced.removeEventListener("change", start);
+      window.clearTimeout(startTimer);
+      window.clearTimeout(fallbackTimer);
+      window.removeEventListener("load", begin);
+      reduced.removeEventListener("change", begin);
     };
   }, [animated]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !videoSrcMobile) {
+      setUseMobileVideo(false);
+      return;
+    }
+    const media = window.matchMedia(`(max-width: ${mobileMaxWidth}px)`);
+    const update = () => setUseMobileVideo(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [mobileMaxWidth, videoSrcMobile]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -176,20 +145,6 @@ export function CloudVideoBackground({
 
   const fallbackBackground =
     "radial-gradient(circle at 18% 18%, rgba(255,255,255,0.95) 0 7rem, rgba(255,255,255,0.42) 7.1rem 12rem, transparent 12.1rem), radial-gradient(circle at 82% 24%, rgba(255,255,255,0.82) 0 5rem, rgba(255,255,255,0.34) 5.1rem 9rem, transparent 9.1rem), linear-gradient(180deg, #80caff 0%, #bde9ff 42%, #f7c38d 100%)";
-  const sources = basePath
-    ? cloudLoopSources(basePath, speed)
-    : [
-        ...(videoSrcMobile
-          ? [
-              {
-                src: videoSrcMobile,
-                type: "video/mp4",
-                media: `(max-width: ${mobileMaxWidth}px)`,
-              },
-            ]
-          : []),
-        { src: videoSrc, type: "video/mp4" },
-      ];
 
   return (
     <div
@@ -206,8 +161,6 @@ export function CloudVideoBackground({
       {poster ? (
         <img
           src={poster}
-          srcSet={posterSrcSet}
-          sizes={posterSizes}
           alt=""
           aria-hidden="true"
           loading="eager"
@@ -224,14 +177,14 @@ export function CloudVideoBackground({
           }}
         />
       ) : null}
-      {animated ? (
+      {animated && loadVideo ? (
         <video
           ref={videoRef}
           autoPlay
           loop
           muted
           playsInline
-          preload="metadata"
+          preload="auto"
           poster={poster}
           disableRemotePlayback
           disablePictureInPicture
@@ -243,19 +196,15 @@ export function CloudVideoBackground({
             width: "100%",
             height: "100%",
             objectFit: "cover",
-            opacity: loadVideo && videoReady ? 1 : 0,
+            opacity: videoReady ? 1 : 0,
             transition: "opacity 700ms ease",
             zIndex: 1,
           }}
         >
-          {sources.map((source) => (
-            <source
-              key={`${source.type}:${source.media ?? "default"}:${source.src}`}
-              src={source.src}
-              type={source.type}
-              media={source.media}
-            />
-          ))}
+          <source
+            src={useMobileVideo && videoSrcMobile ? videoSrcMobile : videoSrc}
+            type="video/mp4"
+          />
         </video>
       ) : null}
       {scrim > 0 ? (

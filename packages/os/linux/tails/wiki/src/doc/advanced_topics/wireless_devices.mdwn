@@ -1,0 +1,82 @@
+[[!meta title="Enabling a wireless device"]]
+
+When Tails starts, Wi-Fi, WWAN, and WiMAX devices are
+enabled.
+
+But all other kinds of wireless devices such as Bluetooth, GPS and FM devices are
+disabled by default. If you want to use such a device, you need to enable
+it first.
+
+<div class="next">
+
+<p>If Wi-Fi is not working, see
+[[troubleshooting Wi-Fi that is not working|doc/anonymous_internet/no-wifi]].</p>
+
+</div>
+
+Enable a wireless device
+------------------------
+
+This technique uses the command line.
+
+1. When starting Tails, [[set up an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Console**.
+
+1. Execute the following command to open a root console.
+
+   <p class="command">sudo -i</p>
+
+1. To find out the index of the wireless device that you want to enable,
+   execute the following command:
+
+   <p class="command-root">rfkill list</p>
+
+   For example, the command could return the following:
+
+       0: phy0: Wireless LAN
+               Soft blocked: no
+               Hard blocked: no
+       1: hci0: Bluetooth
+               Soft blocked: yes
+               Hard blocked: no
+       2: gps0: GPS
+               Soft blocked: yes
+               Hard blocked: no
+
+   The device index is the number that appears at the beginning of the
+   three lines describing each device. In this example, the index of the Bluetooth
+   device is 1, while the index of the GPS device is 2. Yours are
+   probably different.
+
+1. To enable the wireless device,
+   execute the following command. Replace
+   <span class="command-placeholder">index</span> with the index found at step 2:
+
+   <p class="command-root-template">rfkill unblock <span class="command-placeholder">index</span></p>
+
+   Here is an example of the command to execute. Yours is probably
+   different:
+
+   <p class="command-root-template">rfkill unblock 2</p>
+
+1. To verify that the wireless device is enabled,
+   execute the following command again:
+
+   <p class="command-root">rfkill list</p>
+
+   This output should be very similar to the one of step 2, but
+   the device enabled at step 3 should not be soft
+   blocked anymore.
+
+   For example, the command could return the following:
+
+       0: phy0: Wireless LAN
+               Soft blocked: no
+               Hard blocked: no
+       1: hci0: Bluetooth
+               Soft blocked: yes
+               Hard blocked: no
+       2: gps0: GPS
+               Soft blocked: no
+               Hard blocked: no

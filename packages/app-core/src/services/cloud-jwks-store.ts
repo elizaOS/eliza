@@ -6,7 +6,7 @@
  * cache to disk under the eliza state dir so a container restart does not
  * require an online round-trip just to read its own boot token.
  *
- * State dir resolution honours `ELIZA_STATE_DIR` > `~/.eliza`.
+ * State dir resolution honours `ELIZA_STATE_DIR` > XDG state home.
  * The default cache TTL is 6h per the plan.
  */
 
@@ -45,7 +45,7 @@ interface JwksCacheEnvelope {
 /**
  * Resolve the eliza state directory.
  *
- * Order: `ELIZA_STATE_DIR` → `~/.eliza`.
+ * Order: `ELIZA_STATE_DIR` -> XDG state home.
  */
 export function resolveElizaStateDir(
   env: RuntimeEnvRecord = process.env,

@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from scripts.training.model_registry import (
-    DFLASH_DRAFTER_BASE,
+    MTP_DRAFTER_BASE,
     REGISTRY,
     Tier,
     by_tier,
@@ -120,13 +120,13 @@ def test_qwen36_lower_tiers_fall_back_to_qwen35_bases() -> None:
     assert get("Qwen/Qwen3.6-9B").short_name == "qwen3.5-9b"
 
 
-def test_dflash_drafter_base_is_qwen3_5_for_active_targets() -> None:
+def test_mtp_drafter_base_is_qwen3_5_for_active_targets() -> None:
     # The Qwen3.5/Qwen3.6 target tiers draft from the Qwen3.5-0.8B-Base
     # checkpoint/config family — it shares their 248320-token tokenizer
     # (a legacy Qwen3 drafter has the wrong vocab). The 0_8b and 2b shipped
     # drafter GGUFs are distilled compact 0.1B/0.3B configs; larger tiers
     # still use the 0.8B base. Mirrors DEFAULT_STUDENT_BASE /
-    # DEFAULT_STUDENT_CONFIG in scripts/distill_dflash_drafter.py. Per the 2026-05-12 operator
+    # DEFAULT_STUDENT_CONFIG in scripts/distill_mtp_drafter.py. Per the 2026-05-12 operator
     # directive (Qwen3.5/Qwen3.6 fused-model line), the legacy Qwen3 tier
     # legacy drafter entries are dropped — the
     # corresponding tiers are deprecated.
@@ -137,10 +137,10 @@ def test_dflash_drafter_base_is_qwen3_5_for_active_targets() -> None:
         "eliza-1-9b",
         "eliza-1-27b",
     ):
-        assert DFLASH_DRAFTER_BASE[tier] == "Qwen/Qwen3.5-0.8B-Base"
+        assert MTP_DRAFTER_BASE[tier] == "Qwen/Qwen3.5-0.8B-Base"
     # Deprecated Qwen3 tiers have no drafter entries.
-    assert "eliza-1-0_6b" not in DFLASH_DRAFTER_BASE
-    assert "eliza-1-1_7b" not in DFLASH_DRAFTER_BASE
+    assert "eliza-1-0_6b" not in MTP_DRAFTER_BASE
+    assert "eliza-1-1_7b" not in MTP_DRAFTER_BASE
 
 
 def test_unknown_model_raises_keyerror() -> None:

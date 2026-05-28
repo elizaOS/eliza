@@ -1,0 +1,187 @@
+[[!meta title="Tails report for May, 2019"]]
+[[!meta date="Fri, 07 Jun 2019 15:50:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* [[Tails 3.14 was released on May 21|news/version_3.14]] (bugfix release).
+
+* Tails 3.15 is [[scheduled for July 9|contribute/calendar]].
+
+The following changes were introduced in Tails 3.14:
+
+- Enable all available mitigations for the MDS (Microarchitectural Data Sampling)
+  attacks and disable [[!wikipedia Simultaneous_multithreading desc="SMT"]]
+  (simultaneous multithreading) on all vulnerable processors to fix the
+  [RIDL, Fallout](https://mdsattacks.com/) and
+  [ZombieLoad](https://zombieloadattack.com/) security vulnerabilities.
+
+- Remove the following applications:
+
+  - Desktop applications
+    - *Gobby*
+    - *Pitivi*
+    - *Traverso*
+
+  - Command-line tools
+    - `hopenpgp-tools`
+    - `keyringer`
+    - `monkeysign`
+    - `monkeysphere`
+    - `msva-perl`
+    - `paperkey`
+    - `pwgen`
+    - `ssss`
+    - `pdf-redact-tools`
+
+  You can install these applications again using the
+  *Additional Software* feature.
+
+  Thanks to the removal of these less popular applications in 3.14 and the removal
+  of some language packs in 3.13.2, Tails 3.14 is 39 MB smaller than 3.13.
+
+- Add back the *OpenPGP Applet* and *Pidgin* notification icons to the top
+  navigation bar.
+
+- Fix *NoScript* being deactivated when restarting *Tor Browser*.
+
+  <div class="note">
+  <p>*NoScript* is removed from the set of icons displayed by default in
+  *Tor Browser*. This is how *Tor Browser* looks in Tails 3.14.</p>
+
+  <p>To see the list of add-ons that are enabled, choose
+  <b>[[!img lib/open-menu.png alt="" class=symbolic link="no"]]&nbsp;▸ Add-ons</b>.</p>
+  </div>
+
+Code
+====
+
+- We spent lots of time dealing with the Firefox add-ons fiasco,
+  also known as "armagadd-on 2.0". [[!tails_ticket 16694]]
+
+- Finally, most of our patches improving the security of Thunderbird's
+  email configuration wizard were merged and will be part of Thunderbird
+  68, that is: they'll be shipped not just in Tails, but to all
+  Thunderbird users on any operating system! [[!tails_ticket 6156]]
+
+- We sent out a new call to test a fix for the issue in which
+  [[!tails_ticket 16389 desc="16389: Some USB sticks become unbootable
+  in legacy BIOS mode after first boot"]]. We received a few conclusive
+  test results.
+
+- We tested Onionshare 2.0 in Tails and decided to ship it in 4.0.
+  [[!tails_ticket 14649]]
+
+Documentation and website
+=========================
+
+- We explained better what are [[captive
+  portals|/doc/anonymous_internet/unsafe_browser]].
+
+- We documented how to install additional language packs and
+  dictionaries.
+
+- We replaced the PNG of the pie chart that we have on "How we spend
+  our money" with pure SVG code, directly in the
+  HTML.
+  It makes it lighter to download, more accessible and much easier to
+  update and translate.
+
+Hot topics on our help desk
+===========================
+
+The first two weeks, before the release of Tails 3.14, we had users reporting
+
+1. [[!tails_ticket 16608 desc="#16608: Disable the topIcons GNOME Shell extension" ]]
+1. [[!tails_ticket 16447 desc="#16447: Regression on some Intel GPU (Braswell, Kaby Lake)"]]
+
+Then, after the release, the changes on Tor Browser made many users report to us
+
+1. [[!tails_ticket 16746 desc="#16746: document the disappearence of NoScript and HTTPSEverywhere icons from Tor Browser's toolbar"]]
+1. [[!tails_ticket 16762 desc="#16762: Document why NoScript last update is january 2000"]]
+1. [[!tails_ticket 16727 desc="#16727: Update doc to Tor Browser 8.5"]]
+
+Infrastructure
+==============
+
+- We finished benchmarking the prototype node for
+  our next-generation CI hardware. ([[!tails_ticket 15501]])
+
+Funding
+=======
+
+- We completed our work to ship Tails as a USB image which simplifies
+  the installation on macOS and Windows. This work was supported through
+  a grant from The ISC Project.
+
+- We published an [analysis of our 2018 donation
+  campaign](http://lists.autistici.org/message/20190503.174100.f523ad84.en.html).
+
+- We wrote a thank you email to everybody who donated in 2018.
+
+- We added a permanent incentive to donate on the homepage of Tor
+  Browser in Tails.
+  It's only displayed 10% of the time.
+
+- We got sponsored by *The Best VPN*. Thank you for your
+  generous donation!
+
+- We published our income statement for 2018.
+
+Outreach
+========
+
+Past events
+-----------
+
+- Jesús Marín García presented 2 workshops about Tails in May in the
+  Comunidad Valenciana, Spain:
+
+  - On [May 4](https://hackandbeers.es/events/hack-beers-castellon-vol-2/) at Hack and Beers in Castellón de la Plana
+  - On [May 11](https://vlctechfest.org/) at VLCTechFest in Valencia
+
+Upcoming events
+---------------
+
+- Ulrike and sajolida will be at the [Tor meeting](https://trac.torproject.org/projects/tor/wiki/org/meetings/2019Stockholm)
+  on July 11-14 in Stockholm, Sweden.
+
+- intrigeri, lamby and nodens will attend [DebConf19](https://debconf19.debconf.org)
+
+On-going discussions
+====================
+
+- We followed up on the conversation regarding the [future of Electrum in Tails](http://lists.autistici.org/thread/20190503.105531.755bcd23.en.html#i20190503.105531.755bcd23).
+
+Translations
+============
+
+## All the website
+
+  - de: 44% (2533) strings translated, 9% strings fuzzy, 42% words translated
+  - es: 50% (2867) strings translated, 6% strings fuzzy, 43% words translated
+  - fa: 31% (1778) strings translated, 11% strings fuzzy, 33% words translated
+  - fr: 91% (5228) strings translated, 2% strings fuzzy, 92% words translated
+  - it: 32% (1872) strings translated, 7% strings fuzzy, 29% words translated
+  - pt: 25% (1435) strings translated, 9% strings fuzzy, 21% words translated
+
+Total original words: 60511
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 68% (1225) strings translated, 13% strings fuzzy, 71% words translated
+  - es: 78% (1387) strings translated, 11% strings fuzzy, 79% words translated
+  - fa: 33% (605) strings translated, 13% strings fuzzy, 32% words translated
+  - fr: 97% (1735) strings translated, 2% strings fuzzy, 97% words translated
+  - it: 61% (1093) strings translated, 17% strings fuzzy, 63% words translated
+  - pt: 44% (789) strings translated, 14% strings fuzzy, 47% words translated
+
+Metrics
+=======
+
+* Tails has been started more than 791 323 times this month. This makes 25 527 boots a day on average.
+* 9 697 downloads of the OpenPGP signature of a Tails USB image or ISO from our website.
+

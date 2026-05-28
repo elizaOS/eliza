@@ -1,0 +1,93 @@
+#!/bin/bash
+
+# shellcheck disable=SC2029
+
+set -eu
+
+error () {
+    echo "error: ${*}" >&2
+    exit 1
+}
+
+USAGE="Usage: $(basename "$0") SRC DST"
+
+[ $# -eq 2 ] || error "$USAGE"
+
+SRC="$1"
+DST="$2"
+WORKDIR=$(mktemp -d)
+
+packages_in_suite() {
+   local suite="$1"
+   [ -n "$suite" ] || return 1
+   ssh reprepro@incoming.deb.tails.boum.org reprepro list "$suite" \
+       | sed -r 's,^([^|]+\|){2},,' \
+       | sort --stable --key=1,1 --key=2,2
+}
+
+### Save the list of packages currently present in the APT suite we
+### want to merge into
+
+packages_in_suite "$DST" > "$WORKDIR/$DST.orig.list"
+
+### Make sure we are not going to overwrite newer packages with older
+### ones
+
+echo "I: Diff between the $SRC and $DST custom APT suites:"
+
+ssh reprepro@incoming.deb.tails.boum.org \
+    tails-diff-suites "$SRC" "$DST"
+
+echo "Check if the above diff makes sense!" \
+    "For instance, if any package in ${DST} has a higher version you" \
+    "should investigate if you want to proceed with the merge or " \
+    "if you need a more careful approach cherry-picking specific " \
+    "packages from ${SRC}"
+echo ""
+echo -n "Proceed with the merge? (y/n) "
+read -r answer
+[ "$answer" = 'y' ] || exit 1
+
+echo "I: merging the $SRC Git branch into $DST"
+echo "I: If you have to resolve a merge conflict in debian/changelog,"
+echo "I: ensure only the latest UNRELEASED entry is present,"
+echo "and remove older versions that were never released."
+git checkout "$DST"
+git merge "origin/$DST"
+git merge "$SRC"
+
+echo "I: merging the $SRC APT suite into $DST"
+ssh reprepro@incoming.deb.tails.boum.org \
+    tails-merge-suite "$SRC" "$DST"
+
+echo "I: Restoring config/base_branch on $DST if needed"
+echo "${DST}" > config/base_branch
+git commit config/base_branch -m "Restore ${DST}'s base branch." || :
+
+echo "I: Pushing the $DST Git branch"
+git push origin "${DST}:${DST}"
+
+packages_in_suite "$DST" > "$WORKDIR/$DST.new.list"
+
+echo "I: Diff between the $DST APT suite before and after merging:"
+set +e
+diff -Naur "$WORKDIR/$DST.orig.list" "$WORKDIR/$DST.new.list"
+RET=$?
+set -e
+case "$RET" in
+   0|1)
+      # diff did its job just fine
+      :
+      ;;
+   2)
+      # diff had trouble
+      error "diff(1) failed."
+      ;;
+   *)
+      # undocumented diff exit code
+      error "diff(1) returned $? -- I don't know what it means."
+      ;;
+esac
+echo "Verify that the merge did not re-add to $DST any package that was"
+echo "removed from it on purpose earlier."
+echo "If there are any, remove them manually."

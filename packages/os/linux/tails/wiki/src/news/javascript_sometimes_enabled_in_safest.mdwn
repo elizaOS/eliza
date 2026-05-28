@@ -1,0 +1,7 @@
+[[!meta title="JavaScript sometimes enabled in the Safest security level of Tor Browser"]]
+[[!meta date="Thu, 19 Mar 2020 10:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!inline pages="news/version_4.4/javascript_sometimes_enabled_in_safest.inline" raw="yes" sort="age"]]
+
+This issue will be fixed in the next release of Tails.

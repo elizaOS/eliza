@@ -102,7 +102,7 @@ local_non_release_progress:
   component_model_directory_all_terminal_contract_flags_pass: 0
   component_model_directory_release_allowed: false
   production_output_required_count: 56
-  production_output_present_count: 56
+  production_output_present_count: 49
   production_output_non_release_present_count: 0
   production_output_release_valid_present_count: 0
 release_gates:
@@ -137,7 +137,7 @@ release_gates:
       evidence rows
   - source: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
     metric: candidate_present_blocked_required_output_path_count
-    current_value: 37
+    current_value: 11
     required_value: 0
     reason: routed board, ERC/DRC, SI/PI/RF, fab, assembly, and STEP outputs exist only as blocked candidates
   - source: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
@@ -263,13 +263,13 @@ release_gates:
       evidence rows
   - source: board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml
     metric: missing_required_output_path_count
-    current_value: 0
+    current_value: 22
     required_value: 0
     reason: factory outputs, fixture, limits, calibration, and traceability paths are present only as
       non-release candidates or templates
   - source: board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml
     metric: missing_required_non_template_row_count
-    current_value: 0
+    current_value: 23
     required_value: 0
     reason: executed bench logs and first-article traveler are missing
   - source: board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml

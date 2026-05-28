@@ -79,9 +79,21 @@ TOOLS = (
     ToolSpec(
         "java", "run AOSP/Android tooling and Tradefed style checks", ("aosp_build_and_cts_vts",)
     ),
-    ToolSpec("aapt", "inspect Android APK package/assets for release validation", ("android_agent_payload",)),
-    ToolSpec("apkanalyzer", "inspect Android APK manifest and native payloads", ("android_agent_payload",)),
-    ToolSpec("curl", "capture agent /api/health evidence", ("android_agent_health", "linux_agent_liveness")),
+    ToolSpec(
+        "aapt",
+        "inspect Android APK package/assets for release validation",
+        ("android_agent_payload",),
+    ),
+    ToolSpec(
+        "apkanalyzer",
+        "inspect Android APK manifest and native payloads",
+        ("android_agent_payload",),
+    ),
+    ToolSpec(
+        "curl",
+        "capture agent /api/health evidence",
+        ("android_agent_health", "linux_agent_liveness"),
+    ),
     ToolSpec("jq", "inspect structured evidence payloads in shell capture flows", ("workflow",)),
     ToolSpec("node", "run Android/release manifest validators", ("android_release_validation",)),
     ToolSpec("bun", "build/package the shared Eliza agent payload", ("agent_payload_build",)),
@@ -257,9 +269,7 @@ def rel(path: Path) -> str:
         return str(path)
 
 
-def finding(
-    code: str, message: str, evidence: str, next_step: str, **extra: Any
-) -> dict[str, Any]:
+def finding(code: str, message: str, evidence: str, next_step: str, **extra: Any) -> dict[str, Any]:
     row = {
         "code": code,
         "severity": "blocker",
@@ -349,7 +359,9 @@ def check_env(env: dict[str, str]) -> tuple[list[dict[str, Any]], list[dict[str,
             "name": spec.name,
             "present": present,
             "value": value,
-            "source": "env" if explicit_value else ("repo-default" if inferred_value else "missing"),
+            "source": "env"
+            if explicit_value
+            else ("repo-default" if inferred_value else "missing"),
             "purpose": spec.purpose,
             "required_for": list(spec.required_for),
         }

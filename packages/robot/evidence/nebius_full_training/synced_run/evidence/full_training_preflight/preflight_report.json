@@ -1,9 +1,9 @@
 {
   "schema": "robot-end-to-end-full-training-preflight-v1",
-  "created_at": "2026-05-23T18:28:55Z",
+  "created_at": "2026-05-24T06:21:19Z",
   "ok": true,
-  "package_root": "/home/shaw/milady/eliza/packages/robot",
-  "out_dir": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight",
+  "package_root": "/root/robot",
+  "out_dir": "/root/robot/evidence/full_training_preflight",
   "profile_id": "asimov-1",
   "default_profiles": [
     "hiwonder-ainex",
@@ -42,16 +42,16 @@
     "launch_template_hygiene": true
   },
   "scripts": {
-    "local_preflight": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/00_local_preflight.sh",
-    "train_alberta": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/10_nebius_train_alberta.sh",
-    "compare_backends": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/20_nebius_compare_backends.sh",
-    "continual_benchmarks": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/30_nebius_continual_benchmarks.sh",
-    "brax_baseline": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/40_nebius_brax_baseline.sh",
-    "post_training_validation": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/50_post_train_validation.sh",
-    "run_all_stages": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/run_all_nebius_stages.sh"
+    "local_preflight": "/root/robot/evidence/full_training_preflight/scripts/00_local_preflight.sh",
+    "train_alberta": "/root/robot/evidence/full_training_preflight/scripts/10_nebius_train_alberta.sh",
+    "compare_backends": "/root/robot/evidence/full_training_preflight/scripts/20_nebius_compare_backends.sh",
+    "continual_benchmarks": "/root/robot/evidence/full_training_preflight/scripts/30_nebius_continual_benchmarks.sh",
+    "brax_baseline": "/root/robot/evidence/full_training_preflight/scripts/40_nebius_brax_baseline.sh",
+    "post_training_validation": "/root/robot/evidence/full_training_preflight/scripts/50_post_train_validation.sh",
+    "run_all_stages": "/root/robot/evidence/full_training_preflight/scripts/run_all_nebius_stages.sh"
   },
   "launch_template": {
-    "path": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/nebius_instance_launch_template.json",
+    "path": "/root/robot/evidence/full_training_preflight/nebius_instance_launch_template.json",
     "hygiene": {
       "schema": "robot-nebius-instance-launch-hygiene-v1",
       "ok": true,
@@ -68,11 +68,11 @@
         "has_hard_cap_shutdown": true
       },
       "secret_fields_embedded": [],
-      "cloud_init_bytes": 2490,
+      "cloud_init_bytes": 2549,
       "recommendations": []
     }
   },
-  "brax_job_dir": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline",
+  "brax_job_dir": "/root/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline",
   "brax_validation": {
     "ok": true,
     "failed_checks": []

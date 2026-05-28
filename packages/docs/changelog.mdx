@@ -142,7 +142,7 @@ Mobile-pane navigation and controls in the dashboard have been reworked so switc
 
 </Update>
 
-<Update label="2026-04-24" description="Week of April 24; elizaOS Android, fine-tuning app, streamlined onboarding, wallet dashboard polish" tags={["Feature", "Update", "Fix"]}>
+<Update label="2026-04-24" description="Week of April 24; elizaOS Android, fine-tuning app, streamlined setup, wallet dashboard polish" tags={["Feature", "Update", "Fix"]}>
 
 ## elizaOS Android
 
@@ -152,9 +152,9 @@ Eliza now ships as a full Android system image. elizaOS bakes the agent directly
 
 A new **Fine-tuning** tile is available in the [apps view](/dashboard/apps). Use it to run and review fine-tuning jobs against your agent alongside the existing training tools, without leaving the dashboard.
 
-## Streamlined onboarding with RuntimeGate
+## Streamlined setup with FirstRunShell
 
-The legacy three-step onboarding wizard and its connection subflow have been replaced with **RuntimeGate** — a minimal pre-chat gate that gets you to your agent faster. If your backend is already configured, you land directly in chat. Cloud OAuth redirects also now carry the correct `redirect_uri`, so cloud sign-in from the desktop app completes reliably on the first try.
+The legacy three-step setup wizard and its connection subflow have been replaced with **FirstRunShell** — a deterministic first-run setup that names the owner and agent, selects local/cloud/remote runtime, starts the local agent before submission, and lands directly in chat when an existing backend is already configured. Cloud OAuth redirects also now carry the correct `redirect_uri`, so cloud sign-in from the desktop app completes reliably on the first try.
 
 ## Wallet dashboard polish
 
@@ -162,7 +162,7 @@ The [wallet](/guides/wallet) dashboard has been refreshed with a cleaner rail he
 
 ## Updates
 
-- **Land on chat after setup** — After completing onboarding, the app now lands directly on the chat view instead of an intermediate screen, so you can start talking to your agent immediately.
+- **Land on chat after setup** — After completing setup, the app now lands directly on the chat view instead of an intermediate screen, so you can start talking to your agent immediately.
 - **Compact page chat** — The page-scoped chat input and sidebar have been tightened up for a more compact, consistent layout across dashboard pages.
 - **Refreshed app hero artwork** — Hero images for the Database Viewer, LifeOps, Log Viewer, Memory Viewer, Plugin Viewer, Relationship Viewer, Runtime Debugger, Skills Viewer, and Trajectory Viewer have been updated with higher-resolution artwork.
 - **Mobile shell layout** — The mobile shell layout has been refined for better density on phone-sized viewports.
@@ -208,7 +208,7 @@ A new [BlueBubbles connector](/connectors/bluebubbles) lets your agent bridge to
 - **Embedded knowledge uploads** — The [knowledge](/guides/documents) system now supports embedded uploads directly from the character editor, so you can attach reference material while configuring your agent's persona.
 - **X (Twitter) billing and status** — X connector billing is now surfaced alongside other cloud usage, and status reporting has been hardened with new test coverage.
 - **Cloud migration fix** — A migration issue affecting cloud-deployed agents has been resolved so upgrades apply cleanly on first boot.
-- **iOS runtime onboarding modes** — The iOS app now supports distinct runtime build and onboarding modes, giving mobile users a smoother first-run experience.
+- **iOS runtime setup modes** — The iOS app now supports distinct runtime build and setup modes, giving mobile users a smoother first-run experience.
 - **Accessibility cleanup** — Dashboard micro-labels, page chrome, and status affordances have been cleaned up for better accessibility parity.
 
 ## Bug fixes
@@ -258,7 +258,7 @@ A new feature toggles panel in [settings](/user/provider-setup) gives you granul
 
 ## Automations UX overhaul
 
-The [automations](/guides/cloud) view has been redesigned with a smoother getting-started experience. A new workflow templates modal offers six starter recipes — Daily Email Digest, Slack-to-Discord Bridge, RSS to Summary, Calendar to Slack, GitHub Issue Triage, and Email to Notion — so you can spin up common workflows in one click. A zero-state onboarding screen guides new users with clear calls to action. The schedule editor now shows a live preview of your next three trigger times for interval, one-time, and cron schedules, with inline validation for cron expressions.
+The [automations](/guides/cloud) view has been redesigned with a smoother getting-started experience. A new workflow templates modal offers six starter recipes — Daily Email Digest, Slack-to-Discord Bridge, RSS to Summary, Calendar to Slack, GitHub Issue Triage, and Email to Notion — so you can spin up common workflows in one click. A zero-state setup screen guides new users with clear calls to action. The schedule editor now shows a live preview of your next three trigger times for interval, one-time, and cron schedules, with inline validation for cron expressions.
 
 ## Visual workflow graph
 
@@ -269,7 +269,7 @@ Workflow details now render as an interactive node graph instead of a plain list
 - **Action surface canonical** — Twenty-six legacy actions have been collapsed into owner-scoped umbrellas (`OWNER_INBOX`, `OWNER_CALENDAR`, `OWNER_MESSAGE`, etc.) and two agent-scoped entry points. Each umbrella routes to the same underlying handler, so behavior is unchanged — but the cleaner surface helps the action planner pick the right tool more reliably. Old action names still work as aliases.
 - **Action selection accuracy** — The action planner now achieves 100% selection accuracy across a 69-case benchmark suite covering all 27 action categories. Improved action descriptions and rate-limit-aware retry logic contribute to more reliable routing, especially for health, calendar, and cross-channel actions.
 - **iOS companion canonical** — The separate iOS companion app has been merged into the main Eliza iOS bundle. Companion mode — pairing, chat mirroring, and remote sessions — is now accessible within the main app, eliminating the need to install a second app.
-- **Life-ops onboarding polish** — The life-ops page now shows a welcome card with capability tiles and friendlier empty states when no data is connected yet, making it easier to discover and set up integrations.
+- **Life-ops setup polish** — The life-ops page now shows a welcome card with capability tiles and friendlier empty states when no data is connected yet, making it easier to discover and set up integrations.
 - **Inbound message readers expanded** — Signal, WhatsApp, and X (Twitter) DM readers are now available for pulling recent messages into your agent's canonical inbox, broadening cross-platform message aggregation.
 - **n8n error visibility** — If the n8n sidecar fails to start, the error is now surfaced in the automations UI instead of being silently swallowed, so you can diagnose and fix the issue directly.
 - **Cloud container reliability** — Cloud Docker image builds now pin dependencies to exact versions and correctly restore workspace references during pruning, preventing intermittent build failures when provisioning cloud agents.
@@ -377,7 +377,7 @@ A new [training system](/guides/training) lets you shape your agent's behavior w
 
 ## Character catalog in desktop
 
-The desktop app now includes an expanded character catalog for browsing and selecting agent personalities. Character previews load faster and the selection flow integrates directly with the [onboarding wizard](/guides/beginners-user-guide) and character editor, so you can explore available characters without leaving the setup process.
+The desktop app now includes an expanded character catalog for browsing and selecting agent personalities. Character previews load faster and the selection flow integrates directly with the [setup wizard](/guides/beginners-user-guide) and character editor, so you can explore available characters without leaving the setup process.
 
 ## Updates
 
@@ -424,7 +424,7 @@ Google Calendar actions now support updating and deleting events through convers
 
 ## Updates
 
-- **Onboarding streamlined** — Unused onboarding steps have been removed and the setup chooser screen has been restyled for better readability on dark backgrounds. Each setup option now includes a description, and character selection includes a back button so you can revisit earlier choices.
+- **Setup streamlined** — Unused setup steps have been removed and the setup chooser screen has been restyled for better readability on dark backgrounds. Each setup option now includes a description, and character selection includes a back button so you can revisit earlier choices.
 - **Action context deduplication** — Your agent's LLM context no longer includes duplicate action results. Action state is now the sole source with a generous token budget, which means faster responses and more room for conversation history.
 - **Music player stream reliability** — The music player audio streaming fallback has been hardened to recover more gracefully when the primary stream source is unavailable.
 - **Knowledge view improvements** — The [knowledge](/guides/documents) detail view has been updated with a cleaner layout for browsing and managing uploaded documents.
@@ -533,7 +533,7 @@ A new Contacts tab in the Advanced section gives you a visual map of your agent'
 
 ## Content pack picker
 
-The [onboarding](/guides/beginners-development-guide) identity step and character editor now include a content pack browser. Choose from available themed packs to customize your agent's startup experience, backgrounds, and branding directly during setup or from the character editor at any time.
+The [setup](/guides/beginners-development-guide) identity step and character editor now include a content pack browser. Choose from available themed packs to customize your agent's startup experience, backgrounds, and branding directly during setup or from the character editor at any time.
 
 ## Discord cloud settings
 
@@ -556,21 +556,21 @@ When your agent's backend becomes unreachable, the dashboard now shows a clear f
 
 - Fixed the games catalog in the [apps view](/dashboard/apps) showing removed or unavailable apps — the registry now filters them out
 - Fixed game views causing excessive polling requests that could slow down the dashboard
-- Fixed onboarding character presets not loading correctly after a configuration update
+- Fixed setup character presets not loading correctly after a configuration update
 - Fixed the music player status endpoint returning errors before the agent runtime finished starting
 - Fixed coding agent settings silently dropping saved API keys when the save request failed — errors are now shown inline
 
 </Update>
 
-<Update label="2026-04-08" description="Week of April 8; auto-restart after plugin install, onboarding skip, EVM opt-in, stability fixes" tags={["Update", "Fix"]}>
+<Update label="2026-04-08" description="Week of April 8; auto-restart after plugin install, setup skip, EVM opt-in, stability fixes" tags={["Update", "Fix"]}>
 
 ## Auto-restart after plugin install
 
 Installing a plugin on the desktop app now automatically restarts the agent so the new plugin takes effect immediately. A progress indicator shows restart status, and if the restart fails, you get a clear error message instead of a silent hang. No more manually restarting after every plugin install.
 
-## Onboarding skipped when already configured
+## Setup skipped when already configured
 
-If your backend is already set up — for example, after restoring from a backup or reconnecting an existing agent — the [onboarding wizard](/guides/beginners-user-guide) is now skipped automatically. You go straight to chat instead of stepping through setup screens you've already completed.
+If your backend is already set up — for example, after restoring from a backup or reconnecting an existing agent — the [setup wizard](/guides/beginners-user-guide) is now skipped automatically. You go straight to chat instead of stepping through setup screens you've already completed.
 
 ## Updates
 
@@ -675,7 +675,7 @@ Long-running **actions** that call `HandlerCallback` multiple times — the same
 
 </Update>
 
-<Update label="2026-07-16" description="Week of July 10–16; life-ops system, onboarding voice previews, wallet setup, security hardening" tags={["Feature", "Update", "Fix"]}>
+<Update label="2026-07-16" description="Week of July 10–16; life-ops system, setup voice previews, wallet setup, security hardening" tags={["Feature", "Update", "Fix"]}>
 
 ## Life-ops: tasks, habits, and routines
 
@@ -685,17 +685,17 @@ Your agent can now help you manage daily tasks, habits, and routines through a n
 
 The startup splash screen now supports content packs — themed bundles of backgrounds, copy, and branding that customize the first-run experience. Content packs load automatically on startup and can be swapped without rebuilding the app.
 
-## Onboarding voice previews
+## Setup voice previews
 
-Character selection during [onboarding](/guides/beginners-user-guide) now plays a pre-generated voice catchphrase for each character in your selected language. Fifty-six voicelines (eight characters across seven languages) are bundled as static assets for instant playback — no TTS API call required. If a static voiceline is unavailable, the system falls back to your configured TTS provider.
+Character selection during [setup](/guides/beginners-user-guide) now plays a pre-generated voice catchphrase for each character in your selected language. Fifty-six voicelines (eight characters across seven languages) are bundled as static assets for instant playback — no TTS API call required. If a static voiceline is unavailable, the system falls back to your configured TTS provider.
 
 ## Updates
 
-- **Onboarding simplified to two steps** — The [onboarding wizard](/guides/beginners-user-guide) has been streamlined from six steps down to splash, identity, providers, and chat. Voice configuration and permissions have moved to [settings](/apps/dashboard/settings) where they can be configured at any time, reducing first-run friction.
+- **Setup simplified to two steps** — The [setup wizard](/guides/beginners-user-guide) has been streamlined from six steps down to splash, identity, providers, and chat. Voice configuration and permissions have moved to [settings](/apps/dashboard/settings) where they can be configured at any time, reducing first-run friction.
 - **Wallet setup available inline** — The [wallet](/guides/wallet) page now shows Vincent connect, Steward status, and setup options directly instead of redirecting you to settings. Each wallet section handles its own unconfigured state, so you always see the full layout with contextual setup prompts.
 - **Wallet plugins auto-enable** — When EVM or Solana private keys are present in your environment, the corresponding wallet plugins now load automatically on startup. Previously, you had to manually enable them even when keys were already configured.
 - **Plugin install paths recorded** — Installing a plugin from the dashboard now records its install path in your configuration, so the plugin resolver can find downloaded packages reliably across restarts.
-- **Voiceline volume normalized** — All onboarding voicelines are now normalized to -16 LUFS (EBU R128), preventing volume jumps when switching between characters or languages.
+- **Voiceline volume normalized** — All setup voicelines are now normalized to -16 LUFS (EBU R128), preventing volume jumps when switching between characters or languages.
 
 ## Bug fixes
 
@@ -713,12 +713,12 @@ Character selection during [onboarding](/guides/beginners-user-guide) now plays 
 
 </Update>
 
-<Update label="2026-07-09" description="Week of July 3–9; Windows desktop stability, onboarding reliability, startup hardening" tags={["Update", "Fix"]}>
+<Update label="2026-07-09" description="Week of July 3–9; Windows desktop stability, setup reliability, startup hardening" tags={["Update", "Fix"]}>
 
 ## Updates
 
 - **Windows desktop startup stabilized** — The Windows desktop app now starts reliably on first boot. A series of fixes isolated the bootstrap webview session, preventing profile data conflicts that could cause the app to hang or fail to render after installation.
-- **Onboarding configuration streamlined** — The [onboarding wizard](/guides/beginners-user-guide) now writes your hosting and provider choices to a single canonical location during setup. Previously, settings could be saved in multiple places, occasionally causing configuration drift after completing onboarding.
+- **Setup configuration streamlined** — The [setup wizard](/guides/beginners-user-guide) now writes your hosting and provider choices to a single canonical location during setup. Previously, settings could be saved in multiple places, occasionally causing configuration drift after completing setup.
 - **Startup gateway reliability** — Startup now restores your previous server connection and provider state more reliably. If your last session used [Eliza Cloud](/guides/cloud), the app reconnects without requiring you to re-select your provider.
 
 ## Bug fixes
@@ -774,7 +774,7 @@ The startup experience has been redesigned with a retro-styled splash screen tha
 ## Bug fixes
 
 - Fixed cloud-provisioned containers not enabling knowledge, heartbeats, or TTS — these features now activate correctly in cloud deployments
-- Fixed cloud-provisioned containers showing the onboarding wizard instead of skipping directly to the agent — managed containers now start immediately
+- Fixed cloud-provisioned containers showing the setup wizard instead of skipping directly to the agent — managed containers now start immediately
 - Fixed cloud containers reporting incorrect connection status after login
 - Fixed plugin installs failing silently when the plugin manager was temporarily unavailable — installs now retry and recover gracefully
 - Fixed Windows desktop permissions, camera routing, and shutdown not working correctly in certain configurations
@@ -800,7 +800,7 @@ The credits and billing section on the cloud dashboard now connects to real paym
 
 ## Updates
 
-- **Dashboard design pass** — Sharp corners, accent bars, reduced visual noise, and consistent spacing across the cloud dashboard and homepage. Filler copy has been removed from onboarding, settings, and the cloud config views.
+- **Dashboard design pass** — Sharp corners, accent bars, reduced visual noise, and consistent spacing across the cloud dashboard and homepage. Filler copy has been removed from setup, settings, and the cloud config views.
 - **Compact wallet indicators** — Wallet status on cloud agent cards now uses compact indicators, making it easier to scan multiple agents at a glance.
 
 </Update>
@@ -829,9 +829,9 @@ The [knowledge](/guides/documents) sidebar now shows filenames prominently with 
 - Fixed the settings model picker dropdown being clipped behind panels — dropdowns now float above all shell surfaces reliably
 - Fixed the wallet empty-state button being nearly invisible on dark backgrounds — it now has a visible gold outline
 - Fixed the cloud credits badge amount being hard to read due to low text contrast
-- Fixed returning users being sent back to onboarding after a temporary backend connection loss — previously onboarded users now see a retryable error instead
+- Fixed returning users being sent back to setup after a temporary backend connection loss — previously onboarded users now see a retryable error instead
 - Fixed the heartbeats page showing "select a heartbeat" copy on first run when no heartbeats exist yet
-- Fixed the onboarding language selector using a different size and style from the in-app header dropdown
+- Fixed the setup language selector using a different size and style from the in-app header dropdown
 - Fixed duplicate token sort controls appearing in the wallet view
 - Fixed an unnecessary "log in with Privy" prompt appearing when a Steward wallet is already connected
 - Fixed the `/api/health` endpoint returning 401 behind the cloud auth gate, which could cause cloud container provisioning to time out
@@ -853,7 +853,7 @@ You can now share bug reports and startup failure diagnostics remotely. If your 
 
 ## Updates
 
-- **Character selection moved earlier in onboarding** — You now choose your agent's character right after the welcome screen instead of midway through setup, so your agent's personality is established before you configure providers. See the [onboarding guide](/guides/beginners-user-guide).
+- **Character selection moved earlier in setup** — You now choose your agent's character right after the welcome screen instead of midway through setup, so your agent's personality is established before you configure providers. See the [setup guide](/guides/beginners-user-guide).
 - **Wallet routing and network mode** — Wallet transactions now support provider fallback routing and explicit network mode selection, making token transfers and trades more reliable across chains. See the [wallet guide](/guides/wallet).
 - **Cloud container configuration** — Cloud-provisioned containers now accept `ELIZAOS_CLOUD_BASE_URL`, `ENABLE_AUTONOMY`, and `CORS_ORIGINS` environment variables, removing the need for post-boot file patching. Server-side authentication is also enforced by default on all cloud container endpoints.
 - **Immediate language sync on desktop** — Changing your dashboard language now applies to chat responses immediately without a restart. Windows desktop menus also include working About, Quit, and Update Check actions.
@@ -868,15 +868,15 @@ You can now share bug reports and startup failure diagnostics remotely. If your 
 - Fixed the Release Center crashing when a desktop bridge call fails, and missing preview images in packaged Windows builds
 - Fixed Railway deployments failing at startup due to missing GPU detection tools in slim Linux images
 - Fixed WebSocket connectivity breaking for clients that authenticate after the socket opens rather than during the HTTP upgrade
-- Fixed onboarding text being hard to read due to inconsistent panel styling — all screens now use a consistent glass treatment
-- Fixed timed-out backup imports during onboarding continuing to run in the background instead of aborting cleanly
+- Fixed setup text being hard to read due to inconsistent panel styling — all screens now use a consistent glass treatment
+- Fixed timed-out backup imports during setup continuing to run in the background instead of aborting cleanly
 - Fixed a duplicate Save button appearing in the character editor header
 - Fixed a redundant "Connectors" title showing in the sidebar when the page is already selected
-- Fixed white-on-gold text contrast issues across buttons, toasts, and onboarding screens
+- Fixed white-on-gold text contrast issues across buttons, toasts, and setup screens
 - Fixed checkmarks overlapping text in settings dropdowns and a one-frame flicker when opening searchable dropdowns
 - Fixed the wallet chain rail collapsing into unreadable icon pills instead of showing full chain cards
 - Fixed trajectory steps generating disconnected IDs, which caused incorrect data in the [trajectory view](/advanced/trajectories)
-- Fixed the desktop reset flow not verifying that onboarding actually restarted after a reset
+- Fixed the desktop reset flow not verifying that setup actually restarted after a reset
 - Fixed a decorative gold border appearing permanently on the generation settings section
 
 ## Desktop: one `three` instance for VRM + Gaussian splats
@@ -940,7 +940,7 @@ Closing the desktop window no longer briefly flashes a replacement window. The a
 ## Updates
 
 - **Coding agents on Eliza Cloud** — [Coding agents](/guides/coding-swarms) (Claude Code, Codex) now route through Eliza Cloud proxy endpoints when cloud inference is active. Previously, switching to cloud mode wiped their API keys.
-- **Desktop shell consistency** — A broad layout and theme pass brings chat, skills, apps, heartbeats, stream, knowledge, onboarding, companion, and settings surfaces onto a shared chrome system. Spacing, hierarchy, and readability are improved across the board, and the companion composer uses a proper structural container instead of layered visual nudges.
+- **Desktop shell consistency** — A broad layout and theme pass brings chat, skills, apps, heartbeats, stream, knowledge, setup, companion, and settings surfaces onto a shared chrome system. Spacing, hierarchy, and readability are improved across the board, and the companion composer uses a proper structural container instead of layered visual nudges.
 - **Wallet action feedback** — Wallet actions like balance checks and token transfers now reliably report success or failure in the [trajectory view](/advanced/trajectories), making it easier to trace what happened during a transaction.
 - **Cloud container access** — Cloud-provisioned containers no longer auto-generate an API token that locks out the web UI. Managed deployments are accessible immediately without browser auth until the pairing flow is configured.
 - **Workspace boilerplate excluded from prompts** — Default workspace template files (like `AGENTS.md`) are no longer injected into prompts due to a case-sensitivity mismatch. Only files you've actually customized are included.
@@ -955,19 +955,19 @@ Closing the desktop window no longer briefly flashes a replacement window. The a
 - Fixed the desktop companion header's glass blur effect bleeding into the standard desktop header
 - Fixed the Windows app icon only containing 16px and 32px sizes — taskbar, Start Menu, and desktop shortcuts now display crisp icons at all standard sizes
 - Fixed Eliza Cloud showing a generic error when the session is missing an account — it now explains whether an API key or login session is needed
-- Fixed onboarding character preview playing a single default voice instead of the voice associated with each character preset
-- Fixed onboarding voice preview failing entirely when switching characters rapidly
+- Fixed setup character preview playing a single default voice instead of the voice associated with each character preset
+- Fixed setup voice preview failing entirely when switching characters rapidly
 - Fixed unhandled runtime errors and a timeout leak in the embedding manager that could cause issues during cleanup
 </Update>
 
-<Update label="2026-03-25" description="Coding agent terminals, onboarding identity step, security hardening" tags={["Feature", "Update", "Fix"]}>
+<Update label="2026-03-25" description="Coding agent terminals, setup identity step, security hardening" tags={["Feature", "Update", "Fix"]}>
 ## Coding agent terminal drawer
 
 Coding agent sessions now have an inline terminal right in the chat view. Click any active agent in the status bar to open a tabbed xterm.js drawer showing live terminal output, with keyboard input forwarding and buffered history. In companion mode, the terminal opens as a side panel instead. See the [coding swarms guide](/guides/coding-swarms) for details.
 
-## Onboarding identity step
+## Setup identity step
 
-The [onboarding wizard](/guides/beginners-user-guide) now includes an identity step where you choose your agent's avatar and persona before launch. Browse available characters, preview their VRM model, and start with the right personality from the first conversation.
+The [setup wizard](/guides/beginners-user-guide) now includes an identity step where you choose your agent's avatar and persona before launch. Browse available characters, preview their VRM model, and start with the right personality from the first conversation.
 
 ## Homepage redesign
 
@@ -986,8 +986,8 @@ A broad audit addressed 54 issues across the stack. Highlights that affect your 
 
 - **Companion scene performance** — The 3D VRM scene no longer re-renders on every keystroke in the chat input. Typing is noticeably smoother when the companion view is active.
 - **Modals and mobile layout** — Knowledge detail, skills install, and skills edit modals now open reliably instead of rendering blank. Several views are now usable on mobile-width screens with proper overflow handling and responsive grids.
-- **Onboarding credential guard** — The Connect button in onboarding is now disabled until you've entered the required credentials for your chosen provider, preventing empty submissions.
-- **Accessibility improvements** — Focus indicators are now visible in light mode, the detached shell has proper ARIA landmarks and a skip-to-content link, and onboarding step dots include screen reader labels.
+- **Setup credential guard** — The Connect button in setup is now disabled until you've entered the required credentials for your chosen provider, preventing empty submissions.
+- **Accessibility improvements** — Focus indicators are now visible in light mode, the detached shell has proper ARIA landmarks and a skip-to-content link, and setup step dots include screen reader labels.
 - **Bun version advisory** — Eliza now warns at startup if you're running a Bun canary build or a version outside the tested 1.3.x range, so you know upfront if compatibility issues are likely.
 - **Cloud API clarity** — When Eliza Cloud features aren't available yet, the dashboard now shows a friendly "coming soon" message instead of a raw 404 error.
 
@@ -1023,7 +1023,7 @@ Wallet trade and transfer endpoints now support delegated signing through the St
 ## Updates
 
 - **Dashboard performance** — The dashboard UI is significantly faster. State management has been restructured so that typing in chat, polling agent status, and browsing settings no longer cause unrelated parts of the UI to re-render. Navigation, translation, and lifecycle updates are now isolated, which means smoother interactions across the board.
-- **Onboarding visual polish** — The [onboarding wizard](/guides/beginners-user-guide) has refreshed button styling with improved contrast, a cleaner provider grid layout with proper dark mode support, and new pill-style tabs replacing the previous underline design.
+- **Setup visual polish** — The [setup wizard](/guides/beginners-user-guide) has refreshed button styling with improved contrast, a cleaner provider grid layout with proper dark mode support, and new pill-style tabs replacing the previous underline design.
 
 ## Bug fixes
 
@@ -1054,7 +1054,7 @@ The [plugins](/plugins/overview) view now uses the same sidebar list layout as c
 
 ## Updates
 
-- **Onboarding flow rewrite** — The [onboarding wizard](/guides/beginners-user-guide) now derives step order, back navigation, and the sidebar step list from a single source of truth. Back navigation works reliably (including connection → welcome), completed steps are clickable to jump backward, and forward sidebar jumps are blocked so login/finish validation can't be skipped.
+- **Setup flow rewrite** — The [setup wizard](/guides/beginners-user-guide) now derives step order, back navigation, and the sidebar step list from a single source of truth. Back navigation works reliably (including connection → welcome), completed steps are clickable to jump backward, and forward sidebar jumps are blocked so login/finish validation can't be skipped.
 - **Cloud dashboard streamlined** — The [cloud dashboard](/guides/cloud) billing view is now a compact single-page layout with flat agent lists and simplified card nesting, making it faster to scan your agents and credits at a glance.
 - **Voice streaming quality** — Streaming text merge now handles Unicode normalization, abbreviations, decimal numbers, URLs, and ellipses correctly, so text-to-speech no longer splits sentences at unexpected points.
 - **i18n completeness** — Added 88+ missing translation keys across all non-English locales and replaced 29 hardcoded English strings with translatable calls. A regression test now enforces key parity across all locales.
@@ -1126,7 +1126,7 @@ Docs: [Desktop app — battery and energy (macOS)](/apps/desktop#battery-and-ene
 - **`GET /api/dev/stack`** — JSON index: real API listen port (from socket when possible), desktop renderer URL/ports from env, whether **screenshot** and **aggregated console** hooks are active, plus hints (e.g. Electrobun’s internal RPC port in launcher logs). **Why on the API:** one host agents already probe; avoids parsing Electrobun’s ephemeral port.
 - **`bun run desktop:stack-status -- --json`** — CLI that checks ports and merges `/api/dev/stack`, `/api/health`, `/api/status`. **Why:** scripts and CI do not need the dashboard.
 - **Screenshot (default on for `dev:desktop` / `dev:desktop:watch`)** — Electrobun serves a loopback PNG; the API proxies **`GET /api/dev/cursor-screenshot`** (loopback, session token between children). Uses existing **full-screen OS capture** (`screencapture` on macOS). **Why proxy:** single URL on the API port; **why full screen first:** reuses `ScreenCaptureManager.takeScreenshot()` instead of unproven webview-only capture. Opt-out: **`ELIZA_DESKTOP_SCREENSHOT_SERVER=0`**.
-- **Aggregated console (default on)** — Prefixed vite/api/electrobun lines append to **`.eliza/desktop-dev-console.log`**; **`GET /api/dev/console-log`** (loopback) returns a capped tail (`maxLines` / `maxBytes`). **Why file:** agents can read the path from stack JSON; **why HTTP tail:** avoids loading huge files into context; **why basename allow-list on path env:** prevents arbitrary file read via mis-set env. Opt-out: **`ELIZA_DESKTOP_DEV_LOG=0`**.
+- **Aggregated console (default on)** — Prefixed vite/api/electrobun lines append to **`<stateDir>/desktop-dev-console.log`**; **`GET /api/dev/console-log`** (loopback) returns a capped tail (`maxLines` / `maxBytes`). **Why file:** agents can read the path from stack JSON; **why HTTP tail:** avoids loading huge files into context; **why basename allow-list on path env:** prevents arbitrary file read via mis-set env. Opt-out: **`ELIZA_DESKTOP_DEV_LOG=0`**.
 - **Cursor** — `.cursor/rules/eliza-desktop-dev-observability.mdc` documents the workflow (**why:** Cursor does not auto-poll localhost; rules carry discovery).
 
 Docs: [Desktop local development — IDE and agent observability](/apps/desktop-local-development#ide-and-agent-observability-cursor-scripts).
@@ -1161,7 +1161,7 @@ Docs: [Environment variables](/cli/overview), [TTS plugin](/plugins/overview).
 
 ## Vitest: `packages/app-core/test/**` and `*.test.tsx` under `src/`
 
-Root **`vitest.config.ts`** now includes **`packages/app-core/test/**/*.test.ts(x)`** and **`packages/app-core/src/**/*.test.tsx`**, and excludes **`packages/app-core/test/**/*.e2e.test.*`** from the default unit job (e2e still uses **`test/vitest/e2e.config.ts`**). **Why:** harness tests under `test/state`, `test/runtime`, etc. were skipped; a single explicit `OnboardingWizard.test.tsx` path was brittle for future colocated TSX tests.
+Root **`vitest.config.ts`** now includes **`packages/app-core/test/**/*.test.ts(x)`** and **`packages/app-core/src/**/*.test.tsx`**, and excludes **`packages/app-core/test/**/*.e2e.test.*`** from the default unit job (e2e still uses **`test/vitest/e2e.config.ts`**). **Why:** harness tests under `test/state`, `test/runtime`, etc. were skipped; a single explicit `SetupWizard.test.tsx` path was brittle for future colocated TSX tests.
 
 See [Contributing — Testing](/guides/contributing) (subsection *`packages/app-core` in the root Vitest config*).
 
@@ -1171,27 +1171,27 @@ See [Contributing — Testing](/guides/contributing) (subsection *`packages/app-
 
 </Update>
 
-<Update label="2026-03-21" description="App onboarding architecture" tags={["Update"]}>
-## Data-driven onboarding UI (app-core)
+<Update label="2026-03-21" description="App setup architecture" tags={["Update"]}>
+## Data-driven setup UI (app-core)
 
-The dashboard onboarding wizard now derives **step order**, **back navigation**, and the **sidebar step list** from a small pure module (`@elizaos/app-core/onboarding/flow`) instead of duplicating arrays in `AppContext` and the nav component. **Why:** duplicate lists drifted and made “go back” hard to keep consistent.
+The dashboard setup wizard now derives **step order**, **back navigation**, and the **sidebar step list** from a small pure module (`@elizaos/app-core/first-run/flow`) instead of duplicating arrays in `AppContext` and the nav component. **Why:** duplicate lists drifted and made “go back” hard to keep consistent.
 
-- **Forward motion** is still orchestrated in `AppProvider` as `advanceOnboarding` (wrapped by `handleOnboardingNext`) so cloud login, `handleOnboardingFinish`, and provider auto-fill run in the correct order before the step index changes.
-- **Back** uses `resolveOnboardingPreviousStep` (including **connection → welcome**, even though `welcome` is not listed in the custom-flow sidebar).
-- **Sidebar:** completed steps are **clickable** to jump backward only (`handleOnboardingJumpToStep`), validated with the same rules as repeated Back—**forward** sidebar jumps are intentionally disallowed so finish/login validation cannot be skipped.
-- **Welcome “Get Started”** uses `goToOnboardingStep("connection")` so advanced mode can sync the Flamina guide in one place instead of raw `setState` on the step alone.
+- **Forward motion** is still orchestrated in `AppProvider` as `advanceSetup` (wrapped by `handleSetupNext`) so cloud login, `handleSetupFinish`, and provider auto-fill run in the correct order before the step index changes.
+- **Back** uses `resolveSetupPreviousStep` (including **connection → welcome**, even though `welcome` is not listed in the custom-flow sidebar).
+- **Sidebar:** completed steps are **clickable** to jump backward only (`handleSetupJumpToStep`), validated with the same rules as repeated Back—**forward** sidebar jumps are intentionally disallowed so finish/login validation cannot be skipped.
+- **Welcome “Get Started”** uses `goToSetupStep("connection")` so advanced mode can sync the Flamina guide in one place instead of raw `setState` on the step alone.
 
 Developer guide: [Onboarding UI flow](/guides/onboarding-ui-flow).
 
 ## Connection step: pure subflow + view registry
 
-Inside the **`connection`** wizard step (hosting, remote backend, Eliza Cloud, neural link, provider detail), routing and navigation patches now live in **`@elizaos/app-core/onboarding/connection-flow`** — still **pure** (no React), with Vitest table coverage. **Why:** the old single file mixed a large `if` tree with OAuth and API calls, so branch order and `setState` clusters were hard to test and easy to break.
+Inside the **`connection`** wizard step (hosting, remote backend, Eliza Cloud, neural link, provider detail), routing and navigation patches now live in **`@elizaos/app-core/first-run/connection-flow`** — still **pure** (no React), with Vitest table coverage. **Why:** the old single file mixed a large `if` tree with OAuth and API calls, so branch order and `setState` clusters were hard to test and easy to break.
 
 - **`deriveConnectionScreen`** and **`resolveConnectionUiSpec`** answer “which shell to show” from a snapshot (including steady-state **`forceCloud`** routing so tests match post-bootstrap UI).
 - **`applyConnectionTransition`** returns either a **patch** (applied via `setState` in `ConnectionStep`) or an **effect** token for **`useLocalBackend`** — **why:** disconnecting the remote client and `retryStartup` are not pure and must stay in `AppContext`.
-- **React** is split into `ConnectionStep` (snapshot + dispatch + bootstrap `useEffect`) and `components/onboarding/connection/*` (one component per screen). **Why:** keeps the pure module importable from tests without jsdom, and shrinks review surface when changing one path.
+- **React** is split into `ConnectionStep` (snapshot + dispatch + bootstrap `useEffect`) and `components/first-run/connection/*` (one component per screen). **Why:** keeps the pure module importable from tests without jsdom, and shrinks review surface when changing one path.
 
-See the same guide: [Onboarding UI flow](/guides/onboarding-ui-flow) (section *Connection step subflow*).
+See the same guide: [Onboarding UI flow](/guides/onboarding-ui-flow) (section *Pure connection flow*).
 
 ## Desktop dev orchestrator (`dev-platform`)
 
@@ -1209,19 +1209,19 @@ Guide (with rationale): [Desktop local development](/apps/desktop-local-developm
 
 Locale strings that mention the product name use **`{{appName}}`** in JSON templates. **`appNameInterpolationVars(branding)`** in `config/branding.ts` supplies the value (default **`Eliza`**; shells override via `BrandingContext`, e.g. Eliza). **Why:** one interpolation key matches all locales; missing vars left raw `{{appName}}` in the UI. **Why a helper:** every `t(key, …)` site stays consistent and picks the same fallback when `appName` is empty.
 
-## System access (permissions) onboarding: single Continue
+## System access (permissions) setup: single Continue
 
-The **senses** / system-access step no longer shows separate **Skip** and **Continue** actions. One **Continue** always advances the wizard to the next step (`activate`). **Why:** two buttons implied different outcomes but both were easy to misread; grant state is still visible per permission. **`allowPermissionBypass`** remains on `handleOnboardingNext` for tests and edge tooling, but the permissions UI does not send it.
+The **senses** / system-access step no longer shows separate **Skip** and **Continue** actions. One **Continue** always advances the wizard to the next step (`activate`). **Why:** two buttons implied different outcomes but both were easy to misread; grant state is still visible per permission. **`allowPermissionBypass`** remains on `handleSetupNext` for tests and edge tooling, but the permissions UI does not send it.
 
 ## Eliza Cloud OAuth: auto-advance in the connection step
 
-After browser/OAuth login succeeds on the **Login** tab (pre-provider and provider-detail Eliza Cloud panels), the app calls **`handleOnboardingNext()`** once—same idea as **`CloudLoginStep`**. **Why:** an extra Confirm click added no value once “connected” is shown. **Why only on the Login tab:** API-key entry still requires an explicit Confirm so we do not advance on partial input. Implementation: **`useAdvanceOnboardingWhenElizaCloudOAuthConnected`** (`components/onboarding/connection/`).
+After browser/OAuth login succeeds on the **Login** tab (pre-provider and provider-detail Eliza Cloud panels), the app calls **`handleSetupNext()`** once—same idea as **`CloudLoginStep`**. **Why:** an extra Confirm click added no value once “connected” is shown. **Why only on the Login tab:** API-key entry still requires an explicit Confirm so we do not advance on partial input. Implementation: **`useAdvanceSetupWhenElizaCloudOAuthConnected`** (`components/first-run/connection/`).
 
-## Desktop: Reset Eliza (app menu) + reliable post-reset onboarding
+## Desktop: Reset Eliza (app menu) + reliable post-reset setup
 
 - **Eliza** application menu includes **Reset Eliza…** (`reset-eliza`). An early iteration pushed **`menu-reset-eliza`** to the renderer so **`handleReset()`** owned confirm + API—**why:** one `ElizaClient` and the same teardown as Settings. **Update (changelog **2026-03-22**):** confirm + **`POST /api/agent/reset`** + restart now run in the **main process** (WKWebView could stall renderer `fetch` after native dialogs); the renderer syncs via **`menu-reset-eliza-applied`**. Deep dive: [Desktop main-process reset](/apps/desktop-main-process-reset).
-- **`handleReset`** / **`completeResetLocalStateAfterServerWipe`** clear the **persisted active server**, **API base/token**, and **Eliza Cloud** UI flags after a server wipe. **Why:** otherwise the UI stayed pointed at cloud/remote after config reset, so onboarding looked “stuck.”
-- **`App` shell:** onboarding is no longer blocked by **`agentStatus === "starting"`**. **Why:** right after a reset the agent often returns to `starting`; the old gate kept the main shell (or loader) visible instead of **`OnboardingWizard`**, so reset looked like it did nothing after confirm.
+- **`handleReset`** / **`completeResetLocalStateAfterServerWipe`** clear the **persisted active server**, **API base/token**, and **Eliza Cloud** UI flags after a server wipe. **Why:** otherwise the UI stayed pointed at cloud/remote after config reset, so setup looked “stuck.”
+- **`App` shell:** setup is no longer blocked by **`agentStatus === "starting"`**. **Why:** right after a reset the agent often returns to `starting`; the old gate kept the main shell (or loader) visible instead of **`SetupWizard`**, so reset looked like it did nothing after confirm.
 
 Docs: [Desktop app](/apps/desktop) (application menu), [Onboarding UI flow](/guides/onboarding-ui-flow).
 </Update>
@@ -1242,16 +1242,16 @@ A new Release Center view in the [desktop app](/apps/desktop) gives you a dedica
 ## Bug fixes
 
 - Fixed agent name reverting to the default after restarting — your chosen name, bio, and system prompt now persist correctly across restarts
-- Fixed Eliza Cloud not activating after selecting it during [onboarding](/guides/beginners-user-guide) — cloud mode is now detected reliably regardless of how the onboarding payload is structured
+- Fixed Eliza Cloud not activating after selecting it during [setup](/guides/beginners-user-guide) — cloud mode is now detected reliably regardless of how the setup payload is structured
 - Fixed a desktop startup crash caused by a React hook-order error
-- Fixed legacy local installs being forced back into onboarding — existing configurations are now recognized during startup
+- Fixed legacy local installs being forced back into setup — existing configurations are now recognized during startup
 - Fixed macOS desktop self-update failing when the app is launched from outside `/Applications`, which previously triggered App Management permission prompts
 </Update>
 
 <Update label="2026-06-18" description="Week of June 12–18" tags={["Feature", "Update", "Fix"]}>
-## Simplified cloud onboarding
+## Simplified cloud setup
 
-First-run setup for cloud users is now a streamlined three-step flow — welcome, cloud login, and companion chat — replacing the previous six-step wizard. Cloud-provisioned containers also skip pairing and onboarding entirely when a platform API token is configured, so managed deployments start instantly.
+First-run setup for cloud users is now a streamlined three-step flow — welcome, cloud login, and companion chat — replacing the previous six-step wizard. Cloud-provisioned containers also skip pairing and setup entirely when a platform API token is configured, so managed deployments start instantly.
 
 ## Cloud dashboard with local-first agent management
 
@@ -1310,7 +1310,7 @@ LLM calls made by the swarm orchestrator are now tagged with source metadata and
 <Update label="2026-06-11" description="Week of June 5–11" tags={["Update", "Fix"]}>
 ## Canonical provider configuration
 
-Onboarding, settings, and subscription flows now share a single provider configuration contract. Previously, changing your model provider in one place didn't always reflect in another — now provider selections stay consistent everywhere. Wallet RPC provider choices are also initialized from your saved wallet configuration instead of falling back to hardcoded defaults.
+Setup, settings, and subscription flows now share a single provider configuration contract. Previously, changing your model provider in one place didn't always reflect in another — now provider selections stay consistent everywhere. Wallet RPC provider choices are also initialized from your saved wallet configuration instead of falling back to hardcoded defaults.
 
 ## Updates
 
@@ -1490,9 +1490,9 @@ Install any connector with adding to character.plugins and running `bun add <nam
 - **Secrets vault** — A new Secrets view in the dashboard organizes your API keys and credentials by category (AI providers, blockchain, connectors, auth). You can add, remove, and manage secrets with plugin-aware discovery that shows which plugins need which keys.
 - **Media gallery** — A new media gallery in the dashboard lets you browse photos, videos, and audio stored in your agent's database, with filtering by media type.
 - **Diagnostics and security audit API** — New endpoints expose filterable runtime logs, autonomy event replay with cursor-based pagination, and a security audit log with severity filtering and SSE streaming. See the [API reference](/cli/overview) for details.
-- **Streaming permissions in onboarding** — Camera and microphone permissions are now requested during the onboarding wizard and manageable from Settings, so streaming works out of the box on both mobile and desktop.
+- **Streaming permissions in setup** — Camera and microphone permissions are now requested during the setup wizard and manageable from Settings, so streaming works out of the box on both mobile and desktop.
 - **Dark theme button readability** — Accent-colored buttons now use dark text for better contrast, and hover effects highlight the border instead of changing text color.
-- **Onboarding layout improvements** — The connection step now shows a Quick Start / Advanced toggle, full-width provider cards, and an always-visible Continue button on the permissions step.
+- **Setup layout improvements** — The connection step now shows a Quick Start / Advanced toggle, full-width provider cards, and an always-visible Continue button on the permissions step.
 - **Configuration templates** — Eight ready-to-use configuration templates for common deployment scenarios are now available. See the [config templates guide](/guides/config-templates).
 </Update>
 
@@ -1657,7 +1657,7 @@ The system tray now includes interactive submenus for each model provider. You c
 
 You can now manage cloud agents directly from the Eliza homepage. The new dashboard includes agent lifecycle controls (provision, suspend, resume, delete), snapshots and backups, credits and billing, container metrics, and log streaming — all without leaving the app. Local and remote agents are auto-discovered alongside cloud agents. See [Cloud deployment](/deployment#cloud-agent-deployment) for details.
 
-## Cloud-first onboarding
+## Cloud-first setup
 
 Running `bun run dev` for the first time now asks "Where should your agent live?" with [Eliza Cloud](/guides/cloud) as the recommended option. Choose cloud for a hosted runtime with no local setup, or local to run on your own machine. Cloud configuration is saved automatically so subsequent launches reconnect without prompting. See the [cloud guide](/guides/cloud) for details.
 
@@ -1729,8 +1729,8 @@ The Windows desktop app no longer crashes on startup due to an embedding initial
 - Dark mode navigation tabs are now visible in all dashboard views
 - Empty conversations are automatically cleaned up when you navigate away
 - Password field toggle no longer erases entered API keys or bot tokens
-- Wallet RPC selection is now consistent across onboarding, settings, and runtime
-- Onboarding configuration persists correctly across app relaunches
+- Wallet RPC selection is now consistent across setup, settings, and runtime
+- Setup configuration persists correctly across app relaunches
 - Avatar index parsing now validates input range, preventing display errors
 - Voice defaults are now consistent — `autoSpeak` no longer appears enabled while voice is off
 - Oversized voice API requests are properly rejected with a 413 error
@@ -1743,7 +1743,7 @@ The Windows desktop app no longer crashes on startup due to an embedding initial
 </Update>
 
 <Update label="2026-03-13" description="Week of March 8–13" tags={["Feature", "Security", "Fix"]}>
-## Game-style onboarding redesign
+## Game-style setup redesign
 
 First-run setup has been rebuilt as a streamlined six-step flow with a three-column glassmorphism layout and a dark game-style theme applied across all modals and overlays. The new steps — Wake Up, Identity, Language, Connection, Permissions, and Activate — replace the previous ten-step wizard.
 
@@ -1834,7 +1834,7 @@ A full 3D companion view is now available with a VRM avatar engine, animations, 
 
 ## iMessage and SMS connector
 
-The new Blooio plugin adds iMessage and SMS as a first-class messaging connector. Set up your API key and phone number during onboarding to start messaging. See the [connectors overview](/guides/connectors) for details.
+The new Blooio plugin adds iMessage and SMS as a first-class messaging connector. Set up your API key and phone number during setup to start messaging. See the [connectors overview](/guides/connectors) for details.
 
 ## Bulk knowledge import
 

@@ -1,0 +1,252 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2023-07-29 17:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Portuguese <http://translate.tails.net/projects/tails/"
+"unsafe_browser/pt/>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Signing in to a network using a captive portal\"]]\n"
+msgstr "[[!meta title=\"Autenticando-se em uma rede através de um portal captivo\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "What captive portals are"
+msgstr "O que são portais cativos"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/captive_portal.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/captive_portal.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"security\">The <i>Unsafe Browser</i> is not anonymous</h1>\n"
+msgstr "<h1 id=\"security\">O <i>Navegador Inseguro</i> não é anônimo</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/security_implications.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/security_implications.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To learn how Tails implements the <i>Unsafe Browser</i> and its security, see our\n"
+"[[design documentation about the <i>Unsafe Browser</i>|contribute/design/Unsafe_Browser]].</p>\n"
+msgstr ""
+"<p>Para saber como Tails implementa o <i>Navegador Inseguro</i> e sua segurança, veja nossa\n"
+"[[documentação de projeto sobre o <i>Navegador Inseguro</i>|contribute/design/Unsafe_Browser]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"use\">Starting the <i>Unsafe Browser</i></h1>\n"
+msgstr "<h1 id=\"use\">Iniciando o <i>Navegador Inseguro</i></h1>\n"
+
+#. type: Plain text
+msgid "To start the *Unsafe Browser*:"
+msgstr "Para iniciar o *Navegador não-confiável*:"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Choose **Applications**&nbsp;▸ **Internet**&nbsp;▸ **Unsafe Browser**."
+msgid "Choose **Apps&nbsp;▸ Internet&nbsp;▸ Unsafe Browser**."
+msgstr ""
+"Selecione **Aplicativos**&nbsp;▸ **Internet**&nbsp;▸ **Navegador Inseguro**."
+
+#. type: Title =
+#, no-wrap
+msgid "Signing in to a network using a captive portal"
+msgstr "Entrando em uma rede usando um portal cativo"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/signing_in.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/signing_in.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "<h1 id=\"security\">Security implications of the <i>Unsafe Browser</i></h1>\n"
+#~ msgstr "<h1 id=\"security\">Implicações de segurança do <i>Navegador Inseguro</i></h1>\n"
+
+#~ msgid ""
+#~ "For better security, the *Unsafe Browser* is disabled by default because:"
+#~ msgstr ""
+#~ "Para aumentar a segurança, o *Navegador não-confiável* é desativado por "
+#~ "padrão, pois:"
+
+#~ msgid ""
+#~ "When the [[Welcome Screen|first_steps/welcome_screen]] appears, click on "
+#~ "the **[[!img lib/list-add.png alt=\"Add Additional Setting\" "
+#~ "class=\"symbolic\" link=\"no\"]]** button."
+#~ msgstr ""
+#~ "Quando a [[Tela de Boas-vindas|first_steps/welcome_screen]] aparecer, "
+#~ "clique no botão **[[!img lib/list-add.png alt=\"Add Additional Setting\" "
+#~ "class=\"symbolic\" link=\"no\"]]**."
+
+#, no-wrap
+#~ msgid "   [[!img first_steps/welcome_screen/additional.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr "   [[!img first_steps/welcome_screen/additional.png link=\"no\" alt=\"\"]]\n"
+
+#~ msgid "Choose **Unsafe Browser** in the **Additional Settings** dialog."
+#~ msgstr ""
+#~ "Escolha **Unsafe Browser** na caixa de diálogo **Configurações "
+#~ "Adicionais**."
+
+#~ msgid "Select the **Enable the Unsafe Browser** option."
+#~ msgstr "Escolha a opção **Enable the Unsafe Browser**."
+
+#~ msgid "Click **Start Tails**."
+#~ msgstr "Clique em **Iniciar Tails**."
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>To always enable the <em>Unsafe Browser</em>, turn on the [[Welcome\n"
+#~ "Screen|persistent_storage/configure#welcome_screen]] feature of\n"
+#~ "the Persistent Storage.</p>\n"
+#~ msgstr ""
+#~ "<p>Para manter o <em>Navegador Inseguro</em> sempre habilitado,\n"
+#~ "ative a funcionalidade de Armazenamento Persistente na [[Tela de\n"
+#~ "Boas-vindas|persistent_storage/configure#welcome_screen]]</p>\n"
+
+#, no-wrap
+#~ msgid "<div class=\"note\">\n"
+#~ msgstr "<div class=\"note\">\n"
+
+#, no-wrap
+#~ msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/chroot.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/chroot.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "To start the *Unsafe Browser*, choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Applications**&nbsp;▸\n"
+#~ "  **Internet**&nbsp;▸\n"
+#~ "  **Unsafe Web Browser**</span>.\n"
+#~ msgstr ""
+#~ "Tails inclui um *Navegador Inseguro* para este propósito, que pode\n"
+#~ "ser iniciado através do menu\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Aplicações**&nbsp;▸\n"
+#~ "  **Internet**&nbsp;▸\n"
+#~ "  **Navegação Insegura**</span>.\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "The *Unsafe Browser* has a red theme to\n"
+#~ "differentiate it from [[*Tor Browser*|Tor_Browser]].\n"
+#~ msgstr ""
+#~ "O *Navegador Inseguro* possui um tema vermelho e\n"
+#~ "amarelo para diferenciá-lo do [[Navegador Tor|Tor_Browser]].\n"
+
+#~ msgid "<div class=\"caution\">\n"
+#~ msgstr "<div class=\"caution\">\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "<p><strong>The *Unsafe Browser* is not\n"
+#~ "anonymous</strong>. Use it only to log in to captive portals or to\n"
+#~ "[[browse web pages on the local network|advanced_topics/lan#browser]].</"
+#~ "p>\n"
+#~ msgstr ""
+#~ "<p><strong>A *Navegação Insegura* não é\n"
+#~ "anônima</strong>. Usá-lo somente para fazer login em portais captivos.</"
+#~ "p>\n"
+
+#~ msgid "Security recommendations:"
+#~ msgstr "Recomendações de segurança:"
+
+#, fuzzy
+#~ msgid ""
+#~ "Do not run this browser at the same time as the anonymous [[<span "
+#~ "class=\"application\">Tor Browser</span>|Tor_Browser]]. This makes it "
+#~ "easy to not mistake one browser for the other, which could have "
+#~ "catastrophic consequences."
+#~ msgstr ""
+#~ "Não execute este navegador ao mesmo tempo que o navegador normal anônimo. "
+#~ "Dessa forma fica mais fácil não confundir um navegador com o outro, o que "
+#~ "poderia ter consequências catastróficas."
+
+#~ msgid ""
+#~ "Many publicly accessible Internet connections (usually available through "
+#~ "a wireless network connection) require its users to register and login in "
+#~ "order to get access to the Internet. This include both free and paid for "
+#~ "services that may be found at Internet cafés, libraries, airports, "
+#~ "hotels, universities etc. Normally in these situations, a so called "
+#~ "*captive portal* intercepts any website request made and redirects the "
+#~ "web browser to a login page. None of that works when Tor is used, so a "
+#~ "browser with unrestricted network access is necessary."
+#~ msgstr ""
+#~ "Muitas conexões à internet acessíveis publicamente (em geral disponíveis "
+#~ "através de uma conexão sem fio) requerem que seus usuários se registrem e "
+#~ "se autentiquem  para poder acessar a Internet. Isto inclui serviços "
+#~ "grátis e pagos que podem ser encontrados em cyber-cafés, bibliotecas, "
+#~ "aeroportos, hotéis, universidades, etc. Normalmente nestas situações, um "
+#~ "*portal captivo* intercepta qualquer requisição feita a um sítio web e "
+#~ "redireciona o navegador para uma página de login. Nada disso funciona "
+#~ "quando Tor é usado, e nestes casos é necessário um navegador com acesso "
+#~ "irrestrito à rede."
+
+#~ msgid ""
+#~ "When using [[doc/first_steps/welcome_screen/windows_camouflage]] the red "
+#~ "theme is disabled in order to raise less suspicion. It is still possible "
+#~ "to quietly identify the *Unsafe Browser* since it has English Wikipedia "
+#~ "as its default (and only) search engine in the navigation toolbar. The "
+#~ "lack of the onion icon is another such visual reminder."
+#~ msgstr ""
+#~ "Quando estiver usando a [[camuflagem windows|doc/first_steps/"
+#~ "welcome_screen/windows_camouflage]], o tema vermelho estará desabilitado "
+#~ "para levantar menos suspeitas. Ainda será possível identificar "
+#~ "silenciosamente o *Navegador Inseguro* pois ele tem a Wikipedia em inglês "
+#~ "como sua ferramenta de busca padrão (e única) na Barra de Navegação. A "
+#~ "falta do ícone de cebola é um outro lembrete visual."
+
+#, fuzzy
+#~ msgid ""
+#~ "<p>As a consequence, if you download files using the <span\n"
+#~ "class=\"application\">Unsafe Browser</span> it is not possible to access\n"
+#~ "them outside of the *Unsafe Browser*\n"
+#~ "itself.</p>\n"
+#~ msgstr ""
+#~ "O *Navegador Inseguro* possui um tema vermelho e\n"
+#~ "amarelo para diferenciá-lo do [[Navegador Tor|Tor_Browser]].\n"
+
+#~ msgid ""
+#~ "While this browser can be used unrestrictively for anything, it is "
+#~ "*highly* recommended to only use it to access and log in to captive "
+#~ "portals."
+#~ msgstr ""
+#~ "Mesmo que este navegador possa ser usado irrestritamente para qualquer "
+#~ "coisa, é *altamente* recomedado usá-lo somente para acessar e fazer login "
+#~ "em portais captivos."

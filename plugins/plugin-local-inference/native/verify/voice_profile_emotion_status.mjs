@@ -152,7 +152,7 @@ function defaultRuntimePath(bundleRoot) {
 				".eliza",
 				"local-inference",
 				"bin",
-				"dflash",
+				"mtp",
 				platformRuntimeDir(),
 				name,
 			),

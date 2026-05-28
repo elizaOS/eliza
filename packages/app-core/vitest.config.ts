@@ -159,7 +159,7 @@ export default defineConfig({
       ".claude/**",
       "test/app/memory-relationships.real.e2e.test.ts",
       "test/app/qa-checklist.real.e2e.test.ts",
-      "test/app/onboarding-companion.live.e2e.test.ts",
+      "test/app/first-run-companion.live.e2e.test.ts",
       "test/helpers/__tests__/live-agent-test.smoke.test.ts",
       ...(includeLiveE2e
         ? []
@@ -188,6 +188,10 @@ export default defineConfig({
         replacement: path.join(agentSrc, "$1"),
       },
       { find: /^@elizaos\/ui$/, replacement: path.join(uiDir, "src/index.ts") },
+      {
+        find: /^@elizaos\/ui\/api$/,
+        replacement: path.join(uiDir, "src/api/index.ts"),
+      },
       { find: /^@elizaos\/ui\/(.+)$/, replacement: path.join(uiDir, "src/$1") },
       {
         find: /^@elizaos\/shared$/,

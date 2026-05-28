@@ -1,0 +1,154 @@
+[[!meta title="Tails report for January, 2020"]]
+[[!meta date="Tue, 11 Feb 2020 08:24:57 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 4.2 was released on January 7|news/version_4.2]].
+
+* [[Tails 4.2.2 was released on January 14|news/version_4.2.2]] (emergency release).
+
+* Tails 4.3 is [[scheduled for February 11|contribute/calendar]].
+
+The following changes were introduced in Tails 4.2:
+
+- Improvements to automatic upgrades
+
+  We worked on important improvements to the automatic upgrade feature,
+  which is still one of your major pain points when using Tails:
+
+  - Until now, if your version of Tails was several months old, you
+    sometimes had to do 2 or more automatic upgrades in a row.  For
+    example, to upgrade from Tails 3.12 to Tails 3.16, you first had to
+    upgrade to Tails 3.14.
+
+    Starting with 4.2, direct automatic upgrades will be available from
+    all prior versions to the latest version.
+
+  - Until now, you could only do a limited number of automatic upgrades,
+    after which you had to do a much more complicated [["manual"
+    upgrade|doc/upgrade#manual]].
+
+    Starting with 4.2, you will only have to do a manual upgrade between
+    major versions, for example to upgrade to Tails 5.0 in 2021.
+
+  - We made automatic upgrades use less memory.
+
+  - We optimized a bit the size of the download when doing automatic
+    upgrades.
+
+- We included several command line tools used by
+  [*SecureDrop*](https://securedrop.org/) users to analyze the metadata
+  of leaked documents on computers that cannot use the *Additional
+  Software* feature:
+
+  - [*PDF Redact Tools*](https://github.com/firstlookmedia/pdf-redact-tools)
+    to redact and strip metadata from text documents before publishing
+  - [*Tesseract OCR*](https://github.com/tesseract-ocr/tesseract)
+    to convert images containing text into a text document
+  - [*FFmpeg*](https://ffmpeg.org/) to record and convert audio and video
+
+- Open *~/Persistent/keepassx.kdbx* by default when starting *KeePassX*.
+  If this database does not exist yet, stop pointing to it in the list
+  of recent databases.
+
+The following changes were introduced in Tails 4.2:
+
+- Update *Tor Browser* to
+  [9.0.4](https://blog.torproject.org/new-release-tor-browser-904).
+
+  This fixes a [[!mfsa 2020-03 desc="critical vulnerability"]]
+  in the JavaScript JIT compiler of *Firefox* and *Tor Browser*.
+
+  Mozilla is aware of targeted attacks in the wild abusing this
+  vulnerability.
+
+  This vulnerability only affects the *standard* [[security
+  level|doc/anonymous_internet/Tor_Browser#security-level]] of *Tor
+  Browser*. The *safer* and *safest* security levels are not affected.
+
+- Avoid a 2-minutes delay when restarting after doing an automatic
+  upgrade. ([[!tails_ticket 17026]])
+
+Code
+====
+
+- We fixed critical regressions that were introduced while improving
+  automatic upgrades.
+
+- We started work on making the download of automatic upgrades more robust
+  ([[!tails_ticket 15875]]).
+
+- We fixed the long delay while rebooting after applying an automatic upgrade
+  ([[!tails_ticket 17026]]).
+
+- In order to make the development process a bit smoother:
+   - We now use the tarball with all Tor Browser langpacks ([[!tails_ticket
+     17400]]), instead of downloading a complete Tor Browser for every language.
+   - Our build system is now able to cache the website build.
+
+Documentation and website
+=========================
+
+- Göktürk Yüksek improved the `dd` command in the expert installation scenario
+  to display progress (`status=progress`) and sync on-the-fly (`oflag=direct`).
+
+- We fixed the display of the output of `rsync` when doing a backup of the
+  persistent volume.
+
+Hot topics on our help desk
+===========================
+
+1. A lot of users are complaining about [[!tails_ticket 17183 desc="Seahorse failing to import public keys"]]
+
+1. A few people reported graphic issues, mostly [[!tails_ticket 16875]], but also [[!tails_ticket 17155 desc="with Nvidia Turing"]]
+
+1. Some users are facing issues ([[!tails_ticket 17388]], [[!tails_ticket 17430]], [[!tails_ticket 17418]]) with some network adapter since 4.1.1
+
+Infrastructure
+==============
+
+- We made progress on our migration to GitLab.
+
+- We resumed work on upgrading our CI hardware ([[!tails_ticket 16960]]).
+
+Funding
+=======
+
+- We added ThinkPenguin as a sponsor.
+
+- We teared down the donation campaign. We raised around 100k€ from
+  2&#8239;000 donations.
+
+- We were invited to submit a full proposal for the joint grant proposal with
+  Tor and the Guardian Project to the DRL Internet Freedom program.
+
+Translations
+============
+
+## All the website
+
+  - fr: 86% (5293) strings translated, 3% strings fuzzy
+  - es: 51% (3134) strings translated, 4% strings fuzzy
+  - de: 34% (2143) strings translated, 10% strings fuzzy
+  - it: 30% (1852) strings translated, 8% strings fuzzy
+  - fa: 27% (1689) strings translated, 10% strings fuzzy
+  - pt: 22% (1359) strings translated, 8% strings fuzzy
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - fr: 93% (1695) strings translated, 4% strings fuzzy
+  - es: 90% (1636) strings translated, 2% strings fuzzy
+  - de: 64% (1168) strings translated, 16% strings fuzzy
+  - it: 60% (1094) strings translated, 18% strings fuzzy
+  - pt: 43% (792) strings translated, 14% strings fuzzy
+  - fa: 32% (596) strings translated, 14% strings fuzzy
+
+Metrics
+=======
+
+* Tails has been started more than 856&#8239;922 times this month. This makes 27&#8239;643 boots a day on average.
+

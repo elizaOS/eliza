@@ -19,7 +19,7 @@ from scripts.manifest.eliza1_licenses import (  # noqa: E402
     write_bundle_licenses,
 )
 from scripts.manifest.eliza1_manifest import (  # noqa: E402
-    ELIZA_1_DFLASH_TIERS,
+    ELIZA_1_MTP_TIERS,
     REQUIRED_KERNELS_BY_TIER,
     SUPPORTED_BACKENDS_BY_TIER,
 )
@@ -43,7 +43,7 @@ def test_components_select_the_right_attestations() -> None:
     lite = {
         a.bundle_file
         for a in attestations_for_components(
-            ["text", "voice", "asr", "vad", "dflash", "wakeword"]
+            ["text", "voice", "asr", "vad", "mtp", "wakeword"]
         )
     }
     assert "LICENSE.embedding" not in lite
@@ -52,7 +52,7 @@ def test_components_select_the_right_attestations() -> None:
     assert {
         "LICENSE.text",
         "LICENSE.voice",
-        "LICENSE.dflash",
+        "LICENSE.mtp",
         "LICENSE.eliza-1",
     } <= lite
 
@@ -60,7 +60,7 @@ def test_components_select_the_right_attestations() -> None:
     pro = {
         a.bundle_file
         for a in attestations_for_components(
-            ["text", "voice", "asr", "vad", "dflash", "embedding", "vision"]
+            ["text", "voice", "asr", "vad", "mtp", "embedding", "vision"]
         )
     }
     assert "LICENSE.vision" in pro
@@ -69,7 +69,7 @@ def test_components_select_the_right_attestations() -> None:
 
 def test_write_then_verify_round_trips(tmp_path: Path) -> None:
     licenses_dir = tmp_path / "bundle" / "licenses"
-    components = ["text", "voice", "asr", "vad", "dflash", "vision"]
+    components = ["text", "voice", "asr", "vad", "mtp", "vision"]
     written, sidecar = write_bundle_licenses(licenses_dir, components)
     assert "licenses/license-manifest.json" in written
     assert sidecar["bundleSpdx"] == "CC-BY-NC-SA-4.0"
@@ -123,8 +123,8 @@ def _minimal_staged_bundle(root: Path, tier: str) -> Path:
         "vad/silero-vad-v5.gguf": b"vad",
         "cache/voice-preset-default.bin": b"cache",
     }
-    if tier in ELIZA_1_DFLASH_TIERS:
-        payloads[f"dflash/drafter-{tier}.gguf"] = b"drafter"
+    if tier in ELIZA_1_MTP_TIERS:
+        payloads[f"mtp/drafter-{tier}.gguf"] = b"drafter"
     for rel, payload in payloads.items():
         path = bundle / rel
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -139,16 +139,16 @@ def _minimal_staged_bundle(root: Path, tier: str) -> Path:
         "vision": {"base": "local-vision", "license": "apache-2.0"},
         "vad": {"base": "local-vad", "license": "mit"},
     }
-    if tier in ELIZA_1_DFLASH_TIERS:
+    if tier in ELIZA_1_MTP_TIERS:
         lineage["drafter"] = {"base": "local-drafter", "license": "apache-2.0"}
-    dflash_entries = (
+    mtp_entries = (
         [
             {
-                "path": f"dflash/drafter-{tier}.gguf",
-                "sha256": sha[f"dflash/drafter-{tier}.gguf"],
+                "path": f"mtp/drafter-{tier}.gguf",
+                "sha256": sha[f"mtp/drafter-{tier}.gguf"],
             }
         ]
-        if tier in ELIZA_1_DFLASH_TIERS
+        if tier in ELIZA_1_MTP_TIERS
         else []
     )
     required_kernels = list(REQUIRED_KERNELS_BY_TIER[tier])
@@ -203,7 +203,7 @@ def _minimal_staged_bundle(root: Path, tier: str) -> Path:
                             "sha256": sha[f"vision/mmproj-{tier}.gguf"],
                         }
                     ],
-                    "dflash": dflash_entries,
+                    "mtp": mtp_entries,
                     "cache": [
                         {
                             "path": "cache/voice-preset-default.bin",
@@ -376,7 +376,7 @@ def test_finalize_sets_licenses_true_and_keeps_the_rest_honest(tmp_path: Path) -
                 "voice",
                 "asr",
                 "vad",
-                "dflash",
+                "mtp",
                 "vision",
                 "kokoro",
                 "omnivoice",
@@ -469,7 +469,7 @@ def test_finalize_prunes_stale_optional_license_files(tmp_path: Path) -> None:
     assert (
         verify_bundle_licenses(
             licenses,
-            ["text", "voice", "asr", "vad", "dflash", "vision", "kokoro"],
+            ["text", "voice", "asr", "vad", "mtp", "vision", "kokoro"],
         )
         == []
     )

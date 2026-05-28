@@ -71,7 +71,7 @@ Alongside community-oriented skills, this package ships **`elizaos`**, **`eliza-
 Skills are loaded from multiple locations in precedence order (later overrides earlier):
 
 1. **Bundled skills** - Included in this package (`skills/`)
-2. **Managed skills** - User-installed skills (`~/.elizaos/skills/`)
+2. **Managed skills** - User-installed skills (`<stateDir>/skills/`)
 3. **Project skills** - Project-local skills (`<cwd>/.elizaos/skills/`)
 4. **Explicit paths** - Via `skillPaths` option
 

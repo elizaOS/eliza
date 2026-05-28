@@ -13,10 +13,10 @@
  *      → streaming TTS (Kokoro / OmniVoice per tier)
  *      → PCM ring buffer → system audio sink (aplay / afplay / paplay)
  *
- * with DFlash speculative decoding, KV-prefix prewarm, streaming LLM→TTS,
+ * with MTP speculative decoding, KV-prefix prewarm, streaming LLM→TTS,
  * barge-in (pause/resume/hard-stop), and force-stop on a keypress.
  *
- * **No faking.** If the real `eliza-1-2b` bundle, the DFlash `llama-server`
+ * **No faking.** If the real `eliza-1-2b` bundle, the MTP `llama-server`
  * binary, the fused `libelizainference`, a mic, or the Silero VAD model is
  * missing, this prints the exact missing-prereq checklist + the fix
  * command and exits non-zero. It never emits silence-and-calls-it-TTS
@@ -28,7 +28,7 @@
  *   bun run voice:interactive -- --say "hi there"   # skip ASR, inject text (LLM→TTS half)
  *   bun run voice:interactive -- --wav speech.wav   # feed a WAV through the path once
  *   bun run voice:interactive -- --no-audio         # write out-<ts>.wav instead of playing
- *   bun run voice:interactive -- --no-dflash        # disable DFlash (loud warning per AGENTS.md)
+ *   bun run voice:interactive -- --no-mtp        # disable MTP (loud warning per AGENTS.md)
  *   bun run voice:interactive -- --room my-room     # set the conversation id
  *
  * Keyboard controls (interactive modes, raw mode):
@@ -43,7 +43,7 @@
  *   →first-replyText-char=Yms llm-first-token → llm-first-replytext-char
  *   →first-TTS-audio=Zms      vad-trigger → tts-first-audio-chunk
  *   →audio-played=Wms         vad-trigger → audio-first-played (the headline TTAP)
- *   dflash-accept=N%          DFlash drafter token-acceptance rate (from llama-server /metrics)
+ *   mtp-accept=N%          MTP drafter token-acceptance rate (from llama-server /metrics)
  */
 
 import { existsSync } from "node:fs";
@@ -63,7 +63,7 @@ function parseArgs(argv) {
     say: null,
     wav: null,
     noAudio: false,
-    noDflash: false,
+    noMtp: false,
     room: "voice-interactive",
     help: false,
   };
@@ -73,7 +73,7 @@ function parseArgs(argv) {
     else if (a === "--platform-report" || a === "--list-active-platforms")
       out.platformReport = true;
     else if (a === "--no-audio") out.noAudio = true;
-    else if (a === "--no-dflash") out.noDflash = true;
+    else if (a === "--no-mtp") out.noMtp = true;
     else if (a === "--say") out.say = argv[++i] ?? "";
     else if (a === "--wav") out.wav = argv[++i] ?? "";
     else if (a === "--room") out.room = argv[++i] ?? out.room;
@@ -96,7 +96,7 @@ const USAGE = `Usage: bun run voice:interactive [-- <options>]
   --say "<text>"       skip ASR; inject <text> as a finalized transcript (LLM→TTS half)
   --wav <path>         feed a WAV file through the same path once (non-mic smoke)
   --no-audio           don't play to speakers; write out-<ts>.wav instead
-  --no-dflash          set ELIZA_DFLASH_DISABLE=1 (sanity compare; warns loudly)
+  --no-mtp          set ELIZA_MTP_DISABLE=1 (sanity compare; warns loudly)
   --room <id>          conversation/room id (default: voice-interactive)
   -h, --help           this help
 `;
@@ -151,7 +151,7 @@ async function inspectActiveOptimizations(args) {
     catalogEntry = findCatalogModel(
       args?.modelId ?? FIRST_RUN_DEFAULT_MODEL_ID,
     );
-    const drafterId = catalogEntry?.runtime?.dflash?.drafterModelId;
+    const drafterId = catalogEntry?.runtime?.mtp?.drafterModelId;
     if (drafterId) drafterEntry = findCatalogModel(drafterId);
   } catch (err) {
     missing.push({
@@ -167,7 +167,7 @@ async function inspectActiveOptimizations(args) {
     });
     const kernels = catalogEntry.runtime?.optimizations?.requiresKernel ?? [];
     active.push({
-      name: "kernels (TurboQuant / QJL / PolarQuant / DFlash)",
+      name: "kernels (TurboQuant / QJL / PolarQuant / MTP)",
       on: kernels.length > 0,
       detail: kernels.join(", ") || "(none declared)",
     });
@@ -200,68 +200,25 @@ async function inspectActiveOptimizations(args) {
     });
   }
 
-  // ── DFlash llama-server binary ─────────────────────────────────────────
-  if (args?.noDflash) {
+  // ── Native MTP metadata ─────────────────────────────────────────────
+  if (args?.noMtp) {
     active.push({
-      name: "dflash speculative decoding",
+      name: "mtp speculative decoding",
       on: false,
       detail:
-        "DISABLED by --no-dflash (ELIZA_DFLASH_DISABLE=1) — sanity-compare only, NOT a product setting (AGENTS.md §4)",
+        "DISABLED by --no-mtp (ELIZA_MTP_DISABLE=1) — sanity-compare only, NOT a product setting (AGENTS.md §4)",
     });
   } else {
-    try {
-      const { getDflashRuntimeStatus } = await import(
-        "../../../plugins/plugin-local-inference/src/services/dflash-server.ts"
-      );
-      const status = getDflashRuntimeStatus();
-      if (status.enabled && status.binaryPath) {
-        active.push({
-          name: "dflash speculative decoding",
-          on: true,
-          detail: `llama-server (-md drafter${drafterEntry ? ` ${drafterEntry.id}` : ""}, --spec-type dflash) at ${status.binaryPath}; acceptance rate reported after each turn from /metrics`,
-        });
-        // The eliza-1 path is gated on the kernels the catalog entry
-        // declares (AGENTS.md §3). If the installed llama-server's
-        // CAPABILITIES.json doesn't advertise them all, `engine.load()`
-        // will reject — surface that here, not deep in the load path.
-        const required =
-          catalogEntry?.runtime?.optimizations?.requiresKernel ?? [];
-        const advertised = status.capabilities?.kernels ?? null;
-        if (required.length > 0 && advertised) {
-          const lacking = required.filter((k) => advertised[k] !== true);
-          if (lacking.length > 0) {
-            missing.push({
-              what: `the installed llama-server (${status.capabilities?.target ?? "unknown target"}) does not advertise the kernels ${catalogEntry?.id ?? "eliza-1-2b"} requires: {${lacking.join(", ")}} — the eliza-1 path is gated on these (packages/inference/AGENTS.md §3). On Linux/Windows CPU/CUDA builds, some kernels (qjl_full, polarquant, turbo3_tcq) ship Metal-only.`,
-              fix: `rebuild the fork with the matching backend and kernels: node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>  (a real interactive turn currently needs the macOS-Metal fused build, which advertises the full kernel set)`,
-            });
-            active.push({
-              name: "kernel coverage (vs eliza-1 requirement)",
-              on: false,
-              detail: `installed: ${status.capabilities?.target}; missing kernels: ${lacking.join(", ")}`,
-            });
-          } else {
-            active.push({
-              name: "kernel coverage (vs eliza-1 requirement)",
-              on: true,
-              detail: `installed llama-server (${status.capabilities?.target}) advertises all of {${required.join(", ")}}`,
-            });
-          }
-        }
-      } else {
-        missing.push({
-          what: `the DFlash llama-server binary is not available — ${status.reason}`,
-          fix: "bun run local-inference:dflash:build  (builds the patched llama-server for this platform from the packages/inference/llama.cpp submodule)",
-        });
-        active.push({
-          name: "dflash speculative decoding",
-          on: false,
-          detail: status.reason,
-        });
-      }
-    } catch (err) {
+    if (catalogEntry?.runtime?.mtp) {
+      active.push({
+        name: "mtp speculative decoding",
+        on: true,
+        detail: `native in-process MTP (${catalogEntry.runtime.mtp.specType}, draft ${catalogEntry.runtime.mtp.draftMin}-${catalogEntry.runtime.mtp.draftMax})`,
+      });
+    } else {
       missing.push({
-        what: `could not probe the DFlash binary (${err instanceof Error ? err.message : String(err)})`,
-        fix: "bun run local-inference:dflash:build",
+        what: `${catalogEntry?.id ?? "eliza-1"} does not declare native MTP metadata`,
+        fix: "update packages/shared/src/local-inference/catalog.ts so every eliza-1 tier has runtime.mtp",
       });
     }
   }
@@ -269,7 +226,7 @@ async function inspectActiveOptimizations(args) {
   // ── TTS backend (fused libelizainference vs stub) ──────────────────────
   // Probe the same locations the engine bridge's `locateBundleLibrary` does:
   // explicit env paths, the bundle's `lib/`, and the managed fused-runtime
-  // dirs under `<state-dir>/local-inference/bin/dflash/<platform>-<arch>-<backend>-fused/`.
+  // dirs under `<state-dir>/local-inference/bin/mtp/<platform>-<arch>-<backend>-fused/`.
   let ttsLibPath = null;
   {
     const os = await import("node:os");
@@ -296,7 +253,7 @@ async function inspectActiveOptimizations(args) {
               path.join(
                 liRoot,
                 "bin",
-                "dflash",
+                "mtp",
                 `${process.platform}-${os.arch()}-${b}-fused`,
               ),
             )
@@ -540,7 +497,7 @@ const PLATFORM_MATRIX = [
       {
         gpu: "cuda",
         runtime: "llama-server (spawn) — fork binary ships .cu/.cuh for all 5",
-        kernels: "dflash + turbo3/4/tcq + qjl + polar (CUDA, fork binary)",
+        kernels: "mtp + turbo3/4/tcq + qjl + polar (CUDA, fork binary)",
         mic: "arecord / parec / sox",
         player: "aplay / paplay / sox / ffplay",
         vad: "silero-vad-cpp GGUF",
@@ -563,7 +520,7 @@ const PLATFORM_MATRIX = [
         gpu: "vulkan",
         runtime: "llama-server (spawn)",
         kernels:
-          "dflash + turbo3/4/tcq + qjl + polar shaders staged + dispatch source-patched (runtime-verified Intel ANV; needs-hardware elsewhere)",
+          "mtp + turbo3/4/tcq + qjl + polar shaders staged + dispatch source-patched (runtime-verified Intel ANV; needs-hardware elsewhere)",
         mic: "arecord / parec / sox",
         player: "aplay / paplay / sox / ffplay",
         vad: "silero-vad-cpp GGUF",
@@ -590,7 +547,7 @@ const PLATFORM_MATRIX = [
       {
         gpu: "cuda",
         runtime: "llama-server (spawn) — GH200 (aarch64 + Hopper)",
-        kernels: "dflash + turbo3/4/tcq + qjl + polar (CUDA, fork binary)",
+        kernels: "mtp + turbo3/4/tcq + qjl + polar (CUDA, fork binary)",
         mic: "arecord / parec / sox",
         player: "aplay / paplay / sox / ffplay",
         vad: "silero-vad-cpp GGUF (arm64)",
@@ -618,7 +575,7 @@ const PLATFORM_MATRIX = [
       {
         gpu: "cuda",
         runtime: "llama-server (spawn)",
-        kernels: "dflash + turbo3/4/tcq + qjl + polar (CUDA, fork binary)",
+        kernels: "mtp + turbo3/4/tcq + qjl + polar (CUDA, fork binary)",
         mic: "ffmpeg -f dshow — or renderer getUserMedia",
         player: "ffplay — or renderer AudioContext",
         vad: "silero-vad-cpp GGUF",
@@ -629,7 +586,7 @@ const PLATFORM_MATRIX = [
         gpu: "vulkan",
         runtime: "llama-server (spawn)",
         kernels:
-          "dflash + turbo3/4/tcq + qjl + polar shaders + dispatch source-patched (needs-hardware)",
+          "mtp + turbo3/4/tcq + qjl + polar shaders + dispatch source-patched (needs-hardware)",
         mic: "ffmpeg -f dshow — or renderer getUserMedia",
         player: "ffplay — or renderer AudioContext",
         vad: "silero-vad-cpp GGUF",
@@ -657,7 +614,7 @@ const PLATFORM_MATRIX = [
         gpu: "vulkan",
         runtime: "llama-server (spawn) — Adreno X1 (Vulkan 1.3)",
         kernels:
-          "dflash + turbo3/4/tcq + qjl + polar shaders + dispatch source-patched (needs-hardware)",
+          "mtp + turbo3/4/tcq + qjl + polar shaders + dispatch source-patched (needs-hardware)",
         mic: "ffmpeg -f dshow — or renderer getUserMedia",
         player: "ffplay — or renderer AudioContext",
         vad: "silero-vad-cpp GGUF (arm64)",
@@ -674,7 +631,7 @@ const PLATFORM_MATRIX = [
         runtime:
           "llama-server (spawn) — fused build serves /v1/audio/speech in-process",
         kernels:
-          "dflash + turbo3/4/tcq + qjl + polar — all 5 graph-dispatched on Apple Silicon",
+          "mtp + turbo3/4/tcq + qjl + polar — all 5 graph-dispatched on Apple Silicon",
         mic: "sox -d (rec) — or ffmpeg -f avfoundation — or renderer getUserMedia",
         player:
           "sox/play — or ffplay — (afplay needs a file, not used) — or renderer AudioContext",
@@ -692,7 +649,7 @@ const PLATFORM_MATRIX = [
       {
         gpu: "metal",
         runtime:
-          "in-process FFI (@elizaos/llama-cpp-capacitor LlamaCpp.xcframework + @elizaos/plugin-aosp-local-inference aosp-llama/dflash adapters) — NOT llama-server-spawn",
+          "in-process FFI (@elizaos/llama-cpp-capacitor LlamaCpp.xcframework + @elizaos/plugin-aosp-local-inference aosp-llama/mtp adapters) — NOT llama-server-spawn",
         kernels:
           "static .a + embedded default.metallib carry the 5 eliza kernel symbols; runtime graph dispatch on-device same as macOS Metal once the xcframework is rebuilt with them",
         mic: "Capacitor Microphone plugin → PushMicSource (no CLI recorder on iOS)",
@@ -712,7 +669,7 @@ const PLATFORM_MATRIX = [
       {
         gpu: "cpu",
         runtime:
-          "in-process FFI (@elizaos/plugin-aosp-local-inference compile-libllama.mjs → libllama .so + aosp-llama/dflash adapters) — NOT llama-server-spawn",
+          "in-process FFI (@elizaos/plugin-aosp-local-inference compile-libllama.mjs → libllama .so + aosp-llama/mtp adapters) — NOT llama-server-spawn",
         kernels:
           "TurboQuant/QJL/Polar CPU SIMD TUs (NEON path) compiled into the .so",
         mic: "Capacitor Microphone plugin → PushMicSource",
@@ -728,7 +685,7 @@ const PLATFORM_MATRIX = [
         runtime:
           "in-process FFI (libllama .so, Vulkan backend) — NOT llama-server-spawn",
         kernels:
-          "dflash + turbo3/4/tcq + qjl + polar shaders + dispatch source-patched (needs-hardware: needs a physical Android Vulkan device)",
+          "mtp + turbo3/4/tcq + qjl + polar shaders + dispatch source-patched (needs-hardware: needs a physical Android Vulkan device)",
         mic: "Capacitor Microphone plugin → PushMicSource",
         player: "Capacitor audio sink → PcmRingBuffer → native AudioTrack",
         vad: "silero-vad-cpp GGUF (Android native library)",
@@ -781,7 +738,7 @@ async function printPlatformReport() {
   log(
     c(
       "dim",
-      "mic → VAD → ASR → forced-grammar LLM (DFlash) → streaming TTS → audio out",
+      "mic → VAD → ASR → forced-grammar LLM (MTP) → streaming TTS → audio out",
     ),
   );
   log("");
@@ -1017,9 +974,9 @@ async function ensureBundleRegistered(catalogEntry, bundleRoot) {
     `registered ${catalogEntry.id} bundle in the local-inference registry (text=${textGguf})`,
   );
 
-  // Register the DFlash drafter companion too (so the engine wires -md).
+  // Register the MTP drafter companion too (so the engine wires -md).
   const companionId =
-    catalogEntry.runtime?.dflash?.drafterModelId ??
+    catalogEntry.runtime?.mtp?.drafterModelId ??
     catalogEntry.companionModelIds?.[0];
   if (companionId) {
     const { findCatalogModel } = await import(
@@ -1041,14 +998,14 @@ async function ensureBundleRegistered(catalogEntry, bundleRoot) {
           source: "eliza-download",
           sha256: null,
           lastVerifiedAt: now,
-          runtimeRole: "dflash-drafter",
+          runtimeRole: "mtp-drafter",
           companionFor: catalogEntry.id,
           ...bundleMeta,
         });
         tag(
           "setup",
           "blue",
-          `registered ${companion.id} (DFlash drafter) at ${drafterGguf}`,
+          `registered ${companion.id} (MTP drafter) at ${drafterGguf}`,
         );
       }
     }
@@ -1111,7 +1068,7 @@ async function bootStandaloneRuntime({ roomId }) {
   await ensureLocalInferenceHandler(runtime);
 
   // Ensure the eliza-1-2b model is assigned to TEXT_SMALL (the eliza-1
-  // tiers route through the dflash llama-server). Best-effort: if no model
+  // tiers route through the mtp llama-server). Best-effort: if no model
   // is installed this throws downstream and the caller reports it.
   try {
     const { setAssignment, readAssignments } = await import(
@@ -1198,24 +1155,10 @@ async function bootStandaloneRuntime({ roomId }) {
 }
 
 // ---------------------------------------------------------------------------
-// DFlash acceptance-rate readout
+// MTP acceptance-rate readout
 // ---------------------------------------------------------------------------
 
-async function readDflashAcceptance() {
-  try {
-    const { dflashLlamaServer } = await import(
-      "../../../plugins/plugin-local-inference/src/services/dflash-server.ts"
-    );
-    // Scrape the running llama-server's /metrics endpoint (drafted/accepted
-    // speculative counters). Returns null when no server / no drafter.
-    if (typeof dflashLlamaServer.getMetrics === "function") {
-      const snap = await dflashLlamaServer.getMetrics();
-      const r = snap?.acceptanceRate;
-      return typeof r === "number" && Number.isFinite(r) ? r : null;
-    }
-  } catch {
-    /* ignore */
-  }
+async function readMtpAcceptance() {
   return null;
 }
 
@@ -1236,11 +1179,11 @@ async function printTurnLatency(_roomId) {
     const t = traces[traces.length - 1];
     if (!t) return;
     const d = t.derived ?? {};
-    const accept = await readDflashAcceptance();
+    const accept = await readMtpAcceptance();
     log(
       c(
         "dim",
-        `  trace: VAD→first-LLM-token=${fmtMs(d.ttftMs)}  →first-replyText-char=${fmtMs(d.envelopeToReplyTextMs)}  →first-TTS-audio=${fmtMs(d.ttfaMs)}  →audio-played=${fmtMs(d.ttapMs)}  dflash-accept=${accept == null ? "—" : `${Math.round(accept * 100)}%`}`,
+        `  trace: VAD→first-LLM-token=${fmtMs(d.ttftMs)}  →first-replyText-char=${fmtMs(d.envelopeToReplyTextMs)}  →first-TTS-audio=${fmtMs(d.ttfaMs)}  →audio-played=${fmtMs(d.ttapMs)}  mtp-accept=${accept == null ? "—" : `${Math.round(accept * 100)}%`}`,
       ),
     );
   } catch {
@@ -1298,14 +1241,14 @@ async function main() {
     process.exit(0);
   }
 
-  // AGENTS.md §4: disabling DFlash is a developer-only kill switch and must
+  // AGENTS.md §4: disabling MTP is a developer-only kill switch and must
   // warn loudly on every generation. Set it up-front so the engine sees it.
-  if (args.noDflash) {
-    process.env.ELIZA_DFLASH_DISABLE = "1";
+  if (args.noMtp) {
+    process.env.ELIZA_MTP_DISABLE = "1";
     log(
       c(
         "red",
-        "⚠  --no-dflash: ELIZA_DFLASH_DISABLE=1 is set. DFlash speculative decoding is OFF. This is a DEVELOPER-ONLY kill switch, NOT a product setting — the eliza-1 path is designed to run with DFlash always on (packages/inference/AGENTS.md §4). Voice latency will be worse. Unset ELIZA_DFLASH_DISABLE to restore the contract.",
+        "⚠  --no-mtp: ELIZA_MTP_DISABLE=1 is set. MTP speculative decoding is OFF. This is a DEVELOPER-ONLY kill switch, NOT a product setting — the eliza-1 path is designed to run with MTP always on (packages/inference/AGENTS.md §4). Voice latency will be worse. Unset ELIZA_MTP_DISABLE to restore the contract.",
       ),
     );
   }

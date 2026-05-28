@@ -192,13 +192,26 @@ export async function handleConnectorRoutes(
     }
     const { name: connectorName, config } = parsed.data;
     if (!state.config.connectors) state.config.connectors = {};
+    const previousConnector = state.config.connectors[connectorName];
     state.config.connectors[connectorName] = cloneWithoutBlockedObjectKeys(
       config,
     ) as ConnectorConfig;
     try {
       saveElizaConfig(state.config);
-    } catch {
-      /* test envs */
+    } catch (err) {
+      if (previousConnector === undefined) {
+        delete state.config.connectors[connectorName];
+      } else {
+        state.config.connectors[connectorName] = previousConnector;
+      }
+      error(
+        res,
+        err instanceof Error
+          ? `Failed to save connector config: ${err.message}`
+          : "Failed to save connector config",
+        500,
+      );
+      return true;
     }
     // Only treat this POST as a disconnect when the incoming payload
     // explicitly sets `enabled: false`. The second clause that read
@@ -241,25 +254,40 @@ export async function handleConnectorRoutes(
       error(res, "Missing or invalid connector name", 400);
       return true;
     }
-    if (
-      state.config.connectors &&
-      Object.hasOwn(state.config.connectors, name)
-    ) {
-      delete state.config.connectors[name];
-    }
+    const previousConnector =
+      state.config.connectors && Object.hasOwn(state.config.connectors, name)
+        ? state.config.connectors[name]
+        : undefined;
+    if (previousConnector !== undefined) delete state.config.connectors?.[name];
     const stateConfigRecord = state.config as Record<string, unknown>;
-    if (
+    const channels =
       stateConfigRecord.channels &&
-      typeof stateConfigRecord.channels === "object" &&
-      Object.hasOwn(stateConfigRecord.channels, name)
-    ) {
-      delete (stateConfigRecord.channels as Record<string, unknown>)[name];
+      typeof stateConfigRecord.channels === "object"
+        ? (stateConfigRecord.channels as Record<string, unknown>)
+        : undefined;
+    const previousChannel =
+      channels && Object.hasOwn(channels, name) ? channels[name] : undefined;
+    if (channels && previousChannel !== undefined) {
+      delete channels[name];
     }
 
     try {
       saveElizaConfig(state.config);
-    } catch {
-      /* test envs */
+    } catch (err) {
+      if (previousConnector !== undefined && state.config.connectors) {
+        state.config.connectors[name] = previousConnector;
+      }
+      if (previousChannel !== undefined && channels) {
+        channels[name] = previousChannel;
+      }
+      error(
+        res,
+        err instanceof Error
+          ? `Failed to save connector config: ${err.message}`
+          : "Failed to save connector config",
+        500,
+      );
+      return true;
     }
     try {
       await emitConnectorDisconnected(state.runtime, name);

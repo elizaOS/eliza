@@ -80,7 +80,7 @@ export function useCharacterState({
       const { character } = await client.getCharacter();
       setCharacterData(character);
       // Replace any un-substituted {{name}} tokens that may have been persisted
-      // to the server before the fix (onboarding saved raw templates).
+      // to the server before the fix (first-run setup saved raw templates).
       const savedName = character.name ?? "";
       const clean = (s: string) => replaceNameTokens(s, savedName);
       setCharacterDraft({

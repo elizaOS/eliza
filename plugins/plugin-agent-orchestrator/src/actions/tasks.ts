@@ -376,8 +376,8 @@ function taskWithResolvedRoute(
     rooms
       ? `Known swarm rooms:\n${rooms}`
       : "Known swarm rooms: task room only.",
-    "If you are blocked, need user input, or must ask the task creator a question, report it with routing kind QUESTION_FOR_TASK_CREATOR.",
-    "If you may conflict with another agent, are editing shared files, or need to share progress with peer agents, report it with routing kind AGENT_COORDINATION.",
+    "If you are blocked, need user input, or must ask the task creator a question, write the question as your reply text and stop. Do not prefix the reply with routing-kind labels (no QUESTION_FOR_TASK_CREATOR / AGENT_COORDINATION headers, no markdown banners) — the orchestrator classifies routing from the session event, not your prose.",
+    "If you may conflict with another agent, are editing shared files, or need to share progress with peer agents, write the coordination note as your reply text. Same rule: no routing-kind labels or banners in the text itself.",
     "When you finish, include what changed, tests run, remaining risks, and whether any peer coordination is still needed.",
     "--- User Task ---",
     task,

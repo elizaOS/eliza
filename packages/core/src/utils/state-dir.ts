@@ -2,8 +2,9 @@
  * Eliza state-dir resolution.
  *
  * Canonical precedence (highest first):
- *   1. `ELIZA_STATE_DIR`
- *   2. `<homedir>/.${ELIZA_NAMESPACE ?? "eliza"}`
+ *   1. `ELIZA_STATE_DIR` (`MILADY_STATE_DIR` alias in branded builds)
+ *   2. `$XDG_STATE_HOME/${ELIZA_NAMESPACE ?? "eliza"}`
+ *   3. `<homedir>/.local/state/${ELIZA_NAMESPACE ?? "eliza"}`
  *
  * Every caller that touches persisted user state (skills, training,
  * optimized prompts, counters, credentials) must go through
@@ -17,7 +18,7 @@
 
 import { cp, mkdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 import { readEnv } from "./read-env.ts";
 
@@ -33,7 +34,7 @@ export function resolveUserPath(input: string): string {
 
 /**
  * Resolve the active namespace used to derive the default state directory
- * (`~/.${namespace}`). Defaults to `"eliza"`.
+ * (`$XDG_STATE_HOME/${namespace}`). Defaults to `"eliza"`.
  */
 export function getElizaNamespace(
 	env: NodeJS.ProcessEnv = process.env,
@@ -43,15 +44,24 @@ export function getElizaNamespace(
 
 /**
  * Resolve the per-user state directory, honoring the documented precedence:
- * `ELIZA_STATE_DIR` > `~/.${ELIZA_NAMESPACE ?? "eliza"}`.
+ * `ELIZA_STATE_DIR`/`MILADY_STATE_DIR` > `$XDG_STATE_HOME/<namespace>` >
+ * `~/.local/state/<namespace>`.
  */
 export function resolveStateDir(
 	env: NodeJS.ProcessEnv = process.env,
 	getHome: () => string = homedir,
 ): string {
-	const explicit = readEnv("ELIZA_STATE_DIR", [], { env });
+	const explicit = readEnv("ELIZA_STATE_DIR", ["MILADY_STATE_DIR"], { env });
 	if (explicit) return resolveUserPath(explicit);
-	return join(getHome(), `.${getElizaNamespace(env)}`);
+	const namespace = getElizaNamespace(env);
+	const xdgStateHome = readEnv("XDG_STATE_HOME", [], { env });
+	if (xdgStateHome) {
+		const base = xdgStateHome.trim();
+		return isAbsolute(base)
+			? join(base, namespace)
+			: join(getHome(), base, namespace);
+	}
+	return join(getHome(), ".local", "state", namespace);
 }
 
 /**

@@ -1,0 +1,159 @@
+[[!meta date="Fri, 06 Sep 2013 09:09:39 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails report for August, 2013"]]
+
+[[!toc levels=1]]
+
+Releases
+========
+
+Tails 0.20 [[was released|news/version_0.20]] on the 9th of August.
+Tails 0.20.1 release is
+scheduled
+for September 19.
+
+Metrics
+=======
+
+- 190 521 connections of Tails to the Tor network. This makes a boot
+  every 14 seconds on average. This is an approximation from the
+  requests made to the security announcements feed when Tails is
+  connected to Tor.
+
+- 93 non-empty bug reports were received through WhisperBack.
+
+- 57 222 downloads of the OpenPGP signature of Tails ISO from
+  our website.
+
+Code
+====
+
+- A new contributor (a.kuckartz) has started to debug what appears to
+  be incompatibilities between our Vagrant setup and the current state
+  of Debian unstable ([[!tails_ticket 6221]]).
+
+- Some initial steps
+  were taken to get
+  VirtualBox guest modules back ([[!tails_ticket 5972]]).
+
+- A branch to
+  properly umount
+  the persistent volume on shutdown was prepared. Thanks to Steven
+  J. Murdoch for the [[!tails_ticket 6228 desc="useful bug report"]].
+
+- The additional software upgrade notification failure message
+  now points
+  the user to the system log so that they have a chance to debug it
+  ([[!tails_ticket 6211]]).
+
+- The I2P IRC network preset in Pidgin
+  was corrected.
+
+- Some initial work to
+  have a consistent
+  persistence path was done ([[!tails_ticket 5854]]).
+
+- Some sanity checks in our test suite
+  were fixed.
+  Another set of
+  test suite improvements has seen progress.
+
+- Starting with Tails 0.20.1, bug reports sent with WhisperBack will
+  be sent to
+  a dedicated (encrypted) mailing list.
+
+- GnuPG now
+  uses --no-emit-version.
+
+- Switch to Linux
+  3.10-2 from Debian unstable.
+
+Documentation and Website
+=========================
+
+- A new contributor (Vigdis) posted drafts to document why Tor is
+  slow
+  and update the persistence path in the
+  documentation.
+  Congrats! ([[!tails_ticket 5641]])
+
+- A new contributor (carmie) proposed logo
+  ideas
+  ([[!tails_ticket 5797]]). Thanks!
+
+- The installation documentation
+  was improved to
+  mention USB sticks and SD card adapters with read-only switches.
+  Some
+  style improvements were done too.
+
+- The website now [[advertises|about]] the use of Tails as
+  a censorship circumvention tool, too.
+
+- A workaround to verify ISO integrity on other operating systems
+  was documented.
+
+- The manual USB installation documentation
+  now recommends
+  using `dd` instead of `cat` (so that those who need it can easily
+  prefix it with `sudo`).
+
+- A revised cold boot attack documentation was
+  drafted
+  and proposed for
+  review.
+
+- The shiny new tails-support mailing list [[was documented|support]].
+
+- The [[news]] page now has a form to subscribe to amnesia-news and
+  mentions Twitter.
+
+On-going discussions
+====================
+
+- We further
+  discussed
+  carmie's
+  proposals
+  to [[!tails_ticket 6165 desc="improve the visibility of links"]] on
+  top of the contribute page.
+
+- Jacob Appelbaum started
+  a discussion
+  about Tahoe-LAFS, Tor and Tails. It should now be clear what kind of
+  work is needed to make some integration possible.
+
+- It was
+  suggested
+  to tweak the GnuPG configuration in various ways.
+
+- We
+  discussed
+  how to handle divergence of bundled packages due to point-releases.
+
+Infrastructure
+==============
+
+- To make our infrastructure more reliable, we are still
+  [[!tails_ticket 6185 desc="organizing to get a system"]] that will
+  act as a fail-over for our main server.
+
+- We better shared access to the round-robin DNS that gathers our HTTP
+  mirrors. (Many thanks to those who host the mirrors, by the way!)
+
+- We created a bunch of sysadmin
+  tickets
+  as a step towards being able to ask for help in this area first, and
+  towards being able to actually share the work with the volunteers
+  that will show up once we have sent our call for help. Stay tuned!
+
+Funding
+=======
+
+- The short-term funding project we have with sponsor Bravo is still
+  slowly going through the paperwork stage.
+
+- The bounties program is moving forward (slower than we may have
+  hoped, but still).
+
+- We keep working on a funding proposal to be sent to sponsor Foxtrot.

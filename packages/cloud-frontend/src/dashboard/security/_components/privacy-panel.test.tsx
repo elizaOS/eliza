@@ -55,10 +55,16 @@ const localStorageFallback: Storage = (() => {
   const store = new Map<string, string>();
   return {
     getItem: (k: string) => store.get(k) ?? null,
-    setItem: (k: string, v: string) => { store.set(k, String(v)); },
-    removeItem: (k: string) => { store.delete(k); },
+    setItem: (k: string, v: string) => {
+      store.set(k, String(v));
+    },
+    removeItem: (k: string) => {
+      store.delete(k);
+    },
     clear: () => store.clear(),
-    get length() { return store.size; },
+    get length() {
+      return store.size;
+    },
     key: (i: number) => [...store.keys()][i] ?? null,
   };
 })();
@@ -71,7 +77,11 @@ beforeEach(() => {
   mocks.toastSuccess.mockReset();
   mocks.toastInfo.mockReset();
   if (!window.localStorage || typeof window.localStorage.clear !== "function") {
-    Object.defineProperty(window, "localStorage", { value: localStorageFallback, writable: true, configurable: true });
+    Object.defineProperty(window, "localStorage", {
+      value: localStorageFallback,
+      writable: true,
+      configurable: true,
+    });
   }
   window.localStorage.clear();
 });

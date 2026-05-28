@@ -153,7 +153,7 @@ void eliza_llama_log_silence(void) {
     llama_log_set(eliza__silent_log, NULL);
 }
 
-// ─── DFlash combined-path (STUB) ─────────────────────────────────────────────
+// ─── MTP combined-path (STUB) ─────────────────────────────────────────────
 // The real implementation must reach into llama.cpp's common/ helpers
 // (common_speculative_*) which are not exposed via the public C API and
 // live in libcommon.a, not libllama.so. Phase B will pull a thin
@@ -163,8 +163,10 @@ void eliza_llama_log_silence(void) {
 
 int32_t eliza_llama_context_attach_drafter(
     void* main_ctx, void* drafter_model,
-    uint32_t n_ctx_draft, int32_t n_gpu_layers_draft) {
-    (void)main_ctx; (void)drafter_model; (void)n_ctx_draft; (void)n_gpu_layers_draft;
+    uint32_t n_ctx_draft, int32_t n_gpu_layers_draft,
+    int32_t n_parallel) {
+    (void)main_ctx; (void)drafter_model; (void)n_ctx_draft;
+    (void)n_gpu_layers_draft; (void)n_parallel;
     return -38; // -ENOSYS
 }
 
@@ -176,15 +178,50 @@ int32_t eliza_llama_context_set_spec_mode(
 
 int32_t eliza_llama_decode_unified(void* ctx, void* batch) {
     // AUTO/NONE fallback: until the drafter wiring lands, decode_unified
-    // delegates to plain decode. Callers that explicitly set spec_mode=DFLASH
+    // delegates to plain decode. Callers that explicitly set spec_mode=MTP
     // already get -ENOSYS from set_spec_mode and won't reach this path.
     return eliza_llama_decode(ctx, batch);
 }
 
-void eliza_llama_dflash_stats(void* ctx, int32_t* out) {
+void eliza_llama_context_detach_drafter(void* main_ctx) {
+    // Stub: no-op until the C++ wrapper over common_speculative lands.
+    // The adapter calls this on context teardown; a no-op is safe because
+    // attach_drafter is itself a stub returning -ENOSYS, so there's no
+    // drafter to detach.
+    (void)main_ctx;
+}
+
+int32_t eliza_llama_context_has_drafter(void* main_ctx) {
+    // Stub: paired with attach_drafter — until that's wired, no context
+    // ever has a drafter attached.
+    (void)main_ctx;
+    return 0;
+}
+
+void eliza_llama_mtp_stats(void* ctx, int32_t* out) {
     (void)ctx;
     if (!out) return;
     out[0] = 0; out[1] = 0; out[2] = 0; out[3] = 0;
+}
+
+void eliza_llama_mtp_stats_ex(void* ctx, struct eliza_mtp_stats* out) {
+    // Stub for the extended telemetry struct (see eliza_llama_shim.h).
+    (void)ctx;
+    if (!out) return;
+    out->decoded = 0;
+    out->drafted = 0;
+    out->accepted = 0;
+    out->drafted_rejected = 0;
+    out->verify_steps = 0;
+}
+
+int32_t eliza_llama_context_handle_memory_pressure(void* main_ctx, int32_t level) {
+    // Stub: no drafter side-state to free, no KV to evict at this layer.
+    // Returns 0 (nothing freed) so memory-pressure callers fall through to
+    // their next strategy. Real wiring lands with the C++ speculative path.
+    (void)main_ctx;
+    (void)level;
+    return 0;
 }
 
 // ─── token-tree sampler ──────────────────────────────────────────────────────

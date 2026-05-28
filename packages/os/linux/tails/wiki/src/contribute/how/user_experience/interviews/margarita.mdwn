@@ -1,0 +1,31 @@
+[[!meta title="Margarita, March 2017"]]
+
+Margarita is a digital security consultant in Latin America. She used to
+develop autonomous communication infrastructures and is now focusing on
+training human-right defenders and organizations in digital security.
+She has been presenting Tails mostly to two different public:
+
+- Family members of missing people. For example working on building
+  lists of missing people and DNA databases. People often disappear
+  while traveling on roads and, as a consequence, people are sometimes
+  refraining from moving. So it's a challenge to transmit information
+  from one place to another or to be able to travel without carrying
+  sensitive information. For example, someone wanted to train people on
+  how to build a list of missing people in a community and decided to
+  travel to the community without a computer and only use Tails there.
+- Women sharing abortion techniques and resources. They are often women
+  who cannot turn to their families to ask questions and look for
+  solutions and otherwise go and ask Google.
+
+Things she likes:
+
+- In the case of documenting missing people, they find the learning
+  curve worth it.
+- It's portable: you keep it in your pocket and you don't have to
+  install anything else.
+
+Things she dislikes:
+
+- Tails became harder to boot on newer computers.
+- In the case of women sharing abortion techniques, the learning curve
+  made it harder to adopt.

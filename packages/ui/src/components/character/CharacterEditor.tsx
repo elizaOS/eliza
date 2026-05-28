@@ -30,8 +30,8 @@ import {
 } from "./CharacterRoster";
 import {
   buildCharacterDraftFromPreset,
-  getOnboardingPresetStyles,
-  type OnboardingPreset,
+  type FirstRunPreset,
+  getFirstRunPresetStyles,
   shouldApplyPresetDefaults,
 } from "./character-editor-helpers";
 import { resolveCharacterGreetingAnimation } from "./character-greeting";
@@ -176,7 +176,7 @@ export function CharacterEditor({
     handleSaveCharacter,
     loadCharacter,
     setState,
-    onboardingOptions,
+    firstRunOptions,
     selectedVrmIndex,
     customVrmUrl: _customVrmUrl,
     customVrmPreviewUrl,
@@ -276,12 +276,12 @@ export function CharacterEditor({
     catchphrase: string;
     animationPath: string | null;
   } | null>(null);
-  const onboardingPresetStyles = useMemo(
-    () => getOnboardingPresetStyles(onboardingOptions),
-    [onboardingOptions],
+  const firstRunPresetStyles = useMemo(
+    () => getFirstRunPresetStyles(firstRunOptions),
+    [firstRunOptions],
   );
-  const [rosterStyles, setRosterStyles] = useState<OnboardingPreset[]>([
-    ...onboardingPresetStyles,
+  const [rosterStyles, setRosterStyles] = useState<FirstRunPreset[]>([
+    ...firstRunPresetStyles,
   ]);
 
   /* ── Voice config state ─────────────────────────────────────────── */
@@ -318,11 +318,11 @@ export function CharacterEditor({
 
   /* ── Load roster ────────────────────────────────────────────────── */
   // Use static STYLE_PRESETS shipped in the frontend bundle — no API call
-  // needed. If the server provides styles via onboardingOptions, prefer those.
+  // needed. If the server provides styles via firstRunOptions, prefer those.
   useEffect(() => {
     const localizedPresets = getStylePresets(uiLanguage);
-    if (onboardingPresetStyles.length) {
-      const merged = onboardingPresetStyles.map((serverPreset) => {
+    if (firstRunPresetStyles.length) {
+      const merged = firstRunPresetStyles.map((serverPreset) => {
         const localMeta = localizedPresets.find(
           (p) =>
             p.id === serverPreset.id ||
@@ -336,25 +336,25 @@ export function CharacterEditor({
           avatarIndex: localMeta?.avatarIndex,
           voicePresetId: localMeta?.voicePresetId,
           greetingAnimation: localMeta?.greetingAnimation,
-        } as OnboardingPreset;
+        } as FirstRunPreset;
       });
       setRosterStyles(merged);
     } else {
       setRosterStyles(localizedPresets);
     }
-  }, [onboardingPresetStyles, uiLanguage]);
+  }, [firstRunPresetStyles, uiLanguage]);
 
   const baseRosterEntries = useMemo(() => {
     const base = resolveRosterEntries(rosterStyles);
     if (activePackId && _customVrmUrl) {
-      const customOnboardingName =
+      const customFirstRunName =
         typeof characterData?.name === "string" && characterData.name.trim()
           ? characterData.name
           : "Custom";
       base.unshift(
         createCustomPackRosterEntry({
           id: activePackId,
-          name: customOnboardingName,
+          name: customFirstRunName,
           previewUrl: customVrmPreviewUrl || undefined,
           catchphrase: customCatchphrase || undefined,
           voicePresetId: customVoicePresetId || undefined,

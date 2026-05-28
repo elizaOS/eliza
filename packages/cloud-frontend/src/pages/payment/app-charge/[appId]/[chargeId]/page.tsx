@@ -370,7 +370,7 @@ export default function AppChargePaymentPage() {
                 checkoutProvider !== null
               }
               onClick={() => beginCheckout("stripe")}
-              className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 border border-orange-300/25 bg-orange-400/10 text-orange-100 transition hover:border-orange-200/60 hover:bg-orange-300/15 disabled:pointer-events-none disabled:opacity-30"
+              className="group flex aspect-[1.35] min-h-28 flex-col items-center justify-center gap-3 bg-orange-400/10 text-orange-100 transition hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-30"
             >
               {checkoutProvider === "stripe" ? (
                 <Loader2 className="h-9 w-9 animate-spin" />

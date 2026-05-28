@@ -1,0 +1,21 @@
+[[!meta date="Wed, 22 Dec 2010 11:12:13 +0000"]]
+[[!meta title="Numerous security holes in T(A)ILS 0.6"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+The following security holes affect T(A)ILS 0.6.
+
+We **strongly** urge you to [[upgrade to T(A)ILS
+0.6.1|news/version_0.6.1]] in case you are still using an older version.
+
+  - Tor (DSA-2136-1)
+  - Iceweasel libraries: xulrunner (DSA-2124, DSA-2132), NSS (DSA-2123)
+  - Linux kernel (DSA-2126)
+  - OpenSSL (DSA-2125)
+  - Glibc (DSA-2122)
+  - bind9 (DSA-2130)
+  - libxml2 (DSA-2128)
+
+These are Debian security announces; details can be found on
+<http://security.debian.org/>.

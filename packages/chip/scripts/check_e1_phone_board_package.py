@@ -11,6 +11,15 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "board/kicad/e1-phone/artifact-manifest.yaml"
 PUBLIC_SOURCE_STATUS_RE = re.compile(r"^(public_listing|vendor_page)_observed_20\d{2}_\d{2}_\d{2}$")
+BOARD_PACKAGE_PATH_RE = re.compile(r"board/kicad/e1-phone/[^\"'\s),\]}]+")
+BLOCKED_CANDIDATE_INLINE_MARKERS = (
+    "blocked local factory candidate, not release evidence",
+    "blocked candidate, not release evidence",
+    "supplier-return placeholder",
+    "blocked_pending_supplier_return",
+    "not_approved,blocked",
+    "blocked,not_approved",
+)
 
 
 def load_yaml(path: Path):
@@ -21,6 +30,65 @@ def load_yaml(path: Path):
 def require_path(path: Path) -> None:
     if not path.exists():
         raise SystemExit(f"missing required artifact: {path}")
+
+
+def is_blocked_candidate_artifact(path: Path) -> bool:
+    if not path.exists():
+        return False
+    probe = path
+    if path.is_dir():
+        for name in ("release-manifest.yaml", "manifest.yaml"):
+            candidate = path / name
+            if candidate.is_file():
+                probe = candidate
+                break
+        else:
+            return False
+    if probe.is_file() and probe.suffix not in {".yaml", ".yml", ".json"}:
+        for suffix in (".metadata.yaml", ".metadata.yml", ".metadata.json"):
+            sidecar = probe.with_name(probe.name + suffix)
+            if sidecar.is_file():
+                probe = sidecar
+                break
+        else:
+            try:
+                sample = probe.read_bytes()[:4096].decode("utf-8", errors="ignore").lower()
+            except Exception:
+                return False
+            return (
+                any(marker in sample for marker in BLOCKED_CANDIDATE_INLINE_MARKERS)
+                or (
+                    "release_credit: false" in sample
+                    and ("not supplier evidence" in sample or "placeholder" in sample)
+                )
+                or (
+                    "release_credit" in sample
+                    and "false" in sample
+                    and "blocked_pending_supplier_return" in sample
+                )
+            )
+    if not probe.is_file() or probe.suffix not in {".yaml", ".yml", ".json"}:
+        return False
+    try:
+        data = (
+            load_yaml(probe) if probe.suffix in {".yaml", ".yml"} else json.loads(probe.read_text())
+        )
+    except Exception:
+        return False
+    if not isinstance(data, dict):
+        return False
+    disposition = str(data.get("disposition", "")).lower()
+    status = str(data.get("status", "")).lower()
+    return (
+        data.get("release_allowed") is False
+        or data.get("release_credit") is False
+        or disposition.startswith("blocked")
+        or status.startswith("blocked")
+    )
+
+
+def is_release_artifact_present(path: Path) -> bool:
+    return path.exists() and not is_blocked_candidate_artifact(path)
 
 
 def is_public_source_status(value: object) -> bool:
@@ -580,8 +648,7 @@ def check_top_bottom_interconnect_plan() -> None:
     for blocker_aliases in required_release_blockers:
         if not release_blockers.intersection(blocker_aliases):
             raise SystemExit(
-                "top/bottom interconnect plan missing release blocker: "
-                f"{blocker_aliases[0]}"
+                f"top/bottom interconnect plan missing release blocker: {blocker_aliases[0]}"
             )
     for claim in [
         "interconnect_ready",
@@ -1226,6 +1293,7 @@ def check_supplier_rfq_response_normalization() -> None:
         }
     )
     response_packs_present: list[str] = []
+    response_pack_placeholders_present: list[str] = []
     response_packs_missing: list[str] = []
     for function, record in records.items():
         intake_line = intake_lines[function]
@@ -1283,7 +1351,20 @@ def check_supplier_rfq_response_normalization() -> None:
                 )
         response_pack = ROOT / record["planned_response_pack"]
         if response_pack.exists():
-            response_packs_present.append(record["planned_response_pack"])
+            try:
+                response_pack_data = load_yaml(response_pack)
+            except Exception:
+                response_pack_data = {}
+            if (
+                isinstance(response_pack_data, dict)
+                and response_pack_data.get("release_credit") is False
+                and str(response_pack_data.get("schema", "")).endswith(
+                    "supplier_return_intake_placeholder.v1"
+                )
+            ):
+                response_pack_placeholders_present.append(record["planned_response_pack"])
+            else:
+                response_packs_present.append(record["planned_response_pack"])
         else:
             response_packs_missing.append(record["planned_response_pack"])
 
@@ -1306,12 +1387,17 @@ def check_supplier_rfq_response_normalization() -> None:
         raise SystemExit("supplier RFQ response normalization expected pack count stale")
     if outputs["present_response_pack_count"] != len(response_packs_present):
         raise SystemExit("supplier RFQ response normalization present pack count stale")
-    if outputs["missing_response_pack_count"] != len(response_packs_missing):
+    release_missing_response_pack_count = len(response_packs_missing) + len(
+        response_pack_placeholders_present
+    )
+    if outputs["missing_response_pack_count"] != release_missing_response_pack_count:
         raise SystemExit("supplier RFQ response normalization missing pack count stale")
     if response_packs_present:
         raise SystemExit(
             f"supplier RFQ response normalization response packs unexpectedly exist: {response_packs_present}"
         )
+    if len(response_pack_placeholders_present) != len(records):
+        raise SystemExit("supplier RFQ response normalization placeholder pack coverage stale")
     if outputs["every_planned_response_pack_absent"] is not True:
         raise SystemExit("supplier RFQ response normalization must remain fail-closed")
 
@@ -1343,7 +1429,7 @@ def check_supplier_rfq_response_normalization() -> None:
             raise SystemExit(f"supplier RFQ response normalization missing forbidden claim {claim}")
     print(
         "supplier RFQ response normalization ok: "
-        f"{len(records)} functions, {len(response_packs_missing)} response packs absent"
+        f"{len(records)} functions, {release_missing_response_pack_count} response packs absent"
     )
 
 
@@ -3146,7 +3232,7 @@ def check_usb_sidekey_integration() -> None:
                 )
             if routed_clearance["complete_clearance_result_count"] != 0:
                 raise SystemExit("USB/side-key integration routed clearance has release results")
-        elif (ROOT / output).exists():
+        elif is_release_artifact_present(ROOT / output):
             raise SystemExit(
                 f"USB/side-key integration release output unexpectedly exists: {output}"
             )
@@ -4031,11 +4117,11 @@ def check_radio_module_integration() -> None:
             "package/wifi/evidence/regulatory",
             "package/cellular/evidence/carrier-certification",
         }:
-            if (ROOT / output).exists():
+            if is_release_artifact_present(ROOT / output):
                 raise SystemExit(
                     f"radio module integration evidence directory unexpectedly exists: {output}"
                 )
-        elif (ROOT / output).exists():
+        elif is_release_artifact_present(ROOT / output):
             raise SystemExit(
                 f"radio module integration release output unexpectedly exists: {output}"
             )
@@ -5073,7 +5159,7 @@ def check_module_host_integration_closure() -> None:
             raise SystemExit(
                 f"module host integration release output path escapes reports: {output}"
             )
-        if (ROOT / output).exists():
+        if is_release_artifact_present(ROOT / output):
             raise SystemExit(
                 f"module host integration release output unexpectedly exists: {output}"
             )
@@ -5569,6 +5655,7 @@ def check_supplier_sample_release_gate() -> None:
         raise SystemExit(f"supplier sample release gate expected 10 records, got {len(records)}")
 
     present_paths: list[str] = []
+    placeholder_paths: list[str] = []
     missing_paths: list[str] = []
     for function, record in records.items():
         evidence = evidence_records[function]
@@ -5606,8 +5693,10 @@ def check_supplier_sample_release_gate() -> None:
 
         for evidence_path in evidence["required_production_evidence"].values():
             path = ROOT / evidence_path
-            if path.exists():
+            if is_release_artifact_present(path):
                 present_paths.append(evidence_path)
+            elif path.exists():
+                placeholder_paths.append(evidence_path)
             else:
                 missing_paths.append(evidence_path)
 
@@ -5621,7 +5710,8 @@ def check_supplier_sample_release_gate() -> None:
         raise SystemExit("supplier sample release inventory required path count stale")
     if inventory["present_evidence_path_count"] != len(present_paths):
         raise SystemExit("supplier sample release inventory present path count stale")
-    if inventory["missing_evidence_path_count"] != len(missing_paths):
+    release_missing_evidence_path_count = len(missing_paths) + len(placeholder_paths)
+    if inventory["missing_evidence_path_count"] != release_missing_evidence_path_count:
         raise SystemExit("supplier sample release inventory missing path count stale")
     if present_paths:
         raise SystemExit(
@@ -6795,7 +6885,14 @@ def check_trial_route_input_matrix() -> None:
     if set(gate_records) != set(response_records):
         raise SystemExit("trial route matrix supplier sample gate function set diverges")
 
-    present_response_packs = sorted(path for path in response_packs if (ROOT / path).exists())
+    present_response_packs = sorted(
+        path for path in response_packs if is_release_artifact_present(ROOT / path)
+    )
+    placeholder_response_packs = sorted(
+        path
+        for path in response_packs
+        if (ROOT / path).exists() and not is_release_artifact_present(ROOT / path)
+    )
     missing_response_packs = sorted(path for path in response_packs if not (ROOT / path).exists())
     inventory = matrix["input_inventory"]
     if inventory["trial_route_domain_count"] != len(domains):
@@ -6806,7 +6903,10 @@ def check_trial_route_input_matrix() -> None:
         raise SystemExit("trial route matrix response pack count stale")
     if inventory["present_response_pack_count"] != len(present_response_packs):
         raise SystemExit("trial route matrix present response pack count stale")
-    if inventory["missing_response_pack_count"] != len(missing_response_packs):
+    release_missing_response_pack_count = len(missing_response_packs) + len(
+        placeholder_response_packs
+    )
+    if inventory["missing_response_pack_count"] != release_missing_response_pack_count:
         raise SystemExit("trial route matrix missing response pack count stale")
     if inventory["routed_segment_count"] != counts["segment_count"]:
         raise SystemExit("trial route matrix routed segment count stale")
@@ -6826,6 +6926,8 @@ def check_trial_route_input_matrix() -> None:
     for output in matrix["required_trial_route_outputs"]:
         path = ROOT / output
         if not path.exists():
+            continue
+        if not is_release_artifact_present(path):
             continue
         placeholder = allowed_placeholders.get(output)
         if placeholder is None:
@@ -6863,7 +6965,7 @@ def check_trial_route_input_matrix() -> None:
             raise SystemExit(f"trial route matrix missing forbidden claim {claim}")
     print(
         "trial route input matrix ok: "
-        f"{len(domains)} domains, {len(missing_response_packs)} response packs absent"
+        f"{len(domains)} domains, {release_missing_response_pack_count} response packs absent"
     )
 
 
@@ -8034,20 +8136,21 @@ def check_component_height_step_integration() -> None:
         raise SystemExit("component height routed clearance status stale")
     if routed["production_step_files"] != board_step["production_step_files"]:
         raise SystemExit("component height production STEP files stale")
-    for key in [
-        "has_tracks",
-        "has_filled_zones",
-        "has_production_step",
-        "placeholder_marker_count",
-    ]:
-        if routed[key] != board_state[key]:
+    routed_board_state_key_map = {
+        "production_concept_has_tracks": "has_tracks",
+        "production_concept_has_filled_zones": "has_filled_zones",
+        "has_production_step": "has_production_step",
+        "production_concept_placeholder_marker_count": "placeholder_marker_count",
+    }
+    for key, board_key in routed_board_state_key_map.items():
+        if routed[key] != board_state[board_key]:
             raise SystemExit(f"component height routed board context stale: {key}")
     if (
         routed["concept_split_island_geometry_matches_kicad"]
         != board_step["concept_split_island_geometry"]["matches"]
     ):
         raise SystemExit("component height split island geometry status stale")
-    if routed["has_tracks"] or routed["has_production_step"]:
+    if routed["production_concept_has_tracks"] or routed["has_production_step"]:
         raise SystemExit("component height cannot claim routed tracks or production STEP")
 
     supplier = integration["supplier_geometry_context"]
@@ -8145,7 +8248,7 @@ def check_component_height_step_integration() -> None:
         if output not in integration["required_release_outputs"]:
             raise SystemExit(f"component height missing release output {output}")
     for blocker in [
-        "routed KiCad board STEP with component 3D models is missing",
+        "local real-footprint routed STEP exists for visual review only; supplier-approved production STEP with component 3D models is missing",
         "routed-board clearance rerun has not passed",
         "concept STEP envelopes are not supplier-approved geometry",
         "full CAD boolean interference report using routed board and supplier models is missing",
@@ -8287,13 +8390,19 @@ def check_enclosure_fit_execution_package() -> None:
     if blockers["production_step_files"] != board_step["production_step_files"]:
         raise SystemExit("enclosure fit execution production STEP list stale")
     if (
-        blockers["placeholder_marker_count"]
+        blockers["production_concept_placeholder_marker_count"]
         != board_step["board_state_detected"]["placeholder_marker_count"]
     ):
         raise SystemExit("enclosure fit execution placeholder count stale")
-    if blockers["has_tracks"] != manufacturing["board_state_detected"]["has_tracks"]:
+    if (
+        blockers["production_concept_has_tracks"]
+        != manufacturing["board_state_detected"]["has_tracks"]
+    ):
         raise SystemExit("enclosure fit execution routed track state stale")
-    if blockers["has_filled_zones"] != manufacturing["board_state_detected"]["has_filled_zones"]:
+    if (
+        blockers["production_concept_has_filled_zones"]
+        != manufacturing["board_state_detected"]["has_filled_zones"]
+    ):
         raise SystemExit("enclosure fit execution zone state stale")
     if blockers["has_production_step"]:
         raise SystemExit("enclosure fit execution unexpectedly sees production STEP")
@@ -8343,7 +8452,7 @@ def check_enclosure_fit_execution_package() -> None:
     for blocker in [
         "routed KiCad PCB and DRC report are missing",
         "supplier STEP or B-rep models for height-critical parts are missing",
-        "routed board STEP has not been exported or imported into enclosure CAD",
+        "local routed real-footprint STEP exists for visual review only; supplier-approved routed board STEP has not passed enclosure CAD import or clearance",
         "routed-board clearance, boolean interference, and physical fit results are missing",
         "display, USB-C, side-key, camera, radio, battery, acoustic, and interconnect functional evidence is missing",
     ]:
@@ -8487,7 +8596,7 @@ def check_power_sequence_bringup_closure() -> None:
             and not output.startswith("board/kicad/e1-phone/production/reports/")
         ):
             raise SystemExit(f"power sequence release output path escapes reports: {output}")
-        if (ROOT / output).exists():
+        if is_release_artifact_present(ROOT / output):
             raise SystemExit(f"power sequence release output unexpectedly exists: {output}")
     if production["status"] == "production_ready":
         raise SystemExit("power sequence cannot see production ready")
@@ -10258,7 +10367,7 @@ def check_factory_probe_map() -> None:
         "fixture and pogo-pin accessibility not validated against enclosure and component heights",
         "factory-test limits not derived from first article measurements",
         "RF conducted and shield-box procedures not approved",
-        "secure provisioning and traceability flow not implemented",
+        "secure provisioning and traceability flow pending factory process definition",
     ]:
         if blocker not in probe["release_blockers"]:
             raise SystemExit(f"factory probe map missing blocker: {blocker}")
@@ -11910,8 +12019,8 @@ def check_routed_board_step_export_contract() -> None:
         if check_id not in required_checks:
             raise SystemExit(f"routed board STEP export missing post-export check {check_id}")
     for blocker in [
-        "routed KiCad PCB source is missing",
-        "production STEP export is missing",
+        "production routed KiCad PCB source is present only as non-release local candidate evidence",
+        "candidate routed board STEP exists for review only; supplier-approved production STEP export is missing",
         "supplier component STEP/B-rep models are missing",
         "routed-board clearance rerun is blocked",
         "full CAD boolean interference using routed board and supplier geometry is blocked",
@@ -12570,10 +12679,10 @@ def check_routed_layout_readiness_binding() -> None:
         if value is not True:
             raise SystemExit(f"routed layout readiness cross-check failed: {key}")
     for blocker in [
-        "routed KiCad PCB source is missing",
+        "production routed KiCad PCB source is present only as non-release local candidate evidence",
         "no routed copper segments or filled zones are present in the KiCad PCB",
         "PCB has no routed copper, filled zones, or DRC evidence",
-        "production STEP export is missing",
+        "candidate routed board STEP exists for review only; supplier-approved production STEP export is missing",
         "routed-board clearance rerun is blocked",
     ]:
         if blocker not in binding["release_blockers"]:
@@ -12702,8 +12811,10 @@ def check_first_article_route_execution_order() -> None:
         present = 0
         for evidence in phase["required_exit_evidence"]:
             if "*" in evidence:
-                present += len(list(ROOT.glob(evidence)))
-            elif (ROOT / evidence).exists():
+                present += sum(
+                    1 for candidate in ROOT.glob(evidence) if is_release_artifact_present(candidate)
+                )
+            elif is_release_artifact_present(ROOT / evidence):
                 present += 1
         if phase["present_exit_evidence_count"] != present:
             raise SystemExit(f"first-article route phase evidence count stale: {phase['id']}")
@@ -12744,7 +12855,7 @@ def check_first_article_route_execution_order() -> None:
         expected_path = release_manifest[output_id]["expected_path"]
         if item["expected_path"] != expected_path:
             raise SystemExit(f"first-article route handoff path stale: {output_id}")
-        present = (ROOT / expected_path).exists()
+        present = is_release_artifact_present(ROOT / expected_path)
         if item["present"] != present:
             raise SystemExit(f"first-article route handoff presence stale: {output_id}")
         if present:
@@ -12765,7 +12876,7 @@ def check_first_article_route_execution_order() -> None:
             raise SystemExit(f"first-article route handoff STEP source stale: {evidence_id}")
         if item["expected_path"] != expected_path:
             raise SystemExit(f"first-article route handoff STEP path stale: {evidence_id}")
-        present = (ROOT / expected_path).exists()
+        present = is_release_artifact_present(ROOT / expected_path)
         if item["present"] != present:
             raise SystemExit(f"first-article route handoff STEP presence stale: {evidence_id}")
         if present:
@@ -12802,7 +12913,7 @@ def check_first_article_route_execution_order() -> None:
                 raise SystemExit(
                     f"first-article route handoff mechanical path stale: {evidence_id}"
                 )
-        release_present = (ROOT / expected["production_release_path"]).exists()
+        release_present = is_release_artifact_present(ROOT / expected["production_release_path"])
         if item["present"] != release_present:
             raise SystemExit(
                 f"first-article route handoff mechanical presence stale: {evidence_id}"
@@ -12973,7 +13084,9 @@ def check_post_route_validation_binding() -> None:
         raise SystemExit("post-route validation must remain blocked before routed outputs")
 
     outputs = binding["required_validation_outputs"]
-    present_outputs = [name for name, rel_path in outputs.items() if (ROOT / rel_path).exists()]
+    present_outputs = [
+        name for name, rel_path in outputs.items() if is_release_artifact_present(ROOT / rel_path)
+    ]
     inventory = binding["validation_output_inventory"]
     if inventory["required_output_count"] != len(outputs):
         raise SystemExit("post-route validation output count stale")
@@ -13069,7 +13182,9 @@ def check_post_route_validation_binding() -> None:
             )
         if len(item["required_evidence"]) < 3:
             raise SystemExit(f"post-route selected hardware evidence too weak: {function}")
-        present_evidence = [path for path in item["required_evidence"] if (ROOT / path).exists()]
+        present_evidence = [
+            path for path in item["required_evidence"] if is_release_artifact_present(ROOT / path)
+        ]
         if present_evidence:
             raise SystemExit(
                 f"post-route selected hardware evidence unexpectedly present: {present_evidence}"
@@ -13117,7 +13232,7 @@ def check_post_route_validation_binding() -> None:
     handoff_present = [
         key
         for key, rel_path in handoff["required_output_paths"].items()
-        if (ROOT / rel_path).exists()
+        if is_release_artifact_present(ROOT / rel_path)
     ]
     if handoff["present_output_count"] != len(handoff_present):
         raise SystemExit("post-route validation handoff present count stale")
@@ -13957,6 +14072,7 @@ def check_end_to_end_readiness() -> None:
         post_route_outputs["si_pi_report_directory"],
         post_route_outputs["rf_report_directory"],
         post_route_outputs["power_thermal_report_directory"],
+        post_route_outputs["supplier_component_3d_model_manifest"],
         post_route_outputs["routed_board_step"],
         post_route_outputs["routed_clearance_release"],
     ]
@@ -13965,7 +14081,7 @@ def check_end_to_end_readiness() -> None:
     evidence_paths = [
         evidence for item in post_route_matrix for evidence in item["required_evidence"]
     ]
-    present_evidence = [path for path in evidence_paths if (ROOT / path).exists()]
+    present_evidence = [path for path in evidence_paths if is_release_artifact_present(ROOT / path)]
     if present_evidence:
         raise SystemExit(
             f"end-to-end selected hardware evidence unexpectedly present: {present_evidence}"
@@ -14070,7 +14186,11 @@ def check_supplier_pinout_evidence() -> None:
     if not captured:
         raise SystemExit("supplier pinout manifest captured nothing")
     allowed_evidence_classes = set(manifest["cross_checks"]["captured_files_evidence_class"])
-    if not allowed_evidence_classes <= {"public_supplier_datasheet", "public_som_connector_pinout"}:
+    if not allowed_evidence_classes <= {
+        "public_supplier_datasheet",
+        "public_som_connector_pinout",
+        "public_hardware_design_pdf",
+    }:
         raise SystemExit(
             "supplier pinout manifest declares a non-public evidence class: "
             f"{sorted(allowed_evidence_classes)}"
@@ -14143,6 +14263,8 @@ def check_supplier_pinout_evidence() -> None:
 # Files under board/kicad/e1-phone/ that are intentionally owned by a gate or
 # test other than this structural check. Each entry names the owning flow so the
 # orphan report below stays a deliberate allow-list, not a silent escape hatch.
+BOARD_PACKAGE_PATH_RE = re.compile(r"board/kicad/e1-phone/[A-Za-z0-9_./<>-]+")
+BOARD_PACKAGE_TRACKED_SUFFIXES = {".yaml", ".yml", ".csv"}
 NON_BOARD_PACKAGE_OWNED_FILES = {
     # Non-release routing demonstration set: generated by
     # scripts/generate_e1_phone_routed_mainboard_demo.py and validated by
@@ -14150,7 +14272,59 @@ NON_BOARD_PACKAGE_OWNED_FILES = {
     "board/kicad/e1-phone/pcb-implementation-audit-demo.yaml": "generate_e1_phone_routed_mainboard_demo.py",
     "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-bom.csv": "generate_e1_phone_routed_mainboard_demo.py",
     "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-pos.csv": "generate_e1_phone_routed_mainboard_demo.py",
+    "board/kicad/e1-phone/kicad-cad-end-to-end-stub-audit-2026-05-22.yaml": "cad-stub-audit",
+    "board/kicad/e1-phone/production/readiness/enclosure-readiness-gap-map-2026-05-22.yaml": "product_check.py",
+    "board/kicad/e1-phone/production/readiness/release-approval-signature-blocker-matrix-2026-05-23.yaml": "check_e1_phone_release_approval_signatures.py",
+    "board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-executed-log-contract-2026-05-22.yaml": "e1_phone_first_article_executed_log_contract.py",
+    "board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-missing-evidence-2026-05-22.yaml": "e1_phone_first_article_missing_evidence_diagnostic.py",
 }
+
+
+def normalize_board_package_path(raw_path: str) -> str | None:
+    match = BOARD_PACKAGE_PATH_RE.search(raw_path)
+    if not match:
+        return None
+    return match.group(0).rstrip(".,:;)]}")
+
+
+def consume_board_package_path(consumed: set[str], raw_path: str) -> None:
+    rel = normalize_board_package_path(raw_path)
+    if rel is None:
+        return
+    consumed.add(rel)
+
+    path = ROOT / rel
+    for suffix in (".metadata.yaml", ".metadata.yml", ".metadata.json"):
+        sidecar = path.with_name(path.name + suffix)
+        if sidecar.is_file():
+            consumed.add(str(sidecar.relative_to(ROOT)))
+
+    if path.is_dir() and is_blocked_candidate_artifact(path):
+        for child in path.rglob("*"):
+            if child.is_file() and child.suffix in BOARD_PACKAGE_TRACKED_SUFFIXES:
+                consumed.add(str(child.relative_to(ROOT)))
+
+
+def expand_consumed_board_references(consumed: set[str]) -> None:
+    scanned: set[str] = set()
+    queue = list(consumed)
+    while queue:
+        rel = queue.pop()
+        if rel in scanned:
+            continue
+        scanned.add(rel)
+        path = ROOT / rel
+        if path.is_dir():
+            release_manifest = path / "release-manifest.yaml"
+            if release_manifest.is_file():
+                consume_board_package_path(consumed, str(release_manifest.relative_to(ROOT)))
+            continue
+        if not path.is_file() or path.suffix not in {".yaml", ".yml", ".json"}:
+            continue
+        before = set(consumed)
+        for match in BOARD_PACKAGE_PATH_RE.findall(path.read_text(encoding="utf-8")):
+            consume_board_package_path(consumed, match)
+        queue.extend(consumed - before)
 
 
 def check_no_orphaned_board_files() -> None:
@@ -14162,7 +14336,7 @@ def check_no_orphaned_board_files() -> None:
         consumed.update(paths)
 
     source = Path(__file__).read_text()
-    consumed.update(re.findall(r"board/kicad/e1-phone/[^\"'\s)]+", source))
+    consumed.update(BOARD_PACKAGE_PATH_RE.findall(source))
     consumed.update(NON_BOARD_PACKAGE_OWNED_FILES)
 
     # The RFQ transmittal drafts are addressed by computed paths, not string
@@ -14171,12 +14345,37 @@ def check_no_orphaned_board_files() -> None:
     drafts = load_yaml(ROOT / "board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml")
     consumed.update(drafts["generated_draft_files"])
 
+    supplier_intake = load_yaml(
+        ROOT / "board/kicad/e1-phone/production/sourcing/"
+        "supplier-evidence-outbound-intake-manifest-2026-05-22.yaml"
+    )
+    consumed.add(
+        "board/kicad/e1-phone/production/sourcing/"
+        "supplier-evidence-outbound-intake-manifest-2026-05-22.yaml"
+    )
+    for record in supplier_intake["template_records"]:
+        for key in ("template", "expected_return_archive"):
+            if key in record:
+                consumed.add(record[key])
+        for key in ("expected_return_archives",):
+            for archive in record.get(key, []):
+                consumed.add(archive)
+        archive_paths = []
+        if "expected_return_archive" in record:
+            archive_paths.append(record["expected_return_archive"])
+        archive_paths.extend(record.get("expected_return_archives", []))
+        for archive in archive_paths:
+            base_dir = Path(archive).parent
+            for filename in record["required_return_files"]:
+                consumed.add(str(base_dir / filename))
+
     pinout_manifest = load_yaml(
         ROOT / "board/kicad/e1-phone/supplier-pinouts/pinout-evidence-manifest.yaml"
     )
     consumed.add("board/kicad/e1-phone/supplier-pinouts/pinout-evidence-manifest.yaml")
     for entry in pinout_manifest["captured_pinouts"]:
         consumed.add(f"board/kicad/e1-phone/supplier-pinouts/{entry['file']}")
+    expand_consumed_board_references(consumed)
 
     orphans = []
     for path in sorted(board_dir.rglob("*")):
@@ -14184,6 +14383,8 @@ def check_no_orphaned_board_files() -> None:
             continue
         rel = str(path.relative_to(ROOT))
         if rel == str(MANIFEST.relative_to(ROOT)):
+            continue
+        if rel.endswith(".metadata.yaml") and rel.removesuffix(".metadata.yaml") in consumed:
             continue
         if rel not in consumed:
             orphans.append(rel)
@@ -14204,6 +14405,102 @@ def check_release_gates_fail_closed(manifest: dict) -> None:
         if gate["status"] != "missing":
             raise SystemExit(f"release gate {name} unexpectedly not fail-closed: {gate['status']}")
     print("release gates ok: fabrication/enclosure readiness remains fail-closed")
+
+
+def check_release_evidence_manufacturing_candidate_propagation() -> None:
+    manufacturing = load_yaml(ROOT / "board/kicad/e1-phone/manufacturing-closure.yaml")
+    presence = load_yaml(
+        ROOT / "board/kicad/e1-phone/production/readiness/"
+        "production-factory-required-output-presence-inventory-2026-05-22.yaml"
+    )
+    content = load_yaml(
+        ROOT / "board/kicad/e1-phone/production/readiness/"
+        "release-evidence-content-contract-2026-05-22.yaml"
+    )
+    objective = load_yaml(
+        ROOT / "board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml"
+    )
+    unblock = load_yaml(
+        ROOT / "board/kicad/e1-phone/e1-phone-readiness-unblock-register-2026-05-22.yaml"
+    )
+
+    manufacturing_state = manufacturing["board_state_detected"]
+    expected = {
+        "manufacturing_closure_has_production_outputs": manufacturing_state[
+            "has_production_outputs"
+        ],
+        "manufacturing_closure_release_output_count": manufacturing_state["release_output_count"],
+        "manufacturing_closure_has_blocked_candidate_outputs": manufacturing_state[
+            "has_blocked_candidate_outputs"
+        ],
+        "manufacturing_closure_blocked_candidate_output_file_count": manufacturing_state[
+            "blocked_candidate_output_file_count"
+        ],
+    }
+    presence_summary = presence["summary"]
+    for key, value in expected.items():
+        if presence_summary[key] != value:
+            raise SystemExit(f"production presence manufacturing closure field stale: {key}")
+    if presence_summary["manufacturing_closure_release_output_count"] != 0:
+        raise SystemExit("production presence cannot count blocked candidates as release outputs")
+    if presence_summary["manufacturing_closure_blocked_candidate_output_file_count"] <= 0:
+        raise SystemExit("production presence lost blocked candidate output count")
+
+    contracts = {item["id"]: item for item in content["content_contracts"]}
+    production_contract = contracts["production_factory_outputs"]
+    for key, value in expected.items():
+        if production_contract[key] != value:
+            raise SystemExit(f"release content production contract stale: {key}")
+    content_summary = content["summary"]
+    if (
+        content_summary["production_manufacturing_closure_release_output_count"]
+        != expected["manufacturing_closure_release_output_count"]
+    ):
+        raise SystemExit("release content summary release output count stale")
+    if (
+        content_summary["production_manufacturing_closure_blocked_candidate_output_file_count"]
+        != expected["manufacturing_closure_blocked_candidate_output_file_count"]
+    ):
+        raise SystemExit("release content summary blocked candidate count stale")
+    if (
+        content_summary["production_manufacturing_closure_has_blocked_candidate_outputs"]
+        is not True
+    ):
+        raise SystemExit("release content summary must preserve blocked candidate visibility")
+
+    objective_summary = objective["summary"]
+    if (
+        objective_summary["manufacturing_closure_release_output_count"]
+        != expected["manufacturing_closure_release_output_count"]
+    ):
+        raise SystemExit("objective audit release output count stale")
+    if (
+        objective_summary["manufacturing_closure_blocked_candidate_output_file_count"]
+        != expected["manufacturing_closure_blocked_candidate_output_file_count"]
+    ):
+        raise SystemExit("objective audit blocked candidate count stale")
+    if objective_summary["manufacturing_closure_has_blocked_candidate_outputs"] is not True:
+        raise SystemExit("objective audit must show blocked candidate outputs")
+
+    unblock_summary = unblock["summary"]
+    if (
+        unblock_summary["production_presence_release_output_count"]
+        != expected["manufacturing_closure_release_output_count"]
+    ):
+        raise SystemExit("unblock register release output count stale")
+    if (
+        unblock_summary["production_presence_blocked_candidate_output_file_count"]
+        != expected["manufacturing_closure_blocked_candidate_output_file_count"]
+    ):
+        raise SystemExit("unblock register blocked candidate count stale")
+    if unblock_summary["production_presence_has_blocked_candidate_outputs"] is not True:
+        raise SystemExit("unblock register must show blocked candidate outputs")
+
+    print(
+        "release evidence manufacturing candidate propagation ok: "
+        f"{expected['manufacturing_closure_blocked_candidate_output_file_count']} "
+        "blocked candidate files, 0 release outputs"
+    )
 
 
 def main() -> int:
@@ -14291,6 +14588,7 @@ def main() -> int:
     check_layout_optimization_execution()
     check_end_to_end_readiness()
     check_supplier_pinout_evidence()
+    check_release_evidence_manufacturing_candidate_propagation()
     check_release_gates_fail_closed(manifest)
     check_no_orphaned_board_files()
     print("E1 phone board package structurally consistent; not fabrication ready")
@@ -14303,5 +14601,5 @@ if __name__ == "__main__":
     except SystemExit as exc:
         if exc.code and not isinstance(exc.code, int):
             print(f"STATUS: BLOCKED E1 phone board package validation: {exc.code}")
-            raise SystemExit(2)
+            raise SystemExit(2) from exc
         raise

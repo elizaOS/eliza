@@ -213,9 +213,7 @@ async def _drive_event(
     pred_segment_offset = int(dut.pred_segment_branch_offset.value)
     ftq_push_ptr = _signal_int(dut, "u_bpu.ftq_push_ptr")
     resolve_ftq_idx = (
-        int(ftq_push_ptr) & ((1 << FTQ_IDX_W) - 1)
-        if pred_valid and ftq_push_ptr is not None
-        else 0
+        int(ftq_push_ptr) & ((1 << FTQ_IDX_W) - 1) if pred_valid and ftq_push_ptr is not None else 0
     )
     await RisingEdge(dut.clk)
     dut.lkp_valid.value = 0
@@ -317,20 +315,15 @@ async def _drive_event(
             {
                 "resolve_ftq_idx": resolve_ftq_idx,
                 "resolve_ftq_replay_valid": _signal_int(dut, "u_bpu.ftq_replay_valid"),
-                "resolve_replay_tage_provider": _signal_int(
-                    dut, "u_bpu.replay_tage_provider"
-                ),
-                "resolve_replay_tage_lowconf": _signal_int(
-                    dut, "u_bpu.replay_tage_lowconf"
-                ),
+                "resolve_replay_tage_provider": _signal_int(dut, "u_bpu.replay_tage_provider"),
+                "resolve_replay_tage_lowconf": _signal_int(dut, "u_bpu.replay_tage_lowconf"),
                 "resolve_replay_tage_hist": _signal_int(dut, "u_bpu.replay_tage_hist"),
                 "resolve_ghist_arch": _signal_int(dut, "u_bpu.ghist_arch_q"),
-                "resolve_replay_ittage_provider": _signal_int(
-                    dut, "u_bpu.replay_ittage_provider"
-                ),
+                "resolve_replay_ittage_provider": _signal_int(dut, "u_bpu.replay_ittage_provider"),
                 "resolve_h2p_update_score": _signal_int(dut, "u_bpu.u_h2p.upd_score"),
             }
         )
+        assert debug_samples is not None
         debug_samples.append(prediction_debug)
     await RisingEdge(dut.clk)
     dut.resolve_valid.value = 0
@@ -652,14 +645,10 @@ async def bpu_h2p_sc_debug_replay(dut):
         h2p_lookup = sum(1 for sample in samples if sample["lookup_h2p_override"] == 1)
         sc_lookup = sum(1 for sample in samples if sample["lookup_sc_override"] == 1)
         h2p_misp = sum(
-            1
-            for sample in samples
-            if sample["lookup_h2p_override"] == 1 and sample["misp"]
+            1 for sample in samples if sample["lookup_h2p_override"] == 1 and sample["misp"]
         )
         sc_misp = sum(
-            1
-            for sample in samples
-            if sample["lookup_sc_override"] == 1 and sample["misp"]
+            1 for sample in samples if sample["lookup_sc_override"] == 1 and sample["misp"]
         )
         results[name] = {
             "trace_class": "synthetic_debug_only",
@@ -824,8 +813,7 @@ def _workload_window_mode() -> str:
     mode = os.environ.get("ELIZA_BPU_MPKI_WORKLOAD_WINDOW_MODE", "prefix").strip().lower()
     if mode not in {"prefix", "middle", "late", "stratified"}:
         raise ValueError(
-            "ELIZA_BPU_MPKI_WORKLOAD_WINDOW_MODE must be one of "
-            "prefix, middle, late, stratified"
+            "ELIZA_BPU_MPKI_WORKLOAD_WINDOW_MODE must be one of prefix, middle, late, stratified"
         )
     return mode
 
@@ -863,12 +851,16 @@ def _select_workload_window(
 ) -> tuple[list[BranchEvent], int, dict[str, object]]:
     source_branch_count = len(branches)
     if not max_branches or source_branch_count <= max_branches:
-        return branches, instruction_count, {
-            "branch_replay_cap": max_branches or None,
-            "branch_replay_window_mode": "full",
-            "trace_prefix_replay": False,
-            "trace_window_replay": False,
-        }
+        return (
+            branches,
+            instruction_count,
+            {
+                "branch_replay_cap": max_branches or None,
+                "branch_replay_window_mode": "full",
+                "trace_prefix_replay": False,
+                "trace_window_replay": False,
+            },
+        )
 
     count = max(1, min(max_branches, source_branch_count))
     if window_mode == "stratified":
@@ -895,12 +887,16 @@ def _select_workload_window(
         len(selected_branches),
         source_branch_count,
     )
-    return selected_branches, selected_instruction_count, {
-        "branch_replay_cap": max_branches,
-        "branch_replay_window_mode": window_mode,
-        "trace_prefix_replay": window_mode == "prefix",
-        "trace_window_replay": window_mode != "prefix",
-    }
+    return (
+        selected_branches,
+        selected_instruction_count,
+        {
+            "branch_replay_cap": max_branches,
+            "branch_replay_window_mode": window_mode,
+            "trace_prefix_replay": window_mode == "prefix",
+            "trace_window_replay": window_mode != "prefix",
+        },
+    )
 
 
 @cocotb.test()
@@ -952,9 +948,7 @@ async def bpu_mpki_workload_traces(dut):
         result["trace_class"] = "qemu_rv64_workload"
         result["source_branch_count"] = source_branch_count
         result["source_instruction_count"] = source_instruction_count
-        replay_fraction = (
-            len(branches) / source_branch_count if source_branch_count else 0.0
-        )
+        replay_fraction = len(branches) / source_branch_count if source_branch_count else 0.0
         instruction_replay_fraction = (
             instruction_count / source_instruction_count if source_instruction_count else 0.0
         )

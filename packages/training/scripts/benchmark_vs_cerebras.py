@@ -558,7 +558,6 @@ def benchmark_tier(
     trained_model_path: Path | None = None,
 ) -> dict[str, Any]:
     """Run benchmarks for one tier and return the results dict."""
-    timestamp = int(time.time())
     tier_out = output_dir / tier.replace(".", "_")
     tier_out.mkdir(parents=True, exist_ok=True)
 
@@ -689,7 +688,7 @@ def _write_markdown_report(
     for b in benchmarks:
         headers.append(f"{b} Acc")
     if cerebras_available:
-        headers += [f"Cerebras Quality", "Cerebras Latency (ms)"]
+        headers += ["Cerebras Quality", "Cerebras Latency (ms)"]
     lines.append("| " + " | ".join(headers) + " |")
     lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
 

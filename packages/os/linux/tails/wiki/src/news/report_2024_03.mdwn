@@ -1,0 +1,57 @@
+[[!meta title="Tails report for March 2024"]]
+[[!meta date="Mon, 29 Apr 2024 11:12:49 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+March spotlighted many vulnerabilities in FOSS infrastructure globally,
+sparking some welcome conversations around the sustainability requirements of
+FOSS projects.
+
+- First, there was the RFDS Intel CPU vulnerability. The fixed CPU firmware
+  [shipped](https://gitlab.tails.boum.org/tails/tails/-/issues/20274) in Tails
+  6.1 addresses the vulnerability! 
+
+- Then, March ended with the xz/liblzma almost-apocalypse that the world
+  avoided, including Tails users.
+
+In March, we continued investing in the long-term sustainability of Tails:
+
+- We improved the reliability of our test suite. With
+  [@segfault](https://gitlab.tails.boum.org/segfault), we have been working
+  extra hard to make our automated test suite more robust. We are going to keep
+  working on improving the experience of development work at Tails in the coming
+  months.
+
+- We made good progress in improving redundancies for our most essential
+  services. We added backend capacity, and deployed fallback options for our
+  website. This had been a priority since earlier this year, when [our website
+  went down](https://twitter.com/Tails_live/status/1749815575839391925). 
+
+Releases
+========
+
+📢[[We put Tails 6.1 out in the world|news/version_6.1]]! 
+
+Tails 6.1 carries:
+    
+ - updated _Tor Browser_ and _Thunderbird_
+
+ - improvements to _Tails Cloner_: it can now unmount all filesystems on the
+   target device. Since Tails 6.0 auto-mounts partitions on plugged
+   removable media, this is quite an important fix!
+
+- fixes to _Video_
+
+To know more, check out the Tails 6.1 [[release notes|news/version_6.1]] and
+the
+[changelog](https://gitlab.tails.boum.org/tails/tails/-/blob/master/debian/changelog).
+
+Metrics
+=======
+
+Tails was started more than 873,028 times this month. That's a daily average of
+over 28,162 boots - the highest this year. Yet!

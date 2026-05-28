@@ -22,7 +22,7 @@ function eliza1Manifest(overrides: {
 	const textPath = "text/eliza-1-2b-128k.gguf";
 	const voicePath = "tts/voice.gguf";
 	const asrPath = "asr/asr.gguf";
-	const drafterPath = "dflash/drafter-2b.gguf";
+	const drafterPath = "mtp/drafter-2b.gguf";
 	const cachePath = "cache/voice-preset-default.bin";
 	const vadPath = "vad/eliza-1-vad.onnx";
 	const visionPath = "vision/mmproj-2b.gguf";
@@ -58,7 +58,7 @@ function eliza1Manifest(overrides: {
 			voice: [{ path: voicePath, sha256: overrides.shaFor("voice") }],
 			asr: [{ path: asrPath, sha256: overrides.shaFor("asr") }],
 			vision: [{ path: visionPath, sha256: overrides.shaFor("vision") }],
-			dflash: [
+			mtp: [
 				{
 					path: drafterPath,
 					sha256: overrides.shaFor("drafter"),
@@ -73,7 +73,7 @@ function eliza1Manifest(overrides: {
 			vad: [{ path: vadPath, sha256: overrides.shaFor("vad") }],
 		},
 		kernels: {
-			required: ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+			required: ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
 			optional: [],
 			verifiedBackends,
 		},
@@ -82,7 +82,7 @@ function eliza1Manifest(overrides: {
 			voiceRtf: { rtf: 0.5, passed: true },
 			asrWer: { wer: 0.05, passed: true },
 			vadLatencyMs: { median: 16, passed: true },
-			dflash: { acceptanceRate: 0.72, speedup: 1.8, passed: true },
+			mtp: { acceptanceRate: 0.72, speedup: 1.8, passed: true },
 			e2eLoopOk: true,
 			thirtyTurnOk: true,
 		},
@@ -243,7 +243,7 @@ describe("local inference downloader status", () => {
 		expect(job?.error).toBe("network reset");
 	});
 
-	it("installs Eliza-1 manifest bundles with the hidden DFlash companion", async () => {
+	it("installs Eliza-1 manifest bundles with the bundled MTP drafter", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
 		process.env.ELIZA_STATE_DIR = root;
 		const model = findCatalogModel("eliza-1-2b");
@@ -263,7 +263,7 @@ describe("local inference downloader status", () => {
 		const voicePath = "tts/voice.gguf";
 		const asrPath = "asr/asr.gguf";
 		const vadPath = "vad/eliza-1-vad.onnx";
-		const drafterPath = "dflash/drafter-2b.gguf";
+		const drafterPath = "mtp/drafter-2b.gguf";
 		const cachePath = "cache/voice-preset-default.bin";
 		const visionPath = "vision/mmproj-2b.gguf";
 		const manifest = JSON.stringify({
@@ -291,7 +291,7 @@ describe("local inference downloader status", () => {
 				voice: [{ path: voicePath, sha256: sha256(voice) }],
 				asr: [{ path: asrPath, sha256: sha256(asr) }],
 				vision: [{ path: visionPath, sha256: sha256(vision) }],
-				dflash: [
+				mtp: [
 					{
 						path: drafterPath,
 						sha256: sha256(drafter),
@@ -306,13 +306,7 @@ describe("local inference downloader status", () => {
 				vad: [{ path: vadPath, sha256: sha256(vad) }],
 			},
 			kernels: {
-				required: [
-					"turboquant_q4",
-					"qjl",
-					"polarquant",
-					"dflash",
-					"turbo3_tcq",
-				],
+				required: ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
 				optional: [],
 				verifiedBackends: {
 					metal: {
@@ -347,7 +341,7 @@ describe("local inference downloader status", () => {
 				voiceRtf: { rtf: 0.5, passed: true },
 				asrWer: { wer: 0.05, passed: true },
 				vadLatencyMs: { median: 16, passed: true },
-				dflash: { acceptanceRate: 0.72, speedup: 1.8, passed: true },
+				mtp: { acceptanceRate: 0.72, speedup: 1.8, passed: true },
 				e2eLoopOk: true,
 				thirtyTurnOk: true,
 			},
@@ -374,19 +368,17 @@ describe("local inference downloader status", () => {
 		const job = await completed;
 		const installed = await listInstalledModels();
 		const main = installed.find((entry) => entry.id === model.id);
-		const companion = installed.find(
-			(entry) => entry.id === "eliza-1-2b-drafter",
-		);
 		expect(main).toBeDefined();
-		expect(companion).toBeDefined();
 		const bundleRoot = main?.bundleRoot;
 		expect(bundleRoot).toBeDefined();
-		if (!main || !companion || !bundleRoot) {
+		if (!main || !bundleRoot) {
 			throw new Error("bundle install did not register expected files");
 		}
 
 		expect(job.state).toBe("completed");
-		expect(main.path.endsWith(textPath)).toBe(true);
+		expect(path.normalize(main.path).endsWith(path.normalize(textPath))).toBe(
+			true,
+		);
 		expect(bundleRoot).toBe(
 			path.join(root, "local-inference", "models", "eliza-1-2b.bundle"),
 		);
@@ -397,10 +389,10 @@ describe("local inference downloader status", () => {
 		expect(fs.existsSync(path.join(bundleRoot, asrPath))).toBe(true);
 		expect(fs.existsSync(path.join(bundleRoot, vadPath))).toBe(true);
 		expect(fs.existsSync(path.join(bundleRoot, visionPath))).toBe(true);
-		expect(companion.runtimeRole).toBe("dflash-drafter");
-		expect(companion.companionFor).toBe(model.id);
-		expect(companion.path.endsWith(drafterPath)).toBe(true);
-		expect(companion.bundleRoot).toBe(bundleRoot);
+		expect(fs.existsSync(path.join(bundleRoot, drafterPath))).toBe(true);
+		expect(installed.some((entry) => entry.id.endsWith("-drafter"))).toBe(
+			false,
+		);
 		expect(main.bundleVerifiedAt).toBeUndefined();
 		expect(await readAssignments()).toEqual({});
 	});
@@ -442,11 +434,20 @@ describe("local inference downloader status", () => {
 	it("restarts single-file partial downloads when a server ignores Range", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
 		process.env.ELIZA_STATE_DIR = root;
-		const model = findCatalogModel("eliza-1-2b-drafter");
-		expect(model).toBeDefined();
-		if (!model) throw new Error("missing test catalog model");
+		const baseModel = findCatalogModel("eliza-1-2b");
+		if (!baseModel) throw new Error("missing test catalog model");
+		const model = {
+			...baseModel,
+			id: "hf:test/partial::model.gguf",
+			displayName: "Partial Test Model",
+			ggufFile: "model.gguf",
+			bundleManifestFile: undefined,
+			bundleManifestSha256: undefined,
+			companionModelIds: [],
+			runtimeRole: undefined,
+		};
 
-		const body = "complete drafter";
+		const body = "complete model";
 		installFetchFixture(
 			new Map([[bundleRemotePath(model, model.ggufFile), body]]),
 		);
@@ -454,7 +455,7 @@ describe("local inference downloader status", () => {
 		const downloadsDir = path.join(root, "local-inference", "downloads");
 		fs.mkdirSync(downloadsDir, { recursive: true });
 		fs.writeFileSync(
-			path.join(downloadsDir, "eliza-1-2b-drafter.part"),
+			path.join(downloadsDir, "hf_test_partial__model.gguf.part"),
 			"stale partial",
 		);
 
@@ -466,7 +467,7 @@ describe("local inference downloader status", () => {
 		const installed = await listInstalledModels();
 		const entry = installed.find((m) => m.id === model.id);
 		expect(entry).toBeDefined();
-		if (!entry) throw new Error("missing installed drafter");
+		if (!entry) throw new Error("missing installed model");
 		expect(fs.readFileSync(entry.path, "utf8")).toBe(body);
 	});
 
@@ -491,7 +492,7 @@ describe("local inference downloader status", () => {
 
 		const textPath = model.ggufFile;
 		const voicePath = "tts/voice.gguf";
-		const drafterPath = "dflash/drafter-27b-256k.gguf";
+		const drafterPath = "mtp/drafter-27b-256k.gguf";
 		const cachePath = "cache/voice-preset-default.bin";
 		const visionPath = "vision/mmproj-27b-256k.gguf";
 		const manifest = JSON.stringify({
@@ -517,17 +518,11 @@ describe("local inference downloader status", () => {
 				voice: [{ path: voicePath, sha256: sha256("v") }],
 				asr: [],
 				vision: [{ path: visionPath, sha256: sha256("vision") }],
-				dflash: [{ path: drafterPath, sha256: sha256("d") }],
+				mtp: [{ path: drafterPath, sha256: sha256("d") }],
 				cache: [{ path: cachePath, sha256: sha256("c") }],
 			},
 			kernels: {
-				required: [
-					"turboquant_q4",
-					"qjl",
-					"polarquant",
-					"dflash",
-					"turbo3_tcq",
-				],
+				required: ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
 				optional: [],
 				verifiedBackends: {
 					metal: { status: "skipped", atCommit: "t", report: "n/a" },
@@ -632,17 +627,28 @@ describe("local inference downloader status", () => {
 				[eliza1BundleRemotePath("tts/voice.gguf"), bytes.voice],
 				[eliza1BundleRemotePath("asr/asr.gguf"), bytes.asr],
 				[eliza1BundleRemotePath("vad/eliza-1-vad.onnx"), bytes.vad],
-				[eliza1BundleRemotePath("dflash/drafter-2b.gguf"), bytes.drafter],
+				[eliza1BundleRemotePath("mtp/drafter-2b.gguf"), bytes.drafter],
 				[eliza1BundleRemotePath("cache/voice-preset-default.bin"), bytes.cache],
 				[eliza1BundleRemotePath("vision/mmproj-2b.gguf"), bytes.vision],
 			]),
 		);
 
-		const verifyCalls: Array<{ modelId: string; textGgufPath: string }> = [];
+		const verifyCalls: Array<{
+			modelId: string;
+			bundleRoot: string;
+			manifestPath: string;
+			textGgufPath: string;
+		}> = [];
 		const downloader = new Downloader({
 			probeDeviceCaps: async () => cpuOnlyCaps,
-			verifyOnDevice: async ({ modelId, textGgufPath }) => {
-				verifyCalls.push({ modelId, textGgufPath });
+			verifyOnDevice: async ({
+				modelId,
+				bundleRoot,
+				manifestPath,
+				textGgufPath,
+			}) => {
+				if (!modelId) throw new Error("verify hook missing modelId");
+				verifyCalls.push({ modelId, bundleRoot, manifestPath, textGgufPath });
 			},
 		});
 		const completed = waitForTerminal(downloader, model.id);
@@ -652,11 +658,15 @@ describe("local inference downloader status", () => {
 		expect(verifyCalls).toHaveLength(1);
 		expect(verifyCalls[0]?.modelId).toBe(model.id);
 		expect(
-			verifyCalls[0]?.textGgufPath.endsWith("text/eliza-1-2b-128k.gguf"),
+			path
+				.normalize(verifyCalls[0]?.textGgufPath ?? "")
+				.endsWith(path.normalize("text/eliza-1-2b-128k.gguf")),
 		).toBe(true);
 		const installed = await listInstalledModels();
 		const main = installed.find((m) => m.id === model.id);
 		expect(main?.bundleVerifiedAt).toBeTruthy();
+		expect(verifyCalls[0]?.bundleRoot).toBe(main?.bundleRoot);
+		expect(verifyCalls[0]?.manifestPath).toBe(main?.manifestPath);
 	});
 
 	it("fails the download (no install) when the verify-on-device hook rejects", async () => {
@@ -684,7 +694,7 @@ describe("local inference downloader status", () => {
 				[eliza1BundleRemotePath("tts/voice.gguf"), bytes.voice],
 				[eliza1BundleRemotePath("asr/asr.gguf"), bytes.asr],
 				[eliza1BundleRemotePath("vad/eliza-1-vad.onnx"), bytes.vad],
-				[eliza1BundleRemotePath("dflash/drafter-2b.gguf"), bytes.drafter],
+				[eliza1BundleRemotePath("mtp/drafter-2b.gguf"), bytes.drafter],
 				[eliza1BundleRemotePath("cache/voice-preset-default.bin"), bytes.cache],
 				[eliza1BundleRemotePath("vision/mmproj-2b.gguf"), bytes.vision],
 			]),

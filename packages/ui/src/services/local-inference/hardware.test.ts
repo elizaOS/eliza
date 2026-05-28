@@ -2,8 +2,8 @@ import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import {
   assessFit,
-  assessOnboardingHardware,
-  type OnboardingHardwareAdvice,
+  assessFirstRunHardware,
+  type FirstRunHardwareAdvice,
 } from "./hardware";
 import type { HardwareProbe } from "./types";
 
@@ -50,9 +50,9 @@ describe("local-inference/hardware — assessFit (existing behavior preserved)",
   });
 });
 
-describe("local-inference/hardware — assessOnboardingHardware", () => {
+describe("local-inference/hardware — assessFirstRunHardware", () => {
   it("returns a well-formed advice object on the test runner", async () => {
-    const advice: OnboardingHardwareAdvice = await assessOnboardingHardware(
+    const advice: FirstRunHardwareAdvice = await assessFirstRunHardware(
       { sizeBytes: 1 * GIB, ramGbRequired: 1 },
       { workspacePath: tmpdir() },
     );
@@ -66,7 +66,7 @@ describe("local-inference/hardware — assessOnboardingHardware", () => {
   });
 
   it("escalates to cloud-only when the runner cannot satisfy a huge model", async () => {
-    const advice = await assessOnboardingHardware(
+    const advice = await assessFirstRunHardware(
       { sizeBytes: 10 * 1024 * GIB, ramGbRequired: 2048 },
       { workspacePath: tmpdir() },
     );

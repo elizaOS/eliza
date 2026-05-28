@@ -2,12 +2,12 @@ import { type FormEvent, useCallback, useId, useState } from "react";
 import { type AuthLoginResult, authLoginPassword } from "../../api/auth-client";
 import { cn } from "../../lib/utils";
 import {
-  OnboardingStepDivider,
-  onboardingBodyTextShadowStyle,
-  onboardingDescriptionClass,
-  onboardingEyebrowClass,
-  onboardingTitleClass,
-} from "../onboarding/onboarding-step-chrome";
+  SetupStepDivider,
+  setupBodyTextShadowStyle,
+  setupDescriptionClass,
+  setupEyebrowClass,
+  setupTitleClass,
+} from "../setup/setup-step-chrome";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Input } from "../ui/input";
@@ -192,21 +192,21 @@ export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
         <CardHeader className="pb-2 pt-6 px-6">
           <div className="mb-1">
             <p
-              className={onboardingEyebrowClass}
-              style={onboardingBodyTextShadowStyle}
+              className={setupEyebrowClass}
+              style={setupBodyTextShadowStyle}
             >
               Eliza
             </p>
-            <OnboardingStepDivider />
+            <SetupStepDivider />
             <CardTitle
-              className={cn(onboardingTitleClass, "mt-2")}
-              style={{ textShadow: "var(--onboarding-text-shadow-strong)" }}
+              className={cn(setupTitleClass, "mt-2")}
+              style={{ textShadow: "var(--first-run-text-shadow-strong)" }}
             >
               {remotePasswordMissing ? "Remote access blocked" : "Sign in"}
             </CardTitle>
             <p
-              className={cn(onboardingDescriptionClass, "mt-2")}
-              style={onboardingBodyTextShadowStyle}
+              className={cn(setupDescriptionClass, "mt-2")}
+              style={setupBodyTextShadowStyle}
             >
               {remotePasswordMissing
                 ? "A remote password is required before this instance can accept browser logins from another machine."

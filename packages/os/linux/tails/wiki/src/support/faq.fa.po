@@ -1,0 +1,2242 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-31 22:07+0000\n"
+"PO-Revision-Date: 2024-05-21 12:53+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/faq/fa/"
+">\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Frequently asked questions\"]]\n"
+msgstr "[[!meta title=\"پرسش‌های متداول\"]]\n"
+
+#. type: Bullet: '- '
+msgid ""
+"For hardware compatibility issues, refer to our [[known issues|support/"
+"known_issues]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"To learn what you can do with Tails, refer to our [[documentation|doc]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"For questions related to Tor, see also to the [Tor support pages](https://"
+"support.torproject.org/)."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"project\">Tails project</h1>\n"
+msgstr "<h1 id=\"project\">پروژهٔ تیلز</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- This entire section would be better placed in an \"About Us\" section. See #17700. -->\n"
+msgstr "<!-- This entire section would be better placed in an \"About Us\" section. See #17700. -->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"tor\">What is the relationship between Tor and Tails?</h2>\n"
+msgstr "<h2 id=\"tor\">رابطهٔ تور و تیلز چیست؟</h2>\n"
+
+#. type: Plain text
+#, fuzzy
+msgid "Tails is part of the [Tor Project](https://torproject.org/)."
+msgstr ""
+"[پروژهٔ تور: پرسش‌های متداول](https://www.torproject.org/docs/faq.html.en)"
+
+#. type: Plain text
+msgid ""
+"Tails [[was founded|news/celebrating_10_years]] in 2009 and [[joined forces "
+"with Tor|news/tails_tor]] in 2024."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"See also our explanation about [[why Tails uses Tor|doc/anonymous_internet/"
+"tor/why#relationship]]."
+msgstr ""
+"توضیح ما در مورد [[دلیل استفادهٔ تیلز از تور|doc/anonymous_internet/tor/"
+"why#relationship]] را ببینید."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"debian\">Why is Tails based on Debian and not on another distribution?</h2>\n"
+msgstr "<h2 id=\"debian\">چرا تیلز مبتنی بر دبیان است و نه توزیع‌های دیگر؟</h2>\n"
+
+#. type: Plain text
+msgid ""
+"We are deeply rooted and involved in Debian. The friendships, relationships, "
+"and technical expertise we have in Debian have many benefits for Tails, and "
+"we are not ready to build the same relationship with Ubuntu, OpenBSD, or any "
+"other distribution. See our statement about our [[contribute/"
+"relationship_with_upstream]] for details."
+msgstr ""
+"ما ارتباط عمیقی با دبیان داریم. دوستی‌ها، روابط و تخصص فنی که در رابطه با "
+"دبیان داریم فایده‌های بسیاری برای تیلز دارد و برای ساختن چنین رابطه‌ای با "
+"اوبونتو، اُپن‌بی‌اس‌دی و توزیع‌های دیگر آماده نیستیم. برای جزییات رجوع کنید به "
+"اعلان ما راجع به [[contribute/relationship_with_upstream]]."
+
+#. type: Plain text
+msgid ""
+"See also the article [Why there are so many Debian derivatives](http://"
+"upsilon.cc/~zack/blog/posts/2011/09/"
+"why_there_are_so_many_debian_derivatives/)  by Stefano Zacchiroli."
+msgstr ""
+"همچنین رجوع کنید به مقالهٔ  [چرا مشتقات بسیاری از دبیان وجود دارند](http://"
+"upsilon.cc/~zack/blog/posts/2011/09/"
+"why_there_are_so_many_debian_derivatives/) به قلم استفانو زاکیرولی."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"ubuntu\">Why isn't Tails based on Ubuntu?</h2>\n"
+msgstr "<h2 id=\"ubuntu\">چرا تیلز توزیعی از اوبونتو نیست؟</h2>\n"
+
+#. type: Plain text
+msgid "First, see the answer to the [[previous question|faq#debian]]."
+msgstr "ابتدا پاسخ [[پرسش قبلی|faq#debian]] را ببینید."
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "The rapid development cycle of Ubuntu would be too fast for Tails."
+msgstr "- چرخهٔ توسعهٔ سریع اوبونتو برای تیلز بیش از حد سریع است."
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"Ubuntu adds features in ways that we find dangerous for privacy. For an "
+"example, see [EFF: Privacy in Ubuntu 12.10, Amazon Ads and Data Leaks]"
+"(https://www.eff.org/deeplinks/2012/10/privacy-ubuntu-1210-amazon-ads-and-"
+"data-leaks)."
+msgstr ""
+"اوبونتو ویژگی‌های خود را طوری اضافه می‌کند که به نظر ما برای حریم خصوصی خطرناک "
+"هستند. برای نمونه اوبونتوی یک ([پشتیبانی از آن تا حدودی قطع شده](http://"
+"blog.canonical.com/2014/04/02/shutting-down-ubuntu-one-file-services/)) و "
+"[تبلیغات آمازون و درز اطلاعات](https://www.eff.org/deeplinks/2012/10/privacy-"
+"ubuntu-1210-amazon-ads-and-data-leaks)."
+
+#. type: Bullet: '- '
+msgid ""
+"Ubuntu is led by [[!wikipedia Canonical (company) desc=\"Canonical\"]], a "
+"for-profit corporation that takes most of the important decisions."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"We usually ship kernels and video drivers from [Debian backports](http://"
+"backports.debian.org/). The result is comparable to Ubuntu in terms of "
+"support for recent hardware."
+msgstr ""
+"ما معمولاً هسته‌ها و راه‌اندازی‌های ویدیویی را از  [بک‌پورت‌های دبیان](http://"
+"backports.debian.org/) می‌گیریم. نتیجهٔ این کار از لحاظ پشتیبانی سخت‌افزارهای "
+"جدید قابل‌مقایسه با اوبونتو است."
+
+#. type: Bullet: '- '
+msgid ""
+"We think that the general quality of the maintenance work being done on "
+"packages matters from a security perspective. Debian maintainers generally "
+"are experts in the fields their packages deal with; while it is generally "
+"not the case outside of the limited number of packages Ubuntu officially "
+"supports."
+msgstr ""
+"ما فکر می‌کنیم کیفیت عمومی کار نگهداری بسته‌ها از جنبهٔ امنیتی مهم است. "
+"نگهدارنده‌های دبیان معمولاً در حوزه‌های مرتبط با بسته‌ها خبره هستند؛ اما این "
+"مورد معمولاً در مورد بسته‌هایی به غیر از بسته‌های معدودی که اوبونتو پشتیبانی "
+"می‌کند صادق نیست."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"gnome\">Why does Tails ship the GNOME Desktop?</h2>\n"
+msgstr "<h2 id=\"gnome\">چرا تیلز از دسکتاپ گنوم استفاده می‌کند؟</h2>\n"
+
+#. type: Plain text
+msgid ""
+"People have asked for Tails with LXDE, XFCE, MATE, KDE, and so on, but we "
+"are not going to use a different desktop."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The main drawback of GNOME is that it requires quite a lot of resources, but "
+"GNOME has many advantages, especially for users who are new to Linux."
+msgstr ""
+
+#. type: Plain text
+msgid "The GNOME desktop is:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Well integrated"
+msgstr ""
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "Very well translated"
+msgstr "- به خوبی ترجمه و مستندسازی شده‌است."
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "Doing relatively well in terms of accessibility features"
+msgstr "- از نظر ویژگی‌های دسترسی‌پذیری وضعیت نسبتاً خوبی دارد."
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "Actively developed"
+msgstr "- فعالانه توسعه می‌یابد."
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "Well maintained in Debian, where it is the default desktop"
+msgstr ""
+"در [[دبیان|faq#debian]] که محیط دسکتاپ پیش‌فرض است، خوب از آن نگهداری می‌شود."
+
+#. type: Plain text
+msgid ""
+"We invested quite some time in acquiring GNOME knowledge, and switching our "
+"desktop environment would require going through that process again."
+msgstr ""
+"ما کمی وقت صرف کسب اطلاعات در مورد گنوم کرده‌ایم و عوض کردن محیط دسکتاپ "
+"مستلزم این است که دوباره این روند را طی کنیم."
+
+#. type: Plain text
+msgid ""
+"That's also why we are not going to provide more than one desktop option."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"installation\">Installation</h1>\n"
+msgstr "<h1 id=\"installation\">نصب</h1>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"dedicated-stick\">Do I need a USB stick dedicated to Tails?</h2>\n"
+msgstr "آیا می‌توانم در تیلز از یک سیستم مخفی تور استفاده کنم؟\n"
+
+#. type: Plain text
+msgid "Yes. Tails requires a USB stick dedicated to running Tails only."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If it were possible to use the same USB stick with another operating system, "
+"for example to store files to use on Windows, a virus in the other operating "
+"system could corrupt your Tails."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"That's why your Tails USB stick is not recognized in Windows and why we "
+"discourage installing other live operating systems on the same USB stick."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To store files in your Tails USB stick, use the [[Persistent Storage|doc/"
+"persistent_storage]]. To exchange files between Tails and another operating "
+"system, use a separate USB stick."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"permanent-install\">Can I install Tails permanently onto my hard disk?</h2>\n"
+msgstr "<h2 id=\"permanent-install\">آیا می‌توانم تیلز را به طور دائم روی سخت‌دیسک خود نصب کنم؟</h2>\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"This is not possible using the recommended installation methods. Tails is "
+"designed to be a live system running from a removable media: USB stick or "
+"DVD."
+msgstr ""
+"این کار با روش‌های نصب توصیه‌شده ممکن نیست. تیلز طوری طراحی شده تا یک سیستم "
+"زنده باشد که از یک دستگاه جداشدنی مانند دی‌وی‌دی، درایو یواس‌بی یا کارت حافظه "
+"کار می‌کند."
+
+#. type: Plain text
+msgid ""
+"This is a conscious decision as this mode of operation is better for what we "
+"want to provide to Tails users: amnesia, the fact that Tails leaves no "
+"traces on the computer after a session is closed."
+msgstr ""
+"این تصمیم آگاهانه از این رو گرفته شده که این حالت برای چیزی که برای کاربران "
+"تیلز می‌خواهیم بهتر است: فراموشی، یعنی این که تیلز پس از پایان نشست کاری "
+"ردپایی روی رایانه باقی نمی‌گذارد."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"unetbootin\">Can I install Tails with UNetbootin, YUMI, Ventoy, or another tool?</h2>\n"
+msgstr "آیا می‌توانم تیلز را با UNetbootin، YUMI یا دیگر ابزارهای موردعلاقه‌ام نصب کنم؟\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"No. Those installation methods are unsupported. They might not work at all, "
+"or worse: they might seem to work, but produce a USB stick that does *not* "
+"behave like Tails should. Follow the [[download and installation "
+"documentation|install]] instead."
+msgstr ""
+"خیر. ما از این روش‌های نصب پشتیبانی نمی‌کنیم. این روش‌ها کلاً کار نمی‌کنند، یا "
+"حتی بدتر، ممکن است یک دستگاه تیلز ایجاد کنند که آن طور که باید *عمل نمی‌کند*. "
+"در عوض [[download and سند دانلود و نصب|install]] را دنبال کنید."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"upgrade\">Should I update Tails using <code>apt upgrade</code> or <i>Synaptic</i>?</h2>\n"
+msgstr "<h2 id=\"upgrade\">آیا می‌توانم تیلز را با استفاده از <code>apt upgrade</code> یا <i>سینپتیک</i> به‌روز کنم؟</h2>\n"
+
+#. type: Plain text
+msgid ""
+"No. Upgrading whenever you get a notification from *[[Tails Upgrader|doc/"
+"upgrade]]* is enough."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"Tails provides upgrades every 4 weeks, which are thoroughly tested to make "
+"sure that no security feature or configuration gets broken."
+msgstr ""
+"خیر. تیلز هر شش هفته به‌روزرسانی‌هایی در اختیار شما می‌گذارد که به دقت بررسی "
+"شده‌اند\n"
+"تا اطمینان حاصل شود که مشکل امنیتی یا پیکربندی ندارند.\n"
+"به روزرسانی افزونه‌ها در *مرورگر تیلز* ممکن است منجر به\n"
+"ایجاد اشکال در امنیت موجود در تیلز شود.\n"
+
+#. type: Plain text
+msgid ""
+"If you upgrade the system yourself using `apt` or *Synaptic*, you might "
+"break things."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Our team sometimes publishes emergency releases, whenever important security "
+"upgrades are available in Debian or *Tor Browser* before the next scheduled "
+"release."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"preinstalled\">Can I buy a preinstalled Tails USB stick or DVD?</h2>\n"
+msgstr "آیا می‌توانم یک دستگاه با تیلز از پیش‌نصب‌شده خریداری کنم؟\n"
+
+#. type: Plain text
+msgid "No, we don't sell preinstalled Tails devices."
+msgstr "خیر. ما دستگاه‌های تیلز ازپیش‌نصب‌شده نمی‌فروشیم."
+
+#. type: Plain text
+msgid "Selling preinstalled devices would in fact be a pretty bad idea:"
+msgstr "فروختن دستگاه‌های ازپیش‌نصب‌شده در واقع فکر بسیار بدی هستند:"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"If burned on a DVD, then this DVD would be outdated on the next release. "
+"This means after 4 weeks at most."
+msgstr ""
+"اگر تیلز را روی یک دی‌وی‌دی ایجاد کنیم، این دی‌وی‌دی در نسخهٔ بعدی دیگر قدیمی "
+"خواهد بود. یعنی عمر مفید آن در بهترین حالت تنها شش هفته است."
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"If installed onto a USB stick, then it would be impossible to verify that "
+"the Tails on the USB stick is genuine. Trusting that a Tails USB stick is "
+"genuine should be based either on cryptographic verification or on personal "
+"trust (if you know someone you trust who can clone a Tails USB stick for "
+"you). But once Tails is installed on a USB stick it is not possible to use "
+"our cryptographic verification techniques anymore. Being able to trust your "
+"Tails USB stick is something that we really care about."
+msgstr ""
+"اگر آن را روی یک درایو یواس‌بی نصب کنیم، تأیید صحت آن غیرممکن خواهد بود. "
+"اعتماد به صحت یک دستگاه تیلز یا باید بر مبنای تأیید رمزنگاری باشد یا اعتماد "
+"شخصی (اگر فرد قابل‌اعتمادی می‌شناسید که می‌تواند برایتان یک دستگاه تیلز را "
+"همتاسازی کند). اما پس از نصب تیلز روی یک درایو یواس‌بی دیگر نمی‌توان از روش‌های "
+"تأیید رمزنگاری استفاده کرد. امکان اعتماد به دستگاه تیلز مساله‌ای است که ما به "
+"آن اهمیت بسیاری می‌دهیم."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"integrity\">Can I verify the integrity of a Tails USB stick or DVD?</h2>\n"
+msgstr "آیا می‌توانم یکپارچگی یک دستگاه تیلز را تأیید کنم؟\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"It is impossible to verify the integrity of a Tails USB stick or DVD while "
+"running Tails from it. It would be like asking someone whether they are "
+"lying: a true liar would always pretend to tell the truth."
+msgstr ""
+"تأیید یکپارچگی یک دستگاه تیلز همزمان با اجرای تیلز از روی همان دستگاه ممکن "
+"نیست. این کار مثل این است که از فردی بپرسید دروغگو هست یا نه؛ پاسخ یک فرد "
+"دروغگو همیشه «نه» خواهد بود."
+
+#. type: Plain text
+msgid ""
+"If you worry that your Tails might be corrupted, do a [[manual upgrade|doc/"
+"upgrade]] from a trusted operating system to upgrade it to a trusted version "
+"of Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>In the future, we might make it possible to verify the integrity of a Tails\n"
+"USB stick from another trusted OS. ([[!tails_ticket 7496]])</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"browser\">Tor Browser</h1>\n"
+msgstr "<a id=\"browser\"></a>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- We might move some of this content to the Tor Browser documentation. See #19122. -->\n"
+msgstr "<!-- We might move some of this content to the Tor Browser documentation. See #19122. -->\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"javascript\">Why is JavaScript enabled by default in <i>Tor Browser</i>?</h2>\n"
+msgstr "<h2 id=\"javascript\">چرا جاوااسکریپت به طور پیش‌فرض در <i>مرورگر تور</i> فعال است؟</h2>\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"Many websites today require JavaScript to work correctly. As a consequence "
+"JavaScript is enabled by default in Tails to avoid confusing many users. But "
+"*Tor Browser* takes care of [[blocking dangerous JavaScript functionalities|"
+"doc/anonymous_internet/Tor_Browser#javascript]]."
+msgstr ""
+"امروزه تارنماهای بسیاری برای درست کار کردن نیاز به جاوااسکریپت دارند. در "
+"نتیجه برای اجتناب از سردرگمی بسیاری از کاربران، جاوااسکریپت را به طور پیش‌فرض "
+"روی تیلز فعال کرده‌ایم. اما افزونهٔ [[تورباتِن|doc/anonymous_internet/"
+"Tor_browser#torbutton]] که در تیلز وجود دارد جاوااسکریپت‌های خطرناک را مسدود "
+"می‌کند."
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"Tor Browser also includes a [[security level|doc/anonymous_internet/"
+"Tor_browser#security-level]] and the [[NoScript|doc/anonymous_internet/"
+"Tor_browser#noscript]] extension to optionally disable more JavaScript. This "
+"might improve security in some cases. However, if you disable JavaScript, "
+"then the [[fingerprint|doc/anonymous_internet/Tor_Browser#fingerprint]] of "
+"your *Tor Browser* differs from most users. This reduces your anonymity."
+msgstr ""
+"مرورگر تور همچنین دارای یک [[security_slider|doc/anonymous_internet/"
+"Tor_browser#security-level]] و افزونهٔ [[نواسکریپت|doc/anonymous_internet/"
+"Tor_browser#noscript]] که با آن‌ها می‌توانید جاوااسکریپت‌های بیشتری را غیرفعال "
+"کنید. این کار می‌تواند در بعضی موارد امنیت را افزایش دهد. اما اگر کلاً "
+"جاوااسکریپت را غیرفعال کنید آن‌گاه [[اثر انگشت|doc/about/fingerprint]] "
+"مرورگرتان با اثر انگشت اغلب کاربران تور متفاوت خواهد بود که این نکته ممکن "
+"است باعث به خطر افتادن ناشناسی شما شود."
+
+#. type: Plain text
+msgid ""
+"We think that having JavaScript enabled by default is the best possible "
+"compromise between usability and security in this case."
+msgstr ""
+"ما معتقدیم در این مورد فعال نگاه داشتن جاوااسکریپت به طور پیش‌فرض بهترین "
+"مصالحه بین کاربردپذیری و امنیت است."
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>We have plans to allow storing the security level in the Persistent Storage. ([[!tails_ticket 9700]])</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"add-ons\">Can I install other add-ons in <i>Tor Browser</i>?</h2>\n"
+msgstr "<h2 id=\"add-ons\">آیا می‌توانم روی <i>مرورگر تور</i> افزونه‌های دیگری هم نصب کنم؟</h2>\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"Installing add-ons in *Tor Browser* might break the security built into "
+"Tails."
+msgstr ""
+"نصب افزونه‌ها روی *مرورگر تور* ممکن است باعث ایجاد اشکال در امنیت موجود در "
+"تیلز شود.\n"
+
+#. type: Plain text
+msgid ""
+"Add-ons can do many things within the browser, and even if all the "
+"networking goes through Tor, some add-ons might interact badly with the rest "
+"of the configuration or leak private information."
+msgstr ""
+"افزونه‌ها می‌توانند کارهای بسیاری در مرورگر انجام دهند و حتی اگر تمام "
+"فعالیت‌های مرورگر از طریق تور عبور کند، بعضی افزونه‌ها ممکن است با بقیهٔ "
+"تنظیمات مشکل داشته باشند یا باعث درز کردن اطلاعات خصوصی شوند."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"1. They can track and reveal information about your browsing behaviour, browsing\n"
+"history, or system information, either on purpose or by mistake.\n"
+msgstr "۱. آن‌ها می‌تواند اطلاعاتی در مورد رفتار وب‌گردی، تاریخچهٔ وب‌گردی یا اطلاعات سیستم شما را چه از عمد و چه از روی اشتباه پیگیری و فاش کنند.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"2. They can have bugs and security vulnerabilities that can be remotely exploited by an\n"
+"attacker.\n"
+msgstr "۲. آن‌ها ممکن است ایراد و حفره‌های امنیتی داشته باشند که از سوی یک مهاجم کنترل می‌شود.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"3. They can have bugs that break the security offered by other add-ons\n"
+"and break your anonymity.\n"
+msgstr "۴. ممکن است ایرادهایی داشته باشند که امنیت ارائه‌شده از سوی افزونه‌ها را به مخاطره می‌اندازد، برای نمونه امنیت تورباتِن، و در نتیجه ناشناس بودن شما دچار مشکل شود.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"4. They can break your anonymity by making your browsing behaviour\n"
+"distinguishable from other Tails users.\n"
+msgstr ""
+"۴. ممکن است با قابل‌تشخیص کردن رفتار وب‌گردی شما از دیگر کاربران تیلز ناشناسی شما\n"
+"را به مخاطره بیندازند.\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"Unless proven otherwise, no add-on, apart from the ones already included in "
+"Tails, has been seriously audited and should be considered safe to use in "
+"this context."
+msgstr ""
+"هیچ افزونه‌ای به جز افزونه‌های گنجانده‌شده در تیلز بررسی جدی نشده‌اند و نباید "
+"استفاده از آن‌ها در تیلز امن محسوب شود، مگر این که خلافش ثابت شود."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"next\">\n"
+"  <ul>\n"
+"    <li>[[Browsing the web with <i>Tor Browser</i>|doc/anonymous_internet/Tor_browser]]</li>\n"
+"  </ul>\n"
+"</div>\n"
+msgstr ""
+"<div class=\"next\">\n"
+"  <ul>\n"
+"    <li>[[وب‌گردی با *مرورگر تور*|doc/anonymous_internet/Tor_browser]]</li>\n"
+"  </ul>\n"
+"</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"XXX: Push that information to the browser documentation?\n"
+"XXX: Check https://2019.www.torproject.org/docs/torbutton/torbutton-faq.html.en#recommendedextensions\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"XXX: Push that information to the browser documentation?\n"
+"XXX: Check https://2019.www.torproject.org/docs/torbutton/torbutton-faq.html.en#recommendedextensions\n"
+"-->\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"update-add-ons\">Should I manually update add-ons included in <i>Tor Browser</i>?</h2>\n"
+msgstr "<h2 id=\"update-add-ons\">آیا باید افزونه‌های گنجانده‌شده در <i>مرورگر تور</i> را دستی به‌روز کنم؟</h2>\n"
+
+#. type: Plain text
+msgid "No."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"Updating add-ons in *Tor Browser* might break the security built into Tails."
+msgstr ""
+"نصب افزونه‌ها روی *مرورگر تور* ممکن است باعث ایجاد اشکال در امنیت موجود در "
+"تیلز شود.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"anonymity-test\">How to analyse the results of online anonymity tests?</h2>\n"
+msgstr "<h2 id=\"anonymity-test\">چگونه نتایج آزمون‌های ناشناسی آنلاین را تحلیل کنیم؟</h2>\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"Fingerprinting websites, such as <https://coveryourtracks.eff.org/>, try to "
+"retrieve as much information as possible from your browser to see if it can "
+"be used to identify you."
+msgstr ""
+"تارنماهای ثبت اثرانگشت مانند <https://panopticlick.eff.org/> یا <https://ip-"
+"check.info/> سعی می‌کنند از مرورگر شما تا حد امکان اطلاعات کسب کنند و ببینند "
+"که آیا می‌توانند با این اطلاعات هویت شما را احراز کنند."
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"As explained in our documentation about [[the fingerprint of *Tor Browser* "
+"in Tails|doc/anonymous_internet/Tor_Browser#fingerprint]], Tails provides "
+"anonymity by making it difficult to distinguish you from other users of *Tor "
+"Browser* (either in Tails or on other operating systems)."
+msgstr ""
+"همان‌طور که در مستندات ما راجع به\n"
+" [[اثر انگشت|doc/about/fingerprint]] آمده، تیلز با دشوار کردن تشخیص یک کاربر "
+"خاص\n"
+"بین کاربران متعدد *مروگر تور* (چه در تیلز و چه سیستم‌عامل‌های دیگر)\n"
+"شما را ناشناس می‌کند.\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"So, the information retrieved by such fingerprinting websites is not harmful "
+"for anonymity in itself, as long as it is the same for all users of *Tor "
+"Browser*."
+msgstr ""
+"بنابراین اطلاعات به‌دست‌آمده توسط این تارنماها تا وقتی که این اطلاعات برای "
+"تمام کاربران\n"
+"*مرورگر تور* یکسان باشد به خودی خود ناشناسی را دچار مخاطره نمی‌کنند.\n"
+
+#. type: Plain text
+msgid ""
+"Furthermore, we verify the result of those websites before each release, see "
+"our [[test suite|contribute/release_process/test]]."
+msgstr ""
+"علاوه بر این ما نتایج این تارنماها را پیش از هر انتشار تأیید می‌کنیم. رجوع "
+"کنید به [[مجموعهٔ آزمایش|contribute/release_process/test]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"networking\">Networking</h1>\n"
+msgstr "<h1 id=\"networking\">شبکه</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"vpn\">Can I use Tails with a VPN?</h2>\n"
+msgstr "<h2 id=\"vpn\">آیا می‌توانم در تیلز از وی‌پی‌ان استفاده کنم؟</h2>\n"
+
+#. type: Plain text
+msgid "Currently, Tails does not work with VPNs."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tor provides anonymity by making it impossible for a single point in the "
+"network to know both the origin and destination of a connection."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img doc/anonymous_internet/tor/tor.png link=\"no\" class=\"svg\" alt=\"A Tor connection goes through 3 relays with the last one establishing the actual connection to the final destination\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Unlike Tor, VPNs don't provide strong anonymity because the VPN provider can "
+"see both where you are connecting from and where you are connecting to."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img doc/anonymous_internet/tor/vpn.png link=\"no\" class=\"svg\" alt=\"A VPN connection goes through a single relay\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"But VPNs have clear benefits over Tor in some situations where strong "
+"anonymity is not needed, for example:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"To access websites that block Tor or can only be accessed from a given "
+"country"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "To use videoconferencing tools like *Jitsi* or *Zoom*"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "To access private VPN services like intranets or share folders"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "To browse the Internet at higher speeds than Tor"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"In the future, we want to add another browser in Tails that would use a VPN\n"
+"instead of Tor. See our [[!tails_blueprint desc=\"blueprint on VPN support\"\n"
+"VPN-support]].\n"
+msgstr "برای اطلاعات بیشتر [[!tails_blueprint desc=\"بلوپرینت پشتیبانی از وی‌پی‌ان\" VPN-support]] ما را ببینید."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"torrc\">Can I choose the country of my exit nodes or further edit the <code>torrc</code>?</h2>\n"
+msgstr "<h2 id=\"torrc\">آیا می‌توانم کشور گره خروجی خود را انتخاب کنم یا <code>torrc</code> را تغییر دهم؟</h2>\n"
+
+#. type: Plain text
+msgid ""
+"Editing the Tor configuration file, also called `torrc`, to modify how Tor "
+"creates circuits can weaken your anonymity in ways that are hard to "
+"understand and explain. That is why we don't explain how to modify the Tor "
+"configuration file in Tails, for example, to choose the country of your exit "
+"nodes or exclude some entry guards."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Still, you can close a given circuit and trigger Tor to create a new one "
+"using the [[New Tor circuit for this site|doc/anonymous_internet/"
+"Tor_Browser]] button of *Tor Browser* or the [[*Onion Circuits*|doc/"
+"anonymous_internet/tor/circuits]] utility."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"htp\">Why does Tails automatically connect to websites when starting?</h2>\n"
+msgstr "چرا تیلز هنگام آغاز شدن خودکار به چندین تارنما متصل می‌شود؟\n"
+
+#. type: Plain text
+msgid "The clock of the computer needs to be set at the correct time for both:"
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid "Being able to connect to the Tor network."
+msgstr "استفاده از یک وی‌پی‌ان برای وصل شدن به تور (وی‌پی‌ان پیش از تور)"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The computer clock is fixed a first time, approximately, before connecting\n"
+"   to Tor, either [[automatically|doc/anonymous_internet/tor#automatic]] or\n"
+"   [[manually|doc/anonymous_internet/tor/troubleshoot#clock]].\n"
+msgstr ""
+
+#. type: Bullet: '2. '
+msgid "Protecting your anonymity while using Tor."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The computer clock is fixed a second time, precisely, to prevent a website\n"
+"   from identifying you by analyzing minor differences between your computer clock\n"
+"   and the correct time.\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"   This second synchronization is made by sending HTTPS queries through Tor to several\n"
+"   websites and deducing a correct time from their answers. You can see the\n"
+"   list of websites that Tails can connect to in *[[!tails_gitweb config/chroot_local-includes/etc/default/htpdate.pools desc=\"/etc/default/htpdate.pools\"]]*.\n"
+msgstr "این تنظیم از طریق ارسال درخواست‌های اچ‌تی‌تی‌پی‌اس از تور برای تارنمای متعدد و تعیین ساعت صحیح از پاسخ‌های آن‌ها انجام می‌شود. فهرست تارنماهایی که در این روند به آن‌ها مراجعه می‌شود را می‌توان از `/etc/default/htpdate` یافت."
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"See also our [[design document on time synchronization|contribute/design/"
+"Time_syncing]]."
+msgstr ""
+"همچنین در این مورد موضوع رجوع کنید به [[سند طراحی|contribute/design/"
+"Time_syncing]] ما."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"relay\">Can I help the Tor network by running a relay or a bridge in Tails?</h2>\n"
+msgstr "<h2 id=\"relay\">آیا می‌توانم با راه‌اندازی یک رله یا پل در تیلز به شبکهٔ تور کمک کنم؟</h2>\n"
+
+#. type: Plain text
+msgid "It is currently impossible to run a Tor relay or bridge in Tails."
+msgstr "در حال حاضر راه‌اندازی یک رله یا پل تور در تیلز ممکن نیست."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"onion-service\">Can I run a Tor onion service from Tails?</h2>\n"
+msgstr "آیا می‌توانم در تیلز از یک سیستم مخفی تور استفاده کنم؟\n"
+
+#. type: Plain text
+msgid ""
+"You can use [[*OnionShare*|doc/anonymous_internet/onionshare]] to share "
+"files, websites, and chat rooms from Tails using onion services."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"It is technically possible to use Tails to create other onion services, but "
+"it is complicated and we have no plans to document this."
+msgstr ""
+"استفاده از تیلز برای ایجاد یک سرویس مخفی از نظر فنی ممکن است، اما کاری "
+"پیچیده به حساب می‌آید و هنوز مستندسازی نشده‌است."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"ping\">Can I use <code>ping</code> in Tails?</h2>\n"
+msgstr "آیا می‌توانم در تیلز از یک سیستم مخفی تور استفاده کنم؟\n"
+
+#. type: Plain text
+msgid ""
+"It is impossible to use `ping` in Tails, because `ping` uses the ICMP "
+"protocol while Tor can only transport TCP connections."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"software\">Included software</h1>\n"
+msgstr "نرم‌افزارهایی که در تیلز گنجانده نشده‌اند\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"new-software\">Can my favorite software be included in Tails?</h2>\n"
+msgstr "<h2 id=\"new-software\">آیا امکان گنجانده‌شدن نرم‌افزار محبوب من در تیلز وجود دارد؟</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>If a software is not included in Tails, but is included in Debian, you can use\n"
+"the [[Additional\n"
+"Software|doc/persistent_storage/configure#additional_software]] feature of\n"
+"the Persistent Storage to install it automatically every time you start Tails.</p>\n"
+msgstr "اگر نرم‌افزاری در تیلز موجود نباشد، اما در دبیان وجود داشته باشد، می‌توانید از ویژگی [[نرم‌افزارهای بیشتر|doc/first_steps/persistence/configure#additional_software]] درایو مانا برای نصب خودکار آن در ابتدای هر نشست کاری استفاده کنید."
+
+#. type: Plain text
+msgid ""
+"First, make sure that this software is already available in Debian, as this "
+"is a requirement to be included in Tails."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Adding to Tails software that is not in Debian implies extra work that could "
+"compromise the sustainability of the project."
+msgstr ""
+
+#. type: Plain text
+msgid "Being in Debian brings many advantages:"
+msgstr ""
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"It is included in the Debian process for security updates and new versions."
+msgstr "- به‌روزرسانی‌های امنیتی و نسخه‌های جدید بسیاری در روند دبیان وجود دارند."
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "It is authenticated using OpenPGP signatures."
+msgstr "- نرم‌افزارها با استفاده از امضای اُپن‌پی‌جی‌پی تأیید می‌شوند."
+
+#. type: Bullet: '- '
+msgid ""
+"It is under the scrutiny of the Debian community and its many users and "
+"derivatives, including Ubuntu."
+msgstr ""
+"این نرم‌افزارها تحت مراقبت جامعهٔ دبیان و کاربران و مشتقات بسیار آن از جمله "
+"اوبونتو قرار دارند."
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"To check whether some software is in Debian, search for it on <https://"
+"packages.debian.org/>. If it is not yet available in Debian, ask its "
+"developers why it is not the case yet."
+msgstr ""
+"برای مطمئن شدن از حضور یک نرم‌افزار در دبیان، در <https://packages.debian.org/"
+"> به دنبال آن بگردید. اگر هنوز برای دبیان موجود نیت، باید از برنامه‌نویسان آن "
+"دلیل این مشکل را بپرسید."
+
+#. type: Plain text
+msgid ""
+"Second, this software might not be useful to accomplish our design goals. "
+"Refer to our [[design documents|contribute/design]] to understand which are "
+"the intended use cases, and the assumptions on which Tails is based."
+msgstr ""
+"دوم این که این نرم‌افزار شاید برای اهداف طراحی ما سودمند نباشد. برای درک "
+"موارد استفادهٔ مورد نظر ما و پیش‌فرض‌های تیلز رجوع کنید به [[سند طراحی|"
+"contribute/design]] ما."
+
+#. type: Plain text
+msgid ""
+"We also try to limit the amount of software included in Tails, and we only "
+"add new software with a very good reason to do so:"
+msgstr ""
+"ما همچنین تلاش می‌کنیم میزان نرم‌افزارهای موجود در تیلز را کاهش دهیم و تنها به "
+"دلایل بسیار مناسب چند نرم‌افزار در آن می‌گنجانیم:"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "We try to limit the growth of the images and automatic upgrades."
+msgstr "ما سعی در محدود کردن رشد حجم تصویر ایزو و به روزرسانی‌های خودکار داریم."
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "More software implies more security issues."
+msgstr "- وجود نرم‌افزارهای بیشتر به معنی مسائل امنیتی بیشتر است."
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "We avoid proposing several options to accomplish the same task."
+msgstr "- ما از ارائهٔ راه‌حل‌های مختلف برای یک کار خودداری می‌کنیم."
+
+#. type: Bullet: '- '
+msgid ""
+"If a package needs to be removed after its inclusion, for example because of "
+"security problems, then this might be problematic as users might rely on it."
+msgstr ""
+"اگر پس از اضافه شدن یک بسته، برای مثال به دلایل مشکلات امنیتی، مجبور به حذف "
+"آن شویم، ممکن است مشکلاتی برای کاربران به وجود بیاید چون به این نرم‌افزارها "
+"اتکا می‌کنند."
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"After considering all this, if you still think that this software is a good "
+"candidate to be included in Tails, please explain us your proposal on [[!"
+"tails_ticket desc=\"GitLab\"]]."
+msgstr ""
+"پس از در نظر گرفتن تمام این موارد اگر همچنان فکر می‌کنید نرم‌افزار مورد نظر "
+"نامزدی خوبی برای حضور در تیلز است، لطفاً پیشنهاد خود را [[برای ما توضیح دهید|"
+"about/contact#tails-dev]]."
+
+#. type: Plain text
+msgid "Here is some of the software we are often asked to include in Tails:"
+msgstr ""
+"این‌ها نرم‌افزارهایی هستند که از ما مکرراً برای گنجاندن آن‌ها در تیلز درخواست "
+"می‌شود:"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "**monero**: not in Debian ([[!tails_ticket 17823]])"
+msgstr "**torchat**: رجوع کنید به [[!tails_ticket 5554]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "**bitmessage**: not in Debian"
+msgstr "- **bitmessage**: در دبیان موجود نیست"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "**retroshare**: not in Debian"
+msgstr "- **retroshare**: در دبیان نیست"
+
+#. type: Bullet: '- '
+msgid "**rar/unrar**: not [[Free Software|doc/about/license]]"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"messaging\">Can I use messaging apps like WhatsApp, Telegram, or Signal in Tails?</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Adding [*Signal*](https://signal.org/) is very high in our priorities but "
+"complicated because *Signal* is not available in Debian by default and "
+"updates very often."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Because no single app will ever meet the needs of all our users, we might "
+"also make it easier to install other messaging apps. ([[!tails_ticket "
+"14567]])"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"In Tails, you can already chat over XMPP using [[Pidgin|doc/"
+"anonymous_internet/pidgin]] and create anonymous chat rooms using "
+"[[OnionShare|doc/anonymous_internet/onionshare]]."
+msgstr ""
+
+#. type: Plain text
+msgid "Current alternatives:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**Signal**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  You can follow this tutorial to [install *Signal Desktop* on\n"
+"  Tails](https://0xacab.org/about.privacy/messengers-on-tails-os/-/wikis/Signal/Install-Signal-desktop)\n"
+"  and link to an existing *Signal* account.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  To create a *Signal* account for a new telephone number from Tails, follow\n"
+"  this tutorial on [registering an account using\n"
+"  `signal-cli`](https://0xacab.org/about.privacy/messengers-on-tails-os/-/wikis/Signal/Registration-and-Provisioning-via-signal-cli).\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**WhatsApp**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  *WhatsApp Web* works in *Tor Browser* as of January 2025. *WhatsApp Web* has\n"
+"  been unreliable in *Tor Browser* in the past and might stop working in the\n"
+"  future.\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**Telegram Web**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  *Telegram Web* does not work in *Tor Browser* as of January 2025. *Telegram\n"
+"  Web* has been working in *Tor Browser* in the past and might work again in\n"
+"  the future.\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"voip\">Can I do voice or video calls from Tails?</h2>\n"
+msgstr "آیا می‌توانم در تیلز با بیت‌تورنت دانلود کنم؟\n"
+
+#. type: Plain text
+msgid "Not yet."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Videoconferencing tools that work in web browsers, like *Jitsi* or *Zoom*, "
+"don't work in *Tor Browser* yet."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  They rely on the [[!wikipedia WebRTC]] technology, which uses\n"
+"  [[!wikipedia User_Datagram_Protocol desc=\"UDP\"]] connections. But, the Tor network only\n"
+"  supports TCP connections, like the ones used for HTTP and email.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  To remove this limitation, the Tor Project is working on [supporting UDP traffic over\n"
+"  Tor](https://spec.torproject.org/proposals/339-udp-over-tor.html).\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Proprietary applications like *Skype* or *Zoom* will never be available in "
+"Tails because they are not Free Software."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[*Mumble*](https://www.mumble.info/) is the only voice chat application that "
+"we know works from Tails. You can use the [[Additional Software|doc/"
+"persistent_storage/additional_software]] feature to add *Mumble* to your "
+"Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  [*Wahay*](https://wahay.org/) is a decentralized voice chat application based\n"
+"  on *Mumble*. If you are a Debian developer, please help us\n"
+"  [[!tails_ticket 17617 desc=\"get *Wahay* in Debian\"]].\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"bittorrent\">Can I download using BitTorrent with Tails?</h2>\n"
+msgstr "<h2 id=\"bittorrent\">آیا می‌توانم در تیلز با بیت‌تورنت دانلود کنم؟</h2>\n"
+
+#. type: Plain text
+msgid ""
+"Tails does not ship any BitTorrent software and is unlikely to do so in the "
+"future."
+msgstr ""
+"تیلز از هیچ نرم‌افزار بیت‌تورنتی استفاده نمی‌کند و احتمال این کار در آینده نیز "
+"کم است."
+
+#. type: Plain text
+#, fuzzy
+msgid "There are 2 problems with using BitTorrent over Tor:"
+msgstr "دو مشکل برای استفاده از بیت‌تورنت در تور وجود دارد:"
+
+#. type: Bullet: '- '
+msgid ""
+"It is technically hard to do it properly, see: <https://blog.torproject.org/"
+"bittorrent-over-tor-isnt-good-idea>."
+msgstr ""
+"از نظر فنی انجام این کار دشوار است؛ رجوع کنید به <https://"
+"blog.torproject.org/bittorrent-over-tor-isnt-good-idea>."
+
+#. type: Bullet: '- '
+msgid ""
+"It harms the network, see: <https://blog.torproject.org/why-tor-slow-and-"
+"what-were-going-do-about-it>."
+msgstr ""
+"این کار باعث وارد شدن آسیب به شبکه می‌شود؛ رجوع کنید به <https://"
+"blog.torproject.org/why-tor-slow-and-what-were-going-do-about-it>."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"monero\">Can I use Monero in Tails?</h2>\n"
+msgstr "آیا می‌توانم در تیلز از یک سیستم مخفی تور استفاده کنم؟\n"
+
+#. type: Plain text
+msgid ""
+"Yes. You can install the [[*Feather*|doc/advanced_topics/feather]] Monero "
+"wallet as an AppImage."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"Tails currently does not include a Monero wallet. However, we are interested\n"
+"in making it easier to use Monero in Tails in the future. See [[!tails_ticket\n"
+"17823]] for a list of unofficial guides on how to use Monero in Tails.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"antivirus\">Does Tails need an antivirus?</h2>\n"
+msgstr "<h2 id=\"antivirus\">آیا تیلز ضدویروس هم دارد؟</h2>\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"No, as other Linux systems, Tails doesn't require an antivirus to protect "
+"itself from most malware, such as viruses, trojans, and worms. There are "
+"various reasons why Linux operating systems generally don't need antivirus "
+"software, including the permission design of Linux systems."
+msgstr ""
+"خیر. تیلز نیز مانند دیگر سیستم‌های لینوکس برای محافظت خود در برابر بیشتر "
+"بدافزارها از جمله ویروس‌ها، اسب‌های تروا و کرم‌ها نیازی به ضدویروس ندارد. دلایل "
+"مختلفی برای نیاز نداشتن اغلب سیستم‌عامل‌های لینوکس به نرم‌افزارهای ضدویروس وجود "
+"دارد، از جمله طراحی اجازهٔ سیستم‌های لینوکس."
+
+#. type: Plain text
+msgid ""
+"See the [[!wikipedia Linux_malware desc=\"Wikipedia page on Linux "
+"malware\"]] for further details."
+msgstr ""
+"برای جزییات بیشتر رجوع کنید به [[!wikipedia Linux_malware desc=\"صفحهٔ "
+"ویکی‌پدیا در مورد بدافزارهای لینوکس\"]]."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"old-software\">Why does Tails include old versions of software?</h2>\n"
+msgstr "استفاده از تیلز روی یک سیستم مشکل‌دار امن است؟\n"
+
+#. type: Plain text
+msgid "The Tails 7 series is based on Debian 13 (Trixie)."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The version of each application included in Tails corresponds to the version "
+"available in this version of Debian. Even though some versions might be old, "
+"the [Debian Security Team](https://wiki.debian.org/Teams/Security) provides "
+"security updates."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Newer versions of all applications will be available starting from Tails "
+"7.0, which will be based on Debian 13 (Trixie). Until then, you cannot "
+"update any of the applications included in Tails to a newer version."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You can see which version of a software package is available in each version "
+"of Debian on <https://packages.debian.org/>."
+msgstr ""
+
+#~ msgid ""
+#~ "Ubuntu is led by a company that takes most of the important decisions and "
+#~ "has the power to make them happen."
+#~ msgstr ""
+#~ "اوبونتو توسط شرکتی اداره می‌شود که بیشتر تصمیم‌های مهم آن را می‌گیرد و قدرت "
+#~ "اجرایی کردن این تصمیم‌ها را دارد."
+
+#~ msgid ""
+#~ "We are actively working on improving [[AppArmor support|contribute/design/"
+#~ "application_isolation]] in Tails; a security framework that is already "
+#~ "used in a few Ubuntu applications."
+#~ msgstr ""
+#~ "ما مدام روی پیشبرد  [[پشتیبانی اَپ‌آرمور|contribute/design/"
+#~ "application_isolation]] در تیلز کار می‌کنیم؛ اپ‌آرمور یک چارچوب امنیتی است "
+#~ "که پیش از این در بعضی ابزارهای اوبونتو به کار رفته است."
+
+#~ msgid ""
+#~ "We are also working on adding compiler hardening options to more Debian "
+#~ "packages included in Tails; another security feature that Ubuntu already "
+#~ "provides."
+#~ msgstr ""
+#~ "همچنین در حال کار روی اضافه کردن گزینه‌های کامپایلری برای بسته‌های بیشتری "
+#~ "از دبیان که در تیلز وجود دارند هستیم؛ این بسته‌ها ویژگی امنیتی دیگری هستند "
+#~ "که اوبونتو از آن‌ها استفاده می‌کند."
+
+#~ msgid ""
+#~ "We had users ask for LXDE, XFCE, MATE, KDE, and so on, but we are not "
+#~ "going to change desktop. According to us, the main drawback of GNOME is "
+#~ "that it requires quite a lot of resources to work properly, but it has "
+#~ "many advantages.  The GNOME Desktop is:"
+#~ msgstr ""
+#~ "بعضی کاربران از ما درخواست دسکتاپ‌های LXDE، XFCE، MATE، KDE و غیره "
+#~ "کرده‌اند، اما ما قصد تغییر دسکتاپ را نداریم. از نظر ما مشکل اصلی گنوم این "
+#~ "است که به منابع بسیاری نیاز دارد تا خوب کار کند، اما مزایای بسیاری نیز "
+#~ "دارد. دسکتاپ گنوم:"
+
+#, fuzzy
+#~ msgid "Well integrated, especially for new Linux users."
+#~ msgstr "- یکپارچگی مناسبی دارد، به خصوص برای کاربران جدید لینوکس."
+
+#~ msgid ""
+#~ "We are not proposing several desktop environments to choose from because "
+#~ "we want to [[limit the amount of software included in Tails|faq#new-"
+#~ "software]]."
+#~ msgstr ""
+#~ "ما انتخاب از بین چندین محیط دسکتاپ را توصیه نمی‌کنیم، چون می‌خواهیم [[تعداد "
+#~ "نرم‌افزارهای گنجانده‌شده در تیلز را محدود کنیم|faq#new-software]]."
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "For example, the user-agent string of *Tor Browser* includes\n"
+#~ "<em>Windows NT</em> but this value preserves your anonymity even if\n"
+#~ "you run Windows NT. On the other hand, changing this value makes you distinguishable from\n"
+#~ "other users of *Tor Browser* and, as a\n"
+#~ "consequence, weakens your anonymity.\n"
+#~ msgstr ""
+#~ "برای نمونه قسمت user-agent مرورگر از تیلز ۰٫۲۱ و *مرورگر تور* ۲٫۳٫۲۵-۱۳ \n"
+#~ "روی `Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US; rv:1.9.2.3) Gecko/20100401 Firefox/3.6.3` تنظیم شده‌است.\n"
+#~ "این مساله ناشناسی شما را حفظ می‌کند حتی اگر سیستم‌عامل نصب‌شده روی رایانه\n"
+#~ " ویندوز ان‌تی باشد و شما معمولاً از فایرفاکس استفاده کنید. از سوی دیگر تغییر این تنظیم شما را از کاربران دیگر\n"
+#~ "  *مرورگر تور* متمایز کرده و ناشناسی شما را دچار مخاطره می‌کند.\n"
+
+#~ msgid ""
+#~ "First of all, make sure that this software is already available in "
+#~ "Debian, as this is a requirement to be included in Tails. Adding to Tails "
+#~ "software which is not in Debian imply an additional workload that could "
+#~ "compromise the sustainability of the project. On top of that, being in "
+#~ "Debian brings many advantages:"
+#~ msgstr ""
+#~ "اول از همه این‌که از موجود بودن این نرم‌افزار در دبیان اطمینان حاصل کنید، "
+#~ "چرا که این نکته مقدمهٔ استفاده از آن نرم‌افزار در تیلز است. اضافه کردن "
+#~ "نرم‌افزاری به تیلز که در دبیان نیست به معنی حجم اضافی کار است که ممکن است "
+#~ "امکان‌ مراقبت از پروژه را دچار مشکل کند. علاوه بر این حضور در دبیان مزایای "
+#~ "بسیاری دارد:"
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"youtube\">Can I download videos from websites?</h2>\n"
+#~ msgstr "آیا می‌توانم در تیلز با بیت‌تورنت دانلود کنم؟\n"
+
+#, no-wrap
+#~ msgid "<p class=\"command\">torsocks youtube-dl \"https://www.youtube.com/watch?v=JWII85UlzKw\"</p>\n"
+#~ msgstr "<p class=\"command\">torsocks youtube-dl \"https://www.youtube.com/watch?v=Y16VGmL5778\"</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "No. Tails provides upgrades every six weeks, that are thoroughly tested\n"
+#~ "to make sure that no security feature or configuration gets broken.\n"
+#~ "If you upgrade the system yourself using `apt` or *Synaptic*,\n"
+#~ "you might break things. Upgrading when you get a notification from\n"
+#~ "*[[Tails Upgrader|doc/upgrade]]* is enough.\n"
+#~ msgstr ""
+#~ "خیر. تیلز هر شش هفته امکان به‌روزرسانی فراهم می‌کند و این به‌روزرسانی‌ها به دقت\n"
+#~ "بررسی می‌شوند تا باعث مشکل در ویژگی‌های امنیتی یا پیکربندی نشوند.\n"
+#~ "اگر سیستمتان را خودتان با استفاده از `apt` یا *سینپتیک*\n"
+#~ "به‌روز کنید ممکن است باعث شوید این ویژگی‌ها دچار مشکل شوند. به‌روزرسانی پس از دریافت آگهی از\n"
+#~ "*[[ارتقادهندهٔ تیلز|doc/upgrade]]* کافی است.\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<h1 id=\"hardware\">Hardware compatibility</h1>\n"
+#~ msgstr "سازگاری سخت‌افزاری\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"arm\">Does Tails work on ARM architecture, Raspberry Pi, tablets, smartphones (mobile phones), or Apple M1?</h2>\n"
+#~ msgstr "آیا تیلز روی معماری آرم، رزبری پای یا تبلت‌ها کار می‌کند؟\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "For the moment, Tails is only available on the x86_64 architecture.  The "
+#~ "Raspberry Pi, most tablets, and most smartphones (mobile phones) are "
+#~ "based on the ARM architecture. Tails does not work on the ARM "
+#~ "architecture so far."
+#~ msgstr ""
+#~ "در حال حاضر تیلز تنها روی معماری‌های x86 و x86_64 کار می‌کند. رزبری پای و "
+#~ "بسیاری از تبلت‌ها مبتنی بر معماری آرم هستند. تیلز در حال حاضر روی معماری "
+#~ "آرم کار نمی‌کند."
+
+#~ msgid ""
+#~ "Look for a tablet with an AMD or Intel processor. Try to verify its "
+#~ "compatibility with Debian beforehand, for example make sure that the Wi-"
+#~ "Fi interface is supported."
+#~ msgstr ""
+#~ "به دنبال تبلتی با پردازشگر اینتل یا اِی‌ام‌دی باشید. سعی کنید پیش از استفاده "
+#~ "از سازگاری آن با دبیان مطمئن شوید؛ برای نمونه مطمئن شوید که از رابط "
+#~ "وای‌فای آن پشتیبانی می‌شود."
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"java\">Is Java installed in the <i>Tor Browser</i>?</h2>\n"
+#~ msgstr "آیا جاوا روی *مرورگر تور* نصب شده‌است؟\n"
+
+#~ msgid ""
+#~ "Tails does not include a Java plugin in its browser because it could "
+#~ "break your anonymity."
+#~ msgstr ""
+#~ "تیلز در مرورگر خود افزایهٔ جاوا ندارد چون ممکن است باعث به خطر افتادن "
+#~ "ناشناسی شما شود."
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"dns\">How does the DNS resolution work in Tails?</h2>\n"
+#~ msgstr "گره‌گشایی دی‌ان‌اس در تیلز چگونه انجام می‌شود؟\n"
+
+#~ msgid ""
+#~ "See our [[design document|contribute/design/Tor_enforcement/DNS]] on this "
+#~ "topic."
+#~ msgstr ""
+#~ "رجوع کنید به [[سند طراحی|contribute/design/Tor_enforcement/DNS]] ما در "
+#~ "مورد این مساله."
+
+#, fuzzy, no-wrap
+#~ msgid "<h1 id=\"misc\">Other security issues</h1>\n"
+#~ msgstr "مشکلات امنیتی دیگر\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"older-version\">Is it safe to use an older version of Tails?</h2>\n"
+#~ msgstr "استفاده از تیلز روی یک سیستم مشکل‌دار امن است؟\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"reuse-memory-wipe\">Can I use the memory wipe feature of Tails on another operating system?</h2>\n"
+#~ msgstr "آیا می‌توان از امکان پاک‌سازی حافظهٔ تیلز در سیستم‌‌عامل‌های دیگر استفاده کرد؟\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "The memory wipe mechanism that Tails uses on shutdown to [[protect "
+#~ "against cold boot attacks|doc/advanced_topics/cold_boot_attacks]] should "
+#~ "be reusable in other Linux distributions."
+#~ msgstr ""
+#~ "سازوکار پاک کردن حافظه که تیلز هنگام خاموش شدن برای [[محافظت در برابر "
+#~ "حملات راه‌اندازی سرد|doc/advanced_topics/cold_boot_attacks]] به کار می‌برد "
+#~ "هنوز برای توزیع‌های دیگر لینوکس امکان‌پذیر نیست. تمایل داریم در آینده این "
+#~ "سازوکار را برای دبیان بسته‌بندی کنیم."
+
+#~ msgid ""
+#~ "If you want to implement this feature outside of Tails, have a look at "
+#~ "the corresponding [[design documentation|contribute/design/"
+#~ "memory_erasure]]."
+#~ msgstr ""
+#~ "اگر می‌خواهید این ویژگی را خارج از تیلز به کار ببرید، [[سند طراحی|"
+#~ "contribute/design/memory_erasure]] مرتبط را ببینید."
+
+#, fuzzy
+#~ msgid "Using a VPN instead of Tor."
+#~ msgstr "استفاده از یک وی‌پی‌ان به جای تور"
+
+#, fuzzy
+#~ msgid "Connecting to a VPN using Tor (VPN after Tor)."
+#~ msgstr "وصل شدن به یک وی‌پی‌ان از طریق تور (وی‌پی‌ان پس از تور)"
+
+#, no-wrap
+#~ msgid "Using a VPN instead of Tor"
+#~ msgstr "استفاده از یک وی‌پی‌ان به جای تور"
+
+#, no-wrap
+#~ msgid "Using a VPN to connect to Tor (VPN before Tor)"
+#~ msgstr "استفاده از یک وی‌پی‌ان برای وصل شدن به تور (وی‌پی‌ان پیش از تور)"
+
+#, fuzzy
+#~ msgid ""
+#~ "In some situations, you might need to use a VPN to connect to Tor.  For "
+#~ "example, your Internet Service Provider (ISP) might restrict connections "
+#~ "to Tor relays."
+#~ msgstr ""
+#~ "در بعضی حالت‌ها ممکن است برای وصل شدن به اینترنت مجبور به استفاده از یک "
+#~ "وی‌پی‌ان باشید، برای مثال به خاطر نحوه‌ٔ کار ارائه‌دهندهٔ خدمات اینترنتی‌تان. در "
+#~ "حال حاضر امکان این کار با تیلز وجود ندارد. رجوع کنید به [[!tails_ticket "
+#~ "5858]]."
+
+#, fuzzy
+#~ msgid ""
+#~ "In these situations, try using [[Tor bridges|doc/anonymous_internet/tor]] "
+#~ "to bypass the restrictions imposed by your ISP or local network."
+#~ msgstr ""
+#~ "[[پل‌های تور|doc/first_steps/welcome_screen/bridge_mode]] نیز می‌توانند "
+#~ "برای عبور از محدودیت‌های ارایه‌دهندهٔ خدمات اینترنتی‌تان سودمند باشند."
+
+#, no-wrap
+#~ msgid "Connecting to a VPN using Tor (VPN after Tor)"
+#~ msgstr "وصل شدن به یک وی‌پی‌ان از طریق تور (وی‌پی‌ان پس از تور)"
+
+#, fuzzy
+#~ msgid ""
+#~ "In some situations, it can be useful to connect to a VPN through Tor:"
+#~ msgstr ""
+#~ "در بعضی حالت‌ها وصل شدن به یک وی‌پی‌ان از طریق تور می‌تواند سودمند باشد:"
+
+#~ msgid "To access services that block connections coming from Tor."
+#~ msgstr "برای دسترسی سروس‌هایی که اتصالات ورودی از تور را مسدود می‌کنند."
+
+#, fuzzy
+#~ msgid ""
+#~ "To access resources only available inside a VPN, for example, a server at "
+#~ "your company or university."
+#~ msgstr ""
+#~ "برای دسترسی به منابعی که تنها از یک وی‌پی‌ان قابل دسترسی هستند، برای نمونه "
+#~ "در شرکت شما یا دانشگاهتان."
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"custom-settings\">Can I save my custom settings?</h2>\n"
+#~ msgstr "آیا می‌توانم تنظیمات اختصاصی خود را ذخیره کنم؟\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "By default Tails does not save anything from one session to another.  "
+#~ "Only the Persistent Storage allows you to reuse data across different "
+#~ "Tails sessions. See the [[list of features of the Persistent Storage|doc/"
+#~ "first_steps/persistence#configure]]."
+#~ msgstr ""
+#~ "تیلز به طور پیش‌فرض هیچ تغییری را از یک نشست کاری ذخیره نمی‌کند که در "
+#~ "نشست‌های کاری دیگر از آن استفاده کند. تنها درایو مانا به شما اجازه می‌دهد "
+#~ "که از اطلاعات خود در نشست‌های کاری مختلف دوباره استفاده کنید. رجوع کنید به "
+#~ "فهرست [[ویژگی‌های مانای|doc/first_steps/persistence/configure#features]] "
+#~ "موجود."
+
+#, fuzzy
+#~ msgid ""
+#~ "We are frequently requested to add new features to the Persistent Storage "
+#~ "but we are usually busy working on other priorities. See the"
+#~ msgstr ""
+#~ "از ما مدام خواسته می‌شود که ویژگی‌های مانای جدید اضافه کنیم، اما معمولاً "
+#~ "مشغول کار روی اولویت‌های دیگر هستیم. رجوع کنید به [درخواست‌های باز](https://"
+#~ "labs.riseup.net/code/projects/tails/issues?query_id=122) ما راجع به مانا. "
+#~ "از هر کمک کوچکی نیز [[استقبال می‌شود|contribute/how/code]]."
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"luks\">How strong is the encryption of the Persistent Storage and LUKS?</h2>\n"
+#~ msgstr "رمزگذاری درایو مانا و LUKS تا چه حد قوی است؟\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "Tails uses LUKS to encrypt the Persistent Storage. This is the same "
+#~ "technique as the one we recommend for [[creating and using encrypted "
+#~ "volumes|doc/encryption_and_privacy/encrypted_volumes]] in general."
+#~ msgstr ""
+#~ "تیلز از LUKS برای رمزگذاری درایو مانا استفاده می‌کند. این همان روشی است که "
+#~ "به طور کلی برای [[ایجاد درایوهای رمزگذاری‌شده و استفاده از آن‌ها|doc/"
+#~ "encryption_and_privacy/encrypted_volumes]] توصیه می‌کنیم."
+
+#~ msgid ""
+#~ "LUKS is a very popular standard for disk encryption in Linux. LUKS is the "
+#~ "default technique for full-disk encryption proposed by many "
+#~ "distributions, including Debian and Ubuntu, when installing a regular "
+#~ "system."
+#~ msgstr ""
+#~ "استاندارد LUKS استانداردی بسیار محبوب برای رمزگذاری دیسک در لینوکس است. "
+#~ "LUKS روش پیش‌فرض رمزگذاری تمام‌دیسک هنگام نصب یک سیستم معمولی توصیه‌شده از "
+#~ "سوی بسیاری از توزیع‌ها از جمله دبیان و اوبونتو است."
+
+#, fuzzy
+#~ msgid ""
+#~ "To understand better how the Persistent Storage works, see our [[design "
+#~ "document|contribute/design/persistence]]."
+#~ msgstr ""
+#~ "برای درک بهتر نحوهٔ عملکرد مانا [[سند طراحی|contribute/design/"
+#~ "persistence]] ما را ببینید."
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"recover-passphrase\">Is it possible to recover the passphrase of the Persistent Storage?</h2>\n"
+#~ msgstr "آیا بازیابی گذرواژه‌ها از درایو مانا ممکن است؟\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "No. The encryption of the Persistent Storage is very strong and it is "
+#~ "impossible to recover the passphrase of the Persistent Storage. If the "
+#~ "passphrase is weak enough, an attacker can try many possible passphrases "
+#~ "and end up guessing your passphrase.  Such an attack is called [[!"
+#~ "wikipedia Brute_force_attack desc=\"*brute-force attack*\"]]."
+#~ msgstr ""
+#~ "خیر. رمزگذاری درایو مانا بسیار قوی است و بازیابی گذرواژه‌ها از آن غیرممکن "
+#~ "است. اگر گذرواژه‌ای بسیار ضعیف باشد ممکن است یک مهاجم با استفاده از حملهٔ "
+#~ "جستجوی فراگیر بتواند چندین گذرواژهٔ احتمالی را امتحان کرده و در نهایت آن "
+#~ "گذرواژه را حدس بزند."
+
+#, fuzzy
+#~ msgid ""
+#~ "Tor requires the system clock to be well synchronized in order to work "
+#~ "properly. When starting Tails, a notification is displayed while the "
+#~ "clock is being synchronized."
+#~ msgstr ""
+#~ "تور و I2P برای درست کار کردن نیازمند این هستند که ساعت سیستم تنظیم "
+#~ "شده‌باشد. هنگام آغاز تیلز و تنظیم شدن ساعت آگهی‌ای دریافت می‌کنید."
+
+#, fuzzy, no-wrap
+#~ msgid "<h1 id=\"desktop\">Desktop environment</h1>\n"
+#~ msgstr "محیط دسکتاپ\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"timezone\">Why is the time set wrong?</h2>\n"
+#~ msgstr "چرا ساعت درست تنظیم نشده است؟\n"
+
+#~ msgid ""
+#~ "When Tails starts, the system timezone is set to UTC (Greenwich time). "
+#~ "So, this time might be a few hours in the future if you are west of the "
+#~ "United Kingdom, or in the past if you are east of the UK. The minutes "
+#~ "should be accurate."
+#~ msgstr ""
+#~ "هنگام آغاز به کار تیلز محدودهٔ زمانی سیستم روی ساعت گرینویچ یا UTC تنظیم "
+#~ "شده‌است. بنابراین اگر در غرب انگلستان قرار دهید این ساعت ممکن چند ساعت "
+#~ "جلوتر باشد و اگر در شرق انگلستان هستید چند ساعت عقب‌تر. دقیقهٔ زمان باید "
+#~ "درست باشد."
+
+#~ msgid ""
+#~ "We do this for anonymity reasons: if some application reveals your actual "
+#~ "timezone, it might help identifying who you are."
+#~ msgstr ""
+#~ "این کار را به دلایل مرتبط با ناشناسی انجام می‌دهیم: اگر ابزارهایی باعث فاش "
+#~ "شدن ساعت حقیقی شما شوند، این کار ممکن است باعث فاش شدن هویت شما شود."
+
+#~ msgid ""
+#~ "Having all Tails users set to the same timezone, makes it more difficult "
+#~ "to distinguish you amongst all the other Tails users."
+#~ msgstr ""
+#~ "تنظیم کردن ساعت تمام کاربران تیلز روی یک محدودهٔ زمانی تشخیص شما از بین "
+#~ "تمام کاربران تیلز را دشوارتر می‌کند."
+
+#~ msgid ""
+#~ "We are working on a custom clock applet with configurable timezone. See "
+#~ "[[!tails_ticket 6284]]."
+#~ msgstr ""
+#~ "ما در حال کار روی یک برنامک اختصاصی ساعت با قابلیت تنظیم محدودهٔ زمانی "
+#~ "هستیم. رجوع کنید به [[!tails_ticket 6284]]."
+
+#, fuzzy
+#~ msgid ""
+#~ "<h2 id=\"boot-statistics\">Does Tails collect information about its users?"
+#~ "</h2>\n"
+#~ msgstr "آیا تیلز اطلاعاتی راجع به کاربران خود جمع‌آوری می‌کند؟\n"
+
+#~ msgid ""
+#~ "When Tails starts, two HTTPS requests are made automatically to our "
+#~ "website through Tor:"
+#~ msgstr ""
+#~ "هنگام راه‌اندازی تیلز از طریق تور دو درخواست اچ‌تی‌تی‌پی‌اس به طور خودکار به "
+#~ "تارنمای ما ارسال می‌شوند:"
+
+#~ msgid ""
+#~ "A security check is performed to know if security issues have been "
+#~ "announced for this version of Tails. The language of the working session "
+#~ "is passed along with this request to display the notification in the "
+#~ "preferred language of the user."
+#~ msgstr ""
+#~ "یک بررسی امنیتی انجام می‌شود تا اطمینان حاصل شود که مسائل امنیتی برای این "
+#~ "نسخه از تیلز اعلام شده‌اند یا نه. زبان نشست کاری نیز در کنار این درخواست "
+#~ "وجود دارد تا برای زبان انتخابی کاربر یک آگهی ایجاد شود."
+
+#, fuzzy
+#~ msgid ""
+#~ "[[*Tails Upgrader*|doc/upgrade]] checks for newer versions. The version "
+#~ "of the running Tails is passed along with this request."
+#~ msgstr ""
+#~ "[[*ارتقادهندهٔ تیلز*|doc/first_steps/upgrade]] به دنبال نسخه‌های جدیدتر "
+#~ "می‌گردد. نسخهٔ تیلز در حال اجرا نیز همراه این درخواست ارسال می‌شود."
+
+#~ msgid ""
+#~ "We believe it is important to notify the user of known security issues "
+#~ "and newer versions. We calculate statistics based on the security check "
+#~ "to know how many times Tails has been started and connected to Tor. Those "
+#~ "statistics are published in our [[monthly reports|news]]."
+#~ msgstr ""
+#~ "معتقدیم آگاه کردن کاربر از مشکلات امنیتی موجود و نسخه‌های جدیدتر مهم است. "
+#~ "ما بر مبنای این بررسی‌های امنیتی محاسبه می‌کنیم که تیلز چند بار راه‌اندازی "
+#~ "شده و به تور وصل شده‌است. این آمارها در [[گزارش‌های ماهانه|news]] منتشر "
+#~ "می‌شوند."
+
+#~ msgid ""
+#~ "It is possible to edit the Tor configuration file (`torrc`) with "
+#~ "administration rights but you should not do so as it might break your "
+#~ "anonymity."
+#~ msgstr ""
+#~ "تغییر فایل تنظیمات تور (`torrc`) با حقوق مدیریتی امکان‌پذیر است، اما نباید "
+#~ "این کار را بکنید چون ممکن است ناشناسی‌تان را دچار مشکل کند."
+
+#, fuzzy
+#~ msgid ""
+#~ "For example, as mentioned in the <span class=\"application\">Tor Browser</"
+#~ "span>\n"
+#~ "[FAQ](https://2019.www.torproject.org/docs/torbutton/torbutton-"
+#~ "faq.html.en#recommendedextensions),\n"
+#~ "using `ExcludeExitNodes` is not recommended because \"overriding the\n"
+#~ "exit nodes can mess up your anonymity in ways we don't\n"
+#~ "understand\".\n"
+#~ msgstr ""
+#~ "برای نمونه همان‌طور که در [پرسش‌های متداول](https://www.torproject.org/docs/"
+#~ "faq.html.en#ChooseEntryExit)\n"
+#~ "*مرورگر تور* اشاره شد،\n"
+#~ "استفاده از `ExcludeExitNodes` توصیه نمی‌شود، چرا که «تغییر\n"
+#~ "گره‌های خروجی ممکن است ناشناسی شما را طوری دچار مشکل کند که \n"
+#~ "ما از آن سر درنیاوریم.»\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "For example, some people have been working on how to run a web server "
+#~| "behind a hidden service on Tails. See [[!tails_ticket 7879]]."
+#~ msgid ""
+#~ "For example, some people have been working on [[!tails_ticket 5688 "
+#~ "desc=\"self-hosted services behind Tails-powered onion services\"]]."
+#~ msgstr ""
+#~ "برای نمونه برخی افراد در حال کار روی نحوهٔ راه‌اندازی یک سرور وب پشت یک "
+#~ "سرویس مخفی در تیلز هستند. رجوع کنید به [[!tails_ticket 7879]]."
+
+#, fuzzy
+#~| msgid "Is it safe to use Tails on a compromised system?\n"
+#~ msgid ""
+#~ "<h2 id=\"compromised-system\">Is it safe to use Tails on a compromised "
+#~ "system?</h2>\n"
+#~ msgstr "استفاده از تیلز روی یک سیستم مشکل‌دار امن است؟\n"
+
+#~ msgid ""
+#~ "Tails runs independently from the operating system installed on the "
+#~ "computer.  So, if the computer has only been compromised by software, "
+#~ "running from inside your regular operating system (virus, trojan, etc.), "
+#~ "then it is safe to use Tails. This is true as long as Tails itself has "
+#~ "been installed using a trusted system."
+#~ msgstr ""
+#~ "تیلز مستقل از سیستم‌عامل نصب‌شده روی رایانه کار می‌کند. بنابراین اگر رایانهٔ "
+#~ "شما تنها مشکل نرم‌افزاری دارد که از خود سیستم‌عامل اجرا می‌شود (مثل ویروس، "
+#~ "اسب تروا و غیره)، استفاده از تیلز امن است. البته به شرطی که تیلز را از "
+#~ "رایانه‌ای قابل‌اعتماد نصب کرده باشید."
+
+#~ msgid ""
+#~ "If the computer has been compromised by someone having physical access to "
+#~ "it and who installed untrusted pieces of hardware, then it might be "
+#~ "unsafe to use Tails."
+#~ msgstr ""
+#~ "اگر رایانهٔ شما توسط فردی با دسترسی فیزیکی دچار مشکل شده باشد و روی آن "
+#~ "سخت‌افزاری غیرقابل‌اعتماد نصب شده باشد، شاید استفاده از تیلز روی آن امن "
+#~ "نباشد."
+
+#~ msgid ""
+#~ "If the BIOS of the computer has been compromised, then it might also be "
+#~ "unsafe to use Tails."
+#~ msgstr "اگر بایوس رایانه دچار مشکل باشد، شاید استفاده از تیلز امن نباشد."
+
+#~ msgid "See our [[warning page|doc/about/warning]] for more details."
+#~ msgstr "برای جزییات بیشتر رجوع کنید به [[صفحه‌ٔ هشدار|doc/about/warning]] ما."
+
+#~ msgid "<div class=\"next\">\n"
+#~ msgstr "<div class=\"next\">\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "To verify the integrity of a DVD from a separate trusted system, you can "
+#~| "verify the signature of the ISO image as documented in [[verify the ISO "
+#~| "image using the command line|doc/get/"
+#~| "verify_the_iso_image_using_the_command_line]] against the DVD itself."
+#~ msgid ""
+#~ "To verify the integrity of a DVD from a separate trusted system, you can "
+#~ "verify the signature of the ISO image as documented in [[verify the ISO "
+#~ "image using OpenPGP|install/download-iso#openpgp]] against the DVD itself."
+#~ msgstr ""
+#~ "برای تأیید یکپارچگی یک دی‌وی‌دی از یک سیستم مورداعتماد دیگر، می‌توانید امضای "
+#~ "تصویر ایزو را همان‌طور که در [[تأیید تصویر ایزو با استفاده از خط فرمان|doc/"
+#~ "get/verify_the_iso_image_using_the_command_line]] آمده تأیید کنید."
+
+#, fuzzy
+#~| msgid ""
+#~| "There is no documented method of verifying the integrity of a USB stick "
+#~| "or SD card installed using <span class=\"application\">Tails Installer</"
+#~| "span>. However, if you have another trusted Tails device, you can "
+#~| "[[clone it onto the untrusted device|doc/upgrade]] to reset it to a "
+#~| "trusted state."
+#~ msgid ""
+#~ "There is no documented method of verifying the integrity of a Tails USB "
+#~ "stick.  However, if you have another trusted Tails USB stick, you can "
+#~ "[[clone it onto the untrusted USB stick|doc/upgrade]] to reset it to a "
+#~ "trusted state."
+#~ msgstr ""
+#~ "روش مستندسازی‌شده‌ای برای تأیید یکپارچگی یک درایو یواس‌بی یا کارت حافظهٔ "
+#~ "نصب‌شده با استفاده از *نصب‌کنندهٔ تیلز* وجود ندارد. با این حال اگر یک دستگاه "
+#~ "مورداعتماد تیلز دارید، می‌توانید برای راه‌اندازی دوبارهٔ آن به حالت "
+#~ "مورداعتماد [[آن را روی یک دستگاه غیرقابل‌اعتماد همتاسازی کنید|doc/"
+#~ "upgrade]]."
+
+#, fuzzy
+#~| msgid ""
+#~| "We had relatively vague [[!tails_ticket 5991 desc=\"plans to improve\n"
+#~| "on this situation\"]].\n"
+#~ msgid ""
+#~ "We had relatively vague [[!tails_ticket 9563 desc=\"plans to improve\n"
+#~ "on this situation\"]].\n"
+#~ msgstr ""
+#~ "[[!tails_ticket 5991 desc=\"راه‌حل‌های ما\n"
+#~ "برای بهبود این وضعیت\"]] نسبتاً مبهم هستند.\n"
+
+#~ msgid ""
+#~ "<em>&hellip; like language, keyboard layout, background image, toolbar "
+#~ "position,\n"
+#~ "browser settings, touchpad preferences, etc.</em>\n"
+#~ msgstr ""
+#~ "<em>&hellip; مانند زبان، جانمایی صفحه‌کلید، تصویر پس‌زمینه، وضعیت نوار "
+#~ "ابزار،\n"
+#~ "تنظیمات مرورگر، ترجیحات صفحه‌لمسی و غیره.</em>\n"
+
+#, fuzzy
+#~| msgid "Can I view websites using Adobe Flash with Tails?\n"
+#~ msgid ""
+#~ "<h2 id=\"flash\">Can I view websites using Adobe Flash with Tails?</h2>\n"
+#~ msgstr ""
+#~ "آیا می‌توانم با تیلز از تارنماهایی که از ادوبی فلش استفاده می‌کنند بازدید "
+#~ "کنم؟\n"
+
+#~ msgid "Adobe Flash Player is not included in Tails for several reasons:"
+#~ msgstr "ادوبی فلش پلیر به دلایل مختلف در تیلز گنجانده نشده:"
+
+#~ msgid ""
+#~ "It is proprietary software which prevents us from legally including it in "
+#~ "Tails."
+#~ msgstr ""
+#~ "یک نرم‌افزار مالکیتی است که در نتیجه ما از نظر قانونی نمی‌توانیم آن را در "
+#~ "تیلز بگنجانیم."
+
+#~ msgid "It is closed source and so we have no idea of what it really does."
+#~ msgstr "کدبسته است و نمی‌دانیم دقیقاً چه می‌کند."
+
+#~ msgid "It has a very long history of serious security vulnerabilities."
+#~ msgstr "ید طولایی در آسیب‌پذیری‌های امنیتی جدی دارد."
+
+#~ msgid ""
+#~ "It is known to favor privacy invasive technologies such as [[!wikipedia "
+#~ "Local_shared_object]]."
+#~ msgstr ""
+#~ "مشهور است به ایجاد فرصت برای فناوری‌هایی که حریم خصوصی را به مخاطره "
+#~ "می‌اندازند، از جمله [[!wikipedia Local_shared_object]]."
+
+#~ msgid "Adobe only maintains their GNU/Linux Flash plugin for Google Chrome."
+#~ msgstr ""
+#~ "ادوبی افزایهٔ فلش گنو/لینوکس خود را تنها برای گوگل کروم نگهداری می‌کند."
+
+#, fuzzy
+#~| msgid ""
+#~| "We have considered including open-source alternative software to Adobe "
+#~| "Flash, such as [Gnash](http://www.gnu.org/software/gnash/), but it is "
+#~| "not the case yet, see [[!tails_ticket 5363]]."
+#~ msgid ""
+#~ "We have considered including open-source alternative software to Adobe "
+#~ "Flash, such as [Gnash](http://www.gnu.org/software/gnash/), but rejected "
+#~ "them since they are not mature enough and Flash is less and less used "
+#~ "anyway."
+#~ msgstr ""
+#~ "ما استفاده از از نرم‌افزارهای جایگزین کدباز مانند [[جی‌نش](http://"
+#~ "www.gnu.org/software/gnash/) به جای ادوبی فلش را در نظر گرفته‌ایم، اما "
+#~ "هنوز امکانش میسر نشده است. رجوع کنید به [[!tails_ticket 5363]]."
+
+#~ msgid ""
+#~ "But you can already watch HTML5 videos with <span "
+#~ "class=\"application\">Tor Browser</span>.\n"
+#~ msgstr "اما می‌توانید با *مرورگر تور* ویدیوهای اچ‌تی‌ام‌ال۵ را ببینید.\n"
+
+#, fuzzy
+#~| msgid "Tails project\n"
+#~ msgid "Tails project"
+#~ msgstr "پروژهٔ تیلز\n"
+
+#~ msgid "<a id=\"relationship_with_tor\"></a>\n"
+#~ msgstr "<a id=\"relationship_with_tor\"></a>\n"
+
+#~ msgid "<a id=\"debian\"></a>\n"
+#~ msgstr "<a id=\"debian\"></a>\n"
+
+#~ msgid "<a id=\"ubuntu\"></a>\n"
+#~ msgstr "<a id=\"ubuntu\"></a>\n"
+
+#~ msgid "<a id=\"gnome\"></a>\n"
+#~ msgstr "<a id=\"gnome\"></a>\n"
+
+#~ msgid "<a id=\"hardware\"></a>\n"
+#~ msgstr "<a id=\"hardware\"></a>\n"
+
+#~ msgid "<a id=\"arm\"></a>\n"
+#~ msgstr "<a id=\"arm\"></a>\n"
+
+#, fuzzy
+#~| msgid "Installation\n"
+#~ msgid "Installation"
+#~ msgstr "نصب\n"
+
+#~ msgid "<a id=\"install_permanently\"></a>\n"
+#~ msgstr "<a id=\"install_permanently\"></a>\n"
+
+#~ msgid "<a id=\"unetbootin_etc\"></a>\n"
+#~ msgstr "<a id=\"unetbootin_etc\"></a>\n"
+
+#~ msgid "<a id=\"upgrade\"></a>\n"
+#~ msgstr "<a id=\"upgrade\"></a>\n"
+
+#~ msgid "<a id=\"preinstalled\"></a>\n"
+#~ msgstr "<a id=\"preinstalled\"></a>\n"
+
+#, fuzzy
+#~| msgid "<a id=\"luks\"></a>\n"
+#~ msgid "<a id=\"checksum\"></a>\n"
+#~ msgstr "<a id=\"luks\"></a>\n"
+
+#, fuzzy
+#~| msgid "Web browser\n"
+#~ msgid "Web browser"
+#~ msgstr "مرورگر وب\n"
+
+#~ msgid "<a id=\"javascript\"></a>\n"
+#~ msgstr "<a id=\"javascript\"></a>\n"
+
+#~ msgid "<a id=\"add-ons\"></a>\n"
+#~ msgstr "<a id=\"add-ons\"></a>\n"
+
+#~ msgid "<a id=\"add-ons_update\"></a>\n"
+#~ msgstr "<a id=\"add-ons_update\"></a>\n"
+
+#~ msgid "<a id=\"flash\"></a>\n"
+#~ msgstr "<a id=\"flash\"></a>\n"
+
+#~ msgid "<a id=\"anonymity_test\"></a>\n"
+#~ msgstr "<a id=\"anonymity_test\"></a>\n"
+
+#~ msgid "<a id=\"java\"></a>\n"
+#~ msgstr "<a id=\"java\"></a>\n"
+
+#~ msgid "<a id=\"persistence\"></a>\n"
+#~ msgstr "<a id=\"persistence\"></a>\n"
+
+#, fuzzy
+#~| msgid "Persistence\n"
+#~ msgid "Persistent Storage"
+#~ msgstr "مانا\n"
+
+#~ msgid "<a id=\"persistent_features\"></a>\n"
+#~ msgstr "<a id=\"persistent_features\"></a>\n"
+
+#~ msgid "<a id=\"luks\"></a>\n"
+#~ msgstr "<a id=\"luks\"></a>\n"
+
+#~ msgid "<a id=\"recover_passphrase\"></a>\n"
+#~ msgstr "<a id=\"recover_passphrase\"></a>\n"
+
+#, fuzzy
+#~| msgid "Networking\n"
+#~ msgid "Networking"
+#~ msgstr "شبکه\n"
+
+#~ msgid "<a id=\"vpn\"></a>\n"
+#~ msgstr "<a id=\"vpn\"></a>\n"
+
+#~ msgid "<a id=\"torrc\"></a>\n"
+#~ msgstr "<a id=\"torrc\"></a>\n"
+
+#~ msgid "<a id=\"dns\"></a>\n"
+#~ msgstr "<a id=\"dns\"></a>\n"
+
+#~ msgid "<a id=\"htp\"></a>\n"
+#~ msgstr "<a id=\"htp\"></a>\n"
+
+#~ msgid "<a id=\"relay\"></a>\n"
+#~ msgstr "<a id=\"relay\"></a>\n"
+
+#, fuzzy
+#~| msgid "<a id=\"hidden_service\"></a>\n"
+#~ msgid ""
+#~ "<a id=\"onion_service\"></a>\n"
+#~ "<a id=\"hidden_service\"></a>\n"
+#~ msgstr "<a id=\"hidden_service\"></a>\n"
+
+#~ msgid "<a id=\"ping\"></a>\n"
+#~ msgstr "<a id=\"ping\"></a>\n"
+
+#~ msgid "<a id=\"software\"></a>\n"
+#~ msgstr "<a id=\"software\"></a>\n"
+
+#~ msgid "<a id=\"new-software\"></a>\n"
+#~ msgstr "<a id=\"new-software\"></a>\n"
+
+#~ msgid "<a id=\"bittorrent\"></a>\n"
+#~ msgstr "<a id=\"bittorrent\"></a>\n"
+
+#~ msgid "<a id=\"youtube\"></a>\n"
+#~ msgstr "<a id=\"youtube\"></a>\n"
+
+#~ msgid "<a id=\"desktop\"></a>\n"
+#~ msgstr "<a id=\"desktop\"></a>\n"
+
+#~ msgid "<a id=\"timezone\"></a>\n"
+#~ msgstr "<a id=\"timezone\"></a>\n"
+
+#~ msgid "<a id=\"misc\"></a>\n"
+#~ msgstr "<a id=\"misc\"></a>\n"
+
+#~ msgid "<a id=\"compromised_system\"></a>\n"
+#~ msgstr "<a id=\"compromised_system\"></a>\n"
+
+#~ msgid "<a id=\"integrity\"></a>\n"
+#~ msgstr "<a id=\"integrity\"></a>\n"
+
+#~ msgid "<a id=\"reuse_memory_wipe\"></a>\n"
+#~ msgstr "<a id=\"reuse_memory_wipe\"></a>\n"
+
+#~ msgid "<a id=\"new_identity\"></a>\n"
+#~ msgstr "<a id=\"new_identity\"></a>\n"
+
+#~ msgid "<a id=\"boot_statistics\"></a>\n"
+#~ msgstr "<a id=\"boot_statistics\"></a>\n"
+
+#~ msgid "<a id=\"antivirus\"></a>\n"
+#~ msgstr "<a id=\"antivirus\"></a>\n"
+
+#~ msgid "Three possible scenarios need to be distinguished:"
+#~ msgstr "سه حالت مختلف باید مشخص شوند:"
+
+#, fuzzy
+#~| msgid ""
+#~| "It is a very [[fundamental assumption of Tails|about#tor]] to force all "
+#~| "outgoing traffic to anonymity networks such as Tor or I2P. VPN are not "
+#~| "anonymity networks, because the administrators of the VPN can know both "
+#~| "where you are connecting from and where you are connecting to. Tor "
+#~| "provides anonymity by making it impossible for a single point in the "
+#~| "network to know both the origin and the destination of a connection."
+#~ msgid ""
+#~ "It is a very [[fundamental assumption of Tails|about#tor]] to force all "
+#~ "outgoing traffic to anonymity networks such as Tor. VPN are not anonymity "
+#~ "networks, because the administrators of the VPN can know both where you "
+#~ "are connecting from and where you are connecting to. Tor provides "
+#~ "anonymity by making it impossible for a single point in the network to "
+#~ "know both the origin and the destination of a connection."
+#~ msgstr ""
+#~ "اجبار رد شدن تمام ترافیک خروجی به شبکه‌های ناشناسی مانند تور یا I2P  [[یک "
+#~ "اصل بسیار بنیادی تیلز|about#tor] است. وی‌پی‌ان‌ها شبکه‌های ناشناسی نیستند، "
+#~ "چون مدیر وی‌پی‌ان می‌تواند بفهمد از کجا و به کجا وصل شده‌اید. تور با غیرممکن "
+#~ "کردن فهمیدن مبداء و مقصد هر اتصال برای یک نقطه در شبکه شما را ناشناس "
+#~ "می‌کند."
+
+#~ msgid "This is currently not possible easily using Tails."
+#~ msgstr "در حال حاضر امکان انجام راحت این کار در تیلز وجود ندارد."
+
+#, fuzzy
+#~| msgid "Other useful resources\n"
+#~ msgid "Other useful resources\n"
+#~ msgstr "منابع سودمند دیگر\n"
+
+#~ msgid ""
+#~ "[The Tor Project: Stack Exchange, question & answer site](https://"
+#~ "tor.stackexchange.com/)"
+#~ msgstr ""
+#~ "[پروژهٔ تور: تارنمای مبادلهٔ داشته‌ها، و پرسش و پاسخ](https://"
+#~ "tor.stackexchange.com/)"
+
+#~ msgid ""
+#~ "Tails is a full operating system, so a *new identity* should be thought "
+#~ "on a broader level. **Restart Tails instead**."
+#~ msgstr ""
+#~ "تیلز یک سیستم‌عامل کامل است، بنابراین باید در سطحی گسترده‌تر به *هویت جدید* "
+#~ "فکر کرد. **در عوض تیلز را دوباره راه‌اندازی کنید**."
+
+#~ msgid ""
+#~ "Currently the default cipher is `aes-cbc-essiv:sha256` with a key size of "
+#~ "256 bits."
+#~ msgstr ""
+#~ "در حال حاضر سایفر پیش‌فرض `aes-cbc-essiv:sha256` با یک کلید ۲۵۶بیتی است."
+
+#~ msgid "<a id=\"truecrypt\"></a>\n"
+#~ msgstr "<a id=\"truecrypt\"></a>\n"
+
+#~ msgid "Can I use TrueCrypt with Tails?\n"
+#~ msgstr "آیا می‌توانم با تیلز از تروکریپت استفاده کنم؟\n"
+
+#~ msgid ""
+#~ "No, *TrueCrypt* was removed in Tails 1.2.1.\n"
+#~ "But you can still [[open *TrueCrypt*\n"
+#~ "volumes using <span class=\"code\">cryptsetup</span>|doc/"
+#~ "encryption_and_privacy/truecrypt]].\n"
+#~ msgstr ""
+#~ "خیر. *تروکریپت* از تیلز ۱٫۲٫۱ حذف شده‌است.\n"
+#~ "با این حال می‌توانید [[با استفاده از <span class=\"code\">cryptsetup</"
+#~ "span>\n"
+#~ "درایوهای جدید *تروکریپت* باز کنید|doc/encryption_and_privacy/"
+#~ "truecrypt]].\n"
+
+#~ msgid ""
+#~ "Furthermore, [TrueCrypt is now discontinued](http://"
+#~ "truecrypt.sourceforge.net/)  and its development team recommends against "
+#~ "using it. We recommend using other [[encryption tools|doc/"
+#~ "encryption_and_privacy/encrypted_volumes]] such as [[LUKS|faq#luks]]."
+#~ msgstr ""
+#~ "علاوه بر این [تروکریپت متوقف شده](http://truecrypt.sourceforge.net/) و "
+#~ "تیم توسعهٔ آن استفاده از آن را توصیه نمی‌کنند. ما توصیه می‌کنیم از "
+#~ "[[ابزارهای رمزگذاری|doc/encryption_and_privacy/encrypted_volumes]] دیگر "
+#~ "مانند [[LUKS|faq#luks]] استفاده کنید."
+
+#, fuzzy
+#~| msgid ""
+#~| "Should I update Tails using `apt` or <span "
+#~| "class=\"application\">Synaptic</span>?\n"
+#~ msgid ""
+#~ "Should I update Tails using `apt` or <span "
+#~ "class=\"application\">Synaptic</span>?\n"
+#~ "-----------------------------------------------------------------------------------\n"
+#~ msgstr ""
+#~ "آیا می‌توانم تیلز را با استفاده از `apt` یا <span "
+#~ "class=\"application\">سینپتیک</span> به‌روز کنم؟\n"
+
+#~ msgid "<a id=\"website\"></a>\n"
+#~ msgstr "<a id=\"website\"></a>\n"
+
+#~ msgid "Tails website\n"
+#~ msgstr "تارنمای تیلز\n"
+
+#~ msgid "<a id=\"ssl_certificate\"></a>\n"
+#~ msgstr "<a id=\"ssl_certificate\"></a>\n"
+
+#~ msgid "Why does tails.boum.org rely on a commercial SSL certificate?\n"
+#~ msgstr "چرا tails.boum.org مبتنی بر یک گواهی تجاری اس‌اس‌ال است؟\n"
+
+#~ msgid ""
+#~ "HTTPS provides encryption and authentication on the web. The standard "
+#~ "authentication mechanism through SSL certificates is centralized and "
+#~ "based on commercial or institutional certificate authorities. This "
+#~ "mechanism has proven to be susceptible to various methods of compromise. "
+#~ "See our [[warning about man-in-the-middle attacks|doc/about/warning#man-"
+#~ "in-the-middle]]."
+#~ msgstr ""
+#~ "اچ‌تی‌تی‌پی‌اس به شما امکان رمزگذاری و احراز هویت روی وب می‌دهد. سازوکار "
+#~ "استاندارد احراز هویت از طریق گواهی‌های اس‌اس‌ال مرکزگرایانه و مبتنی بر مراجع "
+#~ "تجاری یا نهادی صدور گواهی دیجیتال است. ثابت شده که این سازوکار در برابر "
+#~ "چندین روش آسیب‌پذیر است. رجوع کنید به [[هشدار ما راجع به حملات فرد میانی|"
+#~ "doc/about/warning#man-in-the-middle]]."
+
+#~ msgid ""
+#~ "Still, we use HTTPS on our website and rely on a commercial certificate "
+#~ "even if we acknowledge those security problems."
+#~ msgstr ""
+#~ "با این حال روی تارنمای خود از اچ‌تی‌تی‌پی‌اس استفاده می‌کنیم و حتی با این که "
+#~ "از مشکلات امنیتی آن باخبریم متکی بر یک گواهی تجاری هستیم."
+
+#~ msgid ""
+#~ "Providing no HTTPS and no kind of encryption would be a worse option."
+#~ msgstr "به کار نبستن اچ‌تی‌تی‌پی‌اس و رمزگذاری گزینهٔ بدتری است."
+
+#~ msgid ""
+#~ "2. Providing a self-signed certificate or another marginally supported\n"
+#~ "authentication mechanism would not work for the majority of users. "
+#~ "Modern\n"
+#~ "browsers display very strong warnings when facing a self-signed "
+#~ "certificate, and\n"
+#~ "many people would think the website is broken while it is not.\n"
+#~ msgstr ""
+#~ "۲. ارائهٔ یک گواهی خودامضاشده یا سازوکار احراز هویت دیگری\n"
+#~ "که چندان از آن پشتبانی نشود برای اکثر کاربران مناسب نخواهد بود. "
+#~ "مرورگرهای\n"
+#~ "مدرن هنگام مواجهه با یک گواهی خودامضاشده هشدارهای بسیاری قوی نشان می‌دهد\n"
+#~ "و بسیاری از افراد تصور می‌کنند که آن تارنما دارای مشکل است، در حالی که این "
+#~ "طور نیست.\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "We prefer to provide weak security, using a commercial certificate, that "
+#~| "still works for most people. At the same time, we make clear this "
+#~| "security is limited and encourage stronger ways of verifying the "
+#~| "authenticity of Tails once downloaded.  See our documentation on "
+#~| "[[verifying the ISO|download#verify]]."
+#~ msgid ""
+#~ "We prefer to provide weak security, using a commercial certificate, that "
+#~ "still works for most people. At the same time, we make clear this "
+#~ "security is limited and encourage stronger ways of verifying the "
+#~ "authenticity of Tails once downloaded. See our documentation on "
+#~ "[[verifying the ISO image using OpenPGP|install/download/openpgp]]."
+#~ msgstr ""
+#~ "ما ترجیح می‌دهیم با استفاده از یک گواهی تجاری امنیتی ضعیف داشته باشیم که "
+#~ "با این حال برای اکثر افراد کار کند. در عین حال به وضوح اعلام می‌کنیم که "
+#~ "امنیت این روش محدود است و شما را به استفاده از راه‌هایی قوی‌تر برای تأیید "
+#~ "تیلز پس از دانلود کردن آن تشویق می‌کنیم. رجوع کنید به سند ما راجع به "
+#~ "[[تأیید ایزو|download#verify]]."
+
+#~ msgid ""
+#~ "<!--\n"
+#~ "<rawmaterial>\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "<rawmaterial>\n"
+
+#~ msgid "Proxy\n"
+#~ msgstr "پروکسی\n"
+
+#~ msgid ""
+#~ "How_do_you_chain_a_proxy_after_TOR___63__ "
+#~ "Next_Tails_version_should_have_proxychains_for_socks_after_exit_node "
+#~ "alternative_way_to_connect_to_web featurerequest:_proxychains"
+#~ msgstr ""
+#~ "How_do_you_chain_a_proxy_after_TOR___63__ "
+#~ "Next_Tails_version_should_have_proxychains_for_socks_after_exit_node "
+#~ "alternative_way_to_connect_to_web featurerequest:_proxychains"
+
+#~ msgid ""
+#~ "easy way to chain a SOCKS5 proxy after the hop off the exit node of TOR."
+#~ msgstr ""
+#~ "راه ساده برای زنجیر کردن یک پروکسی SOCKS5 پس از گذر کردن از گره خروجی تور."
+
+#~ msgid ""
+#~ "I need to hide the fact that I'm coming from TOR, because many websites "
+#~ "block tor."
+#~ msgstr ""
+#~ "باید استفادهٔ خود از تور را مخفی کنم، چرا که بسیاری از تارنماها تور را "
+#~ "مسدود می‌کنند."
+
+#~ msgid ""
+#~ "I have found some websites that explain how to create an SSH tunnel, but "
+#~ "using the terminal is above my level of skills :)"
+#~ msgstr ""
+#~ "به تارنماهایی برخورده‌ام که نحوهٔ ایجاد یک تونل اس‌اس‌اچ را توضیح می‌دهند، اما "
+#~ "استفاده از این ترمینال فراتر از سطح مهارت من است :)"
+
+#~ msgid ""
+#~ "It should be possible to use a program like Proxify to chain a proxy, but "
+#~ "I don't know if this creates conflicts, and I don't know how to install a "
+#~ "program that can run of the persistent volume."
+#~ msgstr ""
+#~ "باید بتوان از برنامه‌ای مانند Proxify برای درخواست زنجیره‌ای یک پروکسی "
+#~ "استفاده کرد، اما نمی‌دانم آیا استفاده از چنین نرم‌افزاری باعث ایجاد اختلال "
+#~ "می‌شود یا نه و نمی‌دانم چطور باید نرم‌افزاری را نصب کنم که در درایو مانا "
+#~ "اجرا شود."
+
+#~ msgid ""
+#~ "Surely there is someone who can simply give us a paragraph of text to "
+#~ "enter into the polipo config file ( where i add the ip address and port "
+#~ "for the SOCKS5 i bought ) or give some other instructions."
+#~ msgstr ""
+#~ "حتماً کسی هست که بتواند یک پاراگراف متن به ما بدهد که در فایل پیکربندی "
+#~ "polipo کپی کنیم (جایی که نشانی آی‌پی و درگاه SOCKS5 که خریداری کرده‌ام را "
+#~ "در آن وارد می‌کنم) یا راهنمایی‌های دیگری بدهد."
+
+#~ msgid ""
+#~ " * Use something like `ssh -D 1081`. See `DynamicFoward` in "
+#~ "`ssh_config(5)`.                                        * Use `iptables` "
+#~ "to allow connections to 1081 on localhost.\n"
+#~ " * For websites, modify FoxyProxy settings to add a new proxy, before "
+#~ "rules\n"
+#~ "   for Tor, that contains the addresses that needs to be reached, and\n"
+#~ "   which directs connections to 1081.\n"
+#~ " * For other programs, draft a dedicated `tsocks.conf`. Use\n"
+#~ "   `TSOCKS_CONF_FILE=tsocks-specific.conf tsocks ssh one.example.org`.\n"
+#~ msgstr ""
+#~ " * از چیزی مانند `ssh -D 1081` استفاده کنید. `DynamicFoward` را "
+#~ "در`ssh_config(5)` ببینید.                                        * از "
+#~ "`iptables` برای اجازه دادن به اتصالات به  1081 روی میزبان محلی استفاده "
+#~ "کنید.\n"
+#~ " * بعضی تارنماها برای اضافه کردن یک پروکسی جدید، تنظیمات FoxyProxy را پیش "
+#~ "از توردستکاری می‌کنند\n"
+#~ " که این تنظیمات حاوی نشانی‌هایی است که باید به آن‌ها رفت\n"
+#~ "   و اتصالات را به 1081 می‌برد.\n"
+#~ " * برای برنامه‌های دیگر یک `tsocks.conf` را پیش‌نویس کنید. از\n"
+#~ "   `TSOCKS_CONF_FILE=tsocks-specific.conf tsocks ssh one.example.org` "
+#~ "استفاده کنید.\n"
+
+#~ msgid ""
+#~ "`proxychains` is in Debian, the package is called by the same name. This "
+#~ "means it is straightforword to install it in Tails. There is no way in "
+#~ "can be preconfigured for every Tails users, so it's hard to see why it "
+#~ "should be included in the default package set."
+#~ msgstr ""
+#~ "`proxychains` در دبیان وجود دارد و بسته‌اش با همین نام خوانده می‌شود. این "
+#~ "یعنی نصب آن در تیلز ساده و مستقیم است. راهی برای پیش‌تنظیم آن برای تمام "
+#~ "کاربران تیلز وجود ندارد بنابراین دلیلی برای گنجاندن آن در مجموعهٔ بستهٔ "
+#~ "پیش‌فرض وجود ندارد."
+
+#~ msgid "</rawmaterial>\n"
+#~ msgstr "</rawmaterial>\n"
+
+#~ msgid "Other topics\n"
+#~ msgstr "موضوع‌های دیگر\n"
+
+#~ msgid ""
+#~ "- XXX_NICK_XXX in Pidgin might be caused by a lack of RAM\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "- XXX_NICK_XXX در پیجین ممکن است به دلیل کمبود حافظهٔ تصادفی باشد.\n"
+#~ "-->\n"
+
+#~ msgid ""
+#~ "Is it safe to use the **New Identity** feature of *Vidalia* or <span "
+#~ "class=\"application\">Tor Browser</span>?\n"
+#~ "---------------------------------------------------------------------\n"
+#~ msgstr ""
+#~ "استفاده از ویژگی **هویت جدید**  <span class=\"application\">ویدالیا</"
+#~ "span> یا <span class=\"application\">مرورگر تور</span> امن است؟\n"
+#~ "---------------------------------------------------------------------\n"
+
+#~ msgid ""
+#~ "In our [[warning page|doc/about/warning#identities]] we advice to\n"
+#~ "restart Tails every time that you want to use a different contextual\n"
+#~ "identity. The\n"
+#~ "[[**New Identity** feature of <span class=\"application\">Vidalia</span>|"
+#~ "doc/anonymous_internet/vidalia#new-identity]]\n"
+#~ "forces Tor to use new circuits but only for new connections and the\n"
+#~ "[[**New Identity** of <span class=\"application\">Tor Browser</span>|doc/"
+#~ "anonymous_internet/Tor_Browser#new-identity]]\n"
+#~ "is limited to the browser.\n"
+#~ msgstr ""
+#~ "در [[صفحهٔ هشدار|doc/about/warning#identities]] پیشنهاد کرده‌ایم\n"
+#~ "هر بار که قصد استفاده از هویت جدیدی دارید تیلز را \n"
+#~ "دوباره راه‌اندازی کنید.\n"
+#~ "[[ویژگی **هویت جدید** <span class=\"application\">ویدالیا</span>|doc/"
+#~ "anonymous_internet/vidalia#new-identity]]\n"
+#~ "تور را مجبور به استفاده از مدارهای جدید می‌کند، اما تنها برای اتصال‌های "
+#~ "جدید\n"
+#~ "و [[**هویت جدید** <span class=\"application\">مرورگر تور</span>|doc/"
+#~ "anonymous_internet/Tor_Browser#new-identity]]\n"
+#~ "تنها محدود به مرورگر است.\n"

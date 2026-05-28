@@ -436,8 +436,7 @@ def validate_report(data: dict[str, Any]) -> list[str]:
             isinstance(summary.get("missing_evidence_count"), int)
             and isinstance(summary.get("invalid_evidence_count"), int)
             and (
-                summary.get("missing_evidence_count", 0)
-                + summary.get("invalid_evidence_count", 0)
+                summary.get("missing_evidence_count", 0) + summary.get("invalid_evidence_count", 0)
             )
             > 0
         ),

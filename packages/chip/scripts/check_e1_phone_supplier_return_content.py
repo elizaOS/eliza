@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import csv
 import json
-import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -236,9 +235,7 @@ def accepted_record_targets(expected_path: str) -> dict[str, Any]:
             "primary_record_path": report_path(metadata),
             "accepted_record_paths": [report_path(path), report_path(metadata)],
             "present_record_paths": [
-                report_path(candidate)
-                for candidate in (path, metadata)
-                if candidate.is_file()
+                report_path(candidate) for candidate in (path, metadata) if candidate.is_file()
             ],
         }
     return {
@@ -314,9 +311,7 @@ def approval_metadata_unblock_summary(
         if any(failure.endswith("placeholder_or_blocked_marker_present") for failure in failures):
             placeholder += 1
         for failure in failures:
-            if "_field:" in failure:
-                missing_fields[failure.split(":", 1)[1]] += 1
-            elif failure.startswith("missing_csv_column:"):
+            if "_field:" in failure or failure.startswith("missing_csv_column:"):
                 missing_fields[failure.split(":", 1)[1]] += 1
 
     return [
@@ -470,7 +465,9 @@ def blocker_diagnostics(
         for _lane, evidence_class, _expected_path, _failures in blocked
     )
     by_failure = Counter(
-        failure for _lane, _evidence_class, _expected_path, failures in blocked for failure in failures
+        failure
+        for _lane, _evidence_class, _expected_path, failures in blocked
+        for failure in failures
     )
     missing_paths_by_lane: dict[str, list[str]] = {}
     present_blocked_paths_by_lane: dict[str, list[str]] = {}
@@ -505,8 +502,7 @@ def blocker_diagnostics(
             lane: sorted(paths) for lane, paths in sorted(missing_paths_by_lane.items())
         },
         "present_blocked_paths_by_lane": {
-            lane: sorted(paths)
-            for lane, paths in sorted(present_blocked_paths_by_lane.items())
+            lane: sorted(paths) for lane, paths in sorted(present_blocked_paths_by_lane.items())
         },
         "approval_metadata_unblock_summary": approval_metadata_unblock_summary(blocked),
         "next_unblock_groups": [
@@ -592,14 +588,10 @@ def approved_supplier_record_failures(data: Any, prefix: str) -> list[str]:
         "missing_common_field" if prefix == "common" else f"missing_{prefix}_field"
     )
     supplier_missing_prefix = (
-        "missing_supplier_field"
-        if prefix == "common"
-        else f"missing_{prefix}_supplier_field"
+        "missing_supplier_field" if prefix == "common" else f"missing_{prefix}_supplier_field"
     )
     disposition_failure = (
-        "disposition_not_approved"
-        if prefix == "common"
-        else f"{prefix}_disposition_not_approved"
+        "disposition_not_approved" if prefix == "common" else f"{prefix}_disposition_not_approved"
     )
     placeholder_failure = (
         "placeholder_or_blocked_marker_present"
@@ -698,7 +690,9 @@ def evidence_failures(
     valid_scopes = {lane.lower()}
     if function:
         valid_scopes.add(function.lower())
-    if group == "supplier_return" and not any(scope in expected_path.lower() for scope in valid_scopes):
+    if group == "supplier_return" and not any(
+        scope in expected_path.lower() for scope in valid_scopes
+    ):
         failures.append("artifact_path_not_lane_scoped")
     return list(dict.fromkeys(failures))
 

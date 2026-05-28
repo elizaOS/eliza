@@ -85,7 +85,31 @@ describe("first-party RemotePlugins", () => {
       "eliza.runtime",
       "eliza.surface",
     ]);
+    expect(
+      manifests.find((manifest) => manifest.id === "eliza.runtime")
+        ?.permissions.isolation,
+    ).toBe("shared-worker");
   });
+
+  it("skips first-party RemotePlugins when packaged resources omit remotes", () =>
+    withTempManager((manager) => {
+      const missingRoot = join(manager.getStoreRoot(), "missing-remotes");
+
+      expect(
+        getFirstPartyRemotePluginDefinitions({
+          includeDev: true,
+          rootDir: missingRoot,
+        }),
+      ).toEqual([]);
+      expect(
+        seedFirstPartyRemotePlugins({
+          manager,
+          includeDev: true,
+          rootDir: missingRoot,
+          startAutoStart: true,
+        }),
+      ).toEqual([]);
+    }));
 
   it("seeds first-party RemotePlugins idempotently and starts auto-start entries", () =>
     withTempManager((manager) => {

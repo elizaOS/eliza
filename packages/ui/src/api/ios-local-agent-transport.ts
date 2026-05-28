@@ -4,7 +4,7 @@ import {
   isMobileLocalAgentUrl as isConfiguredMobileLocalAgentUrl,
   isMobileLocalAgentIpcUrl,
   mobileLocalAgentPathFromUrl,
-} from "../onboarding/mobile-runtime-mode";
+} from "../first-run/mobile-runtime-mode";
 import {
   handleIosLocalAgentRequest,
   startIosLocalAgentKernel,

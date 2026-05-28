@@ -3,8 +3,8 @@
  *
  * Spawns a single borderless, transparent, always-on-top BrowserWindow
  * docked to the bottom-center of the user's primary display. The window
- * loads the same renderer bundle as the main shell with `?shell=pill`,
- * which `apps/app/src/main.tsx` routes to a minimal `<VoicePill>` mount.
+ * loads the same renderer bundle as the main shell with
+ * `?shellMode=chat-overlay`, which routes to the live assistant overlay shell.
  *
  * Lifecycle:
  *  - Created once at app boot, alongside the main window.
@@ -40,9 +40,9 @@ function resolvePillFrame(): PillWindowFrame {
   };
 }
 
-function buildPillRendererUrl(rendererUrl: string): string {
+export function buildPillRendererUrl(rendererUrl: string): string {
   const url = new URL(rendererUrl);
-  url.search = "?shell=pill";
+  url.search = "?shellMode=chat-overlay";
   url.hash = "";
   return url.toString();
 }
@@ -67,6 +67,7 @@ export function createPillWindow(args: {
     frame,
     titleBarStyle: "hidden",
     transparent: true,
+    activate: false,
   });
 
   try {

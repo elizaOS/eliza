@@ -37,7 +37,7 @@ Constraints:
 - MLX stays outside the kernel-verification contract (no TurboQuant
   K/V, no QJL, no PolarQuant). It's an opt-in reduced-optimization
   path like `ELIZA_LOCAL_ALLOW_STOCK_KV=1`.
-- Stays gated behind `ELIZA_LOCAL_MLX=1` / `ELIZA_LOCAL_BACKEND=mlx-server`.
+- Stays gated behind `ELIZA_LOCAL_MLX=1` / `ELIZA_INFERENCE_BACKEND=mlx-server`.
 
 Effort: 1–2 weeks of native + JS work.
 
@@ -82,7 +82,7 @@ Path 1 is the right architectural fit but is the largest effort.
 - Not spawn a subprocess for inference.
 - Not open a TCP socket for inference.
 - Surface failures with real errors (no silent fallbacks).
-- Keep MLX gated behind `ELIZA_LOCAL_MLX=1` / `ELIZA_LOCAL_BACKEND=mlx-server`
+- Keep MLX gated behind `ELIZA_LOCAL_MLX=1` / `ELIZA_INFERENCE_BACKEND=mlx-server`
   and outside the verified-kernel contract.
 
 ---
@@ -94,7 +94,7 @@ Path 1 is the right architectural fit but is the largest effort.
   into the diagnostic surface and the deletion took its callers with it.
   If a future MLX integration lands, it'll reintroduce eligibility
   reporting under its own naming.
-- `ELIZA_LOCAL_MLX=1` / `ELIZA_LOCAL_BACKEND=mlx-server` env vars are
+- `ELIZA_LOCAL_MLX=1` / `ELIZA_INFERENCE_BACKEND=mlx-server` env vars are
   recognized by the engine config but have no effect — there's no MLX
   backend to activate. Set values are silently ignored. (If we want
   these to throw instead of being silent no-ops, that's a 5-line

@@ -97,7 +97,7 @@ Shipped with the `@elizaos/plugin-agent-skills` package. These are automatically
 
 ### 2. Extra Directories
 
-Additional directories configured in `~/.eliza/eliza.json`:
+Additional directories configured in `~/.local/state/eliza/eliza.json`:
 
 ```json
 {
@@ -117,21 +117,21 @@ Additional directories configured in `~/.eliza/eliza.json`:
 Global user-level skills stored at:
 
 ```
-~/.eliza/skills/
+~/.local/state/eliza/skills/
 ├── my-custom-skill/
 │   └── SKILL.md
 └── team-shared-skill/
     └── SKILL.md
 ```
 
-The catalog file is also stored here at `~/.eliza/skills/catalog.json`.
+The catalog file is also stored here at `~/.local/state/eliza/skills/catalog.json`.
 
 ### 4. Workspace Skills
 
 Project-local skills in the agent's workspace directory:
 
 ```
-~/.eliza/workspace/skills/
+~/.local/state/eliza/workspace/skills/
 ├── project-specific-skill/
 │   └── SKILL.md
 └── override-bundled-skill/
@@ -143,7 +143,7 @@ Project-local skills in the agent's workspace directory:
 Skills installed from the marketplace are placed under:
 
 ```
-~/.eliza/workspace/skills/.marketplace/
+~/.local/state/eliza/workspace/skills/.marketplace/
 ├── content-marketer/
 │   ├── SKILL.md
 │   └── .scan-results.json
@@ -152,7 +152,7 @@ Skills installed from the marketplace are placed under:
     └── .scan-results.json
 ```
 
-Install records are tracked in `~/.eliza/workspace/skills/.cache/marketplace-installs.json`.
+Install records are tracked in `~/.local/state/eliza/workspace/skills/.cache/marketplace-installs.json`.
 
 ---
 
@@ -162,7 +162,7 @@ When two skills share the same name, the higher-precedence source wins. The full
 
 1. **Bundled skills** -- from `@elizaos/plugin-agent-skills`
 2. **Extra directories** -- from `skills.load.extraDirs` config
-3. **Managed skills** -- from `~/.eliza/skills/`
+3. **Managed skills** -- from `~/.local/state/eliza/skills/`
 4. **Workspace skills** -- from `{workspace}/skills/`
 5. **Marketplace skills** -- from `{workspace}/skills/.marketplace/`
 
@@ -176,7 +176,7 @@ Whether a skill is active is determined by this cascade (highest priority first)
 4. **`skills.allowBundled`** -- config allow list (whitelist mode: only listed skills load)
 5. **Default** -- enabled
 
-Configuration example in `~/.eliza/eliza.json`:
+Configuration example in `~/.local/state/eliza/eliza.json`:
 
 ```json
 {
@@ -388,7 +388,7 @@ The catalog client checks these paths in order:
 
 1. `ELIZA_SKILLS_CATALOG` environment variable (if set, used exclusively)
 2. `skills/.cache/catalog.json` relative to the package root (walks up to 5 parent directories)
-3. `~/.eliza/skills/catalog.json` (home directory fallback)
+3. `~/.local/state/eliza/skills/catalog.json` (home directory fallback)
 
 ### Catalog Entry Shape
 
@@ -472,13 +472,13 @@ my-skill/
 For a workspace-local skill:
 
 ```bash
-mkdir -p ~/.eliza/workspace/skills/my-tool
+mkdir -p ~/.local/state/eliza/workspace/skills/my-tool
 ```
 
 For a globally available skill:
 
 ```bash
-mkdir -p ~/.eliza/skills/my-tool
+mkdir -p ~/.local/state/eliza/skills/my-tool
 ```
 
 ### Step 2: Write SKILL.md
@@ -657,7 +657,7 @@ Skills are discovered from multiple locations. When duplicate names exist, highe
 
 1. **Marketplace skills** (`{workspace}/skills/.marketplace/`) -- highest
 2. **Workspace skills** (`{workspace}/skills/`)
-3. **Managed skills** (`~/.eliza/skills/`)
+3. **Managed skills** (`~/.local/state/eliza/skills/`)
 4. **Extra directories** (from `skills.load.extraDirs` config)
 5. **Bundled skills** (from `@elizaos/plugin-agent-skills`) -- lowest
 
@@ -787,7 +787,7 @@ apt install my-tool   # Linux
 | `CLAWHUB_REGISTRY` | Alternative to `SKILLS_REGISTRY` |
 | `SKILLS_MARKETPLACE_URL` | Alternative to `SKILLS_REGISTRY` |
 | `SKILLSMP_API_KEY` | API key for the legacy SkillsMP marketplace |
-| `ELIZA_STATE_DIR` | Override the base state directory (default: `~/.eliza`) |
+| `ELIZA_STATE_DIR` | Override the base state directory (default: `~/.local/state/eliza`) |
 | `BUNDLED_SKILLS_DIRS` | Set by runtime -- path to bundled skills |
 | `WORKSPACE_SKILLS_DIR` | Set by runtime -- path to workspace skills |
 | `EXTRA_SKILLS_DIRS` | Set by runtime -- comma-separated extra skill directories |
@@ -803,7 +803,7 @@ apt install my-tool   # Linux
 1. Verify the skills plugin is loaded: `GET /api/skills` should return a non-empty list.
 2. For marketplace installs, confirm registry connectivity: `GET /api/skills/marketplace/config` should show `configured: true` or a reachable default registry.
 3. For catalog browsing, confirm the catalog file exists at one of the expected paths (see [Catalog File Locations](#catalog-file-locations) above).
-4. Ensure `~/.eliza/workspace/skills/` is writable for marketplace and workspace skill installs.
+4. Ensure `~/.local/state/eliza/workspace/skills/` is writable for marketplace and workspace skill installs.
 5. For legacy SkillsMP marketplace, set `SKILLSMP_API_KEY` in the environment.
 
 ### Failure Modes
@@ -839,8 +839,8 @@ apt install my-tool   # Linux
 
 ### Recovery Procedures
 
-1. **Corrupted marketplace install:** Delete `~/.eliza/workspace/skills/.marketplace/<skill-id>/` and remove its entry from `~/.eliza/workspace/skills/.cache/marketplace-installs.json`, then re-install.
-2. **Catalog file missing:** Re-install or update `@elizaos/plugin-agent-skills` to restore the bundled catalog. Alternatively, copy a known-good `catalog.json` to `~/.eliza/skills/catalog.json`.
+1. **Corrupted marketplace install:** Delete `~/.local/state/eliza/workspace/skills/.marketplace/<skill-id>/` and remove its entry from `~/.local/state/eliza/workspace/skills/.cache/marketplace-installs.json`, then re-install.
+2. **Catalog file missing:** Re-install or update `@elizaos/plugin-agent-skills` to restore the bundled catalog. Alternatively, copy a known-good `catalog.json` to `~/.local/state/eliza/skills/catalog.json`.
 3. **Skill override conflict:** If a workspace skill unexpectedly overrides a bundled skill, rename the workspace skill directory or move it to a different location. Higher-precedence sources always win.
 
 ### Verification Commands

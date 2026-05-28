@@ -1,0 +1,106 @@
+[[!meta title="Call for testing: 3.2~rc1"]]
+
+[[!meta date="Mon, 16 Sep 2017 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+You can help Tails! The first release candidate for the upcoming
+version 3.2 is out. We are very excited and cannot wait to hear what
+you think about it :)
+
+[[!toc levels=1]]
+
+# What's new in 3.2~rc1?
+
+Significant changes since Tails 3.1 include:
+
+* Upgrade to Tails Installer 4.4.19, which gets rid of the splash
+  screen, detects when Tails already is installed on the target device
+  (and then proposes to upgrade), and generally improves the UX. We
+  are _very_ interested in reports about problems with this new
+  version of Tails Installer.
+
+* The Root Terminal has gone through some significant back-end
+  changes; please make sure it works like before (or better)!
+
+* Add PPPoE support; if you have a DSL or dial-up connection that uses
+  PPPoE, please give it a try!
+
+* Bluetooth support is now completely disabled (details:
+  [[!tails_ticket 14655]]). If this makes it hard for you to use
+  Tails, please let us know!
+
+* Upgrade to Linux 4.12.12, which improves hardware support,
+  e.g. better support for the Nvidia Maxwell series of graphics cards.
+
+* Upgrade to Thunderbird 52.3.0. Ideally it should work exactly like
+  before, or better.
+
+Technical details of all the changes are listed in the
+Changelog.
+
+# How to test Tails 3.2~rc1?
+
+**Keep in mind that this is a test image**. We tested that it is not
+broken in obvious ways, but it might still contain undiscovered
+issues.
+
+But test wildly!
+
+If you find anything that is not working as it should, please report to
+us on <tails-testers@boum.org>.
+
+Bonus points if you first check if it is a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].
+
+Upgrade from 3.1
+----------------
+
+1. Start Tails 3.1 on a USB stick installed using *Tails Installer* and
+   [[set an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Run this command in a *Terminal*
+   to select the "alpha" upgrade channel
+   and start the upgrade:
+
+       echo TAILS_CHANNEL=\"alpha\" | sudo tee -a /etc/os-release && \
+            tails-upgrade-frontend-wrapper
+
+   and enter the administration password when asked for the "password
+   for amnesia".
+
+1. After the upgrade is installed, restart Tails and choose
+   **Applications&nbsp;▸ Tails&nbsp;▸ About Tails**
+   to verify that you are running Tails 3.2~rc1.
+
+Download and install
+--------------------
+
+You can install 3.2~rc1 by following our usual
+[[installation instructions|install]], skipping the **Download and
+verify** step.
+
+Tails 3.2~rc1 ISO image
+
+Tails 3.2~rc1 torrent
+
+<a id="known_issues"></a>
+
+Known issues in 3.2~rc1
+=======================
+
+* GNOME screen keyboard (that replaced Florence in this version) is
+  not working: pressing its on-screen keyboard buttons do nothing
+  ([[!tails_ticket 14675]]).
+
+[[Longstanding known issues|support/known_issues]]
+
+# What's coming up?
+
+Tails 3.2 is [[scheduled|contribute/calendar]] on September 26.
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (donating is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

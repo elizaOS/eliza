@@ -2,7 +2,7 @@
 # runtime_graph_smoke.sh — prove a built llama.cpp fork can route KV cache
 # kernels through real graph execution, not only ship standalone symbols.
 #
-# This is intentionally model-backed. If ELIZA_DFLASH_SMOKE_MODEL is absent,
+# This is intentionally model-backed. If ELIZA_MTP_SMOKE_MODEL is absent,
 # the smoke fails; a graph dispatch pass without a GGUF model would be a
 # symbol check, not runtime verification.
 #
@@ -28,7 +28,7 @@ Required:
 
 Options:
   --bin-dir <dir>     Override built binary directory.
-  --model <path>      GGUF model path. Defaults to ELIZA_DFLASH_SMOKE_MODEL.
+  --model <path>      GGUF model path. Defaults to ELIZA_MTP_SMOKE_MODEL.
   --report-dir <dir>  Log/report directory. Defaults to verify/hardware-results.
   --cache-types <s>   Space/comma-separated cache type values to run. Defaults
                       to resolving all five families from llama-bench --help.
@@ -37,13 +37,13 @@ Options:
 
 Environment:
   ELIZA_STATE_DIR                 Defaults to ~/.eliza.
-  ELIZA_DFLASH_SMOKE_MODEL        Required unless --model is passed.
-  ELIZA_DFLASH_SMOKE_PROMPT       Defaults to a tiny deterministic prompt.
-  ELIZA_DFLASH_SMOKE_TOKENS       Defaults to 4.
-  ELIZA_DFLASH_SMOKE_NGL          Defaults to 99.
-  ELIZA_DFLASH_SMOKE_EXTRA_ARGS   Extra llama-bench args, split on spaces.
-  ELIZA_DFLASH_SMOKE_CACHE_TYPES  Overrides the default cache-family resolver.
-  ELIZA_DFLASH_SMOKE_GEN_CHECK    Set to 1 to force --gen-check on.
+  ELIZA_MTP_SMOKE_MODEL        Required unless --model is passed.
+  ELIZA_MTP_SMOKE_PROMPT       Defaults to a tiny deterministic prompt.
+  ELIZA_MTP_SMOKE_TOKENS       Defaults to 4.
+  ELIZA_MTP_SMOKE_NGL          Defaults to 99.
+  ELIZA_MTP_SMOKE_EXTRA_ARGS   Extra llama-bench args, split on spaces.
+  ELIZA_MTP_SMOKE_CACHE_TYPES  Overrides the default cache-family resolver.
+  ELIZA_MTP_SMOKE_GEN_CHECK    Set to 1 to force --gen-check on.
 USAGE
 }
 
@@ -56,10 +56,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET=""
 BACKEND_PATTERN=""
 BIN_DIR=""
-MODEL="${ELIZA_DFLASH_SMOKE_MODEL:-}"
-REPORT_DIR="${ELIZA_DFLASH_HARDWARE_REPORT_DIR:-$HERE/hardware-results}"
-CACHE_TYPES="${ELIZA_DFLASH_SMOKE_CACHE_TYPES:-}"
-GEN_CHECK="${ELIZA_DFLASH_SMOKE_GEN_CHECK:-0}"
+MODEL="${ELIZA_MTP_SMOKE_MODEL:-}"
+REPORT_DIR="${ELIZA_MTP_HARDWARE_REPORT_DIR:-$HERE/hardware-results}"
+CACHE_TYPES="${ELIZA_MTP_SMOKE_CACHE_TYPES:-}"
+GEN_CHECK="${ELIZA_MTP_SMOKE_GEN_CHECK:-0}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -86,12 +86,12 @@ done
 
 [[ -n "$TARGET" ]] || { usage; die "--target is required"; }
 [[ -n "$BACKEND_PATTERN" ]] || { usage; die "--backend-pattern is required"; }
-[[ -n "$MODEL" ]] || die "ELIZA_DFLASH_SMOKE_MODEL / --model is required for graph dispatch verification"
+[[ -n "$MODEL" ]] || die "ELIZA_MTP_SMOKE_MODEL / --model is required for graph dispatch verification"
 [[ -f "$MODEL" ]] || die "model file not found: $MODEL"
 
 if [[ -z "$BIN_DIR" ]]; then
     STATE_DIR="${ELIZA_STATE_DIR:-$HOME/.eliza}"
-    BIN_DIR="$STATE_DIR/local-inference/bin/dflash/$TARGET"
+    BIN_DIR="$STATE_DIR/local-inference/bin/mtp/$TARGET"
 fi
 
 resolve_bin() {
@@ -164,11 +164,11 @@ else
     done
 fi
 
-PROMPT="${ELIZA_DFLASH_SMOKE_PROMPT:-Eliza local backend graph dispatch smoke.}"
-TOKENS="${ELIZA_DFLASH_SMOKE_TOKENS:-4}"
-NGL="${ELIZA_DFLASH_SMOKE_NGL:-99}"
+PROMPT="${ELIZA_MTP_SMOKE_PROMPT:-Eliza local backend graph dispatch smoke.}"
+TOKENS="${ELIZA_MTP_SMOKE_TOKENS:-4}"
+NGL="${ELIZA_MTP_SMOKE_NGL:-99}"
 # shellcheck disable=SC2206
-EXTRA_ARGS=(${ELIZA_DFLASH_SMOKE_EXTRA_ARGS:-})
+EXTRA_ARGS=(${ELIZA_MTP_SMOKE_EXTRA_ARGS:-})
 
 SUMMARY="$REPORT_DIR/${TARGET}-graph-smoke.summary"
 {

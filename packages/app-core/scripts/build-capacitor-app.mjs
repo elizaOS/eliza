@@ -123,7 +123,16 @@ if (fullSetup) {
 if (fs.existsSync(syncPublicAssetsScript)) {
   await run(
     process.execPath,
-    [syncPublicAssetsScript, path.join(appDir, "public"), "--clouds"],
+    [
+      syncPublicAssetsScript,
+      path.join(appDir, "public"),
+      "--logos",
+      "--favicons",
+      "--concepts",
+      "--banners",
+      "--background",
+      "--background-videos",
+    ],
     repoRoot,
   );
 }

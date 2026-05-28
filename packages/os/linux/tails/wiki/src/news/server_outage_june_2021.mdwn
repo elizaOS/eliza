@@ -1,0 +1,13 @@
+[[!meta title="Planned outage on Tuesday June 8th"]]
+[[!meta date="Fri, 04 Jun 2021 21:30:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Our services will be down for maintenance on Tuesday June 8th between 12:00 and
+15:00 UTC. We'll be changing the IP address of our main server. We expect the
+actual switch to be quick. However, it might take some time for everything to
+be back up and running while the changes to our DNS records propagate.
+
+During that period, our website will be offline and Tails upgrades will not
+work.
+
+Sorry for the inconvenience!

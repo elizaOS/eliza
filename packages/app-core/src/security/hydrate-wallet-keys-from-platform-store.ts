@@ -1,5 +1,4 @@
 import { logger } from "@elizaos/core";
-import { formatError } from "@elizaos/shared";
 
 import { sharedVault } from "../services/vault-mirror";
 import { deriveAgentVaultId } from "./agent-vault-id";
@@ -9,23 +8,32 @@ import {
   isWalletOsStoreReadEnabled,
 } from "./platform-secure-store-node";
 
-const WALLET_VAULT_KEYS: ReadonlyArray<string> = [
-  "EVM_PRIVATE_KEY",
-  "SOLANA_PRIVATE_KEY",
-];
+// TDZ-hardening (see also packages/app-core/src/services/vault-mirror.ts).
+// These module-top `const` literals are referenced inside async functions
+// that run on the boot path. If a circular import (e.g. vault-bootstrap →
+// agent → app-core → … → this module) re-enters those functions before this
+// file's top-level initializers complete, Bun's strict ESM throws
+// `Cannot access 'WALLET_VAULT_KEYS' before initialization`. Wrapping the
+// arrays in functions makes them callable regardless of init order — the
+// array literal builds when the getter is invoked, not at module top.
+function walletVaultKeys(): ReadonlyArray<keyof NodeJS.ProcessEnv> {
+  return ["EVM_PRIVATE_KEY", "SOLANA_PRIVATE_KEY"];
+}
 
 /**
  * Steward-only env vars (non-wallet) that still ride the OS keystore. They
- * never moved into the wallet vault because the steward backend has its
+ * never moved into the unified vault because the steward backend has its
  * own auth model — leave them on the keystore-only path.
  */
-const STEWARD_OS_PAIRS: ReadonlyArray<
-  readonly [string, SecureStoreSecretKind]
-> = [
-  ["STEWARD_API_URL", "steward.api_url"],
-  ["STEWARD_AGENT_ID", "steward.agent_id"],
-  ["STEWARD_AGENT_TOKEN", "steward.agent_token"],
-];
+function stewardOsPairs(): ReadonlyArray<
+  readonly [keyof NodeJS.ProcessEnv, SecureStoreSecretKind]
+> {
+  return [
+    ["STEWARD_API_URL", "steward.api_url"],
+    ["STEWARD_AGENT_ID", "steward.agent_id"],
+    ["STEWARD_AGENT_TOKEN", "steward.agent_token"],
+  ];
+}
 
 /**
  * One-shot copy of legacy OS-keystore wallet keys into the shared vault.
@@ -33,7 +41,7 @@ const STEWARD_OS_PAIRS: ReadonlyArray<
  * surface a migration banner.
  */
 async function migrateOsStoreWalletKeysIntoVault(
-  envKeys: ReadonlyArray<string>,
+  envKeys: ReadonlyArray<keyof NodeJS.ProcessEnv>,
 ): Promise<string[]> {
   if (envKeys.length === 0) return [];
   if (!isWalletOsStoreReadEnabled()) return [];
@@ -50,18 +58,17 @@ async function migrateOsStoreWalletKeysIntoVault(
   const migrated: string[] = [];
 
   for (const envKey of envKeys) {
-    const kind = keychainKindFor[envKey];
+    const kind = keychainKindFor[envKey as string];
     if (!kind) continue;
     const got = await store.get(vaultId, kind);
     if (!got.ok) continue;
     process.env[envKey] = got.value;
-    const envKeyStr = String(envKey);
-    if (!(await vault.has(envKeyStr))) {
-      await vault.set(envKeyStr, got.value, {
+    if (!(await vault.has(envKey as string))) {
+      await vault.set(envKey as string, got.value, {
         sensitive: true,
         caller: "wallet-os-store-migrate",
       });
-      migrated.push(envKeyStr);
+      migrated.push(String(envKey));
     }
   }
 
@@ -74,7 +81,7 @@ async function migrateOsStoreWalletKeysIntoVault(
  * legacy OS-keystore values into the vault and then proceeds normally.
  *
  * Steward env vars stay on the OS-keystore path — the steward backend's
- * lifecycle is independent of the wallet vault.
+ * lifecycle is independent of the unified wallet vault.
  *
  * Runs before upstream `startApiServer` merges `config.env`, so persisted
  * config only fills gaps that neither vault nor OS keystore supplies.
@@ -82,13 +89,12 @@ async function migrateOsStoreWalletKeysIntoVault(
 export async function hydrateWalletKeysFromNodePlatformSecureStore(): Promise<void> {
   // ── 1. Vault read for wallet keys ────────────────────────────────
   const vault = sharedVault();
-  const missingWalletKeys: Array<string> = [];
-  for (const envKey of WALLET_VAULT_KEYS) {
+  const missingWalletKeys: Array<keyof NodeJS.ProcessEnv> = [];
+  for (const envKey of walletVaultKeys()) {
     const cur = process.env[envKey];
     if (typeof cur === "string" && cur.trim()) continue;
-    const envKeyStr = String(envKey);
-    if (await vault.has(envKeyStr)) {
-      const value = await vault.reveal(envKeyStr, "wallet-hydrate-boot");
+    if (await vault.has(envKey as string)) {
+      const value = await vault.reveal(envKey as string, "wallet-hydrate-boot");
       process.env[envKey] = value;
       continue;
     }
@@ -108,7 +114,7 @@ export async function hydrateWalletKeysFromNodePlatformSecureStore(): Promise<vo
       }
     } catch (err) {
       logger.warn(
-        `[wallet][vault] os-store migration failed: ${formatError(err)}`,
+        `[wallet][vault] os-store migration failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
@@ -119,7 +125,7 @@ export async function hydrateWalletKeysFromNodePlatformSecureStore(): Promise<vo
     const store = createNodePlatformSecureStore();
     if (!(await store.isAvailable())) return;
     const vaultId = deriveAgentVaultId();
-    for (const [envKey, kind] of STEWARD_OS_PAIRS) {
+    for (const [envKey, kind] of stewardOsPairs()) {
       const cur = process.env[envKey];
       if (typeof cur === "string" && cur.trim()) continue;
       const got = await store.get(vaultId, kind);
@@ -127,7 +133,7 @@ export async function hydrateWalletKeysFromNodePlatformSecureStore(): Promise<vo
     }
   } catch (err) {
     logger.warn(
-      `[wallet][os-store] steward hydrate failed: ${formatError(err)}`,
+      `[wallet][os-store] steward hydrate failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }

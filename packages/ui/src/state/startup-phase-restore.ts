@@ -6,15 +6,14 @@
  */
 
 import { logger } from "@elizaos/core";
-import { getStylePresets, ONBOARDING_PROVIDER_CATALOG } from "@elizaos/shared";
-import { client, type OnboardingOptions } from "../api";
+import { FIRST_RUN_PROVIDER_CATALOG, getStylePresets } from "@elizaos/shared";
+import { client, type FirstRunOptions } from "../api";
 import {
   getBackendStartupTimeoutMs,
   invokeDesktopBridgeRequestWithTimeout,
   isElectrobunRuntime,
   scanProviderCredentials,
 } from "../bridge";
-import type { UiLanguage } from "../i18n";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
   ANDROID_LOCAL_AGENT_LABEL,
@@ -24,18 +23,19 @@ import {
   MOBILE_LOCAL_AGENT_LABEL,
   MOBILE_LOCAL_AGENT_SERVER_ID,
   readPersistedMobileRuntimeMode,
-} from "../onboarding/mobile-runtime-mode";
-import { isAndroid, isForceFreshOnboardingEnabled, isIOS } from "../platform";
+} from "../first-run/mobile-runtime-mode";
+import type { UiLanguage } from "../i18n";
+import { isAndroid, isForceFreshFirstRunEnabled, isIOS } from "../platform";
 import type { ExistingElizaInstallInfo } from "../types";
 import { getElizaApiBase } from "../utils/eliza-globals";
-import { detectExistingOnboardingConnection } from "./onboarding-bootstrap";
+import { detectExistingFirstRunConnection } from "./first-run-bootstrap";
 import {
   clearPersistedActiveServer,
   loadPersistedActiveServer,
-  loadPersistedOnboardingComplete,
+  loadPersistedFirstRunComplete,
   type PersistedActiveServer,
   savePersistedActiveServer,
-  savePersistedOnboardingComplete,
+  savePersistedFirstRunComplete,
 } from "./persistence";
 import type { StartupEvent } from "./startup-coordinator";
 
@@ -47,7 +47,7 @@ const DESKTOP_RESTORE_RPC_TIMEOUT_MS = 5_000;
 
 /**
  * If the restored cloud active-server has no apiBase (a broken state from
- * earlier builds where finishAsCloud silently completed onboarding before
+ * earlier builds where finishAsCloud silently completed firstRun before
  * the cloud surface attached a web_ui_url), look the agent up against the
  * direct cloud API and persist the resolved URL. Returns the up-to-date
  * active server (with apiBase populated when resolution succeeds) or the
@@ -89,23 +89,23 @@ export interface RestoringSessionDeps {
   setStartupError: (v: null) => void;
   setAuthRequired: (v: boolean) => void;
   setConnected: (v: boolean) => void;
-  setOnboardingExistingInstallDetected: (v: boolean) => void;
-  setOnboardingOptions: (v: OnboardingOptions) => void;
-  setOnboardingComplete: (v: boolean) => void;
-  setOnboardingLoading: (v: boolean) => void;
+  setFirstRunExistingInstallDetected: (v: boolean) => void;
+  setFirstRunOptions: (v: FirstRunOptions) => void;
+  setFirstRunComplete: (v: boolean) => void;
+  setFirstRunLoading: (v: boolean) => void;
   applyDetectedProviders: (
     detected: Awaited<ReturnType<typeof scanProviderCredentials>>,
   ) => void;
   forceLocalBootstrapRef: React.MutableRefObject<boolean>;
-  onboardingCompletionCommittedRef: React.MutableRefObject<boolean>;
+  firstRunCompletionCommittedRef: React.MutableRefObject<boolean>;
   uiLanguage: UiLanguage;
 }
 
 export interface RestoringSessionCtx {
   persistedActiveServer: ReturnType<typeof loadPersistedActiveServer>;
   restoredActiveServer: PersistedActiveServer;
-  shouldPreserveCompletedOnboarding: boolean;
-  hadPriorOnboarding: boolean;
+  shouldPreserveCompletedFirstRun: boolean;
+  hadPriorFirstRun: boolean;
 }
 
 function isMobileLocalAgentApiBase(value: string | undefined): boolean {
@@ -293,7 +293,7 @@ export function canRestoreActiveServer(args: {
   return false;
 }
 
-function preserveCloudAuthTokenForOnboarding(
+function preserveCloudAuthTokenForFirstRun(
   server: PersistedActiveServer,
 ): void {
   if (server.kind !== "cloud") return;
@@ -324,26 +324,26 @@ export async function runRestoringSession(
   deps.setStartupError(null);
   deps.setAuthRequired(false);
   deps.setConnected(false);
-  deps.setOnboardingExistingInstallDetected(false);
+  deps.setFirstRunExistingInstallDetected(false);
 
   const forceLocal = deps.forceLocalBootstrapRef.current;
   deps.forceLocalBootstrapRef.current = false;
   let persistedActiveServer = loadPersistedActiveServer();
-  let hadPrior = loadPersistedOnboardingComplete();
-  const forceFreshOnboarding = isForceFreshOnboardingEnabled();
-  if (forceFreshOnboarding) {
+  let hadPrior = loadPersistedFirstRunComplete();
+  const forceFreshFirstRun = isForceFreshFirstRunEnabled();
+  if (forceFreshFirstRun) {
     clearPersistedActiveServer();
-    savePersistedOnboardingComplete(false);
+    savePersistedFirstRunComplete(false);
     persistedActiveServer = null;
     hadPrior = false;
-    deps.onboardingCompletionCommittedRef.current = false;
+    deps.firstRunCompletionCommittedRef.current = false;
     client.setBaseUrl(null);
     client.setToken(null);
   }
   if (cancelled.current) return;
 
   const desktopInstall =
-    !forceFreshOnboarding && !persistedActiveServer && isElectrobunRuntime()
+    !forceFreshFirstRun && !persistedActiveServer && isElectrobunRuntime()
       ? await inspectExistingElizaInstallForStartup().catch(() => null)
       : null;
   if (cancelled.current) return;
@@ -353,10 +353,10 @@ export async function runRestoringSession(
 
   // Probe the API when there is evidence of a prior install, or when no
   // persisted server exists (covers headless/VPS setups where config was
-  // set via files without going through UI onboarding).
+  // set via files without going through UI firstRun).
   const probed =
-    !forceFreshOnboarding && !persistedActiveServer
-      ? await detectExistingOnboardingConnection({
+    !forceFreshFirstRun && !persistedActiveServer
+      ? await detectExistingFirstRunConnection({
           client,
           timeoutMs: isDesktop
             ? Math.min(getBackendStartupTimeoutMs(), 30_000)
@@ -376,11 +376,11 @@ export async function runRestoringSession(
     });
     if (reconciledMobileServer === null) {
       clearPersistedActiveServer();
-      savePersistedOnboardingComplete(false);
+      savePersistedFirstRunComplete(false);
       persistedActiveServer = null;
       restoredActiveServer = null;
       hadPrior = false;
-      deps.onboardingCompletionCommittedRef.current = false;
+      deps.firstRunCompletionCommittedRef.current = false;
     } else if (reconciledMobileServer) {
       restoredActiveServer = reconciledMobileServer;
       persistedActiveServer = restoredActiveServer;
@@ -397,20 +397,20 @@ export async function runRestoringSession(
       isDesktop,
     })
   ) {
-    preserveCloudAuthTokenForOnboarding(restoredActiveServer);
+    preserveCloudAuthTokenForFirstRun(restoredActiveServer);
     clearPersistedActiveServer();
-    savePersistedOnboardingComplete(false);
+    savePersistedFirstRunComplete(false);
     persistedActiveServer = null;
     restoredActiveServer = null;
     hadPrior = false;
-    deps.onboardingCompletionCommittedRef.current = false;
+    deps.firstRunCompletionCommittedRef.current = false;
   }
 
   const preserveCompleted =
-    hadPrior && !deps.onboardingCompletionCommittedRef.current;
+    hadPrior && !deps.firstRunCompletionCommittedRef.current;
 
-  deps.setOnboardingExistingInstallDetected(
-    forceFreshOnboarding
+  deps.setFirstRunExistingInstallDetected(
+    forceFreshFirstRun
       ? false
       : Boolean(
           hadPrior ||
@@ -421,12 +421,12 @@ export async function runRestoringSession(
 
   if (!restoredActiveServer) {
     // No saved backend found — let the user (re-)onboard.
-    deps.setOnboardingOptions({
+    deps.setFirstRunOptions({
       names: [],
       styles: getStylePresets(deps.uiLanguage),
       providers: [
-        ...ONBOARDING_PROVIDER_CATALOG,
-      ] as OnboardingOptions["providers"],
+        ...FIRST_RUN_PROVIDER_CATALOG,
+      ] as FirstRunOptions["providers"],
       cloudProviders: [],
       models: {
         nano: [],
@@ -434,23 +434,23 @@ export async function runRestoringSession(
         medium: [],
         large: [],
         mega: [],
-      } as OnboardingOptions["models"],
+      } as FirstRunOptions["models"],
       inventoryProviders: [],
       sharedStyleRules: "",
     });
-    if (!forceFreshOnboarding) {
+    if (!forceFreshFirstRun) {
       try {
         const det = await scanProviderCredentials();
         if (!cancelled.current && det.length > 0) {
           deps.applyDetectedProviders(det);
         }
       } catch {
-        // keychain scan is best-effort; proceed with fresh onboarding
+        // keychain scan is best-effort; proceed with fresh firstRun
       }
     }
-    deps.setOnboardingComplete(false);
-    deps.setOnboardingLoading(false);
-    dispatch({ type: "NO_SESSION", hadPriorOnboarding: hadPrior });
+    deps.setFirstRunComplete(false);
+    deps.setFirstRunLoading(false);
+    dispatch({ type: "NO_SESSION", hadPriorFirstRun: hadPrior });
     return;
   }
 
@@ -477,8 +477,8 @@ export async function runRestoringSession(
   ctxRef.current = {
     persistedActiveServer,
     restoredActiveServer,
-    shouldPreserveCompletedOnboarding: preserveCompleted,
-    hadPriorOnboarding: hadPrior,
+    shouldPreserveCompletedFirstRun: preserveCompleted,
+    hadPriorFirstRun: hadPrior,
   };
   dispatch({
     type: "SESSION_RESTORED",

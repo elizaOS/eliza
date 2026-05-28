@@ -40,7 +40,9 @@ class MemoryUmaClaimGateTest(unittest.TestCase):
         self.assertEqual(actual["memory_qos"], "none")
         self.assertEqual(actual["clint_plic_access_map"], "incomplete")
         self.assertEqual(actual["phone_class_status"], "blocked")
-        self.assertEqual(local_rtl["dram_controller_boundary"]["gate"], "make dram-controller-check")
+        self.assertEqual(
+            local_rtl["dram_controller_boundary"]["gate"], "make dram-controller-check"
+        )
         self.assertEqual(local_rtl["iommu_boundary"]["gate"], "make iommu-evidence-check")
         self.assertEqual(
             bandwidth_latency["status"],

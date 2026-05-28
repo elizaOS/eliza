@@ -1,9 +1,10 @@
 # fw/boot-rom/Makefile
 #
 # Builds two artifacts:
-#   all         -> the reset-only scaffold ROM (4 KiB, linker.ld) — the
-#                  artifact the RTL contract ROM and check_boot_rom.py consume.
-#   secure-rom  -> the full secure mask ROM: reset.S calling the OPNPHN01
+#   all         -> a legacy reset-only scaffold ROM (4 KiB, linker.ld). This
+#                  is a standalone bring-up artifact, not the current RTL
+#                  contract ROM consumed by check_boot_rom.py.
+#   secure-rom  -> the current full secure mask ROM: reset.S calling the OPNPHN01
 #                  verifier (Ed25519 + SHA-256, key ladder, rollback,
 #                  lifecycle, measurement chain), linked with secure/rom.ld.
 #   secure-objs -> freestanding compile-only proof of the secure C sources.
@@ -24,7 +25,7 @@ CFLAGS  := $(ARCH_FLAGS) -nostdlib -nostartfiles -fno-pic -ffreestanding -fno-bu
            -fdata-sections -ffunction-sections -Wall -Wextra -Wno-unused-parameter -Werror -Os
 ASFLAGS := $(ARCH_FLAGS) -nostdlib -nostartfiles -fno-pic -ffreestanding
 
-# Reset-only scaffold ROM (legacy 4 KiB artifact).
+# Reset-only scaffold ROM (legacy 4 KiB artifact, not the current 64 KiB RTL aperture).
 LDFLAGS := -nostdlib -nostartfiles -Wl,-T,linker.ld -Wl,--no-relax
 ELF     := e1_boot_rom.elf
 BIN     := e1_boot_rom.bin

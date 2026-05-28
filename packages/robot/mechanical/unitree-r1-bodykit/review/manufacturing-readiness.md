@@ -6,7 +6,7 @@ Simulator verdict: pass
 Production clearance verdict: pass
 Panel gap verdict: pass
 Face alignment verdict: pass
-Parametric morphs applied: 38
+Parametric morphs applied: 39
 Minimum adjacent-interface clearance: 0.743 mm
 Minimum neck/head/face adjacent-interface clearance: 68.034 mm
 Minimum neck/head/face non-adjacent clearance: 297.955 mm

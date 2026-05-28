@@ -1,0 +1,104 @@
+[[!meta title="Tails 6.12"]]
+[[!meta date="Thu, 06 Feb 2025 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="security">Important security fixes</h1>
+
+<div class="attack">
+
+<p>The vulnerabilities described below were identified during an external
+security audit by <a href="https://www.radicallyopensecurity.com/">Radically
+Open Security</a> and disclosed responsibly to our team. We are not aware of
+these attacks being used against Tails users until now.</p>
+
+<p>These vulnerabilities can only be exploited by a powerful attacker who has
+already exploited another vulnerability to take control of an application in
+Tails.</p>
+
+</div>
+
+- Prevent an attacker from monitoring Tor circuits. ([[!tails_ticket 20733]] and [[!tails_ticket 20744]])
+
+  In Tails 6.11 or earlier, an attacker who has already taken control of an
+  application in Tails could then exploit vulnerabilities in *Onion Circuits*
+  and our *Tor Browser* wrapper that might lead to deanonymization.
+
+- Prevent an attacker from changing the Persistent Storage settings. ([[!tails_ticket 20745]])
+
+<h1 id="changes">Changes and updates</h1>
+
+- Add a button to check for upgrades from the **About Tails** utility.
+
+  [[!img news/version_6.12/check_for_upgrades.png link="no" class="screenshot" alt=""]]
+
+- Add the keyboard shortcut **Ctrl+Alt+T** to open a *Terminal*.
+
+- Update *Tor Browser* to [14.0.5](https://blog.torproject.org/new-release-tor-browser-1405).
+
+- Update *Thunderbird* to [128.6.0esr](https://www.thunderbird.net/en-US/thunderbird/128.6.0esr/releasenotes/).
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Ensure all our Python code keeps running in *isolated mode*. ([[!tails_ticket 20719]])
+
+- Simplify the troubleshooting instructions when an automatic upgrade fails.
+  ([[!tails_ticket 20466]])
+
+- Avoid freezing the Welcome Screen while activating the Persistent Storage.
+  ([[!tails_ticket 20635]])
+
+- Made time synchronization more reliable when restarting Tor. ([[!tails_ticket 20530]])
+
+- Display an error message when upgrading the encryption of the Persistent
+  Storage to LUKS2 fails. ([[!tails_ticket 20634]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="issues">Known issues</h1>
+
+- When installing additional software from your Persistent Storage fails, the
+  **Configure** and **Show Log** buttons in the notification don't work.
+
+  [[!img additional_software.png link="no" class="screenshot" alt="Notification: The installation of your additional software failed"]]
+
+  - To configure your additional software, choose **Applications&nbsp;▸
+    Persistent Storage** and click on the [[!img lib/emblem-system.png
+    class="symbolic" link="no"]] button of the **Additional Software** feature.
+
+  - To show the log, execute the following command in a *Terminal*.
+
+    <p class="command">cat /run/live-additional-software/log</p>
+
+<h1 id="get">Get Tails 6.12</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 6.0 or later to 6.12.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 6.12 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 6.12 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

@@ -143,21 +143,21 @@ export function DeferredSetupChecklist({
   onOpenTask?: (task: FlaminaGuideTopic) => void;
 }) {
   const {
-    onboardingDeferredTasks,
-    postOnboardingChecklistDismissed,
+    firstRunDeferredTasks,
+    postFirstRunChecklistDismissed,
     setState,
     t,
   } = useApp();
 
   if (
-    postOnboardingChecklistDismissed ||
-    !Array.isArray(onboardingDeferredTasks) ||
-    onboardingDeferredTasks.length === 0
+    postFirstRunChecklistDismissed ||
+    !Array.isArray(firstRunDeferredTasks) ||
+    firstRunDeferredTasks.length === 0
   ) {
     return null;
   }
 
-  const tasks = onboardingDeferredTasks.filter(
+  const tasks = firstRunDeferredTasks.filter(
     (task): task is FlaminaGuideTopic =>
       typeof task === "string" && task in TASK_LABELS,
   );
@@ -167,9 +167,9 @@ export function DeferredSetupChecklist({
 
   const markDone = (task: FlaminaGuideTopic) => {
     setState(
-      "onboardingDeferredTasks",
-      onboardingDeferredTasks.filter(
-        (current: AppState["onboardingDeferredTasks"][number]) =>
+      "firstRunDeferredTasks",
+      firstRunDeferredTasks.filter(
+        (current: AppState["firstRunDeferredTasks"][number]) =>
           current !== task,
       ),
     );
@@ -192,7 +192,7 @@ export function DeferredSetupChecklist({
           variant="ghost"
           size="sm"
           className="rounded-full text-xs-tight font-semibold uppercase tracking-[0.12em] text-muted"
-          onClick={() => setState("postOnboardingChecklistDismissed", true)}
+          onClick={() => setState("postFirstRunChecklistDismissed", true)}
         >
           {t("common.dismiss")}
         </Button>

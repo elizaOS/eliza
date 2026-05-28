@@ -1,5 +1,5 @@
 <mujoco model="Asimov">
-  <compiler angle="radian" meshdir="/home/shaw/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes" />
+  <compiler angle="radian" meshdir="../meshes" />
   <default>
     <joint frictionloss="0" />
     <default class="motor">

@@ -1,0 +1,245 @@
+[[!meta title="Contributing to Tails"]]
+
+There are many ways you can contribute to Tails. No effort is too
+small and whatever you bring to this community will be appreciated.
+So read on to find out how you can make a difference in Tails.
+
+[[!toc levels=1]]
+
+Ways to contribute
+==================
+
+<div class="blocks">
+
+<div class="block block-half">
+  <h2>Share your experience</h2>
+  [[!img user.png link=no]]
+  <p>Every user can help others or provide developers with useful information.</p>
+  <ul>
+    <li>[[Report errors|doc/first_steps/whisperback]]</li>
+    <li>[[Test experimental Tails images|contribute/how/testing]]</li>
+    <li>[[Provide input to developers|contribute/how/input]]</li>
+    <li>[[Help other Tails users|contribute/how/help]]</li>
+  </ul>
+</div>
+
+<div class="block block-half">
+  <h2>Donate</h2>
+  [[!img donate.png link=no]]
+  <p>Donating speeds up the development of Tails.</p>
+  <div class="button">[[Donate|donate]]</div>
+</div>
+
+</div>
+
+<h2>Contribute your language skills</h2>
+
+<div class="blocks">
+
+<div class="block block-third">
+  <h2>Writer</h2>
+  [[!img writer.png link=no]]
+  <p>Good writers can make Tails accessible to more people.</p>
+  <ul>
+    <li>[[Improve our documentation|contribute/how/documentation]]</li>
+  </ul>
+</div>
+
+<div class="block block-third">
+  <h2>Translator</h2>
+  [[!img translator.png link=no]]
+  <p>Translators can allow more people around the world to use Tails.</p>
+  <ul>
+    <li>[[Improve Tails in your own language|contribute/how/translate]]</li>
+  </ul>
+</div>
+
+<div class="block block-third">
+  <h2>Speaker</h2>
+  [[!img speaker.png link=no]]
+  <p>Speakers can advocate Tails to all kinds of public.</p>
+  <ul>
+    <li>[[Outreach material: logo, leaflets, stickers, etc.|contribute/how/promote]]</li>
+  </ul>
+</div>
+
+</div>
+
+<h2>Contribute your computer skills</h2>
+
+<div class="blocks">
+
+<div class="block block-third">
+  <h2>Developer or maintainer</h2>
+  [[!img software_developer.png link=no]]
+  <p>Software people with very diverse skills can improve Tails.</p>
+  <ul>
+    <li>[[Work on the source code|contribute/how/code]]</li>
+    <li>[[Improve Tails by working on Debian|contribute/how/debian]]</li>
+  </ul>
+</div>
+
+<div class="block block-third">
+  <h2>System administrator</h2>
+  [[!img system_administrator.png link=no]]
+  <p>System administrators can contribute to the infrastructure behind Tails.</p>
+  <ul>
+    <li>[[Run an HTTP mirror|contribute/how/mirror]]</li>
+    <li>[[Improve Tails infrastructure|https://gitlab.torproject.org/tpo/tpa/team/-/wikis/tails/processes/contribute]]</li>
+  </ul>
+</div>
+
+<div class="block block-third">
+  <h2>Designer</h2>
+  [[!img designer.png link=no]]
+  <p>Designers can make Tails easier to use and more appealing.</p>
+  <ul>
+    <li>[[Improve the website|contribute/how/website]]</li>
+    <li>[[Design graphics|contribute/how/graphics]]</li>
+    <li>[[Improve the Tails user experience|contribute/how/user_experience]]</li>
+  </ul>
+</div>
+
+</div>
+
+<div class="note">
+
+<p>This section is only in English, because there is currently no way to
+contribute to Tails if you do not understand English.</p>
+
+</div>
+
+<a id="reference-documents"></a>
+
+Reference documents
+===================
+
+- [[Mission and values|contribute/mission]]
+
+- [[Design documents|contribute/design]]
+
+- [Blueprints](https://gitlab.tails.boum.org/tails/blueprints/-/wikis/) to help structuring ideas for future improvements
+
+- [[Merge policy|contribute/merge_policy]]
+
+- [[!tails_website contribute/how/promote/logo desc="Logo"]]
+
+- [[Personas|contribute/personas]]
+
+- [[Security issue response policy|contribute/security_policy]]
+
+<a id="tools"></a>
+
+Tools for contributors
+======================
+
+- Source code: [[Git repositories|contribute/git]]
+
+- [[GitLab source code and bug tracker|contribute/working_together/GitLab]]
+
+- [[Starter tasks|starter_tasks]] for new contributors
+
+- [[Building a Tails image|contribute/build]]
+
+  * [[Build a local copy of the website|contribute/build/website]]
+
+  * [[Customize Tails|contribute/customize]]
+
+  * [Nightly Tails image builds](https://nightly.tails.boum.org)
+
+  * [[Jenkins CI|https://gitlab.torproject.org/tpo/tpa/team/-/wikis/tails/services/jenkins]]
+
+- Debian packages
+
+  * [[APT repository|contribute/APT_repository]], to store our custom Debian packages
+
+  * How we manage and upgrade the [[Linux kernel|contribute/Linux_kernel]].
+
+  * How we manage and upgrade [[contribute/tor]].
+
+- Tips to develop and debug [[contribute/Tor_Connection]]
+
+- Tips to develop and debug [[contribute/GNOME_Extensions]]
+
+- Tips to develop  [[contribute/Persistent_Storage]]
+
+- [[Glossary for contributors|contribute/glossary]]
+
+<a id="release-cycle"></a>
+
+Release cycle
+=============
+
+- [[Release schedule|contribute/release_schedule]]
+
+- [[Release process|contribute/release_process]]
+
+  * [[Manual test suite|contribute/release_process/test]]
+
+  * [[Automated test suite|contribute/release_process/test/automated_tests]]
+
+  * [[Verification JavaScript|contribute/release_process/verification_javascript]]
+
+<a id="upstream"></a>
+
+Relationship with upstream and derivatives
+==========================================
+
+- [[Relationship with upstream|contribute/relationship_with_upstream]]
+
+- [[Improve Tails by working on Debian|contribute/how/debian]]
+
+- [[About creating Tails derivatives|contribute/derivatives]]
+
+<a id="collective-process"></a>
+
+Collective process
+==================
+
+- [[Calendar|contribute/calendar]] of releases
+
+- [Code of conduct](https://community.torproject.org/policies/code_of_conduct/)
+
+- [Social contract](https://community.torproject.org/policies/social_contract/)
+
+- [[People|contribute/working_together/people]]
+
+- [[Marking a task as Starter|contribute/working_together/criteria_for_starter_tasks]]
+
+- [[Document progress|contribute/working_together/GitLab#document-progress]]
+
+- Teams and roles
+
+  * [Tails Team](https://gitlab.tails.boum.org/tails/team/-/wikis/home) (formerly known as: Foundations Team)
+
+  * [[Release manager|contribute/working_together/roles/release_manager]]
+
+  * [[Technical writers|contribute/working_together/roles/technical_writer]]
+
+  * [[Translation platform maintainers|contribute/working_together/roles/translation_platform]]
+
+  * [[UX designers|contribute/working_together/roles/ux]]
+
+- Interfaces between roles and teams
+
+  * [[Developers and Release Managers|contribute/working_together/interfaces/developers_and_release_managers]]
+
+Getting credits
+===============
+
+We're ok with people getting credits for whatever contribution they did to
+Tails. Sometimes this is publicly available (for example: in issues, git
+history, etc.), in which case this is enough for us.
+
+In some cases such info might not be publicly visible (for example:
+facilitation work done for meetings or data that was deleted for some reason).
+In this case, if the contributor so wish, we're ok with adding explicit public
+credit somewhere they can link to. If that's your case, please [[contact
+us|doc/about/contact]].
+
+Contact us
+==========
+
+
+To talk to other Tails contributors, subscribe to
+[[the relevant mailing lists|doc/about/contact]].

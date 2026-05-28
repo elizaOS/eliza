@@ -25,7 +25,7 @@ export default function SecurityPage() {
           <nav className="flex flex-wrap gap-2 text-xs">
             <Link
               to="/dashboard/security/permissions"
-              className="rounded-sm border border-white/15 bg-white/5 px-3 py-1 text-white/70 hover:bg-white/10"
+              className="rounded-sm bg-white/5 px-3 py-1 text-white/70 hover:bg-white/10"
             >
               Plugin permissions →
             </Link>

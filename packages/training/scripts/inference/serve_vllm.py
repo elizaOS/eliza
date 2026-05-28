@@ -8,7 +8,7 @@ tuple. Stack composition assembled from:
     - vLLM Speculative Decoding   (docs.vllm.ai/en/v0.10.1/features/spec_decode.html)
     - vLLM PR #38479              (turboquant_*_nc kv-cache-dtype family)
     - vLLM Expert Parallel        (docs.vllm.ai/.../expert_parallel_deployment/)
-    - z-lab DFlash                (arXiv:2602.06036) — opt-in drafter, AEON-7 fork
+    - z-lab MTP                (arXiv:2602.06036) — opt-in drafter, AEON-7 fork
     - Speculators v0.3.0          (blog.vllm.ai/2025/12/13/speculators-v030.html)
 
 What this DOES NOT do:
@@ -39,11 +39,11 @@ Usage:
         --eagle3 RedHatAI/Qwen3.5-4B-EAGLE3-head \\
         --port 8000
 
-    # eliza-1-4b with DFlash drafter (AEON-7 fork required)
-    ELIZA_VLLM_DFLASH=1 \\
+    # eliza-1-4b with MTP drafter (AEON-7 fork required)
+    ELIZA_VLLM_MTP=1 \\
     uv run --extra serve python scripts/inference/serve_vllm.py \\
         --registry-key qwen3.5-4b \\
-        --dflash elizaos/eliza-1-dflash-4b \\
+        --mtp elizaos/eliza-1-mtp-4b \\
         --port 8000
 
     # Print the assembled command without executing (audit / CI)
@@ -86,7 +86,7 @@ log = logging.getLogger("serve_vllm")
 # Hopper (sm_90) gets FP8 + TurboQuant + FA3. Blackwell consumer (sm_120) is
 # a flag-by-flag downgrade because FA3, TE FP8 recipes, and the merged
 # TurboQuant kernel currently lack sm_120 builds in mainline vLLM as of
-# v0.20.1 — pin AEON-7's vllm-dflash fork (`vllm-dflash`) for the full stack.
+# v0.20.1 — pin AEON-7's vllm-mtp fork (`vllm-mtp`) for the full stack.
 GPU_TARGETS: dict[str, dict] = {
     "h200-2x": {
         "tp": 2,
@@ -124,7 +124,7 @@ GPU_TARGETS: dict[str, dict] = {
         # FP8 wheels for sm_120 are spotty; AWQ-Marlin works everywhere.
         "default_weight_quant": "awq_marlin",
         # Mainline vLLM TurboQuant kernels currently lack sm_120 builds;
-        # AEON-7 vllm-dflash carries the patched build. fp8_e4m3 is the
+        # AEON-7 vllm-mtp carries the patched build. fp8_e4m3 is the
         # safe fallback on stock vLLM.
         "default_kv_cache_dtype": "fp8_e4m3",
         "attention_backend": None,
@@ -191,28 +191,28 @@ def _is_moe(entry) -> bool:
 def _build_speculative_config(
     *,
     eagle3_path: str | None,
-    dflash_path: str | None,
+    mtp_path: str | None,
     mtp_native: bool,
     num_speculative_tokens: int,
 ) -> dict | None:
     """Pick exactly one drafter. They are mutually exclusive at runtime.
 
     Priority (highest first):
-      1. Explicit --dflash (requires ELIZA_VLLM_DFLASH=1 + vllm-dflash fork)
+      1. Explicit --mtp (requires ELIZA_VLLM_MTP=1 + vllm-mtp fork)
       2. Explicit --eagle3 (works on stock vLLM; needs a per-model EAGLE3 head)
       3. Implicit qwen3_next_mtp on MoE models that ship an MTP head
     """
-    if dflash_path:
-        if os.environ.get("ELIZA_VLLM_DFLASH") not in ("1", "true", "yes"):
+    if mtp_path:
+        if os.environ.get("ELIZA_VLLM_MTP") not in ("1", "true", "yes"):
             log.warning(
-                "--dflash specified without ELIZA_VLLM_DFLASH=1 — DFlash "
-                "requires the AEON-7 vllm-dflash fork (vLLM PR #40898 unmerged). "
-                "Set ELIZA_VLLM_DFLASH=1 to confirm the fork is installed; "
+                "--mtp specified without ELIZA_VLLM_MTP=1 — MTP "
+                "requires the AEON-7 vllm-mtp fork (vLLM PR #40898 unmerged). "
+                "Set ELIZA_VLLM_MTP=1 to confirm the fork is installed; "
                 "otherwise vLLM will fail with 'unknown speculative method'."
             )
         return {
-            "method": "dflash",
-            "model": dflash_path,
+            "method": "mtp",
+            "model": mtp_path,
             "num_speculative_tokens": num_speculative_tokens or 15,
         }
     if eagle3_path:
@@ -250,13 +250,13 @@ def build_command(args, *, entry) -> list[str]:
     kv_dtype = args.kv_cache_dtype or target["default_kv_cache_dtype"]
     max_model_len = args.max_model_len or (entry.infer_max_in + entry.infer_max_out)
 
-    # Safety gate against omlx#825: DFlash drafter + APC + Qwen3.5/Qwen3.6 hybrid
+    # Safety gate against omlx#825: MTP drafter + APC + Qwen3.5/Qwen3.6 hybrid
     # attention is a known failure surface (linear-attn conv_state/ssm_state
     # don't replay correctly on prefix-cache hits, breaks tool calling). If
     # all three are set without an explicit acknowledgement that A/B parity
     # has been verified for this serve, default APC OFF.
     drafter_active = (
-        bool(args.dflash) or bool(args.eagle3) or (is_moe and args.use_mtp_native)
+        bool(args.mtp) or bool(args.eagle3) or (is_moe and args.use_mtp_native)
     )
     if (
         args.enable_prefix_caching
@@ -267,7 +267,7 @@ def build_command(args, *, entry) -> list[str]:
         log.warning(
             "APC + drafter on a Qwen3.5/Qwen3.6 hybrid model is gated by "
             "omlx#825 — disabling --enable-prefix-caching for this serve. "
-            "Run scripts/inference/test_apc_dflash_tool_calls.py against "
+            "Run scripts/inference/test_apc_mtp_tool_calls.py against "
             "this build, then set ELIZA_APC_DRAFTER_VERIFIED=1 to re-enable."
         )
         args.enable_prefix_caching = False
@@ -369,7 +369,7 @@ def build_command(args, *, entry) -> list[str]:
     # Speculative decoder. Mutually exclusive — pick one.
     spec_cfg = _build_speculative_config(
         eagle3_path=args.eagle3,
-        dflash_path=args.dflash,
+        mtp_path=args.mtp,
         mtp_native=is_moe and args.use_mtp_native,
         num_speculative_tokens=args.num_speculative_tokens,
     )
@@ -386,7 +386,7 @@ def build_command(args, *, entry) -> list[str]:
             args.tool_call_parser,
         ]
 
-    # Attention backend override (mostly for AEON-7 vllm-dflash which exposes
+    # Attention backend override (mostly for AEON-7 vllm-mtp which exposes
     # FUSED_TURBOQUANT as our vendored package's plugin).
     if target["attention_backend"]:
         cmd += ["--attention-backend", target["attention_backend"]]
@@ -513,14 +513,14 @@ def main() -> int:
         default=None,
         help="HF id or local path to a Qwen3.5-EAGLE3 head. "
         "Stock vLLM, ~2x decode speedup. Mutually exclusive "
-        "with --dflash and --use-mtp-native.",
+        "with --mtp and --use-mtp-native.",
     )
     ap.add_argument(
-        "--dflash",
+        "--mtp",
         default=None,
-        help="HF id or local path to a z-lab/...-DFlash drafter. "
-        "Requires the AEON-7 vllm-dflash fork "
-        "(set ELIZA_VLLM_DFLASH=1 to acknowledge). 2.5-6x "
+        help="HF id or local path to a z-lab/...-MTP drafter. "
+        "Requires the AEON-7 vllm-mtp fork "
+        "(set ELIZA_VLLM_MTP=1 to acknowledge). 2.5-6x "
         "decode on greedy code/math; ~2.75x on prose.",
     )
     ap.add_argument(
@@ -536,13 +536,13 @@ def main() -> int:
         "--num-speculative-tokens",
         type=int,
         default=0,
-        help="0 = method-specific default (15 dflash, 3 eagle3, 2 mtp).",
+        help="0 = method-specific default (15 mtp, 3 eagle3, 2 mtp).",
     )
     ap.add_argument(
         "--entropix",
         action="store_true",
         help="Enable entropix logits-processor plugin. NOT compatible with "
-        "EAGLE-3/DFlash drafter (drafter cannot predict the forced-clarifier "
+        "EAGLE-3/MTP drafter (drafter cannot predict the forced-clarifier "
         "branch; spec-decode acceptance collapses). Hard error if combined.",
     )
 
@@ -594,16 +594,16 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    if sum(bool(x) for x in (args.eagle3, args.dflash)) > 1:
-        ap.error("--eagle3 and --dflash are mutually exclusive — pick one.")
+    if sum(bool(x) for x in (args.eagle3, args.mtp)) > 1:
+        ap.error("--eagle3 and --mtp are mutually exclusive — pick one.")
 
     entry = registry_get(args.registry_key)
     if args.entropix and (
-        args.eagle3 or args.dflash or (_is_moe(entry) and args.use_mtp_native)
+        args.eagle3 or args.mtp or (_is_moe(entry) and args.use_mtp_native)
     ):
         ap.error(
-            "--entropix is incompatible with --eagle3/--dflash/--use-mtp-native: "
-            "entropix's HELV branch flips the argmax, and EAGLE-3/DFlash drafters "
+            "--entropix is incompatible with --eagle3/--mtp/--use-mtp-native: "
+            "entropix's HELV branch flips the argmax, and EAGLE-3/MTP drafters "
             "cannot predict that, so spec-decode acceptance collapses to ~1/K. "
             "Drop the drafter or drop --entropix."
         )

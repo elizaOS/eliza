@@ -7,6 +7,7 @@ import re
 import uuid
 from collections import Counter
 from pathlib import Path
+from typing import SupportsInt, cast
 
 import yaml
 
@@ -14,7 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed-development.kicad_pcb"
 OUT = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb"
 MANIFEST = ROOT / "board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml"
-FOOTPRINT_MANIFEST = ROOT / "board/kicad/e1-phone/development-footprint-library-manifest-2026-05-22.yaml"
+FOOTPRINT_MANIFEST = (
+    ROOT / "board/kicad/e1-phone/development-footprint-library-manifest-2026-05-22.yaml"
+)
 LIB = ROOT / "board/kicad/e1-phone/e1-phone-dev.pretty"
 SPLIT_PIN_ALLOCATION = ROOT / "board/kicad/e1-phone/split-interconnect-pin-allocation.yaml"
 
@@ -117,6 +120,10 @@ def clean_label(value: str) -> str:
     )
 
 
+def record_int(value: object) -> int:
+    return int(cast(SupportsInt, value))
+
+
 def net_ids(text: str) -> dict[str, int]:
     return {name: int(num) for num, name in re.findall(r'\(net\s+(\d+)\s+"([^"]+)"\)', text)}
 
@@ -165,10 +172,10 @@ def find_dev_footprint_blocks(text: str) -> list[tuple[int, int, str, str]]:
 
 MODEL_BLOCK_RE = re.compile(
     r'\n  \(model "[^"]+"\n'
-    r'    \(offset \(xyz [^\n]+\)\)\n'
-    r'    \(scale \(xyz [^\n]+\)\)\n'
-    r'    \(rotate \(xyz [^\n]+\)\)\n'
-    r'  \)'
+    r"    \(offset \(xyz [^\n]+\)\)\n"
+    r"    \(scale \(xyz [^\n]+\)\)\n"
+    r"    \(rotate \(xyz [^\n]+\)\)\n"
+    r"  \)"
 )
 
 
@@ -451,7 +458,14 @@ SUPPORT_FOOTPRINT_PIN_NETS = {
     "SIDE_KEY_COND_VOL_UP_N": ["VOL_UP_N", "GND", "VOL_UP_N", "AON_1V8", "", "", "", ""],
     "SIDE_KEY_COND_VOL_DOWN_N": ["VOL_DOWN_N", "GND", "VOL_DOWN_N", "AON_1V8", "", "", "", ""],
     "DISPLAY_DSI_ESD": ["DSI_CLK_P", "DSI_CLK_N", "DSI_D0_P", "DSI_D0_N", "DSI_D1_P", "DSI_D1_N"],
-    "DISPLAY_TOUCH_CTRL_ESD": ["TOUCH_I2C_SCL", "TOUCH_I2C_SDA", "TOUCH_IRQ_N", "TOUCH_RESET_N", "GND", "IO_1V8"],
+    "DISPLAY_TOUCH_CTRL_ESD": [
+        "TOUCH_I2C_SCL",
+        "TOUCH_I2C_SDA",
+        "TOUCH_IRQ_N",
+        "TOUCH_RESET_N",
+        "GND",
+        "IO_1V8",
+    ],
     "DISPLAY_BIAS_BACKLIGHT": [
         "DISP_AVDD_5V5",
         "DISP_AVEE_N5V5",
@@ -462,9 +476,32 @@ SUPPORT_FOOTPRINT_PIN_NETS = {
         "GND",
         "GND",
     ],
-    "CAMERA_CSI0_ESD": ["CAM0_CSI_CLK_P", "CAM0_CSI_CLK_N", "CAM0_CSI_D0_P", "CAM0_CSI_D0_N", "CAM0_CSI_D1_P", "CAM0_CSI_D1_N"],
-    "CAMERA_CSI1_ESD": ["CAM1_CSI_CLK_P", "CAM1_CSI_CLK_N", "CAM1_CSI_D0_P", "CAM1_CSI_D0_N", "CAM1_CSI_D1_P", "CAM1_CSI_D1_N"],
-    "CAMERA_POWER_SEQUENCE": ["CAM0_RESET_N", "GND", "CAM0_PWDN", "IO_1V8", "CAM0_MCLK", "GND", "CAM_AVDD_2V8", "GND"],
+    "CAMERA_CSI0_ESD": [
+        "CAM0_CSI_CLK_P",
+        "CAM0_CSI_CLK_N",
+        "CAM0_CSI_D0_P",
+        "CAM0_CSI_D0_N",
+        "CAM0_CSI_D1_P",
+        "CAM0_CSI_D1_N",
+    ],
+    "CAMERA_CSI1_ESD": [
+        "CAM1_CSI_CLK_P",
+        "CAM1_CSI_CLK_N",
+        "CAM1_CSI_D0_P",
+        "CAM1_CSI_D0_N",
+        "CAM1_CSI_D1_P",
+        "CAM1_CSI_D1_N",
+    ],
+    "CAMERA_POWER_SEQUENCE": [
+        "CAM0_RESET_N",
+        "GND",
+        "CAM0_PWDN",
+        "IO_1V8",
+        "CAM0_MCLK",
+        "GND",
+        "CAM_AVDD_2V8",
+        "GND",
+    ],
     "CAMERA_I2C_AF_PULLUPS": ["CAM0_I2C_SCL", "IO_1V8"],
     "AUDIO_CODEC_RAIL_DECOUPLING": ["VDD_AUDIO_3V3", "GND"],
     "AUDIO_AMP_RAIL_DECOUPLING": ["VDD_AMP_3V3", "GND"],
@@ -476,7 +513,20 @@ SUPPORT_FOOTPRINT_PIN_NETS = {
     "POWER_USBPD_LOCAL_RAIL": ["VIN_3V3", "GND"],
     "POWER_CHARGER_INPUT_FILTER": ["VBUS", "GND"],
     "POWER_CHARGER_BATTERY_SENSE": ["BAT_NTC", "GND"],
-    "POWER_FUEL_GAUGE_PLACEHOLDER": ["VBAT", "GND", "BAT_NTC", "BAT_ID", "CHG_I2C_SCL", "CHG_I2C_SDA", "", "", "", "", "", ""],
+    "POWER_FUEL_GAUGE_PLACEHOLDER": [
+        "VBAT",
+        "GND",
+        "BAT_NTC",
+        "BAT_ID",
+        "CHG_I2C_SCL",
+        "CHG_I2C_SDA",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+    ],
     "POWER_PMIC_CONTROL_PULLUPS": ["PMIC_I2C_SCL", "IO_1V8"],
     "POWER_PMIC_INPUT_DECOUPLING": ["SYS", "GND"],
     "POWER_AP_RAIL_DECOUPLING": ["AP_1V1", "GND"],
@@ -491,12 +541,53 @@ SUPPORT_FOOTPRINT_PIN_NETS = {
     "COMPUTE_LPDDR_DQ_ESCAPE": ["LPDDR_DQ0", "LPDDR_DQ1"],
     "COMPUTE_UFS_MPHY_ESD_TERM": ["UFS_TX_P", "UFS_TX_N", "UFS_RX_P", "UFS_RX_N", "GND", "GND"],
     "COMPUTE_DEBUG_BOOT_STRAPS": ["BOOT_MODE0", "GND"],
-    "PHONE_IDENTITY_USIM_ESD_LEVELSHIFT": ["USIM_VCC", "USIM_CLK", "USIM_RST", "USIM_IO", "USIM_DET", "GND", "IO_1V8", "", "", ""],
-    "PHONE_IDENTITY_ESIM_PLACEHOLDER": ["GND", "", "ESIM_IO", "", "", "ESIM_CLK", "ESIM_RST", "ESIM_VCC", "GND"],
+    "PHONE_IDENTITY_USIM_ESD_LEVELSHIFT": [
+        "USIM_VCC",
+        "USIM_CLK",
+        "USIM_RST",
+        "USIM_IO",
+        "USIM_DET",
+        "GND",
+        "IO_1V8",
+        "",
+        "",
+        "",
+    ],
+    "PHONE_IDENTITY_ESIM_PLACEHOLDER": [
+        "GND",
+        "",
+        "ESIM_IO",
+        "",
+        "",
+        "ESIM_CLK",
+        "ESIM_RST",
+        "ESIM_VCC",
+        "GND",
+    ],
     "PHONE_IDENTITY_GNSS_LNA_SAW": ["CELL_GNSS_RF", "GND"],
-    "PHONE_IDENTITY_NFC_CONTROLLER": ["AON_1V8", "IO_1V8", "GND", "NFC_I2C_SCL", "NFC_I2C_SDA", "NFC_IRQ_N", "NFC_EN", "NFC_RF_P", "NFC_RF_N"],
+    "PHONE_IDENTITY_NFC_CONTROLLER": [
+        "AON_1V8",
+        "IO_1V8",
+        "GND",
+        "NFC_I2C_SCL",
+        "NFC_I2C_SDA",
+        "NFC_IRQ_N",
+        "NFC_EN",
+        "NFC_RF_P",
+        "NFC_RF_N",
+    ],
     "PHONE_IDENTITY_NFC_LOOP_MATCH": ["NFC_RF_P", "NFC_RF_P", "NFC_RF_N", "GND", "GND"],
-    "PHONE_IDENTITY_SENSOR_HUB": ["AON_1V8", "IO_1V8", "GND", "SENSOR_I2C_SCL", "SENSOR_I2C_SDA", "IMU_INT", "ALS_PROX_INT", "BARO_INT", "MAG_INT"],
+    "PHONE_IDENTITY_SENSOR_HUB": [
+        "AON_1V8",
+        "IO_1V8",
+        "GND",
+        "SENSOR_I2C_SCL",
+        "SENSOR_I2C_SDA",
+        "IMU_INT",
+        "ALS_PROX_INT",
+        "BARO_INT",
+        "MAG_INT",
+    ],
     "RF_MATCH_CELL_RF_MAIN": ["CELL_RF_MAIN", "CELL_RF_MAIN", "CELL_RF_MAIN", "GND", "GND"],
     "RF_TP_CELL_RF_MAIN": ["CELL_RF_MAIN"],
     "RF_MATCH_CELL_RF_DIV": ["CELL_RF_DIV", "CELL_RF_DIV", "CELL_RF_DIV", "GND", "GND"],
@@ -810,7 +901,9 @@ def net_clause(net_name: str, ids: dict[str, int]) -> str:
     return f' (net {ids[net_name]} "{net_name}")'
 
 
-def build_net_map(old_block: str, old_name: str, new_name: str, ids: dict[str, int]) -> dict[str, str]:
+def build_net_map(
+    old_block: str, old_name: str, new_name: str, ids: dict[str, int]
+) -> dict[str, str]:
     old_pads = pad_records(old_block)
     old_by_pad = {item["pad"]: item["net_name"] for item in old_pads if item["net_name"]}
     old_electrical_nets = [
@@ -884,12 +977,14 @@ def build_net_map(old_block: str, old_name: str, new_name: str, ids: dict[str, i
     return mapping
 
 
-def format_library_block(old_block: str, old_name: str, new_name: str, ids: dict[str, int]) -> tuple[str, dict[str, int]]:
+def format_library_block(
+    old_block: str, old_name: str, new_name: str, ids: dict[str, int]
+) -> tuple[str, dict[str, object]]:
     lib_text = (LIB / f"{new_name}.kicad_mod").read_text().rstrip()
     lib_lines = lib_text.splitlines()
     ref = first_match(r'\(fp_text reference "([^"]+)"', old_block, old_name)
     value = first_match(r'\(fp_text value "([^"]+)"', old_block, new_name)
-    at_match = re.search(r'\n\s+\(at\s+([^)]+)\)', old_block)
+    at_match = re.search(r"\n\s+\(at\s+([^)]+)\)", old_block)
     at_clause = f"  (at {at_match.group(1)})" if at_match else "  (at 0 0)"
     layer = first_match(r'\(footprint "[^"]+"\s+\(layer "([^"]+)"\)', old_block, "F.Cu")
     tstamp = first_match(r'\(tstamp "([^"]+)"\)', old_block)
@@ -897,10 +992,9 @@ def format_library_block(old_block: str, old_name: str, new_name: str, ids: dict
     contract_assigned = sum(
         1
         for net_name in net_map.values()
-        if net_name and net_name in ids and (
-            new_name in DEVELOPMENT_CONTRACT_PIN_NETS
-            or new_name == "HIROSE_DF40_80P_0P4_DEV"
-        )
+        if net_name
+        and net_name in ids
+        and (new_name in DEVELOPMENT_CONTRACT_PIN_NETS or new_name == "HIROSE_DF40_80P_0P4_DEV")
     )
     split_assigned = sum(
         1
@@ -991,7 +1085,7 @@ def clone_source_block(
         cloned,
         count=1,
     )
-    at_match = re.search(r'\n(\s+)\(at\s+([-0-9.]+)\s+([-0-9.]+)([^)]*)\)', cloned)
+    at_match = re.search(r"\n(\s+)\(at\s+([-0-9.]+)\s+([-0-9.]+)([^)]*)\)", cloned)
     if at_match:
         indent, x_text, y_text, rest = at_match.groups()
         x = float(x_text) + dx_mm
@@ -1017,7 +1111,13 @@ def replace_footprints(text: str) -> tuple[str, list[dict[str, object]]]:
     for old_name, new_name in MAPPING.items():
         found = blocks.get(old_name)
         if not found:
-            records.append({"source": clean_label(f"E1Phone:{old_name}"), "target": f"e1-phone-dev:{new_name}", "bound": False})
+            records.append(
+                {
+                    "source": clean_label(f"E1Phone:{old_name}"),
+                    "target": f"e1-phone-dev:{new_name}",
+                    "bound": False,
+                }
+            )
             continue
         start, end, block = found
         if old_name == "J_CAM0_CAM1":
@@ -1042,18 +1142,22 @@ def replace_footprints(text: str) -> tuple[str, list[dict[str, object]]]:
                 front_block, old_name, "CAMERA_30P_0P50_DEV", ids
             )
             replacements.append((start, end, rear_new_block + "\n" + front_new_block))
-            records.append({
-                "source": "E1Phone:J_REAR_CAMERA split from J_CAM0_CAM1",
-                "target": "e1-phone-dev:CAMERA_24P_0P50_DEV",
-                "bound": True,
-                **rear_stats,
-            })
-            records.append({
-                "source": "E1Phone:J_FRONT_CAMERA split from J_CAM0_CAM1",
-                "target": "e1-phone-dev:CAMERA_30P_0P50_DEV",
-                "bound": True,
-                **front_stats,
-            })
+            records.append(
+                {
+                    "source": "E1Phone:J_REAR_CAMERA split from J_CAM0_CAM1",
+                    "target": "e1-phone-dev:CAMERA_24P_0P50_DEV",
+                    "bound": True,
+                    **rear_stats,
+                }
+            )
+            records.append(
+                {
+                    "source": "E1Phone:J_FRONT_CAMERA split from J_CAM0_CAM1",
+                    "target": "e1-phone-dev:CAMERA_30P_0P50_DEV",
+                    "bound": True,
+                    **front_stats,
+                }
+            )
             continue
         if old_name == "U_PMIC_CHARGER":
             charger_block = clone_source_block(
@@ -1077,27 +1181,33 @@ def replace_footprints(text: str) -> tuple[str, list[dict[str, object]]]:
                 pd_block, old_name, "TI_TPS65987_RSH_56QFN_DEV", ids
             )
             replacements.append((start, end, charger_new_block + "\n" + pd_new_block))
-            records.append({
-                "source": "E1Phone:U_CHARGER split from U_PMIC_CHARGER",
-                "target": "e1-phone-dev:ADI_MAX77860_WLP81_DEV",
-                "bound": True,
-                **charger_stats,
-            })
-            records.append({
-                "source": "E1Phone:U_USB_PD split from U_PMIC_CHARGER",
-                "target": "e1-phone-dev:TI_TPS65987_RSH_56QFN_DEV",
-                "bound": True,
-                **pd_stats,
-            })
+            records.append(
+                {
+                    "source": "E1Phone:U_CHARGER split from U_PMIC_CHARGER",
+                    "target": "e1-phone-dev:ADI_MAX77860_WLP81_DEV",
+                    "bound": True,
+                    **charger_stats,
+                }
+            )
+            records.append(
+                {
+                    "source": "E1Phone:U_USB_PD split from U_PMIC_CHARGER",
+                    "target": "e1-phone-dev:TI_TPS65987_RSH_56QFN_DEV",
+                    "bound": True,
+                    **pd_stats,
+                }
+            )
             continue
         new_block, stats = format_library_block(block, old_name, new_name, ids)
         replacements.append((start, end, new_block))
-        records.append({
-            "source": clean_label(f"E1Phone:{old_name}"),
-            "target": f"e1-phone-dev:{new_name}",
-            "bound": True,
-            **stats,
-        })
+        records.append(
+            {
+                "source": clean_label(f"E1Phone:{old_name}"),
+                "target": f"e1-phone-dev:{new_name}",
+                "bound": True,
+                **stats,
+            }
+        )
     for start, end, new_block in sorted(replacements, reverse=True):
         text = text[:start] + new_block + text[end:]
     return text, records
@@ -1147,9 +1257,7 @@ def already_bound_records(text: str) -> list[dict[str, object]]:
         block = text[start:end]
         pads = pad_records(block)
         assigned = sum(
-            1
-            for line in block.splitlines()
-            if line.strip().startswith("(pad ") and "(net " in line
+            1 for line in block.splitlines() if line.strip().startswith("(pad ") and "(net " in line
         )
         contract_assigned = (
             assigned
@@ -1181,7 +1289,10 @@ def already_bound_records(text: str) -> list[dict[str, object]]:
 def main() -> int:
     text = SRC.read_text()
     output, records = replace_footprints(text)
-    if not any(bool(item.get("bound")) for item in records) and '(footprint "e1-phone-dev:' in output:
+    if (
+        not any(bool(item.get("bound")) for item in records)
+        and '(footprint "e1-phone-dev:' in output
+    ):
         records = already_bound_records(output)
     output = clean_label(output)
     output = refresh_development_model_blocks(output)
@@ -1222,9 +1333,15 @@ def main() -> int:
         "unbound_footprint_count": sum(1 for item in records if not item["bound"]),
         "remaining_placeholder_marker_count": output.count("placeholder_not_fabrication_footprint"),
         "development_bound_marker_count": output.count("development_footprint_bound_not_release"),
-        "embedded_library_body_count": sum(int(item.get("embedded_library_body", 0)) for item in records),
-        "assigned_pad_net_count": sum(int(item.get("assigned_pad_net_count", 0)) for item in records),
-        "unassigned_pad_count": sum(int(item.get("unassigned_pad_count", 0)) for item in records),
+        "embedded_library_body_count": sum(
+            record_int(item.get("embedded_library_body", 0)) for item in records
+        ),
+        "assigned_pad_net_count": sum(
+            record_int(item.get("assigned_pad_net_count", 0)) for item in records
+        ),
+        "unassigned_pad_count": sum(
+            record_int(item.get("unassigned_pad_count", 0)) for item in records
+        ),
         "unassigned_pad_disposition_counts": dict(
             sorted(
                 sum(
@@ -1232,8 +1349,9 @@ def main() -> int:
                         Counter(
                             {
                                 str(key): int(value)
-                                for key, value in item.get(
-                                    "unassigned_pad_disposition_counts", {}
+                                for key, value in cast(
+                                    "dict[object, int]",
+                                    item.get("unassigned_pad_disposition_counts", {}),
                                 ).items()
                             }
                         )
@@ -1244,16 +1362,16 @@ def main() -> int:
             )
         ),
         "contract_sequence_assigned_pad_net_count": sum(
-            int(item.get("contract_sequence_assigned_pad_net_count", 0)) for item in records
+            record_int(item.get("contract_sequence_assigned_pad_net_count", 0)) for item in records
         ),
         "split_interconnect_assigned_pad_net_count": sum(
-            int(item.get("split_interconnect_assigned_pad_net_count", 0)) for item in records
+            record_int(item.get("split_interconnect_assigned_pad_net_count", 0)) for item in records
         ),
         "support_pattern_assigned_pad_net_count": sum(
-            int(item.get("support_pattern_assigned_pad_net_count", 0)) for item in records
+            record_int(item.get("support_pattern_assigned_pad_net_count", 0)) for item in records
         ),
         "compute_som_assigned_pad_net_count": sum(
-            int(item.get("compute_som_assigned_pad_net_count", 0)) for item in records
+            record_int(item.get("compute_som_assigned_pad_net_count", 0)) for item in records
         ),
         "segment_count": len(re.findall(r"\n\s*\(segment\b", output)),
         "via_count": len(re.findall(r"\n\s*\(via\b", output)),

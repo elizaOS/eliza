@@ -1,0 +1,323 @@
+[[!meta title="Persistent Storage"]]
+
+[[!toc levels=4]]
+
+
+# What are we trying to achieve
+
+## Introduction
+
+As a live system designed to not leave any trace of its use on a
+computer, Tails doesn't store any user data and configuration by
+default. To still be able to use Tails without re-configuring all
+used apps after each boot, Tails supports storing some
+explicitly selected configuration and data persistently on an encrypted
+volume.
+
+## Requirements
+Allow users to easily set up an encrypted volume and configure which
+data and configuration should be stored persistently on the encrypted
+volume.
+
+## Design
+
+### Technical overview
+
+* Encrypted (LUKS) volume on the Tails device
+
+* Configuration file containing source paths and destination paths
+
+* Files are either bind-mounted or linked via symlinks
+
+* Hooks are executed on activation / deactivation
+
+* Setup and configuration is done via the Persistent Storage settings
+  app
+
+* User can choose which data and configuration (features) to
+  store persistently from a pre-configured list
+
+* In addition, users can make arbitrary files persistent by editing
+  the config file manually
+
+* Files and directories which are made persistent are copied to the
+  Persistent Storage
+
+### Components
+
+* A privileged backend (tps backend): A D-Bus activated systemd service
+  which exposes an API via the D-Bus system bus.
+
+* A GTK app (Persistent Storage settings) which uses the API to allow
+  the user to easily set up and configure the Persistent Storage.
+
+* A command-line tool (`tpscli`) and shell library (`libtps.sh`) to
+  allow other components of Tails to easily use the API to configure the
+  Persistent Storage
+
+* The [[Welcome Screen|doc/first_steps/welcome_screen]] allows to unlock
+  and activate the Persistent Storage during boot.
+
+### Backend
+
+The backend is implemented as a D-Bus activated systemd service using
+the D-Bus system bus. It exposes two interfaces:
+
+* [[!tails_gitweb desc="org.boum.tails.PersistentStorage" config/chroot_local-includes/usr/lib/python3/dist-packages/tps/service.py]]
+
+* [[!tails_gitweb desc="org.boum.tails.PersistentStorage.Feature" config/chroot_local-includes/usr/lib/python3/dist-packages/tps/configuration/feature.py]]
+
+These interfaces are used by the frontend to make the properties and
+methods available to the user.
+
+The pre-configured features known to the backend are defined in
+[[!tails_gitweb config/chroot_local-includes/usr/lib/python3/dist-packages/tps/configuration/features.py]].
+
+## Activating and deactivating Persistent Storage Features
+
+Each feature defines one or more files or directories which are stored
+on the Persistent Storage when the feature is enabled and which
+are made available in the filesystem via bindings. Two types of bindings
+are supported: Bind mounts and symlink bindings. Bind mounts are simply
+bind-mounted and the files of symlink bindings are made available via
+symlinks. For examples and further explanation, see the
+[[Configuration File|persistence#configuration-file]] section below.
+
+### Initial activation
+
+We want to support this user story:
+ 1. User opens an application and configures it
+ 2. Then, the user decides they want this configuration to persist
+
+To support that, we copy the existing data for the bind mounts of a
+feature to the Persistent Storage when the feature is activated and
+there are no corresponding directories on the Persistent Storage yet.
+
+### Conflicting apps
+
+We have a pre-defined list of conflicting applications and processes that would
+interfere with activating/deactivating a feature. For example, if the user is
+activating the Thunderbird feature, and they are running Thunderbird already, we
+can't just `mount` the directory at the proper place: Thunderbird would never
+notice, and this would lead to all sort of incoherent states. To avoid
+that, we check if any `thunderbird` processes are running and, if so,
+tell the user to close Thunderbird to continue.
+
+### Hooks
+
+Hooks are executed on activation / deactivation:
+* [[!tails_gitweb config/chroot_local-includes/usr/local/lib/persistent-storage/on-activated-hooks]]
+* [[!tails_gitweb config/chroot_local-includes/usr/local/lib/persistent-storage/on-deactivated-hooks]]
+
+They allow us to integrate the persistent data better into the system,
+for example by adding a GNOME bookmark for the Persistent directory when
+it is activated and removing it when it is deactivated.
+
+<a id="configuration-file"></a>
+### Configuration file
+
+The configuration file is stored in
+`/live/persistence/TailsData_unlocked/persistence.conf`.
+
+When a feature is made persistent, a line is added to the config file
+for each bind mount or symlink binding that belongs to the feature.
+
+Example bind mount line:
+
+    # destination               options
+    /home/amnesia/Persistent    source=Persistent
+
+This will cause the file or directory
+`/live/persistence/TailsData_unlocked/Persistent` to be bind-mounted to
+`/home/amnesia/Persistent`.
+
+Example symlink line:
+
+    # destination   options
+    /home/amnesia	source=dotfiles,link
+
+This will cause symlinks to be created below `/home/amnesia` for all
+files in the `/live/persistence/TailsData_unlocked/dotfiles` directory.
+If there are files in subdirectories of the `dotfiles` directory, those
+subdirectories are also created below `/home/amnesia`.
+
+This can be used to make files such as `.gitconfig` or `.vimrc`
+persistent.
+
+## User interface
+
+We provide a unified interface for creating, configuring and deleting a
+Persistent Storage. Unlocking is done in the Welcome Screen during boot.
+
+### Create Persistent Storage
+
+#### Design
+
+Running the Persistent Storage UI:
+
+Brings the user to the configuration screen if they have an unlocked
+Persistent Storage.
+
+Else, we:
+
+ * ask the user for a passphrase for the encryption (welcome bonus: pointing to
+   the relevant documentation about choosing a *strong* passphrase)
+
+ * create a LUKS-encrypted partition on the Tails USB stick
+   - uses all the free space
+   - labeled `TailsData`
+   - create an ext4 filesystem in the encrypted container
+   - set appropriate ownership (`CleartextDevice.mount()` in [[!tails_gitweb config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py]])
+
+ * switch to the settings view
+
+### Configure Persistent Storage features (i.e. which bits are persistent)
+
+This is automatically run right after the Persistent Storage bootstrap
+step. The user is enabled to change the configuration later.
+Changes to the Persistent Storage settings are taken into account immediately.
+
+#### Design
+
+When the user sees this UI, it means either:
+ - they have unlocked the Persistent Storage at the Welcome Screen
+ - or, they just created it
+
+By default, the "Create" UI will activate those features:
+ - Persistent Folder
+ - Additional Software
+
+### Unlock the Persistent Storage at boot time
+
+The Welcome Screen allows the user to unlock their Persistent Storage.
+
+The decision of doing this so late in the boot process is a conscious
+one: the Welcome Screen is a GTK application that can easily support
+accessibility, an easy to use interface, keyboard layouts and input
+systems.
+
+We also don't support activating Persistent Storage after logging into
+the GNOME Session.  It's full of corner cases, and we consider that
+doing this in a way that gives a consistent interface to the user is
+very expensive and not worth it.
+
+Unlocking the Persistent Storage is optional: a user can start Tails
+without unlocking it. If they do so, they won't be able to unlock it
+later without rebooting.
+
+#### Design
+
+ 1. The Welcome Screen asks the tps backend if there's a
+    Persistent Storage available.
+
+ 2. The user enters the passphrase and clicks _Unlock_ in the
+    Welcome Screen.
+
+ 3. The Welcome Screen calls the tps backend to unlock and activate
+    the Persistent Storage.
+
+ 4. The tps backend decrypts the partition, mounts it, reads the
+    config file and activates the bindings configured in the config file.
+
+ 5. The Welcome Screen displays a success or error message.
+
+#### Implementation details
+
+
+<a id="additional-software-packages"></a>
+
+Additional software packages
+----------------------------
+
+The `tails-additional-software` script installs a list of
+additional software packages stored in the Persistent Storage.
+For details see [[additional_software_packages]].
+
+<a id="security"></a>
+
+Security
+--------
+
+### Storage access
+
+The root directory of the Persistent Storage
+(`/live/persistence/TailsData_unlocked`) is created by the tps backend.
+It's owned by `root:root` with permissions `0770`.
+It is group-writable so that we can grant write access to other users 
+with ACLs.
+
+Additionally, ACLs grant search (`x`) access to the `amnesia` user, so
+that it can follow the symlinks generated by the dotfiles feature.
+
+### Privilege separation
+
+Because the tps backend runs as root and performs privileged operations,
+we only allow the Persistent Storage settings (tps frontend) and the
+Welcome Screen to access call the privileged methods. The unprivileged
+`amnesia` user is only allowed to read properties (so that we can
+figure out in other unprivileged components in Tails if a feature is
+active or not).
+See [[!tails_gitweb config/chroot_local-includes/etc/dbus-1/system.d/org.boum.tails.PersistentStorage.conf]].
+
+The Welcome Screen is only started during boot and runs as its own user
+(`Debian-gdm`), which we allow access to the backend.
+
+The Persistent Storage settings app is started by the user in the
+running Tails session and runs as the unprivileged `amnesia` user. To
+still allow it access to the privileged methods, we do this:
+
+* A wrapper script runs as the user `tails-persistent-storage` which is
+  allowed to access the `org.boum.tails.PersistentStorage` bus via D-Bus:
+
+  * [[!tails_gitweb config/chroot_local-includes/usr/local/bin/tails-persistent-storage]]
+  * [[!tails_gitweb config/chroot_local-includes/etc/dbus-1/system.d/org.boum.tails.PersistentStorage.conf]]
+
+* The wrapper script opens a file descriptor for the D-Bus system bus
+  and drops privileges by executing the tps frontend as `amnesia` but
+  passes the open file descriptor on to the tps frontend:
+
+  * [[!tails_gitweb config/chroot_local-includes/usr/local/lib/connect-drop-tps]]
+
+* The tps frontend uses the open file descriptor to access the
+  `org.boum.tails.PersistentStorage` bus.
+
+### Symlink attacks
+
+The target paths of the bindings can be below directories writable by
+unprivileged users, for example `/home/amnesia/Persistent`. Because we
+use those paths as the targets of privileged operations, we have to be
+careful to avoid symlink attacks.
+
+A symlink attack which allows amnesia to escalate privileges to root
+could look like this:
+
+1. Activate the Persistent Folder feature
+2. Create a file `/home/amnesia/Persistent/sudoers`
+3. Deactivate the Persistent Folder feature
+4. Create a symlink `ln -s /etc /home/amnesia/Persistent`
+5. Activate the Persistent Folder feature
+6. The `sudoers` file created above is now in `/etc/sudoers`
+
+A similar attack is possible with symlink bindings instead of
+bind mounts:
+
+1. Activate the Dotfiles feature
+2. Create a directory `/live/persistence/TailsData_unlocked/dotfiles/etc`
+   and a file `sudoers` in it
+3. Deactivate the Dotfiles feature
+4. Create a symlink `ln -s /etc /home/amnesia/Persistent`
+5. Activate the Dotfiles feature
+6. The `sudoers` file created above is now in `/etc/sudoers`
+
+To avoid this, we access all binding target paths via `/run/nosymfollow`,
+which is a bind mount of `/` with the `nosymfollow` mount option. That
+causes syscalls which access file paths with symlinks in it to fail with
+"ELOOP - too many levels of symbolic links". An important exception is
+the `readlink` (and `readlinkat`) system call which still resolves
+symbolic links - so it's important that operations on the target path
+do not call `readlink` (or `readlinkat`).
+
+The on-activated/on-deactivated hooks are also executed as root and
+some of them operate on directories controlled by unprivileged users,
+so there we also have to use the `/run/nosymfollow` mountpoint to avoid
+symlink attacks.

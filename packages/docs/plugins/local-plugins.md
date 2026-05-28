@@ -6,7 +6,7 @@ description: "Develop plugins locally without publishing to npm."
 
 This guide covers developing plugins locally without publishing to npm -- custom integrations, private plugins, rapid prototyping, and ejecting upstream plugins for modification.
 
-Maintainer note: this document is for runtime/user plugin paths under `~/.eliza/plugins/*`. Eliza source-checkout development of first-party packages uses the repo-local workspaces under `eliza/plugins/*` and `eliza/packages/*` by default; the old sibling-checkout flow is no longer the primary path in this repo.
+Maintainer note: this document is for runtime/user plugin paths under `~/.local/state/eliza/plugins/*`. Eliza source-checkout development of first-party packages uses the repo-local workspaces under `eliza/plugins/*` and `eliza/packages/*` by default; the old sibling-checkout flow is no longer the primary path in this repo.
 
 ## Table of Contents
 
@@ -25,14 +25,14 @@ Maintainer note: this document is for runtime/user plugin paths under `~/.eliza/
 
 ## Plugin Locations
 
-Eliza discovers plugins from three locations under the state directory (`~/.eliza/` by default):
+Eliza discovers plugins from three locations under the state directory (`~/.local/state/eliza/` by default):
 
 ### 1. Ejected Plugins
 
 Upstream plugins cloned locally for modification:
 
 ```
-~/.eliza/plugins/ejected/<plugin-name>/
+~/.local/state/eliza/plugins/ejected/<plugin-name>/
 ```
 
 These are created by the eject system (see [Ejecting Upstream Plugins](#ejecting-upstream-plugins)). Each subdirectory is a full git repo with editable source.
@@ -42,7 +42,7 @@ These are created by the eject system (see [Ejecting Upstream Plugins](#ejecting
 Plugins installed at runtime via the plugin manager or CLI:
 
 ```
-~/.eliza/plugins/installed/<sanitised-name>/
+~/.local/state/eliza/plugins/installed/<sanitised-name>/
 ```
 
 Each plugin gets an isolated directory with its own `package.json` and `node_modules/`. The installer creates a minimal `{ "private": true, "dependencies": {} }` package.json, then runs `bun add <package>` (or `npm install` as fallback) inside that directory.
@@ -52,7 +52,7 @@ Each plugin gets an isolated directory with its own `package.json` and `node_mod
 Hand-written plugins placed directly in the custom directory:
 
 ```
-~/.eliza/plugins/custom/<your-plugin>/
+~/.local/state/eliza/plugins/custom/<your-plugin>/
 ```
 
 Any subdirectory here with a `package.json` is auto-discovered at startup. This is the simplest way to add a local plugin -- just drop it in and restart.
@@ -79,7 +79,7 @@ Each directory is scanned the same way as `plugins/custom/` -- subdirectories wi
 ### Full Directory Layout
 
 ```
-~/.eliza/
+~/.local/state/eliza/
 ├── eliza.json              # Main config file
 └── plugins/
     ├── ejected/              # Git-cloned upstream plugins for editing
@@ -107,10 +107,10 @@ When multiple sources provide the same plugin name, Eliza uses this precedence (
 
 | Priority | Source | Path | Use case |
 |----------|--------|------|----------|
-| 1 | **Ejected** | `~/.eliza/plugins/ejected/` | Modifying upstream plugin source |
+| 1 | **Ejected** | `~/.local/state/eliza/plugins/ejected/` | Modifying upstream plugin source |
 | 2 | **Workspace override** | Internal dev mechanism | Eliza contributors only |
 | 3 | **Official npm** (with install record) | `node_modules/@elizaos/plugin-*` | Standard `@elizaos/*` plugins prefer bundled copies |
-| 4 | **User-installed** (with install record) | `~/.eliza/plugins/installed/` | Third-party plugins installed at runtime |
+| 4 | **User-installed** (with install record) | `~/.local/state/eliza/plugins/installed/` | Third-party plugins installed at runtime |
 | 5 | **Local @eliza** | `src/plugins/` (compiled dist) | Built-in Eliza plugins |
 | 6 | **npm fallback** | `import(name)` | Last resort dynamic import |
 
@@ -125,8 +125,8 @@ The deny list (`plugins.deny` in `eliza.json`) takes absolute precedence -- deni
 ### Step 1: Create the Directory
 
 ```bash
-mkdir -p ~/.eliza/plugins/custom/my-plugin/src
-cd ~/.eliza/plugins/custom/my-plugin
+mkdir -p ~/.local/state/eliza/plugins/custom/my-plugin/src
+cd ~/.local/state/eliza/plugins/custom/my-plugin
 ```
 
 ### Step 2: Initialize package.json
@@ -226,7 +226,7 @@ export default plugin;
 ### Step 5: Install Dependencies and Build
 
 ```bash
-cd ~/.eliza/plugins/custom/my-plugin
+cd ~/.local/state/eliza/plugins/custom/my-plugin
 bun install
 bun run build
 ```
@@ -315,7 +315,7 @@ The plugin installer (`plugin-installer.ts`) handles runtime installation of plu
 ### How It Works
 
 1. **Resolves** the plugin name against the plugin registry
-2. **Installs** via `bun add` (preferred) or `npm install` (fallback) into an isolated directory at `~/.eliza/plugins/installed/<sanitised-name>/`
+2. **Installs** via `bun add` (preferred) or `npm install` (fallback) into an isolated directory at `~/.local/state/eliza/plugins/installed/<sanitised-name>/`
 3. **Falls back** to `git clone` if the npm install fails
 4. **Validates** that the installed plugin has a resolvable entry point
 5. **Records** the installation in `eliza.json` under `plugins.installs`
@@ -351,7 +351,7 @@ The installer uses a serialisation lock to prevent concurrent installs from corr
 
 ### Uninstalling
 
-Uninstallation removes the plugin directory from disk and deletes its record from `eliza.json`. Core/built-in plugins cannot be uninstalled. The uninstaller refuses to delete directories outside `~/.eliza/plugins/installed/` as a safety measure.
+Uninstallation removes the plugin directory from disk and deletes its record from `eliza.json`. Core/built-in plugins cannot be uninstalled. The uninstaller refuses to delete directories outside `~/.local/state/eliza/plugins/installed/` as a safety measure.
 
 ---
 
@@ -370,9 +370,9 @@ eject the telegram plugin so I can edit its source
 ```bash
 git clone --branch 1.x --depth 1 \
   https://github.com/elizaos-plugins/plugin-telegram.git \
-  ~/.eliza/plugins/ejected/plugin-telegram
+  ~/.local/state/eliza/plugins/ejected/plugin-telegram
 
-cd ~/.eliza/plugins/ejected/plugin-telegram
+cd ~/.local/state/eliza/plugins/ejected/plugin-telegram
 bun install
 bun run build
 ```
@@ -399,7 +399,7 @@ Each ejected plugin has a `.upstream.json` at its root:
 ### Syncing with Upstream
 
 ```bash
-cd ~/.eliza/plugins/ejected/plugin-telegram
+cd ~/.local/state/eliza/plugins/ejected/plugin-telegram
 git fetch origin
 git pull --rebase origin 1.x
 bun run build
@@ -412,7 +412,7 @@ Or via agent chat: `sync the ejected telegram plugin`
 Remove the ejected directory to fall back to the npm version:
 
 ```bash
-rm -rf ~/.eliza/plugins/ejected/plugin-telegram
+rm -rf ~/.local/state/eliza/plugins/ejected/plugin-telegram
 # Restart eliza -- it will load the npm version again
 ```
 
@@ -428,7 +428,7 @@ The standard development loop for local plugins:
 
 ```bash
 # Terminal 1: Watch and rebuild on changes
-cd ~/.eliza/plugins/custom/my-plugin
+cd ~/.local/state/eliza/plugins/custom/my-plugin
 bun run dev  # runs tsc --watch
 
 # Terminal 2: Run eliza
@@ -456,7 +456,7 @@ Check the logs for your plugin's initialization message and any debug output.
 If you prefer manual builds:
 
 ```bash
-cd ~/.eliza/plugins/custom/my-plugin
+cd ~/.local/state/eliza/plugins/custom/my-plugin
 bun run build && eliza start
 ```
 
@@ -594,7 +594,7 @@ Set breakpoints in your plugin's TypeScript files and launch with F5.
 ### Common Issues
 
 **Plugin not discovered at startup:**
-- Verify the plugin directory is directly under `~/.eliza/plugins/custom/` (not nested deeper)
+- Verify the plugin directory is directly under `~/.local/state/eliza/plugins/custom/` (not nested deeper)
 - Confirm `package.json` exists and has a `name` field
 - Check that `main` in `package.json` points to an existing file
 - Look for `[eliza] Discovered N custom plugin(s)` in the startup logs
@@ -611,7 +611,7 @@ Set breakpoints in your plugin's TypeScript files and launch with F5.
 
 **TypeScript compilation errors:**
 ```bash
-cd ~/.eliza/plugins/custom/my-plugin
+cd ~/.local/state/eliza/plugins/custom/my-plugin
 bun run tsc --noEmit  # Type-check without emitting
 ```
 
@@ -623,9 +623,9 @@ These environment variables affect plugin paths and behavior. They are defined i
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ELIZA_STATE_DIR` | `~/.eliza` | Override the state directory. Changes where plugins, config, and credentials are stored. |
-| `ELIZA_CONFIG_PATH` | `~/.eliza/eliza.json` | Override the config file path directly. |
-| `ELIZA_OAUTH_DIR` | `~/.eliza/credentials` | Override the OAuth credentials directory. |
+| `ELIZA_STATE_DIR` | `~/.local/state/eliza` | Override the state directory. Changes where plugins, config, and credentials are stored. |
+| `ELIZA_CONFIG_PATH` | `~/.local/state/eliza/eliza.json` | Override the config file path directly. |
+| `ELIZA_OAUTH_DIR` | `~/.local/state/eliza/credentials` | Override the OAuth credentials directory. |
 | `LOG_LEVEL` | `error` | Set log verbosity: `debug`, `info`, `warn`, `error`. |
 | `ELIZA_DISABLE_WORKSPACE_PLUGIN_OVERRIDES` | unset | Set to `1` to disable workspace plugin overrides (dev-only mechanism). |
 | `ELIZA_WORKSPACE_ROOT` | unset | Override the workspace root for plugin resolution. When set, only this directory is searched for local plugin sources. |
@@ -664,7 +664,7 @@ When your plugin is ready for distribution:
 ### 2. Build and Publish
 
 ```bash
-cd ~/.eliza/plugins/custom/my-plugin
+cd ~/.local/state/eliza/plugins/custom/my-plugin
 bun run build
 npm pack              # Preview what gets published
 npm publish --access public
@@ -682,7 +682,7 @@ Once published, install through the agent chat or directly in config:
 }
 ```
 
-Remove the local copy from `~/.eliza/plugins/custom/` to avoid loading both versions.
+Remove the local copy from `~/.local/state/eliza/plugins/custom/` to avoid loading both versions.
 
 ---
 

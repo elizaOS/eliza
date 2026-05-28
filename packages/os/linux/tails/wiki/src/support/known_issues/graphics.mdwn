@@ -1,0 +1,297 @@
+[[!meta title="Known issues with graphics cards"]]
+
+- For other hardware compatibility issues, refer to our [[known issues|support/known_issues]].
+
+[[!toc levels=2]]
+
+<h1 id="error-starting-gdm">Error starting GDM</h1>
+
+This section applies if you see the following error message when
+starting Tails:
+
+<p class="code">
+Error starting GDM with your graphics card: <span class="command-placeholder">name of your graphics
+card [id] (rev number)</span>. Please take note of this error and visit
+https://tails.net/gdm for troubleshooting.
+</p>
+
+[[!img error.png link="no" alt=""]]
+
+1. Identify the name, ID, and revision number (if any) of your graphics card.
+
+   For example, if your error message starts with:
+
+   <p class="code">Error starting GDM with your graphics card: NVIDIA Corporation [10de:0a6c] GT218M [NVS 3100M] (rev a2)</p>
+
+   - The name is *NVIDIA Corporation GT218M [NVS 3100M]*.
+
+   - The ID is *[10de:0a6c]*. The ID is unique to the model of your
+     graphics card, it is not unique to your computer.
+
+   - The revision number is *a2*. Your graphics card might have no
+     revision number.
+
+1. Check if your graphics card is listed below. For example, you can search for its
+   name or ID on this page.
+
+   - If your graphics card is listed, check if a workaround is
+     documented to make it work on Tails.
+
+     If the workaround doesn't work, we are sorry that Tails does not work well
+     on this computer. Our best hope is that a future update of Linux drivers will
+     solve the problem.
+
+   - If your graphics card is not listed, please [[contact our support
+     team by email|support/talk]].
+
+     Mention in your email:
+
+     * The version of Tails that you are trying to start.
+
+     * The name, ID, and revision number (if any) of your graphics card.
+
+     <div class="tip">
+
+     <p>You can send us a photo of the error message as it appears on
+     your screen.</p>
+
+     </div>
+
+1. If your problem gets fixed in a future version of Tails, please let us
+   know so we can update this page.
+
+<!--
+
+Name and ID in /usr/share/misc/pci.ids
+======================================
+
+The correspondence between the name and ID is established in
+/usr/share/misc/pci.ids.
+
+For example:
+
+	8086  Intel Corporation
+	        0007  82379AB
+	        [...]
+	        0046  Core Processor Integrated Graphics Controller
+
+Corresponds to:
+
+	Intel Corporation Core Processor Integrated Graphics Controller [8086:0046]
+
+Template for new section
+========================
+
+<a id="$ANCHOR"></a>
+
+$FAMILY_NAME
+------------
+
+$LT!--
+Issues: #XXXXX #XXXXX
+--$GT
+
+### Affected graphics cards
+
+<table>
+<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>
+<tr><td>$VENDOR $DEVICE</td><td>[$VENDOR_ID:$PRODUCT_ID]</td><td>(rev $REVISION_NUMBER)</td></tr>
+</table>
+
+### Workaround
+
+$WORKAROUND_IF_ANY
+
+-->
+
+<h2 id="radeon-hd">AMD Radeon HD</h2>
+
+<!--
+Issues: #11095 #12482
+-->
+
+### Affected graphics cards
+
+Any graphics cards in the Radeon HD family might be affected.
+
+### Workaround
+
+If the computer has another, integrated graphics card, try configuring
+the computer to use that one instead of the AMD graphics card.
+For example, using the following [[boot
+option|doc/advanced_topics/boot_options]]:
+
+- `modprobe.blacklist=amdgpu`
+
+- `modprobe.blacklist=radeon`
+
+<h2 id="radeon-r9">AMD Radeon R9</h2>
+
+<!--
+Issues: #12218 #11850
+-->
+
+### Affected graphics cards
+
+<table>
+<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>
+<tr><td>Advanced Micro Devices, Inc. [AMD/ATI] Hawaii PRO [Radeon R9 290/390]</td><td>[1002:67b1]</td><td></td></tr>
+</table>
+
+### Workaround
+
+Adding `radeon.dpm=0` to the
+[[boot options|doc/advanced_topics/boot_options]]
+might fix the issue.
+
+<h2 id="amd-radeon-rx-400">AMD Radeon RX 400 family</h2>
+
+### Affected graphics cards
+
+<table>
+<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>
+<tr><td>Radeon RX 480</td><td></td><td></td></tr>
+</table>
+
+### Workaround
+
+Adding `amdgpu.dc=0` to the
+[[boot options|doc/advanced_topics/boot_options]]
+might fix the issue.
+
+### Other possibly affected graphics cards
+
+Other graphics cards in the [[!wikipedia Radeon_RX_400_series]] might be affected.
+
+<h2 id="amd-vega">AMD Radeon RX Vega family</h2>
+
+### Affected graphics cards
+
+Graphics cards in the [[!wikipedia Radeon_RX_Vega_series]],
+as found in some AMD Ryzen processors, might be affected.
+
+### Workaround
+
+Try starting Tails using the following [[boot option|doc/advanced_topics/boot_options]]:
+
+    iommu=soft
+
+<h2 id="intel">Intel</h2>
+
+### Affected graphics cards
+
+Various Intel graphics card, including but not limited to:
+
+<table>
+<tr><th>Name</th><th>ID</th><th>Revision number</th></tr>
+<tr><td>Intel Corporation TigerLake-LP GT2 [Iris Xe Graphics]</td><td>[8086:9a49]</td><td></td></tr>
+<tr><td>Intel Corporation JasperLake [UHD Graphics]</td><td>[8086:4e55]</td><td></td></tr>
+<tr><td>Intel Corporation Iris Plus Graphics G1 (Ice Lake)</td><td>[8086:8a56]</td><td></td></tr>
+</table>
+
+### Workaround
+
+Try starting Tails using the following [[boot
+option|doc/advanced_topics/boot_options]]:
+
+        i915.force_probe=MODEL
+
+… replacing *MODEL* with the 4 characters you see after `8086:`
+on the error message.
+
+For example, if you see an error about `8086:4c8a`, use this boot option:
+`i915.force_probe=4c8a`.
+
+<h2 id="intel-hdu">Intel UHD Graphics 620 GPU</h2>
+
+<!--
+Last updated: 2024-02-08
+-->
+
+For example, in the Dell Latitude 7490.
+
+Try adding the following [[boot
+option|doc/advanced_topics/boot_options]] when starting Tails:
+
+        i915.enable_psr=0
+
+<h2 id="multiple">Multiple graphics cards</h2>
+
+If the error message lists multiple graphics cards:
+
+* If possible, plug in the monitor into the motherboard's Intel graphics card, as
+  opposed to the external Nvidia or AMD/ATI graphics card.
+
+* Explicitly select one of the two graphics adapters in the BIOS
+  instead of letting the system choose one automatically. If this does
+  not solve the problem, try selecting the other graphics adapter.
+
+* Try starting Tails using the following [[boot options|doc/advanced_topics/boot_options]].
+  You should try only one of these boot options per start attempt.
+
+  - `modprobe.blacklist=nouveau`
+  - `nouveau.modeset=0`
+
+<h2 id="intel-bay-trail">Intel HD Graphics (Bay Trail)</h2>
+
+For example, in the Acer Aspire e13.
+
+Try adding the following [[boot option|doc/advanced_topics/boot_options]] when starting Tails:
+
+    plymouth.enable=0 disablehooks=plymouth
+
+<h1 id="other-issues">Other issues</h1>
+
+<h2 id="black-screen-switchable-graphics">Black screen with switchable graphics computers</h2>
+
+Some computers with switchable graphics (such as Optimus) fail to
+choose a video card and end up on a black screen. This has been
+reported for MacBook Pro 6,2, MacBook Pro 10,1 Retina, MacBook Pro
+15-inch (early 2011) and might affect many others.
+
+There are several possible workarounds for this issue:
+
+* Explicitly select one of the two graphics adapters in the BIOS
+  instead of letting the system choose one automatically. If this does
+  not solve the problem, try selecting the other graphics adapter.
+
+* For the Mac computers, it is possible to use a third-party
+  application, <http://gfx.io/>, to force integrated graphics only through macOS.
+  Then restart in that special mode that works with Tails.
+
+<h2 id="qemu">Virtual machines with <i>virt-manager</i>, <i>libvirt</i>, and <i>QEMU</i></h2>
+
+See the
+[[dedicated troubleshooting documentation|doc/advanced_topics/virtualization/virt-manager#graphics-issues]]
+about graphics issues in Tails running inside a virtual machine
+with *virt-manager*.
+
+<h2 id="vmware">Virtual machines with <i>VMware</i></h2>
+
+To improve support of Tails running inside a virtual machine with
+*VMware*, install the
+`open-vm-tools-desktop` software package as [[Additional
+Software|doc/persistent_storage/additional_software]] in Tails.
+
+<h2 id="boot-options">Probing EDD error</h2>
+
+Use these instructions if Tails failed to start and displayed the
+following error:
+
+        Probing EDD (edd=off to disable)...
+
+1. Follow [[our guide for editing boot options|doc/advanced_topics/boot_options]].
+
+1. For the guide's "Modify the boot options as needed" step,
+   type `edd=off` to add this option to the command line.
+
+<h2 id="display-artifacts-intel">Display artifact when starting Tails on Intel display</h2>
+
+If you see screen tearing and color artifact shift through display with an Intel graphics card,
+try this:
+
+1. Right-click on the desktop
+2. Click *Display Settings*
+3. Change the refresh rate to a different value.<br />
+   For example, setting the refresh rate to 48 HZ fixed the problem on Tails 5.9
+   with this hardware: Gemini Lake N4100 (Intel Graphics 600).

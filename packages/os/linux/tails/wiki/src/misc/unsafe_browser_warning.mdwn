@@ -1,0 +1,23 @@
+[[!meta title="Unsafe Browser"]]
+[[!meta stylesheet="unsafe_browser_warning" rel="stylesheet"]]
+[[!meta robots="noindex"]]
+
+<div id="unsafe">
+
+<p class="big">This browser is not anonymous.</p>
+
+</div>
+
+<div id="eyes">[[!img unsafe.jpg link="no" alt=""]]</div>
+
+[[!inline pages="doc/anonymous_internet/unsafe_browser/security_implications.inline" raw="yes" sort="age"]]
+
+What captive portals are
+========================
+
+[[!inline pages="doc/anonymous_internet/unsafe_browser/captive_portal.inline" raw="yes" sort="age"]]
+
+Signing in to a network using a captive portal
+==============================================
+
+[[!inline pages="doc/anonymous_internet/unsafe_browser/signing_in.inline" raw="yes" sort="age"]]

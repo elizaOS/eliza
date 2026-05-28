@@ -23,7 +23,6 @@ export {
   searchLocalModelProvider,
   wrapLocalModelSearchResults,
 } from "./custom-search";
-export { getDflashRuntimeStatus } from "./dflash-server";
 export { assessFit, probeHardware } from "./hardware";
 export { buildTextGenerationReadiness } from "./readiness";
 export {

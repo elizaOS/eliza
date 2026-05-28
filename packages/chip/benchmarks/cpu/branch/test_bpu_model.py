@@ -261,7 +261,7 @@ def test_ftb_uses_set_way_replacement_like_rtl():
     ftb = BPUSimulator().ftb
     base = 0x8000_0000
     idx = ftb._index(base)
-    pcs = []
+    pcs: list[int] = []
     pc = base
     while len(pcs) < DEFAULT_GEOMETRY["FTB_WAYS"] + 1:
         if ftb._index(pc) == idx and pc not in pcs:
@@ -381,8 +381,8 @@ def test_promoted_ittage_tag_path_mix_does_not_regress_key_diagnostics():
     prior_geo["ITTAGE_PATH_HISTORY_BITS"] = 0
     prior_geo["ITTAGE_PATH_HISTORY_TOKEN_BITS"] = 6
 
-    baseline_misp = 0
-    prior_misp = 0
+    baseline_misp: int | float = 0
+    prior_misp: int | float = 0
     for generator in (
         SYNTHETIC_GENERATORS["v8_indirect_dispatch"],
         synthetic_command_buffer_validation,
@@ -723,12 +723,14 @@ def test_weak_ittage_yields_to_stable_ftb_target():
     sim.ftb.update(pc, stable, BR_IND)
     sim.ftb.update(pc, stable, BR_IND)
     sim.ftb.update(pc, stable, BR_IND)
-    sim.ittage.storage[0][idx] = [{
-        "tag": tag,
-        "target": stale,
-        "ctr": 1 << (sim.geometry["ITTAGE_CTR_W"] - 1),
-        "useful": 0,
-    }]
+    sim.ittage.storage[0][idx] = [
+        {
+            "tag": tag,
+            "target": stale,
+            "ctr": 1 << (sim.geometry["ITTAGE_CTR_W"] - 1),
+            "useful": 0,
+        }
+    ]
 
     pred_taken, pred_target = sim._predict(
         BranchEvent(pc=pc, target=stable, taken=True, kind=BR_IND)
@@ -789,12 +791,14 @@ def test_ittage_model_reports_weak_target_replacement_counter():
     new_target = 0x9000_7A00
     hist = 0
     idx, tag = sim.ittage._index_tag(sim.geometry["ITTAGE_REPLACE_MIN_PROVIDER"] - 1, pc, hist)
-    sim.ittage.storage[sim.geometry["ITTAGE_REPLACE_MIN_PROVIDER"] - 1][idx] = [{
-        "tag": tag,
-        "target": old_target,
-        "ctr": sim.geometry["ITTAGE_REPLACE_WEAK_CTR"],
-        "useful": 0,
-    }]
+    sim.ittage.storage[sim.geometry["ITTAGE_REPLACE_MIN_PROVIDER"] - 1][idx] = [
+        {
+            "tag": tag,
+            "target": old_target,
+            "ctr": sim.geometry["ITTAGE_REPLACE_WEAK_CTR"],
+            "useful": 0,
+        }
+    ]
 
     sim.ittage.update(
         pc,
@@ -807,9 +811,10 @@ def test_ittage_model_reports_weak_target_replacement_counter():
     stats = sim.stats()
     assert stats["ittage_updates"] == 1
     assert stats["ittage_weak_target_replacements"] == 1
-    assert sim.ittage.storage[sim.geometry["ITTAGE_REPLACE_MIN_PROVIDER"] - 1][idx][0][
-        "target"
-    ] == new_target
+    assert (
+        sim.ittage.storage[sim.geometry["ITTAGE_REPLACE_MIN_PROVIDER"] - 1][idx][0]["target"]
+        == new_target
+    )
 
 
 def test_l2_ftb_late_redirect_rescues_call_target_after_l1_miss():
@@ -951,12 +956,14 @@ def test_ittage_replaces_weak_stale_target():
     target = 0x9000_9000
     table = sim.geometry["ITTAGE_REPLACE_MIN_PROVIDER"] - 1
     idx, tag = sim.ittage._index_tag(table, pc, 0)
-    sim.ittage.storage[table][idx] = [{
-        "tag": tag,
-        "target": stale,
-        "ctr": sim.geometry["ITTAGE_REPLACE_WEAK_CTR"],
-        "useful": 0,
-    }]
+    sim.ittage.storage[table][idx] = [
+        {
+            "tag": tag,
+            "target": stale,
+            "ctr": sim.geometry["ITTAGE_REPLACE_WEAK_CTR"],
+            "useful": 0,
+        }
+    ]
 
     sim.ittage.update(pc, 0, target, provider=table + 1, misp=True)
 
@@ -997,12 +1004,14 @@ def test_ittage_keeps_low_provider_stale_target_until_aged():
     stale = 0x9000_8000
     target = 0x9000_9000
     idx, tag = sim.ittage._index_tag(0, pc, 0)
-    sim.ittage.storage[0][idx] = [{
-        "tag": tag,
-        "target": stale,
-        "ctr": sim.geometry["ITTAGE_REPLACE_WEAK_CTR"],
-        "useful": 1,
-    }]
+    sim.ittage.storage[0][idx] = [
+        {
+            "tag": tag,
+            "target": stale,
+            "ctr": sim.geometry["ITTAGE_REPLACE_WEAK_CTR"],
+            "useful": 1,
+        }
+    ]
 
     sim.ittage.update(pc, 0, target, provider=1, misp=True)
 
@@ -1021,18 +1030,22 @@ def test_ittage_skips_useful_victim_and_replaces_aged_victim():
     new_target = 0x9000_9000
 
     idx, tag = sim.ittage._index_tag(0, pc, 0)
-    sim.ittage.storage[0][idx] = [{
-        "tag": tag ^ 0x1,
-        "target": old_target,
-        "ctr": 4,
-        "useful": 1,
-    }]
-    sim.ittage.storage[0][idx].append({
-        "tag": tag ^ 0x2,
-        "target": old_target,
-        "ctr": 4,
-        "useful": 1,
-    })
+    sim.ittage.storage[0][idx] = [
+        {
+            "tag": tag ^ 0x1,
+            "target": old_target,
+            "ctr": 4,
+            "useful": 1,
+        }
+    ]
+    sim.ittage.storage[0][idx].append(
+        {
+            "tag": tag ^ 0x2,
+            "target": old_target,
+            "ctr": 4,
+            "useful": 1,
+        }
+    )
     sim.ittage.update(pc, 0, new_target, provider=0, misp=True)
     assert all(entry["target"] == old_target for entry in sim.ittage.storage[0][idx])
     idx1, _tag1 = sim.ittage._index_tag(1, pc, 0)
@@ -1042,18 +1055,22 @@ def test_ittage_skips_useful_victim_and_replaces_aged_victim():
     assert sim.ittage.storage[0][idx][0]["useful"] == 0
     for table in range(1, geo["ITTAGE_TABLES"]):
         idx_t, tag_t = sim.ittage._index_tag(table, pc, 0)
-        sim.ittage.storage[table][idx_t] = [{
-            "tag": tag_t ^ 0x1,
-            "target": old_target,
-            "ctr": 4,
-            "useful": 1,
-        }]
-        sim.ittage.storage[table][idx_t].append({
-            "tag": tag_t ^ 0x2,
-            "target": old_target,
-            "ctr": 4,
-            "useful": 1,
-        })
+        sim.ittage.storage[table][idx_t] = [
+            {
+                "tag": tag_t ^ 0x1,
+                "target": old_target,
+                "ctr": 4,
+                "useful": 1,
+            }
+        ]
+        sim.ittage.storage[table][idx_t].append(
+            {
+                "tag": tag_t ^ 0x2,
+                "target": old_target,
+                "ctr": 4,
+                "useful": 1,
+            }
+        )
     sim.ittage.update(pc, 0, new_target, provider=0, misp=True)
     assert any(entry["target"] == new_target for entry in sim.ittage.storage[0][idx])
 
@@ -1255,7 +1272,7 @@ def test_local_direction_meta_chooser_suppresses_unearned_override():
 
 
 def test_h2p_corrector_can_override_base_direction_when_confident():
-    event = BranchEvent(pc=0x8000_33c0, target=0x9000_2000, taken=False, kind=BR_COND)
+    event = BranchEvent(pc=0x8000_33C0, target=0x9000_2000, taken=False, kind=BR_COND)
     geo = dict(DEFAULT_GEOMETRY)
     geo["H2P_ENABLE"] = True
     geo["H2P_HIST_LEN"] = 8
@@ -1302,7 +1319,7 @@ def test_h2p_model_uses_rtl_bias_plus_feature_weights():
 
 
 def test_h2p_meta_chooser_suppresses_unearned_override():
-    event = BranchEvent(pc=0x8000_33d0, target=0x9000_2400, taken=False, kind=BR_COND)
+    event = BranchEvent(pc=0x8000_33D0, target=0x9000_2400, taken=False, kind=BR_COND)
     geo = dict(DEFAULT_GEOMETRY)
     geo["H2P_ENABLE"] = True
     geo["H2P_HIST_LEN"] = 8
@@ -1326,7 +1343,7 @@ def test_h2p_meta_chooser_suppresses_unearned_override():
 
 
 def test_h2p_lowconf_only_blocks_high_confidence_base_override():
-    event = BranchEvent(pc=0x8000_33d8, target=0x9000_2600, taken=False, kind=BR_COND)
+    event = BranchEvent(pc=0x8000_33D8, target=0x9000_2600, taken=False, kind=BR_COND)
     geo = dict(DEFAULT_GEOMETRY)
     geo["H2P_ENABLE"] = True
     geo["H2P_HIST_LEN"] = 8
@@ -1347,7 +1364,7 @@ def test_h2p_lowconf_only_blocks_high_confidence_base_override():
 
 
 def test_h2p_meta_chooser_allows_earned_override():
-    event = BranchEvent(pc=0x8000_33e0, target=0x9000_2800, taken=False, kind=BR_COND)
+    event = BranchEvent(pc=0x8000_33E0, target=0x9000_2800, taken=False, kind=BR_COND)
     geo = dict(DEFAULT_GEOMETRY)
     geo["H2P_ENABLE"] = True
     geo["H2P_HIST_LEN"] = 8
@@ -1448,7 +1465,7 @@ def test_h2p_multi_perspective_target_history_can_split_same_pc():
 
 def test_h2p_corrector_enabled_by_default_after_sweep():
     sim = BPUSimulator()
-    pc = 0x8000_33c0
+    pc = 0x8000_33C0
     for _ in range(4):
         sim.h2p.update(pc, 0, False)
 

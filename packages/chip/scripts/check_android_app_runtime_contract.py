@@ -62,9 +62,7 @@ VENDOR_ROOT = (
 APP_GRADLE = WORKSPACE / "app-core/platforms/android/app/build.gradle"
 APP_MANIFEST = WORKSPACE / "app-core/platforms/android/app/src/main/AndroidManifest.xml"
 APP_JAVA_DIR = (
-    WORKSPACE
-    / "app-core/platforms/android/app/src/main/java"
-    / package_name_to_path(APP_PACKAGE)
+    WORKSPACE / "app-core/platforms/android/app/src/main/java" / package_name_to_path(APP_PACKAGE)
 )
 AGENT_SERVICE_JAVA = APP_JAVA_DIR / "ElizaAgentService.java"
 NATIVE_BRIDGE_JAVA = APP_JAVA_DIR / "ElizaNativeBridge.java"
@@ -382,9 +380,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     native_abis = apk_native_abis(entries)
     agent_abis = apk_agent_abis(entries)
     missing_riscv64_jni = missing_entries(entries, REQUIRED_RISCV64_JNI_LIBS)
-    missing_riscv64_agent_assets = missing_entries(
-        entries, REQUIRED_RISCV64_AGENT_ASSETS
-    )
+    missing_riscv64_agent_assets = missing_entries(entries, REQUIRED_RISCV64_AGENT_ASSETS)
 
     identity_sources = {
         "gradle_application_id": gradle_id,

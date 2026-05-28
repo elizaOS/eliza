@@ -1,11 +1,20 @@
+from __future__ import annotations
+
 import argparse
 import json
 import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 
 import yaml
+
+ROOT = Path(__file__).resolve().parents[1]
+if Path.cwd() != ROOT:
+    import os
+
+    os.chdir(ROOT)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -23,8 +32,8 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-REPORT = Path("build/reports/product_release_status.json")
-MANUFACTURING_REPORT = Path("build/reports/manufacturing_artifacts.json")
+REPORT = ROOT / "build/reports/product_release_status.json"
+MANUFACTURING_REPORT = ROOT / "build/reports/manufacturing_artifacts.json"
 REPO_GENERATION_BUCKETS = (
     "repo_generatable_now",
     "blocked_by_external_evidence",
@@ -85,7 +94,7 @@ def manufacturing_release_blocker_message() -> str:
 
     def bucket_count(item: tuple[object, object]) -> int:
         try:
-            return int(item[1])
+            return int(cast(int, item[1]))
         except (TypeError, ValueError):
             return 0
 
@@ -97,9 +106,7 @@ def manufacturing_release_blocker_message() -> str:
             artifact_state_counts.items(),
             key=lambda item: (-bucket_count(item), str(item[0])),
         )
-        state_text = "; " + ", ".join(
-            f"{name}={count}" for name, count in ordered_states[:4]
-        )
+        state_text = "; " + ", ".join(f"{name}={count}" for name, count in ordered_states[:4])
     blocker_count = summary.get("blockers", "unknown")
     manifest_count = summary.get("blocked_manifest_count", "unknown")
     return (
@@ -493,6 +500,18 @@ REPO_ARTIFACT_COMMAND_GUIDANCE = {
             "python3 scripts/product_check.py --release",
         ],
     },
+    "python3 scripts/check_android_release_readiness_contract.py": {
+        "family": "android_release_readiness_contract",
+        "primary_paths": [
+            "build/reports/android_release_readiness_contract.json",
+            "docs/evidence/android/",
+        ],
+        "generation_commands": [
+            "python3 scripts/check_android_release_readiness_contract.py",
+            "python3 scripts/aggregate_tapeout_readiness.py --scope phone",
+            "python3 scripts/product_check.py --release",
+        ],
+    },
     "python3 scripts/product_check.py --release": {
         "family": "product_release_triage",
         "primary_paths": [
@@ -506,9 +525,7 @@ REPO_ARTIFACT_COMMAND_GUIDANCE = {
 }
 
 
-PATH_TOKEN = re.compile(
-    r"(?P<path>(?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.@:+-]+(?:\.[A-Za-z0-9_.+-]+)?)"
-)
+PATH_TOKEN = re.compile(r"(?P<path>(?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.@:+-]+(?:\.[A-Za-z0-9_.+-]+)?)")
 
 
 def paths_from_text(text: object) -> list[str]:
@@ -527,11 +544,7 @@ def paths_from_text(text: object) -> list[str]:
             continue
         if not path.startswith(allowed_prefixes):
             continue
-        if not (
-            "." in Path(path).name
-            or path.endswith("/")
-            or "/runs/" in path
-        ):
+        if not ("." in Path(path).name or path.endswith("/") or "/runs/" in path):
             continue
         if path not in seen:
             seen.add(path)
@@ -651,7 +664,11 @@ def _safe_read_json(path: str) -> dict[str, object]:
 def nested_report_generation_summary(guidance: dict) -> list[dict[str, object]]:
     summaries: list[dict[str, object]] = []
     for path in guidance.get("primary_paths", []):
-        if not isinstance(path, str) or not path.startswith("build/reports/") or not path.endswith(".json"):
+        if (
+            not isinstance(path, str)
+            or not path.startswith("build/reports/")
+            or not path.endswith(".json")
+        ):
             continue
         report = _safe_read_json(path)
         if not report:
@@ -713,9 +730,7 @@ def repo_artifact_generation_groups(findings: list[dict]) -> list[dict]:
             },
         )
         group["count"] += 1
-        group["repo_generation_category_counts"][
-            repo_generation_bucket_for_finding(finding)
-        ] += 1
+        group["repo_generation_category_counts"][repo_generation_bucket_for_finding(finding)] += 1
         evidence = finding.get("evidence")
         if isinstance(evidence, dict):
             source = str(evidence.get("source") or "")
@@ -851,6 +866,7 @@ RELEASE_EXECUTION_PHASES = [
         ],
         "commands": {
             "python3 scripts/check_phone_runtime_readiness_contract.py",
+            "python3 scripts/check_android_release_readiness_contract.py",
         },
         "acceptance_commands": [
             "python3 scripts/check_phone_runtime_readiness_contract.py",
@@ -896,9 +912,7 @@ def product_release_execution_plan(
             "primary_paths": phase.get("primary_paths", []),
             "acceptance_commands": phase["acceptance_commands"],
             "sample_findings": [
-                str(finding.get("message"))
-                for finding in matched[:8]
-                if finding.get("message")
+                str(finding.get("message")) for finding in matched[:8] if finding.get("message")
             ],
         }
         if phase["phase"] == "manufacturing_package_release" and manufacturing_details:
@@ -951,9 +965,7 @@ def structured_findings(release_blockers: list[str], detail_checks: dict) -> lis
                     "detail check and rerun product-release-check."
                 ),
                 "next_command": detail_next_command(row.get("source")),
-                "blocker_dependency": blocker_dependency_category(
-                    f"{row.get('source')} {line}"
-                ),
+                "blocker_dependency": blocker_dependency_category(f"{row.get('source')} {line}"),
             }
         )
     return findings
@@ -1002,13 +1014,13 @@ for command in [
     [sys.executable, "scripts/check_wifi_interface.py"],
     [sys.executable, "scripts/check_padframe_contract.py"],
     [sys.executable, "scripts/check_physical_closure_work_order.py"],
-    [sys.executable, "scripts/check_package_cross_probe.py"],
-    [sys.executable, "scripts/check_kicad_artifacts.py"],
-    [sys.executable, "scripts/check_fpga_release.py"],
-    [sys.executable, "scripts/check_openlane_run_preflight.py"],
+    [sys.executable, "scripts/check_package_cross_probe.py", "--release"],
+    [sys.executable, "scripts/check_kicad_artifacts.py", "--release"],
+    [sys.executable, "scripts/check_fpga_release.py", "--release"],
+    [sys.executable, "scripts/check_openlane_run_preflight.py", "--release"],
     [sys.executable, "scripts/check_antenna_metadata.py"],
     [sys.executable, "scripts/check_pd_signoff.py", "--manifest-only"],
-    [sys.executable, "scripts/check_manufacturing_artifacts.py"],
+    [sys.executable, "scripts/check_manufacturing_artifacts.py", "--release"],
     [sys.executable, "scripts/check_real_world_gates.py"],
     [sys.executable, "scripts/check_product_feature_gates.py"],
     [sys.executable, "scripts/check_product_architecture_optimization.py"],
@@ -1137,6 +1149,7 @@ release_check_commands = [
     [sys.executable, "scripts/check_e1_phone_first_article_content.py"],
     [sys.executable, "scripts/check_e1_phone_enclosure_mechanical_content.py"],
     [sys.executable, "scripts/check_phone_runtime_readiness_contract.py"],
+    [sys.executable, "scripts/check_android_release_readiness_contract.py"],
 ]
 for release_check in release_check_commands:
     result = subprocess.run(
@@ -1181,10 +1194,7 @@ if release_blockers:
             "stderr": manufacturing_release.stderr,
             "blocked_status": manufacturing_release_blocked,
         },
-        "release_checks": [
-            dict(check)
-            for check in release_check_outputs
-        ],
+        "release_checks": [dict(check) for check in release_check_outputs],
     }
     findings = structured_findings(release_blockers, detail_checks)
     manufacturing_details = manufacturing_action_details(manufacturing_release_report)

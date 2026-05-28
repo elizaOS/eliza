@@ -2,7 +2,7 @@
  * StartupCoordinator — pure state machine for application startup.
  *
  * Replaces the implicit state encoded across `startupPhase + authRequired +
- * onboardingNeedsOptions + startupError` with an explicit state machine.
+ * firstRunNeedsOptions + startupError` with an explicit state machine.
  * Side effects (API calls, storage reads) are triggered by the consumer
  * based on state transitions, not embedded in the machine itself.
  *
@@ -39,7 +39,6 @@ export interface PlatformPolicy {
 // ── State ────────────────────────────────────────────────────────────
 
 export type StartupState =
-  | { phase: "splash"; loaded: boolean }
   | { phase: "restoring-session" }
   | {
       phase: "resolving-target";
@@ -52,7 +51,7 @@ export type StartupState =
     }
   | { phase: "pairing-required" }
   | {
-      phase: "onboarding-required";
+      phase: "first-run-required";
       /** true = server reachable, fetch options from it. false = first-run, use static options. */
       serverReachable: boolean;
     }
@@ -78,19 +77,19 @@ export type StartupPhaseValue = StartupState["phase"];
 export type StartupEvent =
   // Session restoration results
   | { type: "SESSION_RESTORED"; target: RuntimeTarget }
-  | { type: "NO_SESSION"; hadPriorOnboarding: boolean }
+  | { type: "NO_SESSION"; hadPriorFirstRun: boolean }
   | { type: "EXISTING_INSTALL_DETECTED"; target: RuntimeTarget }
 
   // Backend poll results
-  | { type: "BACKEND_REACHED"; onboardingComplete: boolean }
+  | { type: "BACKEND_REACHED"; firstRunComplete: boolean }
   | { type: "BACKEND_AUTH_REQUIRED" }
   | { type: "BACKEND_NOT_FOUND" }
   | { type: "BACKEND_TIMEOUT" }
   | { type: "BACKEND_POLL_RETRY" }
 
-  // Onboarding
-  | { type: "ONBOARDING_OPTIONS_LOADED" }
-  | { type: "ONBOARDING_COMPLETE" }
+  // First-run
+  | { type: "FIRST_RUN_OPTIONS_LOADED" }
+  | { type: "FIRST_RUN_COMPLETE" }
 
   // Agent runtime
   | { type: "AGENT_RUNNING" }
@@ -106,11 +105,6 @@ export type StartupEvent =
   | { type: "RETRY" }
   | { type: "RESET" }
   | { type: "PAIRING_SUCCESS" }
-  | { type: "SPLASH_CONTINUE" }
-  | { type: "SPLASH_LOADED" }
-
-  // Cloud fast-path: skip splash + restoring-session entirely
-  | { type: "SPLASH_CLOUD_SKIP" }
 
   // Agent switching from within the app (e.g. Settings profile switcher)
   | { type: "SWITCH_AGENT"; target: RuntimeTarget };
@@ -126,27 +120,6 @@ export function startupReducer(
   }
 
   switch (state.phase) {
-    case "splash":
-      switch (event.type) {
-        case "SPLASH_LOADED":
-          return { phase: "splash", loaded: true };
-        case "SPLASH_CONTINUE":
-          return { phase: "restoring-session" };
-        case "SPLASH_CLOUD_SKIP":
-          // Cloud-provisioned containers skip splash + restoring-session
-          // entirely. Jump straight to polling-backend so the existing
-          // cloud-aware logic there handles onboarding bypass.
-          return {
-            phase: "polling-backend",
-            target: "cloud-managed",
-            attempts: 0,
-          };
-        case "RETRY":
-          return { phase: "splash", loaded: false };
-        default:
-          return state;
-      }
-
     case "restoring-session":
       switch (event.type) {
         case "SESSION_RESTORED":
@@ -154,7 +127,7 @@ export function startupReducer(
         case "EXISTING_INSTALL_DETECTED":
           return { phase: "resolving-target", target: event.target };
         case "NO_SESSION":
-          if (event.hadPriorOnboarding) {
+          if (event.hadPriorFirstRun) {
             return {
               phase: "error",
               reason: "backend-unreachable",
@@ -163,7 +136,7 @@ export function startupReducer(
               timedOut: false,
             };
           }
-          return { phase: "onboarding-required", serverReachable: false };
+          return { phase: "first-run-required", serverReachable: false };
         default:
           return state;
       }
@@ -177,10 +150,10 @@ export function startupReducer(
     case "polling-backend":
       switch (event.type) {
         case "BACKEND_REACHED":
-          if (event.onboardingComplete) {
+          if (event.firstRunComplete) {
             return { phase: "starting-runtime", attempts: 0 };
           }
-          return { phase: "onboarding-required", serverReachable: true };
+          return { phase: "first-run-required", serverReachable: true };
         case "BACKEND_AUTH_REQUIRED":
           return { phase: "pairing-required" };
         case "BACKEND_NOT_FOUND":
@@ -213,11 +186,11 @@ export function startupReducer(
           return state;
       }
 
-    case "onboarding-required":
+    case "first-run-required":
       switch (event.type) {
-        case "ONBOARDING_OPTIONS_LOADED":
-          return state; // Stay in onboarding — UI handles the wizard
-        case "ONBOARDING_COMPLETE":
+        case "FIRST_RUN_OPTIONS_LOADED":
+          return state;
+        case "FIRST_RUN_COMPLETE":
           return { phase: "starting-runtime", attempts: 0 };
         case "RETRY":
           return { phase: "restoring-session" };
@@ -276,6 +249,13 @@ export function startupReducer(
 
     case "error":
       switch (event.type) {
+        case "BACKEND_REACHED":
+          if (event.firstRunComplete) {
+            return { phase: "starting-runtime", attempts: 0 };
+          }
+          return { phase: "first-run-required", serverReachable: true };
+        case "AGENT_RUNNING":
+          return { phase: "hydrating" };
         case "RETRY":
           return { phase: "restoring-session" };
         default:
@@ -290,8 +270,7 @@ export function startupReducer(
 // ── Initial state ────────────────────────────────────────────────────
 
 export const INITIAL_STARTUP_STATE: StartupState = {
-  phase: "splash",
-  loaded: false,
+  phase: "restoring-session",
 };
 
 // ── Policy factories ─────────────────────────────────────────────────
@@ -322,7 +301,7 @@ export function createMobilePolicy(): PlatformPolicy {
   // the routing layer. iOS local-agent builds need the same 180s/300s budget
   // as AOSP: cold-boot on an A-class chip still takes ~60–120s for PGlite
   // migration + GGUF mmap before /api/status binds. supportsLocalRuntime:true
-  // enables the LOCAL onboarding tile for these builds.
+  // enables the Local first-run option for these builds.
   return {
     supportsLocalRuntime: true,
     backendTimeoutMs: 180_000,
@@ -333,7 +312,7 @@ export function createMobilePolicy(): PlatformPolicy {
 }
 
 /**
- * Stock iOS builds are cloud-first at the picker, but the local/full-Bun path
+ * Stock iOS builds are cloud-first, but the local/full-Bun path
  * starts an embedded backend in-process. Give restored local sessions the same
  * cold-start budget as desktop/ElizaOS so first-run PGlite setup is not treated
  * as a backend failure.
@@ -350,7 +329,7 @@ export function createIosPolicy(): PlatformPolicy {
 
 /**
  * Stock Android APKs can also host the bundled on-device agent when the user
- * picks Local. Keep the picker behaviour cloud-first for fresh installs, but
+ * picks Local. Keep fresh installs cloud-first, but
  * give restored local-agent sessions the same cold-start budget as ElizaOS.
  */
 export function createAndroidPolicy(): PlatformPolicy {
@@ -368,9 +347,9 @@ export function createAndroidPolicy(): PlatformPolicy {
  * loopback. Cold-boot timing observed on cuttlefish: ~30s PGlite
  * migration + ~30s agent registration + plugin load before
  * `/api/auth/status` is reachable. The vanilla `createMobilePolicy`
- * 15s `backendTimeoutMs` dead-ends the splash on a "Backend Timeout"
- * card before the agent finishes booting; bumping the budget to 3
- * minutes lets the natural poll loop pick it up.
+ * 15s `backendTimeoutMs` can surface "Backend Timeout" before the agent
+ * finishes booting; bumping the budget to 3 minutes lets the natural poll
+ * loop pick it up.
  *
  * Also flips `supportsLocalRuntime` and `defaultTarget` because the
  * device IS the agent — there is no "cloud-managed" default to fall
@@ -389,7 +368,7 @@ export function createElizaOSPolicy(): PlatformPolicy {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-/** Map a restored server-target hint to a RuntimeTarget. */
+/** Map a restored runtime hint to a RuntimeTarget. */
 export function connectionModeToTarget(
   runMode: string | undefined,
 ): RuntimeTarget {
@@ -422,7 +401,7 @@ export function isStartupTerminal(state: StartupState): boolean {
 /**
  * Derive the legacy StartupPhase from the coordinator state.
  *
- * NOTE: pairing-required, onboarding-required, error, and hydrating all map
+ * NOTE: pairing-required, first-run-required, error, and hydrating all map
  * to "ready" — this looks counterintuitive but is correct because App.tsx's
  * coordinator gate (`startupCoordinator.phase !== "ready"`) catches these
  * phases BEFORE the legacy startupPhase/startupStatus rendering logic runs.

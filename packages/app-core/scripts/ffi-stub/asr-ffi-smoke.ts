@@ -73,7 +73,7 @@ function readWavPcm16Mono(path: string): {
 
 const dylib = arg(
   "--dylib",
-  `${process.env.HOME}/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/libelizainference.dylib`,
+  `${process.env.HOME}/.eliza/local-inference/bin/mtp/darwin-arm64-metal-fused/libelizainference.dylib`,
 );
 const bundle = arg(
   "--bundle",

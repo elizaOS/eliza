@@ -2446,7 +2446,7 @@ async function createV5MessageContextObject(args: {
 		source: "message-service",
 		stable: false,
 		content:
-			"current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them.",
+			'current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message), you may scan the prior_message blocks above and answer from what is literally visible there. If the asked-about token does not appear in any visible prior_message block, say so plainly ("I don\'t see X in the recent messages I can see") rather than claiming you searched beyond the visible window or fabricating an action — the prior_message blocks are the only window you have, and there is no separate chat-history search tool.',
 	});
 
 	const replyReferenceEvent = replyReferenceEventForContext(args.message);
@@ -2595,95 +2595,6 @@ function filterSelectedContextsForRole(
 	return selected;
 }
 
-function providerDataRecord(
-	state: State,
-	providerName: string,
-): Record<string, unknown> | null {
-	const providers = state.data?.providers;
-	if (!providers || typeof providers !== "object") return null;
-	const entry =
-		providers[providerName] ??
-		providers[providerName.toLowerCase()] ??
-		providers[providerName.toUpperCase()];
-	if (!entry || typeof entry !== "object") return null;
-	const data = (entry as { data?: unknown }).data;
-	return data && typeof data === "object"
-		? (data as Record<string, unknown>)
-		: null;
-}
-
-function mediaListFrom(value: unknown): Media[] {
-	return Array.isArray(value)
-		? value.filter((item): item is Media => !!item && typeof item === "object")
-		: [];
-}
-
-function availableAttachmentCount(message: Memory, state: State): number {
-	const directAttachments = mediaListFrom(message.content.attachments);
-	const attachmentData = providerDataRecord(state, "ATTACHMENTS");
-	const providerAttachments = [
-		...mediaListFrom(attachmentData?.attachments),
-		...mediaListFrom(attachmentData?.visibleAttachments),
-	];
-	const ids = new Set<string>();
-	for (const attachment of [...directAttachments, ...providerAttachments]) {
-		const id = typeof attachment.id === "string" ? attachment.id : "";
-		ids.add(id || attachment.url || JSON.stringify(attachment));
-	}
-	return ids.size;
-}
-
-function latestPriorUserText(
-	state: State,
-	runtimeAgentId: string | undefined,
-): string {
-	const recentData = providerDataRecord(state, "RECENT_MESSAGES");
-	const recentMessages = Array.isArray(recentData?.recentMessages)
-		? (recentData.recentMessages as Memory[])
-		: [];
-	const latest = [...recentMessages]
-		.filter((memory) => {
-			if (runtimeAgentId && memory.entityId === runtimeAgentId) {
-				return false;
-			}
-			return memory.entityId !== memory.agentId;
-		})
-		.sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
-		.at(-1);
-	return typeof latest?.content?.text === "string" ? latest.content.text : "";
-}
-
-const ATTACHMENT_NOUN_RE =
-	/\b(?:attachments?|files?|documents?|pdfs?|images?|photos?|pictures?|screenshots?|videos?|audio|recordings?|links?|urls?)\b/iu;
-const ATTACHMENT_INSPECTION_RE =
-	/\b(?:what|see|view|look(?:ing)?(?:\s+at)?|read|open|inspect|analy[sz]e|describe|summari[sz]e|transcribe|ocr|shown?|showing|contains?|content|shape|colou?r|thoughts?|think|opinion|take)\b/iu;
-const VISUAL_INSPECTION_RE =
-	/\b(?:can\s+you\s+see|what\s+do\s+you\s+see|look\s+at|view|describe|analy[sz]e|inspect|read|open)\b/iu;
-const PRONOUN_ATTACHMENT_FOLLOWUP_RE = /\b(?:it|this|that|them|those)\b/iu;
-
-function looksLikeAttachmentInspectionRequest(
-	message: Memory,
-	state: State,
-	runtimeAgentId: string | undefined,
-): boolean {
-	if (availableAttachmentCount(message, state) === 0) return false;
-	const text =
-		typeof message.content.text === "string" ? message.content.text : "";
-	if (!text.trim()) return false;
-	if (ATTACHMENT_NOUN_RE.test(text) && ATTACHMENT_INSPECTION_RE.test(text)) {
-		return true;
-	}
-	if (VISUAL_INSPECTION_RE.test(text)) {
-		return true;
-	}
-	const priorText = latestPriorUserText(state, runtimeAgentId);
-	return (
-		ATTACHMENT_NOUN_RE.test(priorText) &&
-		PRONOUN_ATTACHMENT_FOLLOWUP_RE.test(text) &&
-		ATTACHMENT_INSPECTION_RE.test(text)
-	);
-}
-
 const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 	[
 		{
@@ -2702,62 +2613,6 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 					clearReply: true,
 					debug: [
 						`voice turn signal suppressed reply (${signal?.source ?? "unknown"}; p=${typeof signal?.endOfTurnProbability === "number" ? signal.endOfTurnProbability.toFixed(3) : "n/a"}; next=${signal?.nextSpeaker ?? "unknown"})`,
-					],
-				};
-			},
-		},
-		{
-			name: "core.attachment_inspection_requires_tool",
-			description:
-				"Routes attachment/image inspection requests through ATTACHMENT instead of allowing unsupported direct vision claims.",
-			priority: 10,
-			shouldRun: ({ runtime, message, state }) =>
-				!isSubAgentCompletionArtifact(message) &&
-				looksLikeAttachmentInspectionRequest(message, state, runtime.agentId),
-			evaluate: () => ({
-				requiresTool: true,
-				addContexts: ["media", "messaging"],
-				addCandidateActions: ["ATTACHMENT"],
-				clearReply: true,
-				debug: [
-					"attachment/image request has conversation attachments; routing through ATTACHMENT before answering",
-				],
-			}),
-		},
-		{
-			name: "core.contextual_identity_lookup_requires_recall",
-			description:
-				"Routes short chat-entity identity lookups through memory/messaging instead of letting Stage 1 guess from the simple shortcut.",
-			priority: 20,
-			shouldRun: ({ message, messageHandler }) =>
-				!isSubAgentCompletionArtifact(message) &&
-				isSimpleMessageHandlerShortcut(messageHandler) &&
-				extractContextualIdentityLookupSubject(
-					getUserMessageText(message) ?? "",
-				) !== null,
-			evaluate: ({ runtime, message }) => {
-				const subject = extractContextualIdentityLookupSubject(
-					getUserMessageText(message) ?? "",
-				);
-				const messageAction = findRuntimeActionByNames(runtime, ["MESSAGE"]);
-				return {
-					setContexts: ["general", "memory", "messaging"],
-					...(messageAction
-						? {
-								addCandidateActions: [messageAction.name],
-							}
-						: {}),
-					clearReply: true,
-					addContextSlices: [
-						[
-							"identity_lookup_policy:",
-							`The current user is asking who/what "${subject ?? "the named subject"}" is in context.`,
-							"Ground the answer in recent messages, memory, or message-search results before identifying the subject.",
-							"If recalled context does not identify a chat-local subject, say that plainly instead of inventing a relationship; only use public knowledge when the subject is clearly a public entity.",
-						].join("\n"),
-					],
-					debug: [
-						`short identity lookup for "${subject ?? "unknown"}"; routing through recall context before answering`,
 					],
 				};
 			},
@@ -2781,6 +2636,7 @@ const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
 	"- when the user asks for exact words, output only those exact words",
 	"- do not select actions or tools",
 	"- do not include internal reasoning",
+	"- high-stakes personal crisis/legal/medical/self-harm/police/CPS: no tactical concealment/evasion/testimony/contraband advice; direct to qualified help, and for imminent danger prioritize emergency services, poison control, or a crisis hotline",
 ].join("\n");
 
 const EXACT_WORD_COUNT_BY_NAME: Record<string, number> = {
@@ -2806,7 +2662,8 @@ direct/private rules:
 - For simple requests, replyText must be a natural user-facing answer; avoid single-token fragments or placeholder text unless the user explicitly asked for a terse form.
 - Use a non-simple context or candidateActionNames only when the request needs tools, current/live facts, private state, files, web, shell, side effects, scheduling, memory, settings, secrets, wallet/finance, media, or device/app control.
 - Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If the message refers to a specific name, person, nickname, or thing you cannot identify from the visible context, choose a non-simple context (such as general or memory) instead of guessing.
-- Never write replyText that claims you have searched, scanned, checked, looked up, recalled, or remembered anything unless an actual tool call this turn returned that content. If you cannot ground the answer from the visible context, say so plainly.
+- Never claim searched/scanned/recalled unless tool returned it; includes "I scanned the chat" or "Spawning a sub-agent".
+- Crisis/legal/medical/self-harm/police/CPS: contexts=["simple"], replyText deferral only; no actions or conceal/evasion/testimony/contraband advice. Refer to lawyer/emergency services/poison control/doctor/therapist/crisis/DV hotline; clarify only if safe.
 - For tool/planning paths, replyText is only a brief ack ("On it.", "Looking into it."). Never refuse because tools may run after this stage.
 - If schema omits shouldRespond, do not invent it.
 - contexts must be ids from available_contexts. If a needed tool context is unclear, use ["general"].
@@ -3530,7 +3387,7 @@ function looksLikeCompleteDirectReply(replyText: string): boolean {
 	);
 }
 
-function isSimpleMessageHandlerShortcut(
+function _isSimpleMessageHandlerShortcut(
 	messageHandler: MessageHandlerResult,
 ): boolean {
 	if (messageHandler.processMessage !== "RESPOND") return false;
@@ -3543,107 +3400,6 @@ function isSimpleMessageHandlerShortcut(
 		nonSimpleContexts.length === 0 &&
 		(messageHandler.plan.candidateActions?.length ?? 0) === 0
 	);
-}
-
-const CONTEXTUAL_IDENTITY_LOOKUP_PREFIXES = [
-	"who is ",
-	"who are ",
-	"who was ",
-	"who were ",
-	"who's ",
-	"whos ",
-	"what is ",
-	"what was ",
-	"what's ",
-	"whats ",
-	"tell me about ",
-	"do you know ",
-	"do you remember ",
-	"what do you know about ",
-] as const;
-
-const CONTEXTUAL_IDENTITY_PRONOUN_SUBJECTS = new Set([
-	"he",
-	"her",
-	"him",
-	"i",
-	"it",
-	"me",
-	"she",
-	"that",
-	"them",
-	"they",
-	"this",
-	"us",
-	"we",
-	"you",
-]);
-
-function removeLeadingPlatformAddress(text: string): string {
-	let cleaned = text
-		.replace(/<@!?\d+>/gu, " ")
-		.replace(/\s+/gu, " ")
-		.trim();
-	const displayAddressRe = /(?:^|[\s:])[^:\n]{0,96}\(@\d+\)\s+/gu;
-	let displayAddressEnd = -1;
-	for (
-		let displayAddressMatch = displayAddressRe.exec(cleaned);
-		displayAddressMatch !== null;
-		displayAddressMatch = displayAddressRe.exec(cleaned)
-	) {
-		displayAddressEnd = displayAddressRe.lastIndex;
-	}
-	if (displayAddressEnd > 0) {
-		cleaned = cleaned.slice(displayAddressEnd).trim();
-	}
-	return cleaned;
-}
-
-function cleanContextualLookupSubject(subject: string): string {
-	return subject
-		.replace(/[\s?.!]+$/gu, "")
-		.replace(/^["'`“”‘’]+|["'`“”‘’]+$/gu, "")
-		.replace(
-			/\s+(?:in|from|on)\s+(?:this\s+)?(?:chat|channel|thread|server)$/iu,
-			"",
-		)
-		.trim();
-}
-
-function isShortContextualLookupSubject(subject: string): boolean {
-	const normalized = subject.toLowerCase();
-	if (!normalized || CONTEXTUAL_IDENTITY_PRONOUN_SUBJECTS.has(normalized)) {
-		return false;
-	}
-	const words = normalized.split(/\s+/u).filter(Boolean);
-	if (words.length === 0 || words.length > 3) return false;
-	if (subject.length > 48) return false;
-	if (/^[0-9\s.,:+*/=()-]+$/u.test(subject)) return false;
-	const looksLikeLocalName =
-		/[@_\-0-9]/u.test(subject) ||
-		/\b(?:bot|agent|ai)\b/iu.test(subject) ||
-		/^[a-z][a-z0-9_-]{6,}$/u.test(subject);
-	return looksLikeLocalName;
-}
-
-function lastNonEmptyLine(text: string): string {
-	const lines = text.replace(/\r\n/g, "\n").split("\n");
-	for (let index = lines.length - 1; index >= 0; index -= 1) {
-		const line = lines[index]?.trim();
-		if (line) return line;
-	}
-	return text.trim();
-}
-
-function extractContextualIdentityLookupSubject(text: string): string | null {
-	const cleaned = removeLeadingPlatformAddress(lastNonEmptyLine(text));
-	const lower = cleaned.toLowerCase();
-	for (const prefix of CONTEXTUAL_IDENTITY_LOOKUP_PREFIXES) {
-		if (!lower.startsWith(prefix)) continue;
-		const subject = cleanContextualLookupSubject(cleaned.slice(prefix.length));
-		return isShortContextualLookupSubject(subject) ? subject : null;
-	}
-	return null;
 }
 
 function shouldPreferCompleteDirectReply(args: {
@@ -3854,6 +3610,7 @@ function shouldUseDirectReplyFastPath(args: {
 }): boolean {
 	const text = (getUserMessageText(args.message) ?? "").trim();
 	if (!text || text.length > 280) return false;
+	if (looksLikeHighStakesPersonalCrisisRequest(text)) return false;
 	if (
 		inferDirectCurrentRequestCandidateActions(args.actions, text).length > 0
 	) {
@@ -3868,6 +3625,19 @@ function shouldUseDirectReplyFastPath(args: {
 		return false;
 	}
 	return true;
+}
+
+function looksLikeHighStakesPersonalCrisisRequest(text: string): boolean {
+	if (
+		!/\b(?:what\s+should|what\s+do|should\s+i|should\s+he|should\s+she|should\s+they|help|advice|urgent|emergency|crisis)\b/iu.test(
+			text,
+		)
+	) {
+		return false;
+	}
+	return /\b(?:lawyer|attorney|police|cop|cops|court|criminal|felony|arrest|charged|custody|cps|child\s+protective|landlord|grow|plants|contraband|evidence|overdose|too\s+many\s+pills|poison|suicide|self[-\s]?harm|kill\s+(?:myself|himself|herself|themselves)|medical\s+emergency|psychiatric\s+emergency|domestic\s+violence|abuse)\b/iu.test(
+		text,
+	);
 }
 
 function findWebLookupActionName(
@@ -10286,6 +10056,7 @@ export class DefaultMessageService implements IMessageService {
 		const responseContent: Content = {
 			thought: `No LLM provider configured during ${stage}.`,
 			actions: ["REPLY"],
+			failureKind: "no_provider",
 			providers: [],
 			text: replyText,
 			responseId,

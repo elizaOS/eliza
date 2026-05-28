@@ -1,0 +1,46 @@
+[[!meta title="Why is the time wrong?"]]
+
+When Tails starts, the system time zone is set to GMT (Greenwich Mean Time). This time zone
+might be a few hours in the future if you are west of the United
+Kingdom, or in the past if you are east of the UK. The minutes
+should be accurate.
+
+[[!img gmt.png class="screenshot" alt="Time displayed with 'GMT' indication in top navigation bar"]]
+
+We do this for anonymity reasons: if some application reveals your actual
+time zone, it might help identifying who you are.
+
+Having all Tails users set to the same time zone makes it more difficult to
+distinguish you from other Tails users.
+
+Displaying the time in your local time zone
+===========================================
+
+If connecting to Tor using a bridge fails and you have to [[set the clock and
+time zone|doc/anonymous_internet/tor/troubleshoot]] of your computer, the time
+is displayed in your time zone instead of in GMT.
+
+[[!img local.png class="screenshot" alt="Time displayed without 'GMT' indication in top navigation bar"]]
+
+<div class="bug">
+
+<p>Fixing the clock when Tails fails to connect to Tor is currently the only
+way of changing the time zone of the time displayed in the top navigation
+bar.</p>
+
+<p>In the future, we want to make it possible to change this time zone
+([[!tails_ticket 10819]]) from the desktop and store it in the Persistent
+Storage ([[!tails_ticket 12094]]).</p>
+
+</div>
+
+Time used by applications
+=========================
+
+Even if the time is displayed in your local time zone in the top navigation
+bar, the internal time used by all applications in Tails is still in GMT to
+protect your anonymity.
+
+For example, the sending time of emails in *Thunderbird* or messages in
+*Pidgin* is always in GMT to avoid leaking your time zone to the people you write
+to.

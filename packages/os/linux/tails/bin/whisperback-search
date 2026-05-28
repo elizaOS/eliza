@@ -1,0 +1,488 @@
+#!/usr/bin/env python3
+
+"""
+A powerful filter for WhisperBack messages.
+It will parse them, then you can filter them using Python code to perform all the queries you want.
+
+### Usage
+
+You need to provide a list of files over stdin.
+
+If you have notmuch, this would work:
+    notmuch search --output=files date:1M.. and GPT | ./bin/whisperback-search --output=wid 'm.fat_resized'
+
+If you don't, but you have a maildir:
+    find | path/to/tails/git/bin/whisperback-search  'm.fat_resized'
+"""
+
+import email.parser
+import json
+import re
+import subprocess
+import sys
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+from pathlib import Path
+from typing import ClassVar
+
+splitter = re.compile("======= content of ([^\n]+) =======")
+user_questions = re.compile(r"""(What[^\n]*?)\n---------*\n""")
+
+
+class Unknown(Exception):
+    """This exception is raised when you are fetching some data which is not available in this message"""
+
+
+SIZE_RE = re.compile(r"""([0-9.]+)\s*(B|[KMGT]B?)""")
+SIZE_UNITS = ["B", "KB", "MB", "GB", "TB"]
+
+
+def parse_size(size, base=10) -> int:
+    m = SIZE_RE.search(size.replace(",", "."))
+    if m is None:
+        raise ValueError
+    number = float(m.group(1))
+    unit = m.group(2)
+    if unit and not unit.endswith("B"):
+        unit += "B"
+    if base == 10:  # noqa: PLR2004
+        exp = SIZE_UNITS.index(unit) * 3
+        factor = 10**exp
+    elif base == 2:  # noqa: PLR2004
+        exp = SIZE_UNITS.index(unit) * 10
+        factor = 2**exp
+    else:
+        raise ValueError
+    return int(float(number) * factor)
+
+
+class WhisperbackParts:
+    def __init__(self, d: dict):
+        self.parts: dict[str, str] = d
+
+    def __getitem__(self, key) -> str:
+        if key in self.parts:
+            return self.parts[key]
+        raise Unknown
+
+    @property
+    def has_debugging_info(self) -> bool:
+        """returns False iff the message only includes the preamble"""
+        return not (len(self.parts) == 1 and "preamble" in self.parts)
+
+    @property
+    def questions(self) -> list[tuple[str, str]]:
+        q_a = user_questions.split(self.parts["preamble"])
+        firstpart = q_a.pop(0)  # this is before questions are asked
+        subject = firstpart.split("\n")[0].split(":", 1)[-1].strip()
+        questions = [("Subject", subject)]
+
+        for i in range(len(q_a) // 2):
+            name = q_a[2 * i]
+            value = q_a[2 * i + 1]
+            questions.append((name, value.strip()))
+        return questions
+
+    @property
+    def boot_log(self) -> str:
+        return self["/var/log/boot.log"]
+
+    @property
+    def journal(self) -> str:
+        return self["/bin/journalctl --catalog --no-pager"]
+
+    @property
+    def df(self) -> str:
+        return self["/bin/df --human-readable --print-type --exclude-type=fuse.portal"]
+
+    @property
+    def free(self) -> str:
+        return self["/usr/bin/free --mega --wide"]
+
+    @property
+    def lsblk(self) -> dict:
+        key = "/usr/local/sbin/tails-block-device-info"
+        try:
+            ret: dict = json.loads(self[key])
+        except json.JSONDecodeError as exc:
+            raise Unknown from exc
+        return ret
+
+
+class WhisperbackReport:
+    coreboot_re = re.compile(r"""amnesia.*kernel.*ACPI:.*COREBOOT""")
+
+    def __init__(self, messageid, whisperbackid, body, file):
+        self.messageid = messageid
+        self.whisperbackid = whisperbackid
+        self.body = body
+        self.parts = self.split_body(body)
+        self.file = file
+
+    def split_body(self, body) -> WhisperbackParts:
+        m = ["preamble", *splitter.split(body)]
+        assert len(m) % 2 == 0
+        parts = {}
+        for i in range(len(m) // 2):
+            name = m[2 * i]
+            value = m[2 * i + 1]
+            parts[name] = value
+        return WhisperbackParts(parts)
+
+    @property
+    def is_iso(self) -> bool:
+        """
+        Returns true if this boot was from ISO
+        """
+        df: list[list[str]] = [
+            line.strip().split() for line in self.parts.df.split("\n") if line.strip()
+        ]
+        filesystem = next(
+            row[1] for row in df if row and row[-1].endswith("/lib/live/mount/medium")
+        )
+        return filesystem == "iso9660"
+
+    @property
+    def disk_size(self) -> int:
+        human_size = self.parts.lsblk["blockdevices"][0]["size"]
+        return parse_size(human_size, base=2)
+
+    @property
+    def fat_part_size(self) -> int:
+        """
+        This returns the size, in bytes, of the FAT partition.
+
+        This might be different (in case of errors) from the size of the filesystem.
+        """
+        try:
+            human_size = self.parts.lsblk["blockdevices"][0]["children"][0]["size"]
+        except KeyError as exc:
+            # it's very odd, but happens, see wb:72e11dad9c9faf4d5a990800a3349dd
+            raise Unknown from exc
+        return parse_size(human_size, base=2)
+
+    @property
+    def fat_part_resized(self) -> bool:
+        return self.fat_part_size > 3 * 2**30
+
+    @property
+    def fat_size(self) -> int:
+        """This returns the size, in bytes, of the actual FAT filesystem"""
+        df: list[list[str]] = [
+            line.strip().split() for line in self.parts.df.split("\n") if line.strip()
+        ]
+        vfat_humansize = next(
+            row[2]
+            for row in df
+            if row and row[1] == "vfat" and row[-1].endswith("/lib/live/mount/medium")
+        )
+        return parse_size(vfat_humansize.replace(",", "."), base=2)
+
+    @property
+    def fat_resized(self) -> bool:
+        return not self.is_iso and self.fat_size > 3 * 2**30
+
+    @property
+    def has_persistence(self) -> bool:
+        partitions = self.parts.lsblk["blockdevices"][0]["children"]
+        if len(partitions) != 2:
+            return False
+        persistence = partitions[1]
+        if (
+            persistence.get("partlabel") != "TailsData"
+            or persistence.get("fstype") != "crypto_LUKS"
+        ):
+            return False
+        return True
+
+    @property
+    def memory_size(self) -> int:
+        """This returns the size, in bytes, of the memory."""
+        memory_regexp = re.compile(r"Mem:\s+([0-9]+)\s")
+        m = memory_regexp.search(self.parts.free)
+        if m is None:
+            raise Unknown
+        return int(m.group(1)) * 10**6
+
+    @property
+    def install_version(self) -> str:
+        """
+        Returns the version Tails was originally installed as.
+
+        This might be different from the running version.
+        """
+        version = re.compile(r'''VERSION="([0-9a-z.~]+)"''')
+        m = version.search(
+            self.parts["/lib/live/mount/rootfs/filesystem.squashfs/etc/os-release"]
+        )
+        if m is None:
+            raise Unknown
+        return m.group(1)
+
+    @property
+    def version(self) -> str:
+        """returns the running version"""
+        m = re.search(
+            r'''^VERSION="([0-9a-z.~-]+)"''',
+            self.parts["preamble"],
+            flags=re.MULTILINE,
+        )
+        if m is not None:
+            return m.group(1)
+
+        # Before 6.0, we had a different format: Tails-Version: 5.12 - 20230418
+        m = re.search(
+            r"""^Tails-Version:\s+([0-9.~-]+)""",
+            self.parts["preamble"],
+            flags=re.MULTILINE,
+        )
+        if m is None:
+            raise Unknown
+        return m.group(1)
+
+    @property
+    def fsuuid(self) -> str:
+        cmdline: str = self.parts["/proc/cmdline"]
+        for arg in cmdline.strip().split():
+            if arg.startswith("FSUUID="):
+                return arg.removeprefix("FSUUID=")
+        return ""
+
+    @property
+    def is_coreboot(self) -> bool:
+        return self.coreboot_re.search(self.parts.journal) is not None
+
+    @property
+    def is_vm(self) -> bool:
+        return "QEMU" in self.parts["/usr/sbin/dmidecode -s system-manufacturer"]
+
+    @property
+    def reporter(self) -> str | None:
+        from_line: list[str] = [
+            line.strip()
+            for line in self.parts["preamble"].split("\n")
+            if line.strip().startswith("From: ")
+        ]
+        if not from_line:
+            return None
+        return from_line[0].split()[-1]
+
+    @property
+    def user_text(self) -> str:
+        """
+        Returns the preamble, if it includes any user-supplied text. Else, an empty string
+        """
+        questions = [
+            (question, answer) for question, answer in self.parts.questions if answer
+        ]
+        return "\n".join(f"{q}: {a}\n\n" for q, a in questions)
+
+
+def parse_encrypted_part(part: "email.message.Message") -> str:
+    try:
+        p = subprocess.run(
+            ["/usr/bin/gpg", "-d"],
+            input=part.as_bytes(),
+            capture_output=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise DecryptFailureError from exc
+    decrypted_part: bytes = p.stdout
+    subpart = email.parser.BytesParser().parsebytes(decrypted_part)
+    if subpart.is_multipart():  # older emails (Schleuder)
+        texts = [
+            subsubpart.get_payload(decode=True) or "" for subsubpart in subpart.walk()
+        ]
+        body = max(*texts, key=len)
+    else:  # more recent emails (ie: not Schleuder)
+        body = subpart.get_payload(decode=True)
+    if isinstance(body, bytes):
+        return body.decode("utf8")
+    return body
+
+
+class NotWhisperbackMessageError(Exception):
+    pass
+
+
+class DecryptFailureError(Exception):
+    pass
+
+
+WHISPERBACKID_RE = re.compile(r""".*Bug report: ([a-z0-9]{20,32})\b""")
+
+
+def parse_email(fname: Path) -> WhisperbackReport:
+    msg = email.parser.BytesParser().parse(fname.open("rb"))
+    m = WHISPERBACKID_RE.match(msg["subject"])
+    if m is None:
+        raise NotWhisperbackMessageError
+    wid = m.group(1)
+    if not msg.is_multipart():
+        raise NotWhisperbackMessageError
+    if msg.get_content_type() != "multipart/encrypted":
+        raise NotWhisperbackMessageError
+    if not any(p.get_content_type() == "application/pgp-encrypted" for p in msg.walk()):
+        raise NotWhisperbackMessageError
+    if not any(p.get_content_type() == "application/octet-stream" for p in msg.walk()):
+        raise NotWhisperbackMessageError
+    for part in msg.walk():
+        if part.get_content_type() == "application/octet-stream":
+            body = parse_encrypted_part(part)
+            break
+    return WhisperbackReport(
+        msg["message-id"],
+        whisperbackid=wid,
+        body=body,
+        file=fname,
+    )
+
+
+class BaseOutput:
+    _REGISTRY: ClassVar = {}
+
+    def __init_subclass__(cls, key, **kwargs):
+        cls._REGISTRY[key] = cls
+
+    @classmethod
+    def get(cls, key):
+        return cls._REGISTRY[key]
+
+    @classmethod
+    def get_all(cls):
+        return list(cls._REGISTRY.keys())
+
+    def setup(self, args):
+        pass
+
+    def add(self, msg: WhisperbackReport):
+        pass
+
+    def close(self):
+        pass
+
+
+class OutputFile(BaseOutput, key="file"):
+    def add(self, msg: WhisperbackReport):
+        print(msg.file)
+
+
+class OutputMessageId(BaseOutput, key="mid"):
+    def add(self, msg: WhisperbackReport):
+        print(msg.messageid)
+
+
+class OutputWhisperbackId(BaseOutput, key="wid"):
+    def add(self, msg: WhisperbackReport):
+        print(msg.whisperbackid)
+
+
+class OutputEval(BaseOutput, key="eval"):
+    def setup(self, args):
+        self.code = args.output_eval
+
+    def add(self, msg: WhisperbackReport):
+        print(eval(self.code, None, {"m": msg}))  # noqa: S307,PGH001 - trusted input
+
+
+class OutputNotmuchQuery(BaseOutput, key="notmuch-query"):
+    def setup(self, args):
+        self.mids = []
+
+    def add(self, msg: WhisperbackReport):
+        self.mids.append(msg.messageid.lstrip("<").rstrip(">"))
+
+    def close(self):
+        query = " or ".join(f"id:{mid}" for mid in self.mids)
+        print(f"( {query} )")
+
+
+def main():
+    p = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
+    p.add_argument(
+        "--output",
+        default=[],
+        action="append",
+        choices=list(BaseOutput.get_all()),
+        help="What to output for matching messages. default is 'file'. wid=Whisperback ID; mid=Message-ID; eval= see --output-eval",
+    )
+    p.add_argument(
+        "--output-eval",
+        help="An evalued expression that will be displayed. Needs --output=eval",
+    )
+    p.add_argument(
+        "--select",
+        default="passing",
+        choices=["passing", "unknown"],
+        help="What messages to show.",
+    )
+    p.add_argument(
+        "--invert-match",
+        action="store_const",
+        default=lambda x: x,
+        const=lambda x: not x,
+        dest="invert",
+    )
+    p.add_argument(
+        "--files0",
+        action="store_const",
+        dest="filedelimiter",
+        const="\0",
+        help="Stdin is \\0-separated; otherwise it's \\n-separated",
+    )
+    p.add_argument(
+        "filter",
+        help="The expression would be eval()-ed; the message is available as `m`",
+    )
+    args = p.parse_args()
+
+    if args.output == "eval" and not args.output_eval:
+        print("if --output=eval, you must provide a --output-eval=", file=sys.stderr)
+        sys.exit(1)
+    if args.output_eval and "eval" not in args.output:
+        print(
+            "You provided --output-eval= without setting --output=eval, which is probably not what you want",
+            file=sys.stderr,
+        )
+
+    outs = []
+    for name in args.output or ["file"]:
+        out = BaseOutput.get(name)()
+        out.setup(args)
+        outs.append(out)
+
+    files = (Path(line) for line in sys.stdin.read().split(args.filedelimiter))
+    for file in files:
+        if not file.is_file():
+            continue
+        try:
+            m = parse_email(Path(file))
+        except (NotWhisperbackMessageError, DecryptFailureError):
+            continue
+        except Exception as exc:  # noqa: BLE001
+            print(f"parsing failed for {file} ({exc})", file=sys.stderr)
+            continue
+        try:
+            result = bool(eval(args.filter, None, {"m": m}))  # noqa: S307,PGH001 trusted input
+            unknown = False
+        except Unknown:
+            unknown = True
+        except Exception as exc:
+            print(
+                f"Error while processing message {m.messageid}: {exc}", file=sys.stderr
+            )
+            continue
+
+        if args.select == "passing" and unknown:
+            continue
+        if not args.invert(result if args.select == "passing" else unknown):
+            continue
+
+        for out in outs:
+            out.add(m)
+    for out in outs:
+        out.close()
+
+
+if __name__ == "__main__":
+    main()

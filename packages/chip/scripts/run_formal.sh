@@ -120,8 +120,13 @@ run_sby() {
 run_sby e1_dbg_mmio_bridge
 run_sby e1_npu
 run_sby e1_dma
+python3 verify/check_formal_engine_agreement.py \
+    verify/formal/e1_dbg_mmio_bridge \
+    verify/formal/e1_npu \
+    verify/formal/e1_dma
 if [ "${REQUIRE_DEEP_FORMAL:-0}" = "1" ]; then
     run_sby e1_soc_top
+    python3 verify/check_formal_engine_agreement.py verify/formal/e1_soc_top
     write_manifest sby-deep-top
 else
     echo "Running structural top-level formal for routine CI. Set REQUIRE_DEEP_FORMAL=1 for the deeper e1_soc_top SymbiYosys BMC."

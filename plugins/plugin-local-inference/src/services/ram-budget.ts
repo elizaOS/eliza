@@ -256,7 +256,7 @@ function contextVariantStem(model: CatalogModel): string {
  * Variants are matched by `(params, displayNameStem)` where the stem is the
  * display name with any trailing `-<ctx>` suffix (`-256k`, `-1m`, `-128k`)
  * stripped. This keeps `eliza-1-27b*` together without conflating `9b` and
- * `27b`. Only `runtimeRole !== "dflash-drafter"` entries are candidates.
+ * `27b`.
  */
 export function pickFittingContextVariant(
 	model: CatalogModel,
@@ -267,7 +267,6 @@ export function pickFittingContextVariant(
 	const stem = contextVariantStem(model);
 	const variants = catalog.filter(
 		(candidate) =>
-			candidate.runtimeRole !== "dflash-drafter" &&
 			candidate.params === model.params &&
 			contextVariantStem(candidate) === stem,
 	);

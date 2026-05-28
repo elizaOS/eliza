@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Generated with glade 3.38.2 -->
+<interface>
+  <requires lib="gtk+" version="3.24"/>
+  <template class="PassphraseDialog" parent="GtkDialog">
+    <property name="can-focus">False</property>
+    <property name="border-width">0</property>
+    <property name="title" translatable="yes">Choose Passphrase</property>
+    <property name="modal">True</property>
+    <property name="window-position">center-on-parent</property>
+    <property name="default-width">480</property>
+    <property name="default-height">225</property>
+    <property name="destroy-with-parent">True</property>
+    <property name="icon-name">system-users</property>
+    <property name="type-hint">dialog</property>
+    <child internal-child="vbox">
+      <object class="GtkBox">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="border-width">0</property>
+        <child>
+          <object class="GtkBox">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="orientation">vertical</property>
+            <property name="spacing">12</property>
+            <property name="border-width">10</property>
+            <child>
+              <object class="GtkLabel" id="label">
+                <property name="label" translatable="yes">Choose the passphrase for the cloned Persistent Storage.</property>
+                <property name="visible">True</property>
+                <property name="hexpand">True</property>
+                <property name="halign">start</property>
+                <property name="margin-bottom">10</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkGrid">
+                <property name="visible">True</property>
+                <property name="row-spacing">5</property>
+                <property name="column-spacing">15</property>
+                <child>
+                  <object class="GtkLabel" id="passphrase_entry_label">
+                    <property name="visible">True</property>
+                    <property name="halign">start</property>
+                    <property name="label" translatable="yes">Passphrase:</property>
+                    <accessibility>
+                      <relation type="label-for" target="passphrase_entry"/>
+                    </accessibility>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="passphrase_entry_label-atkobject">
+                        <property name="AtkObject::accessible-role" translatable="no">label</property>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="left-attach">0</property>
+                    <property name="top-attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="verify_entry_label">
+                    <property name="visible">True</property>
+                    <property name="halign">start</property>
+                    <property name="label" translatable="yes">Confirm:</property>
+                    <accessibility>
+                      <relation type="label-for" target="verify_entry"/>
+                    </accessibility>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="verify_entry_label-atkobject">
+                        <property name="AtkObject::accessible-role" translatable="no">label</property>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="left-attach">0</property>
+                    <property name="top-attach">2</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkEntry" id="passphrase_entry">
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="has-focus">True</property>
+                    <property name="hexpand">True</property>
+                    <property name="visibility">False</property>
+                    <property name="activates-default">True</property>
+                    <property name="input-purpose">password</property>
+                    <signal name="changed" handler="on_passphrase_entry_changed" swapped="no"/>
+                    <accessibility>
+                      <relation type="labelled-by" target="passphrase_entry_label"/>
+                    </accessibility>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="passphrase_entry-atkobject">
+                        <property name="AtkObject::accessible-role" translatable="no">password-text</property>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="left-attach">1</property>
+                    <property name="top-attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkEntry" id="verify_entry">
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="hexpand">True</property>
+                    <property name="visibility">False</property>
+                    <property name="activates-default">True</property>
+                    <property name="input-purpose">password</property>
+                    <signal name="changed" handler="on_verify_entry_changed" swapped="no"/>
+                    <accessibility>
+                      <relation type="labelled-by" target="verify_entry_label"/>
+                    </accessibility>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="verify_entry-atkobject">
+                        <property name="AtkObject::accessible-role" translatable="no">password-text</property>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="left-attach">1</property>
+                    <property name="top-attach">2</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkProgressBar" id="passphrase_hint_progress_bar">
+                    <property name="visible">True</property>
+                    <property name="show-text">True</property>
+                  </object>
+                  <packing>
+                    <property name="left-attach">1</property>
+                    <property name="top-attach">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkBox">
+                    <property name="visible">True</property>
+                    <child>
+                      <object class="GtkBox" id="verify_hint_box">
+                        <property name="halign">end</property>
+                        <property name="spacing">5</property>
+                        <child>
+                          <object class="GtkImage">
+                            <property name="visible">True</property>
+                            <property name="can-focus">False</property>
+                            <property name="valign">start</property>
+                            <property name="icon-name">dialog-warning-symbolic</property>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">0</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkLabel" id="verify_hint_label">
+                            <property name="visible">True</property>
+                            <property name="valign">start</property>
+                            <property name="label" translatable="yes">The passphrases do not match</property>
+                            <property name="wrap">True</property>
+                            <attributes>
+                              <attribute name="scale" value="0.82999999999999996"/>
+                            </attributes>
+                            <style>
+                              <class name="dim-label"/>
+                            </style>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">False</property>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
+                      </object>
+                      <packing>
+                        <property name="expand">True</property>
+                        <property name="fill">True</property>
+                        <property name="position">1</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkCheckButton" id="show_passphrase_checkbutton">
+                        <property name="label" translatable="yes">_Show Passphrase</property>
+                        <property name="visible">True</property>
+                        <property name="can-focus">True</property>
+                        <property name="receives-default">False</property>
+                        <property name="use-underline">True</property>
+                        <property name="xalign">0</property>
+                        <property name="draw-indicator">True</property>
+                        <signal name="toggled" handler="on_show_passphrase_button_toggled" swapped="no"/>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">0</property>
+                      </packing>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="left-attach">1</property>
+                    <property name="top-attach">3</property>
+                  </packing>
+                </child>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </child>
+    <child internal-child="headerbar">
+      <object class="GtkHeaderBar" id="titlebar">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="show_close_button">False</property>
+        <child>
+          <object class="GtkButton" id="cancel_button">
+            <property name="label" translatable="yes">_Cancel</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">False</property>
+            <property name="use-underline">True</property>
+            <signal name="clicked" handler="on_cancel_button_clicked" swapped="no"/>
+            <style>
+              <class name="text-button"/>
+            </style>
+          </object>
+        </child>
+        <child>
+          <object class="GtkButton" id="ok_button">
+            <property name="label" translatable="yes">Co_ntinue</property>
+            <property name="visible">True</property>
+            <property name="sensitive">False</property>
+            <property name="can-focus">True</property>
+            <property name="can-default">True</property>
+            <property name="receives-default">True</property>
+            <property name="use-underline">True</property>
+            <signal name="clicked" handler="on_ok_button_clicked" swapped="no"/>
+            <style>
+              <class name="text-button"/>
+              <class name="suggested-action"/>
+            </style>
+          </object>
+          <packing>
+            <property name="pack-type">end</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

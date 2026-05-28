@@ -334,9 +334,7 @@ def build_report() -> dict[str, Any]:
             "solid_handoff_part_count": solid_handoff.get("part_count"),
             "solid_assembly_step": solid_handoff.get("assembly_step"),
             "solid_assembly_step_bytes": assembly_step_bytes,
-            "solid_handoff_ocp_terminal_step_fallback_count": (
-                ocp_terminal_step_fallback_count
-            ),
+            "solid_handoff_ocp_terminal_step_fallback_count": (ocp_terminal_step_fallback_count),
             "solid_handoff_ocp_terminal_step_fallback_error": solid_handoff.get(
                 "ocp_terminal_step_fallback_error"
             ),
@@ -361,9 +359,7 @@ def build_report() -> dict[str, Any]:
             "cad_connection_represented_net_count_total": connection_coverage.get(
                 "represented_net_count_total"
             ),
-            "cad_connection_record_count": connection_coverage.get(
-                "cad_connection_record_count"
-            ),
+            "cad_connection_record_count": connection_coverage.get("cad_connection_record_count"),
             "cad_connection_represented_net_list_total": connection_coverage.get(
                 "cad_connection_represented_net_list_total"
             ),
@@ -427,9 +423,7 @@ def build_report() -> dict[str, Any]:
             "ready": local_cad_ready,
             "scope": "generated_evt0_concept_cad_only",
             "solid_handoff_generated": solid_handoff.get("status") == "generated",
-            "solid_handoff_ocp_terminal_step_fallback_count": (
-                ocp_terminal_step_fallback_count
-            ),
+            "solid_handoff_ocp_terminal_step_fallback_count": (ocp_terminal_step_fallback_count),
             "solid_handoff_ocp_terminal_step_fallback_complete": (
                 ocp_terminal_step_fallback_count
                 == int(connection_coverage.get("required_connection_terminal_marker_count") or 0)

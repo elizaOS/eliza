@@ -8,6 +8,7 @@ BOOT_TIMEOUT=""
 LAUNCHER_PACKAGE="ai.elizaos.app"
 LAUNCHER_ACTIVITY="ai.elizaos.app/.MainActivity"
 AGENT_HEALTH_URL="http://127.0.0.1:31337/api/health"
+EXPECTED_PM_PATH=""
 declare -a EXPECTED_PROPS=()
 declare -a PLAN=()
 
@@ -138,11 +139,32 @@ load_manifest_expectations() {
   manifest_output="$(node - "$MANIFEST" <<'NODE'
 const { readFileSync } = require('node:fs');
 const manifest = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const properties = manifest.validation?.properties ?? {};
+const semanticProperties = new Set([
+  'agent_health',
+  'agent_service_pid',
+  'foreground_activity',
+  'home_role',
+  'logcat_fatal_count',
+  'pm_path',
+  'selinux_avc_denied_count',
+]);
 if (manifest.validation?.bootTimeoutSeconds) {
   console.log(`BOOT_TIMEOUT=${manifest.validation.bootTimeoutSeconds}`);
 }
-for (const [key, value] of Object.entries(manifest.validation?.properties ?? {})) {
-  console.log(`EXPECT=${key}=${value}`);
+for (const [key, value] of Object.entries(properties)) {
+  if (!semanticProperties.has(key)) {
+    console.log(`EXPECT=${key}=${value}`);
+  }
+}
+if (typeof properties.pm_path === 'string') {
+  console.log(`EXPECTED_PM_PATH=${properties.pm_path}`);
+}
+if (typeof properties.home_role === 'string') {
+  console.log(`LAUNCHER_PACKAGE=${properties.home_role}`);
+}
+if (typeof properties.foreground_activity === 'string') {
+  console.log(`LAUNCHER_ACTIVITY=${properties.foreground_activity}`);
 }
 if (manifest.validation?.expectedFingerprintPrefix) {
   console.log(`FINGERPRINT_PREFIX=${manifest.validation.expectedFingerprintPrefix}`);
@@ -168,6 +190,9 @@ NODE
         ;;
       EXPECT=*)
         EXPECTED_PROPS+=("${line#EXPECT=}")
+        ;;
+      EXPECTED_PM_PATH=*)
+        EXPECTED_PM_PATH="${line#EXPECTED_PM_PATH=}"
         ;;
       FINGERPRINT_PREFIX=*)
         EXPECTED_PROPS+=("ro.build.fingerprint^=${line#FINGERPRINT_PREFIX=}")
@@ -261,9 +286,16 @@ validate_launcher_agent_liveness() {
   [[ "$DRY_RUN" -eq 0 ]] || return 0
   local adb_cmd
   read -r -a adb_cmd <<<"$(adb_base)"
+  local pm_path
 
-  "${adb_cmd[@]}" shell pm path "$LAUNCHER_PACKAGE" | grep -F "package:" >/dev/null \
-    || die "launcher package is not installed: $LAUNCHER_PACKAGE"
+  pm_path="$("${adb_cmd[@]}" shell pm path "$LAUNCHER_PACKAGE" | tr -d '\r')"
+  if [[ -n "$EXPECTED_PM_PATH" ]]; then
+    [[ "$pm_path" == "$EXPECTED_PM_PATH" ]] \
+      || die "launcher package path '$pm_path' does not match '$EXPECTED_PM_PATH'"
+  else
+    grep -F "package:" <<<"$pm_path" >/dev/null \
+      || die "launcher package is not installed: $LAUNCHER_PACKAGE"
+  fi
   "${adb_cmd[@]}" shell cmd role holders android.app.role.HOME | grep -F "$LAUNCHER_PACKAGE" >/dev/null \
     || die "launcher package is not a HOME role holder: $LAUNCHER_PACKAGE"
   "${adb_cmd[@]}" shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME \

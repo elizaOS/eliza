@@ -13,10 +13,9 @@ import subprocess
 from pathlib import Path
 
 import yaml
-
 from check_fpga_release import (
     CFG,
-    ROOT as CHECK_ROOT,
+    artifact_inventory,
     assigned_lpf_ports,
     bounded_synthesis_diagnostics,
     expand_required,
@@ -27,10 +26,11 @@ from check_fpga_release import (
     release_artifact_requirements,
     release_evidence_archive_contract,
     target_status_promotion_contract,
-    artifact_inventory,
     vector_widths_from_pinout,
 )
-
+from check_fpga_release import (
+    ROOT as CHECK_ROOT,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "board/fpga/artifact-manifest.yaml"
@@ -129,7 +129,23 @@ def bounded_synthesis_diagnostic_lines() -> list[str]:
         largest = profile.get("largest_modules_by_cells") or []
         memory_pressure = profile.get("memory_rom_synthesis_pressure", {})
         pressure_modules = memory_pressure.get("modules") or []
-        next_actions = memory_pressure.get("next_actions") or []
+        next_actions = memory_pressure.get("next_actions") or [
+            {
+                "action_id": "fpga-memory-001",
+                "module": "e1_behavioral_dram",
+                "priority": "required_before_release_synthesis",
+                "task_type": "external_sram_or_bram_model",
+                "release_credit": False,
+                "remediation_target": (
+                    "Replace register-inferred behavioral memory pressure with an explicit "
+                    "external SRAM or FPGA BRAM-backed model for the release top."
+                ),
+                "acceptance_check": (
+                    "bounded synthesis profile records no ROM/DRAM register explosion and "
+                    "the e1_chip_top release build reaches place/route."
+                ),
+            }
+        ]
         top_pressure = pressure_modules[0] if pressure_modules else {}
         lines.extend(
             [
@@ -237,13 +253,9 @@ def target_status_promotion_contract_lines() -> list[str]:
         f"  next_action_id: {contract['next_action_id']}",
         f"  current_target_status: {contract['current_target_status']}",
         f"  required_target_status: {contract['required_target_status']}",
-        "  source_manifests: ["
-        + ", ".join(contract["source_manifests"])
-        + "]",
+        "  source_manifests: [" + ", ".join(contract["source_manifests"]) + "]",
         f"  blocked_count: {contract['blocked_count']}",
-        "  blocked_criteria: ["
-        + ", ".join(contract["blocked_criteria"])
-        + "]",
+        "  blocked_criteria: [" + ", ".join(contract["blocked_criteria"]) + "]",
         "  criteria:",
     ]
     for criterion in contract["criteria"]:
@@ -293,9 +305,7 @@ def release_artifact_requirement_lines() -> list[str]:
                 "      accepted_artifact_paths: ["
                 + ", ".join(requirement["accepted_artifact_paths"])
                 + "]",
-                "      expected_globs: ["
-                + ", ".join(requirement["patterns"])
-                + "]",
+                "      expected_globs: [" + ", ".join(requirement["patterns"]) + "]",
                 f"      missing: {str(requirement['missing']).lower()}",
                 "      release_credit: false",
             ]
@@ -311,9 +321,7 @@ def manifest_artifact_glob_audit_lines() -> list[str]:
         f"  status: {audit['status']}",
         "  release_credit: false",
         f"  next_action_id: {audit['next_action_id']}",
-        "  blocked_artifacts: ["
-        + ", ".join(audit["blocked_artifacts"])
-        + "]",
+        "  blocked_artifacts: [" + ", ".join(audit["blocked_artifacts"]) + "]",
         "  artifacts:",
     ]
     for artifact in audit["artifacts"]:
@@ -339,12 +347,8 @@ def release_evidence_archive_contract_lines() -> list[str]:
         f"  status: {contract['status']}",
         "  release_credit: false",
         f"  next_action_id: {contract['next_action_id']}",
-        "  blocked_preconditions: ["
-        + ", ".join(contract["blocked_preconditions"])
-        + "]",
-        "  blocked_fields: ["
-        + ", ".join(contract["blocked_fields"])
-        + "]",
+        "  blocked_preconditions: [" + ", ".join(contract["blocked_preconditions"]) + "]",
+        "  blocked_fields: [" + ", ".join(contract["blocked_fields"]) + "]",
         "  required_fields:",
     ]
     for field in contract["required_fields"]:
@@ -380,7 +384,9 @@ def main() -> int:
         "\n".join(
             [
                 "schema: eliza.e1_demo_fpga_tool_availability.v1",
-                "status: blocked_tool_unavailable" if missing_tools else "status: tools_available_not_release_evidence",
+                "status: blocked_tool_unavailable"
+                if missing_tools
+                else "status: tools_available_not_release_evidence",
                 "release_credit: false",
                 "claim_boundary: tool availability only; not release evidence; not bitstream, timing, route, pack, final LPF, or board fabrication release evidence",
                 "tools:",

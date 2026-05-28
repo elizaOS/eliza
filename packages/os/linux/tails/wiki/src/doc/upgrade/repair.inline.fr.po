@@ -1,0 +1,68 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2025-09-18 17:20+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Sometimes, after an automatic upgrade, your Tails USB stick might either:"
+msgstr ""
+"Parfois, après une mise à jour automatique, votre clé USB Tails peut soit :"
+
+#. type: Bullet: '- '
+msgid "Fail to start, often after the message:"
+msgstr "Échouer à démarrer, souvent après le message :"
+
+#. type: Plain text
+#, no-wrap
+msgid "  <pre>Loading, please wait...</pre>\n"
+msgstr "  <pre>Loading, please wait...</pre>\n"
+
+#. type: Bullet: '- '
+msgid ""
+"Behave weirdly. For example, your keyboard does not work or you cannot "
+"connect to a network."
+msgstr ""
+"Se comporter étrangement. Par exemple, votre clavier ne fonctionne plus ou "
+"vous ne pouvez pas vous connecter à un réseau."
+
+#. type: Plain text
+msgid ""
+"To fix this problem, please try to do a [[manual upgrade|upgrade#manual]]."
+msgstr ""
+"Pour corriger ce problème, merci d'essayer de faire une [[mise à jour "
+"manuelle|upgrade#manual]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>The Persistent Storage on the USB stick will be preserved.</p>\n"
+msgstr "<p>Le stockage persistant sur la clé USB sera préservé.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"

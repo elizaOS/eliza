@@ -6,7 +6,7 @@ This is the runnable harness behind the publish-blocking eval gates in
 Given a staged Eliza-1 bundle directory it runs every applicable gate, writes
 the per-eval JSON blobs into ``<bundle>/evals/`` (``text-eval.json``,
 ``voice-rtf.json``, ``asr-wer.json``, ``vad.json``, ``e2e-loop.json``,
-``dflash-accept.json``, ``endurance.json``, ``dispatch.json``) plus the
+``mtp-accept.json``, ``endurance.json``, ``dispatch.json``) plus the
 ``aggregate.json`` that the publish orchestrator
 (``scripts/publish/orchestrator.py``) loads and gates on, and prints a summary.
 
@@ -22,7 +22,7 @@ Honesty rules (mirrors AGENTS.md §3/§7 — no fabricated passes):
   runs them on real hardware.
 * Where a gate *can* be measured here (CPU/Vulkan), it is measured for real:
   the text eval is a held-out perplexity → 0..1 score via the bundle's text
-  GGUF; TTS RTF / ASR WER / VAD / e2e-loop / 30-turn endurance / DFlash
+  GGUF; TTS RTF / ASR WER / VAD / e2e-loop / 30-turn endurance / MTP
   acceptance drive the bundle's fused llama.cpp binaries (``llama-cli``,
   ``llama-omnivoice-server``, ``llama-speculative-simple``); the dispatch eval
   runs ``make -C packages/inference/verify kernel-contract reference-test``.
@@ -251,7 +251,7 @@ def _engine_bin_root() -> Path:
         or os.environ.get("ELIZA_STATE_DIR")
         or str(Path.home() / ".eliza")
     )
-    return Path(state).expanduser() / "local-inference" / "bin" / "dflash"
+    return Path(state).expanduser() / "local-inference" / "bin" / "mtp"
 
 
 def _eliza_lib_name() -> str:
@@ -268,7 +268,7 @@ class Engine:
     """A discovered fused llama.cpp build directory + its binaries.
 
     ``llama_server`` is the fused ``llama-server`` (omnivoice-grafted: serves
-    ``/v1/audio/speech`` + ``/completion`` + the in-process DFlash loop). It is
+    ``/v1/audio/speech`` + ``/completion`` + the in-process MTP loop). It is
     the canonical voice runtime per AGENTS.md §4. ``eliza_lib`` is the fused
     ``libelizainference.{so,dylib}`` used for the ASR FFI. ``speculative`` may
     resolve from a *sibling* non-fused build dir when the fused build does not
@@ -621,7 +621,7 @@ def _run_llama(
 # The TTS-RTF / ASR-WER / e2e-loop / 30-turn runners all drive the same
 # real fused runtime (the omnivoice-grafted ``llama-server`` + the ASR FFI),
 # so they share one bench run: ``packages/inference/verify/e2e_loop_bench.mjs``.
-# That harness already does WAV → ASR → DFlash-spec-decode → phrase chunker →
+# That harness already does WAV → ASR → MTP-spec-decode → phrase chunker →
 # OmniVoice TTS → PCM and reports every metric. We invoke it once per
 # (tier, backend, turns) and cache the parsed JSON on the EvalContext.
 # ---------------------------------------------------------------------------
@@ -942,8 +942,8 @@ def _run_e2e_loop_bench(
             args += ["--skip-embedding"]
         if os.environ.get("ELIZA_EVAL_E2E_NO_SAVE_AUDIO") == "1":
             args += ["--no-save-audio"]
-        if os.environ.get("ELIZA_EVAL_E2E_DISABLE_DFLASH") == "1":
-            args += ["--disable-dflash"]
+        if os.environ.get("ELIZA_EVAL_E2E_DISABLE_MTP") == "1":
+            args += ["--disable-mtp"]
         draft_ngl = os.environ.get("ELIZA_EVAL_E2E_DRAFT_NGL")
         if draft_ngl:
             args += ["--draft-ngl", draft_ngl]
@@ -994,7 +994,7 @@ def _e2e_summary(report: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(summary, dict):
         return None
     # `needs-optimization` means the real ASR → text → TTS loop completed, but
-    # one or more optimization gates (currently DFlash drafting or streaming
+    # one or more optimization gates (currently MTP drafting or streaming
     # TTS) were inactive. The metric evals still need the real latency/WER/RTF
     # numbers from that run; optimization readiness is judged by separate gates.
     if report.get("status") == "ok" or report.get("e2eLoopOk") is True or summary.get("flowCompletedOk") is True:
@@ -1495,7 +1495,7 @@ def eval_e2e_and_endurance(ctx: EvalContext) -> tuple[dict[str, Any], dict[str, 
         end = {**end_base, "status": "not-run", "thirtyTurnOk": False, "turns": 0, "passed": None, "reason": reason}
         return e2e, end
 
-    # --- one e2e turn: WAV → ASR → DFlash-spec text → phrase chunker → TTS → PCM
+    # --- one e2e turn: WAV → ASR → MTP-spec text → phrase chunker → TTS → PCM
     one = _run_e2e_loop_bench(ctx, turns=1)
     one_summary = _e2e_summary(one)
     if one_summary is None:
@@ -1619,7 +1619,7 @@ def eval_expressive(ctx: EvalContext) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Eval: DFlash speculative-decode acceptance rate
+# Eval: MTP speculative-decode acceptance rate
 # ---------------------------------------------------------------------------
 
 _PARSE_DRAFTED = ("n_drafted", "n_draft")
@@ -1644,8 +1644,8 @@ def _parse_spec_counters(text: str) -> tuple[int | None, int | None]:
     return drafted, accepted
 
 
-def eval_dflash_accept(ctx: EvalContext) -> dict[str, Any]:
-    base = {"schemaVersion": SCHEMA_VERSION, "metric": "dflash_acceptance", "op": ">="}
+def eval_mtp_accept(ctx: EvalContext) -> dict[str, Any]:
+    base = {"schemaVersion": SCHEMA_VERSION, "metric": "mtp_acceptance", "op": ">="}
     target = ctx.text_model
     drafter = ctx.drafter_model
     if not _is_real_gguf(target) or not _is_real_gguf(drafter, min_bytes=10_000_000):
@@ -1670,13 +1670,13 @@ def eval_dflash_accept(ctx: EvalContext) -> dict[str, Any]:
             ),
         }
     spec = ctx.engine.speculative
-    n_predict = int(os.environ.get("ELIZA_EVAL_DFLASH_TOKENS", "48"))
+    n_predict = int(os.environ.get("ELIZA_EVAL_MTP_TOKENS", "48"))
     target_ngl = os.environ.get(
-        "ELIZA_EVAL_DFLASH_TARGET_NGL",
+        "ELIZA_EVAL_MTP_TARGET_NGL",
         "0" if ((ctx.engine.backend if ctx.engine else "cpu") or "cpu").startswith("cpu") else "99",
     )
-    draft_ngl = os.environ.get("ELIZA_EVAL_DFLASH_DRAFT_NGL", "0")
-    spec_type = os.environ.get("ELIZA_EVAL_DFLASH_SPEC_TYPE", "dflash")
+    draft_ngl = os.environ.get("ELIZA_EVAL_MTP_DRAFT_NGL", "0")
+    spec_type = os.environ.get("ELIZA_EVAL_MTP_SPEC_TYPE", "mtp")
     args = [
         "-m", str(target),
         "-md", str(drafter),
@@ -1749,7 +1749,7 @@ def eval_dflash_accept(ctx: EvalContext) -> dict[str, Any]:
             "draftGpuLayers": draft_ngl,
             "reason": (
                 "speculative run completed but produced zero draft tokens; "
-                "this is a real DFlash readiness failure, not missing data"
+                "this is a real MTP readiness failure, not missing data"
             ),
         }
     rate = round(accepted / drafted, 4)
@@ -1852,7 +1852,7 @@ def eval_dispatch(ctx: EvalContext) -> dict[str, Any]:
         "atCommit": git_sha,
         "generatedAt": _utc_now(),
         "report": f"packages/inference/verify (make {' '.join(targets)})",
-        "kernelSet": list(REQUIRED_GRAPH_CACHE_FAMILIES) + ["dflash"],
+        "kernelSet": list(REQUIRED_GRAPH_CACHE_FAMILIES) + ["mtp"],
         "kernelFamilies": list(REQUIRED_GRAPH_CACHE_FAMILIES),
         "targets": targets,
         "logs": logs,
@@ -1884,7 +1884,7 @@ def _metric_value(eval_blob: dict[str, Any]) -> Any:
         return eval_blob.get("e2eLoopOk")
     if metric == "thirty_turn_ok":
         return eval_blob.get("thirtyTurnOk")
-    if metric == "dflash_acceptance":
+    if metric == "mtp_acceptance":
         return eval_blob.get("acceptanceRate")
     return None
 
@@ -1897,7 +1897,7 @@ def run_suite(ctx: EvalContext) -> dict[str, Any]:
     vad = eval_vad(ctx)
     e2e, endurance = eval_e2e_and_endurance(ctx)
     expressive = eval_expressive(ctx)
-    dflash = eval_dflash_accept(ctx)
+    mtp = eval_mtp_accept(ctx)
     dispatch = eval_dispatch(ctx)
     ctx.track_rss()
 
@@ -1915,7 +1915,7 @@ def run_suite(ctx: EvalContext) -> dict[str, Any]:
         "e2e-loop.json": e2e,
         "endurance.json": endurance,
         "expressive.json": expressive,
-        "dflash-accept.json": dflash,
+        "mtp-accept.json": mtp,
         "dispatch.json": dispatch,
     }
     dispatch_backend = str(dispatch.get("backend") or "cpu")
@@ -1960,7 +1960,7 @@ def run_suite(ctx: EvalContext) -> dict[str, Any]:
             if endurance.get("status") == "ok"
             else None
         ),
-        "dflash_acceptance": _metric_value(dflash),
+        "mtp_acceptance": _metric_value(mtp),
         # Expressive-voice triad (the orchestrator's manifest assembler reads
         # all three from results when stage 3 has passed). null until the
         # expressive graders are wired against an ABI-verified fused build.
@@ -2090,7 +2090,7 @@ def build_context(args: argparse.Namespace) -> EvalContext:
         voice_tokenizer=voice_tokenizer,
         asr_model=_bundle_file(bundle_dir, "asr"),
         vad_model=_bundle_vad(bundle_dir),
-        drafter_model=_bundle_file(bundle_dir, "dflash", ".gguf"),
+        drafter_model=_bundle_file(bundle_dir, "mtp", ".gguf"),
         text_eval_corpus=_default_text_corpus(args.text_corpus),
         asr_corpus=_resolve_asr_corpus(getattr(args, "asr_corpus", None)),
         threads=args.threads,
@@ -2115,7 +2115,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[eliza1-eval] engine={'%s @ %s' % (ctx.engine.backend, ctx.engine.bin_dir) if ctx.engine else 'none'}")
     print(f"[eliza1-eval] text-model={ctx.text_model} (real={_is_real_gguf(ctx.text_model)})  text-eval-model={ctx.text_eval_model}")
     agg = run_suite(ctx)
-    print(f"[eliza1-eval] wrote {ctx.bundle_dir / 'evals'}/{{text-eval,voice-rtf,asr-wer,vad,e2e-loop,endurance,dflash-accept,dispatch,aggregate}}.json")
+    print(f"[eliza1-eval] wrote {ctx.bundle_dir / 'evals'}/{{text-eval,voice-rtf,asr-wer,vad,e2e-loop,endurance,mtp-accept,dispatch,aggregate}}.json")
     print("[eliza1-eval] results:")
     for k, v in agg["results"].items():
         print(f"    {k:24s} = {v}")

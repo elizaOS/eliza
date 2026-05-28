@@ -96,6 +96,60 @@ function stringSetting(value: string | undefined): string | undefined {
   return value?.trim() || undefined;
 }
 
+function modelListUrl(baseUrl: string): string {
+  const normalized = baseUrl.trim().replace(/\/+$/, "");
+  return `${normalized}/models`;
+}
+
+function localModelIdMatches(availableId: string, requestedId: string): boolean {
+  return (
+    availableId === requestedId ||
+    availableId === `${requestedId}:latest` ||
+    `${availableId}:latest` === requestedId
+  );
+}
+
+async function localModelIds(baseUrl: string): Promise<string[]> {
+  const response = await fetch(modelListUrl(baseUrl));
+  if (!response.ok) {
+    throw new Error(
+      `local model endpoint ${modelListUrl(baseUrl)} returned ${response.status} ${response.statusText}`,
+    );
+  }
+  const payload = await response.json();
+  const data =
+    payload &&
+    typeof payload === "object" &&
+    Array.isArray((payload as { data?: unknown }).data)
+      ? (payload as { data: unknown[] }).data
+      : [];
+  return data
+    .map((item) =>
+      item && typeof item === "object"
+        ? (item as { id?: unknown; name?: unknown }).id ??
+          (item as { id?: unknown; name?: unknown }).name
+        : item,
+    )
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+}
+
+export async function assertLocalBenchmarkModelAvailable(
+  options: ActionBenchmarkRunOptions,
+): Promise<void> {
+  if (effectiveUseMocks(options)) return;
+  if (options.provider !== "local-llama-cpp") return;
+  const requestedModel = stringSetting(options.runtimeModel);
+  if (!requestedModel) return;
+  const baseUrl = stringSetting(options.baseUrl) ?? "http://localhost:11434/v1";
+  const ids = await localModelIds(baseUrl);
+  if (ids.some((id) => localModelIdMatches(id, requestedModel))) return;
+  throw new Error(
+    `local action benchmark model "${requestedModel}" is not available at ${modelListUrl(
+      baseUrl,
+    )}; available models: ${ids.length > 0 ? ids.join(", ") : "none"}`,
+  );
+}
+
 function effectiveUseMocks(options: ActionBenchmarkRunOptions): boolean {
   return options.useMocks ?? options.dryRun === true;
 }
@@ -361,6 +415,8 @@ export async function runActionBenchmark(
       matrixSource: reportMatrixSource,
     };
   }
+
+  await assertLocalBenchmarkModelAvailable(options);
 
   const proc = await collectProcess(command, args, appCoreRoot, {
     ...process.env,

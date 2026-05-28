@@ -48,6 +48,7 @@ export { Header } from "./components/shell/Header";
 export { PairingView } from "./components/shell/PairingView";
 export { ShellOverlays } from "./components/shell/ShellOverlays";
 export { StartupFailureView } from "./components/shell/StartupFailureView";
+export { StartupScreen } from "./components/shell/StartupScreen";
 export { StartupShell } from "./components/shell/StartupShell";
 export { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
 export { FineTuningView } from "./components/training/injected";

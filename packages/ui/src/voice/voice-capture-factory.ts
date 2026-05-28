@@ -21,6 +21,7 @@
 import type { AsrProvider } from "../api/client-types-config";
 import {
   isLocalAsrCaptureSupported,
+  type LocalAsrAutoStopOptions,
   type LocalAsrRecorder,
   startLocalAsrRecorder,
 } from "./local-asr-capture";
@@ -79,6 +80,7 @@ export interface VoiceCaptureFactoryOptions {
   asrProvider?: AsrProvider | "browser";
   /** Locale string forwarded to the browser SpeechRecognition API. Default `en-US`. */
   lang?: string;
+  localAsrAutoStop?: LocalAsrAutoStopOptions;
 }
 
 export interface VoiceCaptureHandle {
@@ -129,7 +131,13 @@ function resolveBackend(
 export function createVoiceCapture(
   options: VoiceCaptureFactoryOptions,
 ): VoiceCaptureHandle {
-  const { onTranscript, onStateChange, asrProvider, lang = "en-US" } = options;
+  const {
+    onTranscript,
+    onStateChange,
+    asrProvider,
+    lang = "en-US",
+    localAsrAutoStop,
+  } = options;
   const backend = resolveBackend(asrProvider);
 
   let state: VoiceCaptureState = "idle";
@@ -147,7 +155,12 @@ export function createVoiceCapture(
   }
 
   async function startLocalInference(): Promise<void> {
-    const next = await startLocalAsrRecorder();
+    const next = await startLocalAsrRecorder({
+      ...(localAsrAutoStop ? { autoStop: localAsrAutoStop } : {}),
+      onAutoStop: () => {
+        void stop();
+      },
+    });
     recorder = next;
     active = true;
     setState("listening");

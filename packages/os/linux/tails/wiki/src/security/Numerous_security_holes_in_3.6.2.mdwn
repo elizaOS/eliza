@@ -1,0 +1,16 @@
+[[!meta date="Wed, 09 May 2018 17:25:18 +0000"]]
+[[!meta title="Numerous security holes in Tails 3.6.2"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.6.2 are now fixed in Tails 3.7.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.7|news/version_3.7]] as soon as possible.
+
+ - Tor Browser: [MSFA 2018-12](https://www.mozilla.org/en-US/security/advisories/mfsa2018-12/)
+ - OpenSSL: [[!debsa2018 4157]]
+ - Perl: [[!debsa2018 4172]]
+ - Libre Office: [[!debsa2018 4178]]
+ - libmad: [[!debsa2018 4192]]

@@ -28,7 +28,6 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import yaml
 from huggingface_hub import snapshot_download
 from huggingface_hub.utils import HfHubHTTPError
 

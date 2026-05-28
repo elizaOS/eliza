@@ -1,0 +1,148 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-06-26 18:01+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: id\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Editing PDFs\"]]\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Applications included in Tails"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Several applications included in Tails allow editing PDFs, even when it is "
+"not their primary function:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[*LibreOffice Draw*](https://www.libreoffice.org/discover/draw/)"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  *Draw* is the graphics editor of the *LibreOffice* suite.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  With *Draw*, you can open PDFs, remove pages, and change the order of pages.\n"
+"  *Draw* is the best option for changing the text of a PDF. You can move around\n"
+"  and resize the images of a PDF using *Draw*, but you cannot edit them.\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[*Inkscape*](https://inkscape.org/)"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  *Inkscape* is a vector-based drawing application.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  *Inkscape* is the best option for modifying the vector-based graphics\n"
+"  included in some PDFs. For example, you can create PDFs with *Inkscape* and\n"
+"  edit back the vector-based graphics in *Inkscape*. Editing the text of a PDF\n"
+"  with *Inkscape* is possible but cumbersome.\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[*GIMP*](https://www.gimp.org/)"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  *GIMP* is an image editor for photos, PNG, and JPG images.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  When you open a PDF with *GIMP*, each page is converted to a layer of an\n"
+"  image. You cannot edit the text of a PDF, move overlapping objects, or modify\n"
+"  vector-based graphics with *GIMP*.\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[*BookletImposer*](https://kjo.herbesfolles.org/bookletimposer/)"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  With *BookletImposer*, you can:\n"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"Reduce the number of pages in a PDF by putting several pages on every sheet."
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "Produce a PDF booklet that can be folded after printing."
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Applications not included in Tails by default"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Several other applications can be added to Tails as [[Additional Software|"
+"persistent_storage/additional_software]] to work on untrusted or very large "
+"PDFs:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If you receive untrusted documents, for example, email attachments, "
+"[*Dangerzone*](https://dangerzone.rocks/) allows you to convert them into "
+"safe PDFs before opening."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  *Dangerzone* is particularly useful for journalists who might receive dangerous\n"
+"  documents from anonymous sources or download them from the Internet.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  See [[converting dangerous documents to safe PDFs using\n"
+"  Dangerzone|doc/persistent_storage/additional_software/dangerzone]].\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"To reorganize the pages of very large PDFs or combine pages from several "
+"PDFs, [*PDF Arranger*](https://github.com/pdfarranger/pdfarranger) is faster "
+"and more convenient than *LibreOffice Draw*."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  You cannot modify the content of pages using *PDF Arranger*.\n"
+msgstr ""

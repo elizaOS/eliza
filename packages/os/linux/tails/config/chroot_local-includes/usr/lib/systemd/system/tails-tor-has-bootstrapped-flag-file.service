@@ -1,0 +1,22 @@
+[Unit]
+Description=Manage the flag file that indicates whether Tor has bootstrapped
+Documentation=https://tails.net/contribute/design/
+After=tails-wait-until-tor-has-bootstrapped.service
+Requisite=tails-wait-until-tor-has-bootstrapped.service
+PartOf=tails-tor-has-bootstrapped.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=debian-tor
+ExecStart=/bin/touch /run/tor-has-bootstrapped/done
+ExecStop=/bin/rm -f /run/tor-has-bootstrapped/done
+CapabilityBoundingSet=
+PrivateDevices=yes
+PrivateNetwork=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=tails-tor-has-bootstrapped.target

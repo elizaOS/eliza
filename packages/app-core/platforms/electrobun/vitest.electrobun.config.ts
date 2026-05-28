@@ -13,10 +13,19 @@ const remotePluginSrcRoot = path.resolve(
   "../../../plugin-remote-manifest/src",
 );
 const sharedSrcRoot = path.resolve(__dirname, "../../../shared/src");
+const coreSrcRoot = path.resolve(__dirname, "../../../core/src");
 
 export default defineConfig({
   resolve: {
     alias: [
+      {
+        find: /^@elizaos\/core$/,
+        replacement: path.join(coreSrcRoot, "index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/core\/(.*)$/,
+        replacement: path.join(coreSrcRoot, "$1"),
+      },
       {
         find: /^@elizaos\/app-core$/,
         replacement: path.join(appCoreSrcRoot, "index.ts"),

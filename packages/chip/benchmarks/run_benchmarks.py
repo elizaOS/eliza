@@ -1078,7 +1078,9 @@ def is_blocked_value(value: Any) -> bool:
     return isinstance(value, str) and value.strip().startswith(BLOCKED_PREFIX)
 
 
-def calibration_asset_artifact_errors(asset_name: str, asset: dict[str, Any], root: Path) -> list[str]:
+def calibration_asset_artifact_errors(
+    asset_name: str, asset: dict[str, Any], root: Path
+) -> list[str]:
     evidence = asset.get("evidence")
     if not isinstance(evidence, str) or not evidence.strip():
         return ["evidence_missing"]
@@ -1554,7 +1556,7 @@ def parse_eliza_mlperf_inference(output: str) -> dict[str, Any]:
     single_stream = by_name["SingleStream"]
     offline = by_name["Offline"]
     latency = single_stream.get("latency_percentiles_ns", {})
-    energy = summary.get("energy_joules_per_inference")
+    energy: Any = summary.get("energy_joules_per_inference")
     if not isinstance(latency, dict) or not is_json_number(latency.get("p90")):
         raise ValueError("MLPerf inference SingleStream scenario missing p90 latency")
     if not is_json_number(offline.get("throughput_samples_per_second")):
@@ -1727,7 +1729,9 @@ def check_target_execution_transcript_artifact(
         return [f"{scope}.target_execution.transcript_path must name an archived transcript"]
     path = Path(transcript_path)
     if path.is_absolute() or ".." in path.parts:
-        return [f"{scope}.target_execution.transcript_path must be a relative path under artifact root"]
+        return [
+            f"{scope}.target_execution.transcript_path must be a relative path under artifact root"
+        ]
     resolved = artifact_root / path
     try:
         resolved = resolved.resolve()
@@ -1775,9 +1779,7 @@ def check_result_raw_output_artifact(
     if isinstance(target, dict):
         transcript_path = target.get("transcript_path")
         if isinstance(transcript_path, str) and transcript_path.strip():
-            errors.extend(
-                check_target_execution_transcript_artifact(target, scope, artifact_root)
-            )
+            errors.extend(check_target_execution_transcript_artifact(target, scope, artifact_root))
         elif is_sha256(digest) and target.get("transcript_sha256") != digest:
             errors.append(
                 f"{scope}.target_execution.transcript_sha256 must match raw_output_sha256 "
@@ -1801,9 +1803,7 @@ def validate_report(report: dict[str, Any], artifact_root: Path | None = None) -
     if report.get("claim_level") not in VALID_CLAIM_LEVELS:
         errors.append("report.claim_level is not a valid claim level")
     result_statuses = [
-        result.get("status")
-        for result in report.get("results", [])
-        if isinstance(result, dict)
+        result.get("status") for result in report.get("results", []) if isinstance(result, dict)
     ]
     if isinstance(report.get("results"), list) and not report["results"]:
         errors.append("report.results must contain at least one benchmark result")
@@ -1826,7 +1826,9 @@ def validate_report(report: dict[str, Any], artifact_root: Path | None = None) -
     expected_phone_claim = report_claim_passed and report.get("claim_level") in L5_L6_CLAIM_LEVELS
     if report.get("phone_claim_allowed") is not expected_phone_claim:
         errors.append("report.phone_claim_allowed must match passed L5/L6 status")
-    expected_release_claim = report_claim_passed and report.get("claim_level") == "L6_COMPLETE_PHONE"
+    expected_release_claim = (
+        report_claim_passed and report.get("claim_level") == "L6_COMPLETE_PHONE"
+    )
     if report.get("release_claim_allowed") is not expected_release_claim:
         errors.append("report.release_claim_allowed must match passed L6 status")
     has_passed_measured_results = any(
@@ -1844,7 +1846,11 @@ def validate_report(report: dict[str, Any], artifact_root: Path | None = None) -
                     report.get("target_execution"), "report", artifact_root
                 )
             )
-        runner = report.get("target_execution", {}).get("runner") if isinstance(report.get("target_execution"), dict) else None
+        runner = (
+            report.get("target_execution", {}).get("runner")
+            if isinstance(report.get("target_execution"), dict)
+            else None
+        )
         if runner not in PHONE_L5_L6_TARGET_RUNNERS:
             errors.append(
                 "report.target_execution.runner must be prototype, silicon, or phone for L5/L6 phone claims"
@@ -1970,7 +1976,11 @@ def validate_report(report: dict[str, Any], artifact_root: Path | None = None) -
                 )
                 if artifact_root is not None:
                     errors.extend(check_result_raw_output_artifact(result, prefix, artifact_root))
-                runner = result.get("target_execution", {}).get("runner") if isinstance(result.get("target_execution"), dict) else None
+                runner = (
+                    result.get("target_execution", {}).get("runner")
+                    if isinstance(result.get("target_execution"), dict)
+                    else None
+                )
                 if runner not in PHONE_L5_L6_TARGET_RUNNERS:
                     errors.append(
                         f"{prefix}.target_execution.runner must be prototype, silicon, or phone for L5/L6 phone claims"
@@ -2040,7 +2050,9 @@ def validate_report(report: dict[str, Any], artifact_root: Path | None = None) -
                         errors.append(f"{req_prefix} must be an object")
                         continue
                     for field in ("name", "reason", "resolution"):
-                        if not isinstance(requirement.get(field), str) or not requirement.get(field):
+                        if not isinstance(requirement.get(field), str) or not requirement.get(
+                            field
+                        ):
                             errors.append(f"{req_prefix}.{field} must be non-empty string")
         if result.get("provenance") == "simulator":
             metrics = result.get("metrics", {})
@@ -2126,9 +2138,7 @@ def run_benchmark(
         result["artifacts"]["target_metadata_sha256"] = report_artifacts.get(
             "target_metadata_sha256"
         )
-        result["artifacts"]["target_metadata_bytes"] = report_artifacts.get(
-            "target_metadata_bytes"
-        )
+        result["artifacts"]["target_metadata_bytes"] = report_artifacts.get("target_metadata_bytes")
     if execution_command != command:
         result["resolved_command"] = execution_command
     # MLPerf Power-style integrated energy is passed through verbatim from
@@ -2160,7 +2170,7 @@ def run_benchmark(
                 status["release_claim_allowed"] = False
                 status["release_claim_blocked_reason"] = (
                     "benchmark result is blocked; dependency cannot support a release claim "
-                        "until all benchmark requirements pass"
+                    "until all benchmark requirements pass"
                 )
         result["provenance"] = "blocked_placeholder"
         result["status"] = "blocked"

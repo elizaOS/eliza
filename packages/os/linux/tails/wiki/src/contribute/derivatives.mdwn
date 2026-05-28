@@ -1,0 +1,91 @@
+[[!meta title="About creating Tails derivatives"]]
+
+Several projects expressed interest in reusing Tails to build different
+live distributions, also called *derivatives*, to fulfill slightly
+different goals.
+
+Tails being Free Software this is not only possible but encouraged,
+because the more people look at our code and work on it, the better it gets.
+Still, at this time we don't know of any Tails derivative.
+
+Derivatives have been imagined:
+
+- To include additional features or software that are not available in Tails,
+  for example, to include other cryptocurrency wallets.
+
+- To have custom branding or configuration, for example, to disable JavaScript
+  by default or disable proprietary firmware.
+
+- To provide USB images with less or different features, for example, to have a
+  smaller USB image or use the I2P network instead of the Tor network.
+
+### Technical and security reasons to avoid creating derivatives
+
+While creating custom USB images of Tails is relatively easy, we believe
+that maintaining custom USB images on the long run is very complicated,
+and for the following reasons:
+
+- We release a new version every 4 weeks which fixes numerous security
+  issues. We also sometimes release unscheduled emergency upgrades to fix
+  critical security vulnerabilities.
+
+  A derivative with custom USB images would have to follow the same
+  release schedule to provide USB images that fix these issues as well.
+
+- Before we release them, our USB images follow a complex quality
+  assurance process involving systematic peer review of the code,
+  [[manual|contribute/release_process/test]] and
+  [[automated|contribute/release_process/test/automated_tests]] tests
+  which are particularly heavy to run.
+
+  A derivative with custom USB images would have to duplicate our
+  quality assurance process and adapt it to its specificities to make
+  sure that it doesn't break any security feature.
+
+- We offer automatic upgrades which are binary diffs from one USB image
+  to the other.
+
+  A derivative with custom USB images would need a similar process and
+  infrastructure or otherwise disable the automatic upgrades mechanism.
+
+- The anonymity provided by Tor and Tails works by making everybody
+  look the same, especially on the network. Derivatives should be
+  careful about not breaking this anonymity set or they will provide
+  less anonymity to both its users and Tails users.
+
+- Derivatives could be tempted to implement some of the features Tails
+  is missing too quickly and hastily.
+
+### Other ways to customize Tails
+
+Still, some of the reasons to create Tails derivatives could be solved
+by **relying on our official USB images and customizing them at run time**.
+
+For example, derivatives could:
+
+- Package specific applications in Debian to make them available in Tails as
+  [[Additional Software|doc/persistent_storage/additional_software]].
+
+- Document how to use specific applications in Tails, for example, using the
+  Persistent Storage.
+
+- Help us build in Tails other mechanisms that derivatives might need to
+  adapt Tails to their needs, for example, to have [[!tails_ticket 17367 desc="persistent DConf
+  settings"]] or [[!tails_ticket 17510 desc="additional APT sources"]].
+
+- Talk with us to see how we can adapt our USB images and source code to
+  make them easier to reuse for derivatives.
+
+- To include a piece of software into Tails, talk to us as early as
+  possible so we can provide feedback on how to integrate it.
+
+### Legal considerations
+
+- Tails is a [[registered trademark|https://www.torproject.org/about/trademark/]] of The Tor Project, Inc. The creators of derivatives who would
+  want to distribute modified USB images beyond their personal use would have
+  to use a different name and branding.
+
+- Tails is [[licensed as Free Software under the GPL|doc/about/license]]. The
+  creators of derivatives who would want to distribute modified USB images
+  beyond their personal use would have to also distribute their source code
+  under the GPL.

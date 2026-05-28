@@ -1,0 +1,33 @@
+[[!meta title="Error Reading Data from Tails USB Stick"]]
+
+This page applies in 2 situations:
+
+- If you get the following error message when starting Tails:
+
+      Error reading data from your Tails USB stick.
+      Please go to https://tails.net/ioerror for troubleshooting.
+
+- If you get the following notification while using Tails:
+
+      Error Reading Data from Tails USB Stick
+
+      The hardware of your USB stick is probably failing.
+
+      We recommend that you reinstall Tails on a different USB stick
+      and recover the data from your Persistent Storage as soon as possible.
+
+These alerts are displayed when Tails detects a problem reading or writing to
+your USB stick. Most likely, these alerts mean that the hardware of your USB
+stick is failing and might completely break soon.
+
+You should stop using this USB stick for Tails and install a new one.
+
+- If you don't have a Persistent Storage on this USB stick, we recommend that
+  you [[reinstall Tails|install]] on a new USB stick.
+
+- If you have a Persistent Storage on this USB stick, we recommend that you
+  stop using this Tails immediately, reinstall Tails on a new USB stick, and
+  recover the data from your Persistent Storage as soon as possible.
+
+  To do so, follow our instructions on [[recovering the Persistent Storage from
+  a broken Tails|doc/persistent_storage/recover]].

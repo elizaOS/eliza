@@ -9,13 +9,18 @@ import json
 import re
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
-REPO_ROOT = ROOT.parents[1]
+
+
+def repo_root_for(chip_root: Path) -> Path:
+    return chip_root.parents[1] if len(chip_root.parents) > 1 else chip_root
+
+
+REPO_ROOT = repo_root_for(ROOT)
 RUN_ROOT = ROOT / "pd/openlane/runs"
 DEFAULT_REPORT = ROOT / "build/reports/openlane_pd_blocker_summary.json"
 SCHEMA = "eliza.openlane_pd_blocker_summary.v1"
@@ -152,7 +157,9 @@ def numbered_step_dirs(run_dir: Path) -> list[Path]:
 
 
 def last_completed_stage_name(run_dir: Path) -> str | None:
-    completed = [step for step in numbered_step_dirs(run_dir) if (step / "state_out.json").is_file()]
+    completed = [
+        step for step in numbered_step_dirs(run_dir) if (step / "state_out.json").is_file()
+    ]
     if not completed:
         return None
     return completed[-1].name
@@ -218,21 +225,33 @@ def pdk_snapshot_diagnostic(stage_dir: Path) -> dict[str, Any] | None:
         if key in config
     }
     macro_fields = config.get("MACROS", {})
-    macro_gds = {
-        name: macro.get("gds", [])
-        for name, macro in macro_fields.items()
-        if isinstance(macro, dict)
-    } if isinstance(macro_fields, dict) else {}
-    macro_lef = {
-        name: macro.get("lef", [])
-        for name, macro in macro_fields.items()
-        if isinstance(macro, dict)
-    } if isinstance(macro_fields, dict) else {}
-    macro_lib = {
-        name: macro.get("lib", {})
-        for name, macro in macro_fields.items()
-        if isinstance(macro, dict)
-    } if isinstance(macro_fields, dict) else {}
+    macro_gds = (
+        {
+            name: macro.get("gds", [])
+            for name, macro in macro_fields.items()
+            if isinstance(macro, dict)
+        }
+        if isinstance(macro_fields, dict)
+        else {}
+    )
+    macro_lef = (
+        {
+            name: macro.get("lef", [])
+            for name, macro in macro_fields.items()
+            if isinstance(macro, dict)
+        }
+        if isinstance(macro_fields, dict)
+        else {}
+    )
+    macro_lib = (
+        {
+            name: macro.get("lib", {})
+            for name, macro in macro_fields.items()
+            if isinstance(macro, dict)
+        }
+        if isinstance(macro_fields, dict)
+        else {}
+    )
 
     technology_snapshots = volare_snapshots(technology_fields)
     macro_gds_snapshots = volare_snapshots(macro_gds)
@@ -267,8 +286,7 @@ def pdk_snapshot_diagnostic(stage_dir: Path) -> dict[str, Any] | None:
         "macro_lef_snapshots": macro_lef_snapshots,
         "macro_lib_snapshots": macro_lib_snapshots,
         "macro_gds_paths": {
-            name: [path[:240] for path in iter_strings(paths)]
-            for name, paths in macro_gds.items()
+            name: [path[:240] for path in iter_strings(paths)] for name, paths in macro_gds.items()
         },
         "claim_boundary": (
             "Snapshot consistency is a diagnostic clue only. It does not prove "
@@ -357,9 +375,7 @@ def signoff_artifact_presence_for_run(
                 {
                     "artifact": str(name),
                     "expected_globs": [
-                        pattern
-                        for pattern in spec.get("globs", [])
-                        if isinstance(pattern, str)
+                        pattern for pattern in spec.get("globs", []) if isinstance(pattern, str)
                     ],
                     "release_credit": False,
                 }
@@ -493,11 +509,7 @@ def antenna_repair_log_summary(log: Path) -> dict[str, Any]:
                 heuristic_diode_step_skipped = True
             if "Skipping step 'Heuristic Diode Insertion'" in text:
                 heuristic_diode_step_skipped = True
-            if (
-                port_diodes_inserted is None
-                and "PortDiodePlacement" in text
-                and "Running" in text
-            ):
+            if port_diodes_inserted is None and "PortDiodePlacement" in text and "Running" in text:
                 port_diodes_inserted = 0
             match = iteration_re.search(text)
             if match:
@@ -698,10 +710,7 @@ def antenna_repair_diagnostic(stage_dir: Path) -> dict[str, Any] | None:
             if key in config and key not in config_values:
                 config_values[key] = config[key]
     parse_logs = transcript_logs or stage_logs
-    summaries_by_log = [
-        (log, antenna_repair_log_summary(log))
-        for log in parse_logs
-    ]
+    summaries_by_log = [(log, antenna_repair_log_summary(log)) for log in parse_logs]
     primary = next(
         ((log, summary) for log, summary in summaries_by_log if summary["iteration_count"]),
         None,
@@ -798,9 +807,7 @@ def antenna_repair_diagnostic(stage_dir: Path) -> dict[str, Any] | None:
         and (best_prior is None or (isinstance(delta_vs_prior, int) and delta_vs_prior <= 0))
     ):
         improvement_text = (
-            f" from {best_prior} to {best_count}"
-            if best_prior is not None
-            else f" to {best_count}"
+            f" from {best_prior} to {best_count}" if best_prior is not None else f" to {best_count}"
         )
         next_margin = max(10, antenna_margin - 10)
         next_pd_action = (
@@ -944,9 +951,7 @@ def antenna_repair_diagnostic(stage_dir: Path) -> dict[str, Any] | None:
                 "Use a temporary config copy only; this is a diagnostic segment, "
                 "not release signoff evidence."
             ),
-            "objective": (
-                "Tune antenna strategy after the current repair attempt plateaued."
-            ),
+            "objective": ("Tune antenna strategy after the current repair attempt plateaued."),
             "temporary_config_overrides": {
                 "GRT_ANTENNA_ITERS": config_values.get("GRT_ANTENNA_ITERS", 40),
                 "GRT_ANTENNA_MARGIN": config_values.get("GRT_ANTENNA_MARGIN", 80),
@@ -998,10 +1003,12 @@ def antenna_repair_diagnostic(stage_dir: Path) -> dict[str, Any] | None:
                 "a targeted diagnostic segment, not release signoff evidence."
             )
         next_bounded_experiment["comparison_baseline"] = {
-            **next_bounded_experiment.get("comparison_baseline", {}),
+            **cast("dict[str, object]", next_bounded_experiment.get("comparison_baseline", {})),
             "residual_checkantennas_baseline": comparison,
         }
-        next_bounded_experiment["success_metric"] += (
+        next_bounded_experiment["success_metric"] = cast(
+            "str", next_bounded_experiment["success_metric"]
+        ) + (
             " The next experiment must reduce both the RepairAntennas loop count "
             "and bounded CheckAntennas residual net/row counts; otherwise treat "
             "the lower repair-loop count as a false optimization."
@@ -1098,11 +1105,7 @@ def terminal_stage_diagnostic(run_dir: Path) -> dict[str, Any] | None:
             "IR, density, and manufacturability signoff."
         ),
     }
-    if (
-        unknown_layers["count"]
-        and pdk_diagnostic
-        and pdk_diagnostic["status"].startswith("mixed_")
-    ):
+    if unknown_layers["count"] and pdk_diagnostic and pdk_diagnostic["status"].startswith("mixed_"):
         diagnostic["root_cause_hypothesis"] = (
             "Magic is reading SRAM GDS polygons from a macro snapshot that does "
             "not match the active Magic/technology snapshot; fix snapshot "
@@ -1142,7 +1145,9 @@ def count_magic_drc_boxes(report: Path) -> int | None:
     return count
 
 
-def manual_magic_drc_status(run_dir: Path, process_table: str | None = None) -> dict[str, Any] | None:
+def manual_magic_drc_status(
+    run_dir: Path, process_table: str | None = None
+) -> dict[str, Any] | None:
     manual_dirs = sorted(run_dir.glob("manual-magic-drc*"))
     reports = []
     for manual_dir in manual_dirs:
@@ -1167,10 +1172,7 @@ def manual_magic_drc_status(run_dir: Path, process_table: str | None = None) -> 
     for line in process_table.splitlines():
         references_run = any(needle in line for needle in needles)
         references_manual_drc_child = "magicdnull" in line and "/tmp/manual_drc.tcl" in line
-        if (
-            not ("manual-magic-drc" in line and references_run)
-            and not references_manual_drc_child
-        ):
+        if not ("manual-magic-drc" in line and references_run) and not references_manual_drc_child:
             continue
         parts = line.split(maxsplit=4)
         if len(parts) < 5:
@@ -1189,7 +1191,7 @@ def manual_magic_drc_status(run_dir: Path, process_table: str | None = None) -> 
         return None
     active = bool(active_processes)
     present_reports = [report for report in reports if report["present"]]
-    nonempty_reports = [report for report in present_reports if report["bytes"] > 0]
+    nonempty_reports = [report for report in present_reports if cast("int", report["bytes"]) > 0]
     if active:
         status = "active"
         diagnostic_complete = False
@@ -1247,7 +1249,7 @@ def incomplete_run_report(
         if run_dir is not None
         else f"no complete OpenLane manufacturability run found under {rel(run_root)}"
     )
-    finding = {
+    finding: dict[str, Any] = {
         "code": "openlane_incomplete_pd_run"
         if run_dir is not None
         else "openlane_no_complete_pd_run",
@@ -1340,7 +1342,9 @@ def signoff_blocker_matrix(run_dir: Path, metrics: dict[str, Any]) -> dict[str, 
         "timing": {
             "count": int(metrics.get("timing__setup_vio__count") or 0)
             + int(metrics.get("timing__hold_vio__count") or 0),
-            "artifact_paths": [rel(path / "violator_list.rpt") for path in post_pnr_sta_corner_dirs(run_dir)],
+            "artifact_paths": [
+                rel(path / "violator_list.rpt") for path in post_pnr_sta_corner_dirs(run_dir)
+            ],
             "next_action": "Close setup/hold WNS/TNS in the dominant post-PnR corner.",
         },
         "drv": {
@@ -1360,7 +1364,7 @@ def signoff_blocker_matrix(run_dir: Path, metrics: dict[str, Any]) -> dict[str, 
         "classes": {
             name: {
                 **row,
-                "blocked": row["count"] > 0,
+                "blocked": cast("int", row["count"]) > 0,
                 "next_command": (
                     "scripts/run_openlane.sh --release && "
                     "python3 scripts/openlane_pd_blocker_summary.py --write-report && "
@@ -1478,14 +1482,10 @@ def corner_timing_rows(metrics: dict[str, Any]) -> list[dict[str, Any]]:
                 "corner": corner,
                 "setup_wns": _corner_metric(metrics, "timing__setup__wns", corner),
                 "setup_tns": _corner_metric(metrics, "timing__setup__tns", corner),
-                "setup_violations": _corner_metric(
-                    metrics, "timing__setup_vio__count", corner
-                ),
+                "setup_violations": _corner_metric(metrics, "timing__setup_vio__count", corner),
                 "hold_wns": _corner_metric(metrics, "timing__hold__wns", corner),
                 "hold_tns": _corner_metric(metrics, "timing__hold__tns", corner),
-                "hold_violations": _corner_metric(
-                    metrics, "timing__hold_vio__count", corner
-                ),
+                "hold_violations": _corner_metric(metrics, "timing__hold_vio__count", corner),
                 "slew_violations": _corner_metric(
                     metrics, "design__max_slew_violation__count", corner
                 ),
@@ -1626,13 +1626,10 @@ def timing_electrical_closure_summary(run_dir: Path) -> dict[str, Any]:
         "corners_with_setup_or_hold_violations": [
             row
             for row in rows
-            if (row.get("setup_violations") or 0) > 0
-            or (row.get("hold_violations") or 0) > 0
+            if (row.get("setup_violations") or 0) > 0 or (row.get("hold_violations") or 0) > 0
         ],
         "top_violator_path_groups": _group_violators(all_violators, "group", limit=10),
-        "top_violator_endpoint_families": _group_violators(
-            all_violators, "end_family", limit=10
-        ),
+        "top_violator_endpoint_families": _group_violators(all_violators, "end_family", limit=10),
         "wirelength_pressure": wirelength_pressure_summary(run_dir),
         "violator_reports": sorted(
             violators_by_corner,
@@ -1711,10 +1708,7 @@ def parse_magic_drc_boxes(report: Path) -> list[dict[str, Any]]:
                 continue
             if match := coord_re.match(text):
                 if module and rule:
-                    coords = {
-                        key: float(value)
-                        for key, value in match.groupdict().items()
-                    }
+                    coords = {key: float(value) for key, value in match.groupdict().items()}
                     boxes.append(
                         {
                             "module": module,
@@ -2071,7 +2065,9 @@ def post_repair_checkantennas_summary(stage_dir: Path) -> dict[str, Any]:
         "summary_rows": len(rows),
         "top_layers": [
             {"layer": layer, "rows": count}
-            for layer, count in sorted(layer_counts.items(), key=lambda item: (-item[1], item[0]))[:8]
+            for layer, count in sorted(layer_counts.items(), key=lambda item: (-item[1], item[0]))[
+                :8
+            ]
         ],
         "top_nets": [
             {"net": net, "rows": count}
@@ -2413,9 +2409,7 @@ def build_report(
                 "severity": "blocker",
                 "message": f"OpenROAD antenna check reports {antenna_count} violations",
                 "evidence": {
-                    "report": rel(
-                        final_antenna_report(run_dir)
-                    ),
+                    "report": rel(final_antenna_report(run_dir)),
                     "rows": antenna_rows(run_dir),
                 },
                 "next_step": "Repair the listed nets after Magic DRC geometry is under control.",
@@ -2441,8 +2435,10 @@ def build_report(
         )
 
     latest_incomplete_diagnostic = None
-    if latest_run is not None and latest_run != run_dir and (
-        not manufacturability_state(latest_run) or not manufacturability_report(latest_run)
+    if (
+        latest_run is not None
+        and latest_run != run_dir
+        and (not manufacturability_state(latest_run) or not manufacturability_report(latest_run))
     ):
         latest_incomplete_diagnostic = incomplete_run_report(
             run_root,
@@ -2467,9 +2463,7 @@ def build_report(
             "latest_run_is_complete": latest_run is None or latest_run == run_dir,
             "manual_magic_drc_status": manual_status["status"] if manual_status else None,
             "signoff_artifact_handoff_status": artifact_summary["status"],
-            "signoff_artifact_handoff_missing_count": selected_artifacts.get(
-                "missing_count"
-            ),
+            "signoff_artifact_handoff_missing_count": selected_artifacts.get("missing_count"),
             "drc_blocked": blocker_matrix["classes"]["drc"]["blocked"],
             "lvs_blocked": blocker_matrix["classes"]["lvs"]["blocked"],
             "antenna_blocked": blocker_matrix["classes"]["antenna"]["blocked"],

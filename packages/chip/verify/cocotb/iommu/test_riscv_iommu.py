@@ -389,6 +389,7 @@ async def translation_request_interface_round_trip(dut):
     # ctl read-back: at minimum, go bit honoured by the register
     assert rb_ctl & 0x1, f"TR_REQ_CTL go bit not latched: {rb_ctl:#x}"
 
+
 # ==========================================================================
 # Two-stage page-table walker KAT (Known-Answer Tests).
 #
@@ -451,9 +452,9 @@ def make_ddtp(ppn, mode):
 def build_device_context(dut, ddt_ppn, devid, iosatp_dw, iohgatp_dw):
     """1LVL DDT: DC (4 doublewords) at (ddt_ppn<<12) + (devid&0x7F)*32."""
     dc_base = (ddt_ppn << 12) + (devid & 0x7F) * 32
-    mem_write(dut, dc_base + 0, 1)          # DW0 tc: V=1
+    mem_write(dut, dc_base + 0, 1)  # DW0 tc: V=1
     mem_write(dut, dc_base + 8, iohgatp_dw)  # DW1 iohgatp
-    mem_write(dut, dc_base + 16, 0)          # DW2 ta
+    mem_write(dut, dc_base + 16, 0)  # DW2 ta
     mem_write(dut, dc_base + 24, iosatp_dw)  # DW3 fsc (iosatp)
 
 
@@ -516,13 +517,16 @@ async def walker_single_stage_iova_to_pa(dut):
     # FS root PPN 2 -> L1 PPN 3 -> leaf PPN 5; leaf maps target_ppn.
     mem_write(dut, (2 << 12) + i[2] * 8, nonleaf_pte(3))
     mem_write(dut, (3 << 12) + i[1] * 8, nonleaf_pte(5))
-    mem_write(dut, (5 << 12) + i[0] * 8,
-              leaf_pte(target_ppn, PTE_R | PTE_W | PTE_U | PTE_A | PTE_D))
+    mem_write(
+        dut, (5 << 12) + i[0] * 8, leaf_pte(target_ppn, PTE_R | PTE_W | PTE_U | PTE_A | PTE_D)
+    )
     mem_write(dut, target_ppn << 12, sentinel)
 
     build_device_context(
-        dut, ddt_ppn, devid,
-        iosatp_dw=atp_dw(8, 2),   # Sv39, root PPN 2
+        dut,
+        ddt_ppn,
+        devid,
+        iosatp_dw=atp_dw(8, 2),  # Sv39, root PPN 2
         iohgatp_dw=atp_dw(0, 0),  # G-stage BARE
     )
 
@@ -532,7 +536,7 @@ async def walker_single_stage_iova_to_pa(dut):
     assert int(dut.fault_count_dbg.value) == pre_faults, "mapped IOVA must not fault"
     assert rresp == RESP_OKAY, f"mapped read returned resp {rresp}"
     assert rdata == sentinel, (
-        f"IOVA {iova:#x} -> PA {(target_ppn<<12):#x} mismatch: "
+        f"IOVA {iova:#x} -> PA {(target_ppn << 12):#x} mismatch: "
         f"read {rdata:#x}, expected sentinel {sentinel:#x}"
     )
 
@@ -558,8 +562,9 @@ async def walker_two_stage_iova_to_pa(dut):
     # physical addresses; the G-stage maps each GPA identically to its SPA.
     mem_write(dut, (2 << 12) + i[2] * 8, nonleaf_pte(3))
     mem_write(dut, (3 << 12) + i[1] * 8, nonleaf_pte(5))
-    mem_write(dut, (5 << 12) + i[0] * 8,
-              leaf_pte(target_ppn, PTE_R | PTE_W | PTE_U | PTE_A | PTE_D))
+    mem_write(
+        dut, (5 << 12) + i[0] * 8, leaf_pte(target_ppn, PTE_R | PTE_W | PTE_U | PTE_A | PTE_D)
+    )
     mem_write(dut, target_ppn << 12, sentinel)
 
     # G-stage: full 3-level Sv39x4 walk (root PPN 8 -> L1 PPN 9 -> L0 PPN 10)
@@ -569,14 +574,16 @@ async def walker_two_stage_iova_to_pa(dut):
     # G L0 table holds an identity leaf at each gpn0 index.  Every G-stage
     # PTE is really fetched and permission/A/D-checked by the walker.
     perms = PTE_R | PTE_W | PTE_U | PTE_A | PTE_D
-    mem_write(dut, (8 << 12) + 0, nonleaf_pte(9))   # G root[gpn2=0] -> G L1
+    mem_write(dut, (8 << 12) + 0, nonleaf_pte(9))  # G root[gpn2=0] -> G L1
     mem_write(dut, (9 << 12) + 0, nonleaf_pte(10))  # G L1[gpn1=0]  -> G L0
     for gpn0 in (2, 3, 5, 7):
         mem_write(dut, (10 << 12) + gpn0 * 8, leaf_pte(gpn0, perms))  # identity
 
     build_device_context(
-        dut, ddt_ppn, devid,
-        iosatp_dw=atp_dw(8, 2),   # Sv39, FS root PPN 2 (a GPA)
+        dut,
+        ddt_ppn,
+        devid,
+        iosatp_dw=atp_dw(8, 2),  # Sv39, FS root PPN 2 (a GPA)
         iohgatp_dw=atp_dw(8, 8),  # Sv39x4, GS root PPN 8
     )
 
@@ -586,7 +593,7 @@ async def walker_two_stage_iova_to_pa(dut):
     assert int(dut.fault_count_dbg.value) == pre_faults, "two-stage mapped IOVA must not fault"
     assert rresp == RESP_OKAY, f"two-stage read resp {rresp}"
     assert rdata == sentinel, (
-        f"two-stage IOVA {iova:#x} -> PA {(target_ppn<<12):#x}: "
+        f"two-stage IOVA {iova:#x} -> PA {(target_ppn << 12):#x}: "
         f"read {rdata:#x} expected {sentinel:#x}"
     )
 
@@ -610,7 +617,9 @@ async def walker_unmapped_iova_faults_with_record(dut):
     mem_write(dut, (5 << 12) + i[0] * 8, 0)  # leaf invalid (clears any residue)
 
     build_device_context(
-        dut, ddt_ppn, devid,
+        dut,
+        ddt_ppn,
+        devid,
         iosatp_dw=atp_dw(8, 2),
         iohgatp_dw=atp_dw(0, 0),
     )
@@ -668,12 +677,12 @@ async def command_queue_iofence_completes(dut):
 
     cq_ppn = 1
     # IOFENCE.C: opcode field [6:0] == 0x02 (per the RTL CMD_OP_IOFENCE).
-    mem_write(dut, (cq_ppn << 12) + 0, 0x02)   # command word 0 (low 64b)
-    mem_write(dut, (cq_ppn << 12) + 8, 0x00)   # command word 1 (high 64b)
+    mem_write(dut, (cq_ppn << 12) + 0, 0x02)  # command word 0 (low 64b)
+    mem_write(dut, (cq_ppn << 12) + 8, 0x00)  # command word 1 (high 64b)
 
     await mmio_write64(dut, OFFS_CQB, make_ddtp(cq_ppn, 0))  # cqb.ppn = cq_ppn
-    await mmio_write64(dut, OFFS_CQCSR, 0x1)                 # cqen
-    await mmio_write64(dut, OFFS_CQT, 0x1)                   # one command queued
+    await mmio_write64(dut, OFFS_CQCSR, 0x1)  # cqen
+    await mmio_write64(dut, OFFS_CQT, 0x1)  # one command queued
 
     seen_complete = False
     for _ in range(64):

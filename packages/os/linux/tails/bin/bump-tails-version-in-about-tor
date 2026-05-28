@@ -1,0 +1,27 @@
+#!/bin/sh
+
+set -e
+set -u
+set -o pipefail
+
+TAILS_VERSION="${1}"
+
+REPO_NAME=$(git remote get-url origin | sed -e 's@.*/@@' -e 's@\.git@@')
+if [ "${REPO_NAME}" = tor-browser ]; then
+    FILE1='browser/components/abouttor/content/aboutTor.html'
+    FILE2='toolkit/locales/en-US/toolkit/global/tor-browser.ftl'
+elif [ "${REPO_NAME}" = tails ]; then
+    FILE1='config/chroot_local-includes/usr/share/tails/build/custom-about-tor/browser-omni.patch'
+    FILE2='config/chroot_local-includes/usr/share/tails/build/custom-about-tor/omni.patch'
+else
+    echo "error: unsupported Git repository: ${REPO_NAME}" >&2
+    exit 1
+fi
+
+cd "$(git rev-parse --show-toplevel)"
+sed -i --regexp-extended "s@href=\"https://tails[.]net/news/version_[^\"]*\"@href=\"https://tails.net/news/version_${TAILS_VERSION}\"@" \
+    "${FILE1}"
+sed -i --regexp-extended "s@You are running Tails \S+[.] @You are running Tails ${TAILS_VERSION}. @" \
+    "${FILE2}"
+git commit -m "about:tor: bump Tails version to ${TAILS_VERSION}" "${FILE1}" "${FILE2}"
+git show

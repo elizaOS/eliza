@@ -114,6 +114,80 @@ def test_video_review_uses_rollout_telemetry_sidecar(tmp_path: Path) -> None:
     assert report["videos"][0]["verdict"] == "needs-work"
 
 
+def test_video_review_accepts_boundary_step_torso_tolerance(tmp_path: Path) -> None:
+    video = tmp_path / "evidence" / "robot-a" / "robot-a_walk.mp4"
+    _write_video(video, frames=40, moving=True)
+    video.with_suffix(".telemetry.json").write_text(
+        json.dumps(
+            {
+                "rollout_ok": False,
+                "steps_executed": 40,
+                "steps_requested": 40,
+                "terminated": True,
+                "truncated": True,
+                "first_done_step": 40,
+                "fall_threshold": 0.378,
+                "torso_z": {"min": 0.3738, "final": 0.3738},
+                "upright_proj": {"min": 0.59, "final": 0.59},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = review_videos(
+        tmp_path / "evidence",
+        out_dir=tmp_path / "review",
+        samples=4,
+        min_frames=5,
+        min_nonblank_ratio=0.01,
+        min_mean_frame_delta=0.01,
+        min_visual_progress=0.01,
+        require_telemetry=True,
+    )
+
+    assert report["ok"] is True
+    assert report["telemetry"]["ok_count"] == 1
+    assert report["telemetry"]["failed_count"] == 0
+    assert report["videos"][0]["checks"]["telemetry_rollout_ok"] is True
+    assert report["videos"][0]["telemetry"]["final_step_fall_tolerance_applied"] is True
+
+
+def test_video_review_accepts_combined_boundary_step_commands(tmp_path: Path) -> None:
+    video = tmp_path / "evidence" / "robot-a" / "robot-a_combined_actions.mp4"
+    _write_video(video, frames=80, moving=True)
+    command = {
+        "rollout_ok": False,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": True,
+        "truncated": True,
+        "first_done_step": 40,
+        "fall_threshold": 0.378,
+        "torso_z": {"min": 0.3738, "final": 0.3738},
+        "upright_proj": {"min": 0.59, "final": 0.59},
+    }
+    video.with_suffix(".telemetry.json").write_text(
+        json.dumps({"rollout_ok": False, "commands": [command, command]}),
+        encoding="utf-8",
+    )
+
+    report = review_videos(
+        tmp_path / "evidence",
+        out_dir=tmp_path / "review",
+        samples=4,
+        min_frames=5,
+        min_nonblank_ratio=0.01,
+        min_mean_frame_delta=0.01,
+        min_visual_progress=0.01,
+        require_telemetry=True,
+    )
+
+    assert report["ok"] is True
+    assert report["telemetry"]["ok_count"] == 1
+    assert report["videos"][0]["checks"]["telemetry_rollout_ok"] is True
+    assert report["videos"][0]["telemetry"]["failed_commands"] == []
+
+
 def test_video_review_can_require_telemetry(tmp_path: Path) -> None:
     _write_video(tmp_path / "evidence" / "robot-a" / "robot-a_walk.mp4", frames=8, moving=True)
 

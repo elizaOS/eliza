@@ -1,0 +1,305 @@
+[[!meta title="User interviews"]]
+
+We are collecting here summaries and insights from interviews
+with Tails users.
+
+For privacy reasons, the name and organization of the interviewees were
+changed, the interviews were translated and slightly rephrased, and the
+interviewees reviewed the text before publication.
+
+<hr/><a id="josh"></a>
+
+Joshua, September 2025
+----------------------
+
+Joshua is an IT specialist in the US who uses Tails, at work, for sysadmin and
+security tasks and, at home, because he values his privacy.
+
+[[Read the interview with Joshua|interviews/joshua]]
+
+<hr/><a id="robin"></a>
+
+Robin, April 2025
+-----------------
+
+Robin is an activist in struggle against a nuclear project in France who
+uses Tails and trains others to protect their communication and leave no
+trace.
+
+[[Read the interview with Robin|interviews/robin]]
+
+<hr/><a id="boak"></a>
+
+BOAK, January 2023
+------------------
+
+BOAK is an anarchist organization who use Tails to organize direct action
+against the Russian army during the war in Ukraine.
+
+[[Read the interview with BOAK|interviews/boak]]
+
+<hr/><a id="gabriela"></a>
+
+Gabriela, November 2022
+-----------------------
+
+Gabriela is a feminist hacker who has been training low-income women from the
+Bahia region on using Tails.
+
+[[Read the interview with Gabriela|interviews/gabriela]]
+
+<hr/><a id="araceli"></a>
+
+Araceli, June 2022
+------------------
+
+Araceli is a sociologist from Mexico. She used Tails to research very sensitive
+topics like migration, human trafficking, and drug trafficking.
+
+[[Read the interview with Araceli|interviews/araceli]]
+
+<hr/><a id="lucas"></a>
+
+Lucas, May 2022
+---------------
+
+Lucas is a filmmaker from Mexico working on the topic of mass surveillance.
+He's discovering Tails as a safe space for creativity.
+
+[[Read the interview with Lucas|interviews/lucas]]
+
+<hr/><a id="rafael"></a>
+
+Rafael, May 2022
+----------------
+
+Rafael is an activist in Mexico City. He uses Tails to organize workshops about
+digital security for grassroots organizations.
+
+[[Read the interview with Rafael|interviews/rafael]]
+
+<hr/><a id="daniel"></a>
+
+Daniel, March 2022
+------------------
+
+Daniel used Tails to investigate pedocriminal forums on the Darknet and take
+down 13.5 terabytes of photos and videos of child abuse.
+
+[[Read the interview with Daniel|interviews/daniel]]
+
+<hr/><a id="roberto"></a>
+
+Roberto, October 2019
+---------------------
+
+Roberto is a journalist and works for an organization that does investigative
+journalism. I'm in charge of being the first filter for the information that
+arrives on *Leaks*, which is an alliance of news rooms across the country.
+
+[[Read the interview with Roberto|interviews/roberto]]
+
+<hr/><a id="bea"></a>
+
+Bea, August 2018
+----------------
+
+Bea is from North America but lives in Latin America where she does
+political work as a volunteer in a grassroots organization.
+
+[[Read the interview with Bea|interviews/bea]]
+
+<hr/><a id="claudia"></a>
+
+Claudia and Felix, January 2018
+-------------------------------
+
+Claudia and Felix are reporters working in a journalists organization in
+Latin America. They investigate and report on issues such as
+human-rights violations, enforced disappearances, drug trafficking but
+always with a focus on the social impacts.
+
+[[Read the interview with Claudia and Felix|interviews/claudia_felix]]
+
+<hr/><a id="joana"></a>
+
+Joana and Orlando, January 2018
+-------------------------------
+
+Joana and Orlando are investigative journalists and human-rights
+defenders in Latin America. They work in an organization that
+investigates and reports on private companies in Latin America, fighting
+for transparency and accountability and denouncing human-right
+violations of these companies, especially towards local communities.
+
+[[Read the interview with Joana and Orlando|interviews/joana_orlando]]
+
+<hr/><a id="mathias"></a>
+
+Mathias, December 2017
+----------------------
+
+Mathias is a 25 years old video technician living in the north of france. He is also a punk hardcore singer, and is involved in several struggles
+against the capitalist world.
+
+[[Read the interview with Mathias|interviews/mathias]]
+
+<hr/><a id="daan"></a>
+
+Daan, December 2017
+-------------------
+
+Daan is a 18 years old ICT (information and communications technology)
+student and a security researcher. He lives in the Netherlands and
+cares a lot about privacy.
+
+[[Read the interview with Daan|interviews/daan]]
+
+<hr/><a id="charles"></a>
+
+Charles, December 2017
+----------------------
+
+Charles is 30 years old and lives in North America. He is a political
+activist working on law reform at the state level. He cares about free
+software and calls himself a "purist". He is part of an organization
+that provides computers and cell phones with free software
+(*libreboot*, *Replicant*) to people.
+
+[[Read the interview with Charles|interviews/charles]]
+
+<hr/><a id="miguel"></a>
+
+Miguel, May 2017
+----------------
+
+Miguel is a 20 years old statistics student in Brazil. He is part of
+a collective that works on online privacy and security.
+
+[[Read the interview with Miguel|interviews/miguel]]
+
+<hr/><a id="sophia"></a>
+
+Sophia, May 2017
+----------------
+
+Sophia is 30 years old, lives in Brazil and has two jobs: she is
+a teacher and a system administrator.
+
+[[Read the interview with Sophia|interviews/sophia]]
+
+<hr/><a id="isabella"></a>
+
+Isabella, May 2017
+------------------
+
+Isabella is a 50 years old Debian user living in Brazil. She used to
+be a journalist at a magazine that talked a lot about FOSS (among
+other things), then got in touch with people working on privacy
+enhancing technologies (PET) and switched jobs: she now works with
+a collective that defends freedom and privacy online, learns about
+privacy tools and does advocacy for them.
+
+[[Read the interview with Isabella|interviews/isabella]]
+
+<hr/><a id="bernardo"></a>
+
+Bernardo, May 2017
+------------------
+
+Bernardo is a 37 years old public administration teacher and social
+science researcher in Brazil. He studies the way social movements use
+Internet communication tools. He discovered Tails after the Snowden
+leaks, via a hackers collective and the homepage of the Tor website.
+
+[[Read the interview with Bernardo|interviews/bernardo]]
+
+<hr/><a id="pedro"></a>
+
+Pedro, May 2017
+---------------
+
+Pedro is 23 years old and studies applied mathematics in college in
+Brazil. He has been a Linux user since 11 years; Qubes OS is now his
+main operating system.
+
+[[Read the interview with Pedro|interviews/pedro]]
+
+<hr/><a id="margarita"></a>
+
+Margarita, March 2017
+---------------------
+
+Margarita is a digital security consultant in Latin America. She used to
+develop autonomous communication infrastructures and is now focusing on
+training human-right defenders and organizations in digital security.
+She has been presenting Tails mostly to two different public:
+
+[[Read the interview with Margarita|interviews/margarita]]
+
+<hr/><a id="helen"></a>
+
+Helen, March 2017
+-----------------
+
+Helen is a digital security trainer working in an organization defending
+the right for free speech in North America and working with both large
+news organizations and freelance journalists.
+
+[[Read the interview with Helen|interviews/helen]]
+
+<hr/><a id="ernesto"></a>
+
+Ernesto, March 2017
+-------------------
+
+Ernesto is working in the social science department of a University in
+Latin America where he does communication, web development, and video.
+He is also active in a local hacklab where he has a community TV and
+does video editing with free software.
+
+[[Read the interview with Ernesto|interviews/Ernesto]]
+
+<hr/><a id="ray"></a>
+
+Ray, March 2017
+---------------
+
+Ray is a security consultant and trainer in Africa.
+
+[[Read the interview with Ray|interviews/ray]]
+
+<hr/><a id="adam"></a>
+
+Adam, March 2017
+----------------
+
+Adam is an investigative journalist working in an organization raising
+awareness around State surveillance and digital freedom in Western
+Europe. He has been using lots of Tor in different environments for
+years.
+
+[[Read the interview with Adam|interviews/adam]]
+
+<hr/><a id="alex"></a>
+
+Alex, March 2017
+----------------
+
+Alex is a journalist working for a big news room in Western Europe.
+
+[[Read the interview with Alex|interviews/alex]]
+
+<hr/><a id="jeanne"></a>
+
+Jeanne, February 2017
+---------------------
+
+Jeanne has been working as an independent journalist for 5-6 years in Western Europe. She
+writes stories that she sells to many different newspapers. She is also
+active in a nonprofit resource center and coworking space for
+independent journalists in her city where she advocates for privacy to
+the local press. She runs Ubuntu on her PC and can handle it all-right
+with some help from her geek friends.
+
+[[Read the interview with Jeanne|interviews/jeanne]]

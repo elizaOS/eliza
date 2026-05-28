@@ -72,8 +72,8 @@
  */
 
 import { access } from "node:fs/promises";
-import { homedir } from "node:os";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 import type { EotClassifier, VoiceTurnSignal } from "./eot-classifier";
 import { turnSignalFromProbability } from "./eot-classifier";
 
@@ -117,12 +117,11 @@ export const LIVEKIT_IM_END_TOKEN = "<|im_end|>";
 
 /**
  * Default on-disk location for the staged GGUF. The bundle downloader
- * materializes assets under `~/.eliza/local-inference/models/...`; this
+ * materializes assets under `<stateDir>/local-inference/models/...`; this
  * matches the path used by the ONNX-backed `LiveKitTurnDetector`.
  */
 export const DEFAULT_LIVEKIT_TURN_DETECTOR_GGML_DIR = path.join(
-	homedir(),
-	".eliza",
+	resolveStateDir(),
 	"local-inference",
 	"models",
 	"turn-detector",

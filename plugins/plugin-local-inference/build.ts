@@ -25,11 +25,16 @@ const start = Date.now();
 rmSync("dist", { recursive: true, force: true });
 
 const result = await Bun.build({
+	// Entrypoints MUST start with "./". Without it, Bun.build mis-roots
+	// relative-import resolution for the secondary entrypoints — the
+	// ./dflash-* imports reached via src/services/index.ts then fail with
+	// "Could not resolve" on the Linux CI runner while still building on
+	// macOS (oven-sh/bun#12734).
 	entrypoints: [
-		"src/index.ts",
-		"src/runtime/index.ts",
-		"src/routes/index.ts",
-		"src/services/index.ts",
+		"./src/index.ts",
+		"./src/runtime/index.ts",
+		"./src/routes/index.ts",
+		"./src/services/index.ts",
 	],
 	outdir: "dist",
 	target: "node",

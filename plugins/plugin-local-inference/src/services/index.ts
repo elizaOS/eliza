@@ -59,13 +59,6 @@ export {
 	totalRamMb,
 } from "./device-tier";
 export {
-	type DflashDoctorCheck,
-	type DflashDoctorReport,
-	type DflashDoctorStatus,
-	runDflashDoctor,
-} from "./dflash-doctor";
-export { getDflashRuntimeStatus } from "./dflash-server";
-export {
 	LocalInferenceEngine,
 	localInferenceEngine,
 	resolveIdleUnloadMs,
@@ -114,13 +107,6 @@ export {
 	type VoiceLatencyDevPayload,
 	voiceLatencyTracer,
 } from "./latency-trace";
-export {
-	diffSnapshots,
-	fetchMetricsSnapshot,
-	type LlamaServerMetricSnapshot,
-	type LocalUsageBlock,
-	parsePrometheusMetrics,
-} from "./llama-server-metrics";
 export * from "./manifest/index";
 export {
 	type ArbiterCapability,
@@ -145,6 +131,12 @@ export {
 	nodeOsPressureSource,
 } from "./memory-pressure";
 export {
+	type MtpDoctorCheck,
+	type MtpDoctorCheckStatus,
+	type MtpDoctorReport,
+	runMtpDoctor,
+} from "./mtp-doctor";
+export {
 	buildPlanActionsSkeleton,
 	buildPlannerGuidedDecode,
 	type PlannerAction,
@@ -168,12 +160,6 @@ export {
 	selectRecommendedModelForSlot,
 	selectRecommendedModels,
 } from "./recommendation";
-export {
-	type DispatchGenerateInput,
-	dispatchGenerate,
-	type HttpStreamingAdapter,
-	type InferenceStreamEvent,
-} from "./runtime-dispatcher";
 export {
 	type InferenceRuntimeMode,
 	type InferenceRuntimeModeInput,

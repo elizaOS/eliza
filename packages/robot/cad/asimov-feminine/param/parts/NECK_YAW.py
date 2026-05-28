@@ -14,6 +14,7 @@ import numpy as np
 import trimesh
 from shapely.geometry import LineString
 import paramlib as P
+import warp2 as W
 import connections as C
 
 ROOT = '/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot'
@@ -68,17 +69,15 @@ def build():
     orig = trimesh.load(SRC)
     reserved = C.reserved_levels('NECK_YAW')  # [0.0, 0.03735]
 
-    param = P.slice_to_rings(orig, axis='z', step=0.01, n_angular=72, pad=0.5)
-    # Anchor the parent mate disc (Z=0) and a hair above so the loft's bottom
-    # cap is the true 39 mm interface, not an interpolation across the keyway.
-    _insert_anchor(param, orig, 0.0)
-    _insert_anchor(param, orig, 0.001)
-    w = P.connection_weight(param, reserved, ramp=0.03)
-
-    # Uniform slim; connection_weight blends back to 1.0 at both joint planes.
-    P.radial_scale(param, lambda z: SLIM, weight=w)
-
-    rebuilt = P.rings_to_mesh(param)
+    rebuilt = W.warp_similarity(
+        orig,
+        axis='z',
+        scale_fn=lambda _z: SLIM,
+        reserved=reserved,
+        ramp=0.03,
+        step=0.0025,
+        smooth_m=5,
+    )
     rebuilt.export(OUT)
     return orig, rebuilt, reserved
 

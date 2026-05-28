@@ -1,0 +1,131 @@
+[[!meta date="Mon, 15 Oct 2012 23:45:00 +0200"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Call for testing: 0.15~rc1"]]
+
+<p>You can help Tails! The <em>first</em> release candidate for the upcoming
+version 0.15 is out. Please test it and see if all works for you.</p>
+
+[[!toc levels=1]]
+
+<h1>How to test Tails 0.15~rc1?</h1>
+
+<ol>
+  <li>
+    <p>
+      <strong>Keep in mind that this is a test image.</strong> We have made sure
+      that it is not broken in an obvious way, but it might still contain
+      undiscovered issues.
+    </p>
+  </li>
+  <li>
+    <p>Download the ISO image and its signature:</p>
+    <p>
+      <a class="download-file"
+         href=""
+      >Tails 0.15~rc1 ISO image</a>
+    </p>
+    <p>
+      <a class="download-signature"
+         href=""
+      >Tails 0.15~rc1 signature</a>
+    </p>
+  </li>
+  <li>
+    <p>
+      Verify the ISO image.
+    </p>
+  </li>
+  <li>
+    <p>
+      Have a look at the list of <a href="#known_issues">known issues
+      of this release</a> and the list of [[longstanding known
+      issues|support/known_issues]].
+    </p>
+  </li>
+  <li>
+    <p>
+      Test wildly!
+    </p>
+  </li>
+</ol>
+
+<p>If you find anything that is not working as it should, please [[report to
+us|doc/first_steps/whisperback]]! Bonus points if you check that it is not a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].</p>
+
+<h1>What's new since 0.14?</h1>
+
+<ul>
+  <li>Major new features
+    <ul>
+      <li>Persistence for browser bookmarks.</li>
+      <li>Support for obfsproxy bridges.</li>
+    </ul>
+  </li>
+  <li>Minor improvements
+    <ul>
+      <li>Add the Hangul Input Method Engine for SCIM.</li>
+      <li>Add vendor-specific dpkg origin information. This makes
+      <code>dpkg-vendor</code> return correct information.</li>
+      <li>Install <code>pcscd</code> and <code>libccid</code> from
+      <code>squeeze-backports</code>. This is
+      needed to support, to some extent, some OpenPGP SmartCard readers.</li>
+      <li>Install HPIJS PPD files. Note that this depends on IJS driver
+      (hpijs), and adds support for some printers, such as Xerox
+      DocumentCenter400.</li>
+      <li>Use LCD-optimized fonts.</li>
+      <li>Update TrueCrypt to version 7.1a.</li>
+    </ul>
+  </li>
+  <li>Bugfixes
+    <ul>
+      <li>Do not use pdnsd anymore. It has been orphaned in Debian, has quite
+      some bugs in there, and apparently Tor's <code>DNSPort</code>'s own caching is
+      be good enough.</li>
+      <li>Remove useless iceweasel cookies exceptions. They are useless as
+      per-session cookies are allowed.</li>
+      <li>Do not run <code>setupcon</code> on X. This call is only needed on the Linux
+      console, no need to annoy the user with a weird "Press enter to
+      activate this console" when the open a root shell in a GNOME
+      Terminal.</li>
+      <li>Allow the <code>tails-iuk-get-target-file</code> user to connect to the
+      <code>SOCKSPort</code> dedicated for Tails-specific software.</li>
+    </ul>
+  </li>
+  <li>
+    Iceweasel
+    <ul>
+      <li>User profile is now generated at build time in order to support
+        persistent bookmarks.</li>
+      <li>Update HTTPS Everywhere to version 3.0.4.</li>
+      <li>Update NoScript to version 2.6.</li>
+      <li>Fix bookmark to I2P router console.</li>
+      <li>Re-enable Monkeysphere extension to connect to the validation
+        agent.</li>
+    </ul>
+  </li>
+  <li>
+    Build system
+    <ul>
+      <li>Custom packages are now retrieved from Tails APT repository instead
+        of bloating the Git repository.</li>
+      <li>Allow '~' in wiki filenames. This makes it possible to ship
+        update-description files for release candidates.</li>
+      <li>Document how to create incremental update kit.</li>
+    </ul>
+  </li>
+</ul>
+
+<h1><a id="known_issues"></a>Known issues in 0.15~rc1</h1>
+
+<h2>Wrong distribution in APT sources</h2>
+
+<p>APT is configured to use the <code>devel</code> distribution on Tails custom
+[[APT repository|contribute/APT_repository]]. It should have used <code>0.15-rc1</code>
+instead. The latter provides a stable source for package installation whereas
+packages can be uploaded in <code>devel</code> at anytime, without having received
+much tests.</p>
+
+<p>If you want to install custom packages, it is recommended that
+you first replace <code>devel</code> by <code>0.15-rc1</code> in <code>/etc/apt/sources.list</code> before updating the package lists.</p>

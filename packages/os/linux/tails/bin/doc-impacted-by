@@ -1,0 +1,282 @@
+#!/usr/bin/env ruby
+require 'deep_merge'
+require 'English'
+require 'git'
+require 'optparse'
+require 'yaml'
+
+require 'test/unit'
+Test::Unit.run = true
+# Make all the assert_* methods easily accessible.
+include Test::Unit::Assertions # rubocop:disable Style/MixinUsage
+
+# The Ruby Git module we use needs the Git root directory, and this
+# prevents it from being able to run the command below.
+GIT_DIR = `git rev-parse --show-toplevel`.chomp
+assert_equal(0, $CHILD_STATUS.exitstatus)
+DEFAULT_RELATIONSHIP_FILE = "#{GIT_DIR}/doc-source-relationships.yml".freeze
+
+class Object
+  def arrayify
+    instance_of?(Array) ? self : [self]
+  end
+end
+
+class Array
+  def glob(glob)
+    self.select do |e|
+      e.instance_of?(String) && File.fnmatch(glob, e, File::FNM_EXTGLOB)
+    end
+  end
+end
+
+def parse_argv!
+  options = {}
+  opt_parser = OptionParser.new do |opts|
+    opts.banner = 'Usage: [OPTION]... COMMITISH1 COMMITISH2 MANIFEST1 MANIFEST2'
+    opts.separator ''
+    opts.separator 'Produces a list of documentation pages that might need ' \
+                   'attention due to the changes from COMMITISH1 to ' \
+                   'COMMITISH2. The corresponding .build-manifest files must ' \
+                   'be passed as MANIFEST1 and MANIFEST2.'
+    opts.separator ''
+    opts.separator 'Example:'
+    opts.separator '    bin/doc-impacted-by 3.0 3.2 ' \
+                   'tails-amd64-3.0.build-manifest ' \
+                   'tails-amd64-3.2.build-manifest'
+    opts.separator ''
+    opts.separator 'Options:'
+
+    opts.on('-h', '--help', 'Show this message') do
+      puts opts
+      exit
+    end
+
+    opts.on('-f PATH', '--relationship-file=PATH',
+            'Use a custom PATH for the doc-source relationship description ' \
+            "file (default: #{File.basename(DEFAULT_RELATIONSHIP_FILE)} in " \
+            'the Git root)') do |path|
+      options['relationship-file'] = path
+    end
+
+    opts.on('-s', '--skip-packages', 'Skip looking at packages, ' \
+                                     'only look at Git') do
+      options['skip-packages'] = true
+    end
+  end
+  parameters = opt_parser.parse(ARGV)
+  req_nr_parameters = options['skip-packages'] ? 2 : 4
+  assert_equal(req_nr_parameters, parameters.size,
+               "You must pass exactly #{req_nr_parameters} parameters")
+  [options, parameters]
+end
+
+# From a .build-manifest, from its list of packages, generate a
+# Hash mapping `package` to a Hash containing the remaining package
+# fields from the .build-manifest (e.g. `arch`, `version`).
+def read_package_manifest_file_as_package_map(path)
+  package_manifest = YAML.safe_load(File.read(path))
+  packages = package_manifest['packages']['binary'] +
+             package_manifest['packages']['source']
+  packages
+    .map do |entry|
+    [
+      entry['package'],
+      entry.clone.delete_if { |k, _| k == 'package' },
+    ]
+  end
+    .to_h
+end
+
+def canonicalize_relationship(orig_entry)
+  entry = orig_entry.clone
+  field_abbreviations = {
+    'file'    => 'files',
+    'package' => 'packages',
+    'page'    => 'pages',
+    'test'    => 'tests',
+  }
+  fields = field_abbreviations.values
+  field_abbreviations.each do |short, long|
+    next unless entry.key?(short)
+
+    assert(!entry.key?(long),
+           "contains both '#{long}' and its abbreviation '#{short}'")
+    v = entry[short]
+    entry.delete(short)
+    entry[long] = v
+  end
+  assert(entry.key?('pages'),
+         "lacks the obligatory 'pages' field")
+  assert(entry.keys.size > 1,
+         "entries with only a 'pages' field are meaningless")
+  # Note: `(a - b).empty?` <==> "a is a subset of b?"
+  assert((entry.keys - fields).empty?,
+         "contains invalid fields: #{entry.keys - fields}")
+  fields.each do |field|
+    next unless entry.key?(field)
+
+    entry[field] = entry[field].arrayify
+  end
+  entry
+rescue Exception => e
+  warn 'Problematic entry:'
+  warn YAML.dump([orig_entry])
+  STDERR.puts
+  raise e
+end
+
+# Reads the `relationship_file` and returns a "documentation impact
+# map", a Hash which maps all documentation pages to the sources it is
+# impacted by.
+def read_relationship_file_as_impact_map(relationship_file)
+  impact_map = {}
+  relationships = YAML.safe_load(File.read(relationship_file))
+  relationships.map { |e| canonicalize_relationship(e) } .each do |entry|
+    entry['pages'].each do |page|
+      source_files = entry.clone.delete_if { |k, _| k == 'pages' }
+      impact_map.deep_merge({ page => source_files })
+    end
+  end
+  impact_map
+end
+
+# Given the "documentation impact map" and the "old" and "new" state,
+# look at the changes between "old" and "new" and find which
+# documentation pages are impacted. The return value is a mapping
+# from each affected documentation page to the list of "reasons",
+# explanations how the sources impact the page.
+def find_impacted_docs(impact_map,
+                       old_commit,   new_commit,
+                       old_manifest, new_manifest)
+  git = Git.open(GIT_DIR)
+  git_diff = git.diff(old_commit, new_commit)
+  # Create the list of all wiki files, and use it as an approximation
+  # of all documentation pages. It's a super set, so it only impacts
+  # performance when we search in it later. Ideally we'd like to do
+  # something like `git.object(new_commit).path('wiki/src')` but the
+  # Git module we use seem to not support listing files at a certain
+  # commit.
+  git_cmd_wiki_files = 'git ls-tree -r --full-tree ' \
+                       "--name-only #{new_commit} -- wiki/src"
+  doc_pages = `#{git_cmd_wiki_files}`.chomp.split("\n")
+  assert_equal(0, $CHILD_STATUS.exitstatus, 'Error: `git ls-tree` failed')
+
+  old_packages = old_manifest.keys
+  new_packages = new_manifest.keys
+  removed_packages = old_packages - new_packages
+  introduced_packages = new_packages - old_packages
+  updated_packages = (new_packages & old_packages).reject do |package|
+    old_manifest[package] == new_manifest[package]
+  end
+
+  impacted_docs = {}
+  impact_map.each do |page, sources|
+    file_paths = []
+    package_globs = []
+    test_paths = []
+    sources.each do |type, source|
+      case type
+      when 'packages'
+        package_globs = source
+      when 'tests'
+        test_paths = source.map { |path| "features/#{path}" }
+      when 'files'
+        file_paths = source
+      else
+        raise "Unknown field '#{type}' in impact map; this should not " \
+              'happen, and probably means canonicalize_relationship() ' \
+              'is buggy'
+      end
+    end
+    all_source_file_paths = file_paths + test_paths
+    doc_pages.glob("wiki/src/#{page}.{html,mdwn}").each do |page_path|
+      all_source_file_paths.each do |source_path|
+        # Git::Diff#path() alters the object so it cannot be used for a
+        # successive call for another path.
+        source_path_diff = git_diff.clone.path(source_path)
+        next if source_path_diff.empty?
+
+        changed_files = source_path_diff.map(&:path)
+        reasons = changed_files.map do |path|
+          "Changes in source file: #{path}"
+        end
+        impacted_docs.deep_merge({ page_path => reasons })
+      end
+      package_globs.each do |package_glob|
+        reasons = []
+        removed_impacted_packages = removed_packages.glob(package_glob)
+        introduced_impacted_packages = introduced_packages.glob(package_glob)
+        updated_impacted_packages = updated_packages.glob(package_glob)
+        reasons += removed_impacted_packages.map do |package|
+          "Removed package: #{package}"
+        end
+        reasons += introduced_impacted_packages.map do |package|
+          "Introduced package: #{package}"
+        end
+        reasons += updated_impacted_packages.map do |package|
+          old = old_manifest[package]
+          new = new_manifest[package]
+          assert_not_equal(
+            old, new,
+            "'#{package}' has identical data in both manifests so it is " \
+            'a bug that we ended up here'
+          )
+          package_changes = old_manifest[package]
+                            .keys.sort.map do |key|
+            old_val = old[key]
+            new_val = new[key]
+            old_val != new_val ? "#{old_val} → #{new_val}" : nil
+          end
+                            .compact.join(', ')
+          "Updated package: #{package} (#{package_changes})"
+        end
+        impacted_docs.deep_merge({ page_path => reasons }) unless reasons.empty?
+      end
+    end
+  end
+  impacted_docs
+end
+
+# Main
+
+options, parameters = parse_argv!
+relationship_file = options['relationship-file'] || DEFAULT_RELATIONSHIP_FILE
+old_commit, new_commit, old_manifest_path, new_manifest_path = parameters
+
+impact_map = read_relationship_file_as_impact_map(relationship_file)
+if options['skip-packages']
+  old_manifest = {}
+  new_manifest = {}
+else
+  old_manifest = read_package_manifest_file_as_package_map(old_manifest_path)
+  new_manifest = read_package_manifest_file_as_package_map(new_manifest_path)
+end
+impacted_docs = find_impacted_docs(
+  impact_map,
+  old_commit,   new_commit,
+  old_manifest, new_manifest
+)
+
+unless impacted_docs.empty?
+  result =
+    impacted_docs
+    .sort
+    .map do |page, reasons|
+      "#{page}\n" +
+        reasons
+        .sort.map do |reason|
+          "- #{reason}"
+        end
+        .join("\n")
+    end
+    .join("\n\n")
+
+  puts 'The following documentation pages need investigation:'
+  puts
+  puts result
+end
+if options['skip-packages']
+  warn 'Warning! The --skip-packages option makes this ' \
+       'report incomplete!'
+end

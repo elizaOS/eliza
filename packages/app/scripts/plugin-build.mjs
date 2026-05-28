@@ -138,6 +138,13 @@ function hasPackageDependency(pkg, packageName) {
 }
 
 async function buildWorkspaceRuntimePackagesForPlugins(pluginEntries) {
+  if (process.env.ELIZA_DEV_SOURCE === "1") {
+    logVerbose(
+      "[plugins] skipping workspace runtime package builds (ELIZA_DEV_SOURCE=1)",
+    );
+    return;
+  }
+
   const requiredPackages = new Set();
   for (const { pkg } of pluginEntries) {
     for (const packageName of WORKSPACE_RUNTIME_PACKAGES.keys()) {

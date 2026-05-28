@@ -239,7 +239,7 @@ private func shim_context_params_set_type_k(_ params: UnsafeMutablePointer<Llama
 @_silgen_name("eliza_llama_context_params_set_type_v")
 private func shim_context_params_set_type_v(_ params: UnsafeMutablePointer<LlamaContextParamsBag>, _ type: Int32)
 
-// DFlash speculative-decode bridge. `shim_speculative_supported()`
+// MTP speculative-decode bridge. `shim_speculative_supported()`
 // returns true only when the linked slice has the buun fork's
 // libcommon (with `common_speculative_draft_gen`) folded into it.
 // On stock slices the helper is absent and `supported()` is false;
@@ -385,9 +385,9 @@ public struct LlamaHardwareInfo {
     public let metalSupported: Bool
     /// True when the linked slice exposes a usable `common_speculative_draft_gen`
     /// AND the device has enough headroom to run target + drafter side-by-side.
-    public let dflashSupported: Bool
-    /// Optional human-readable reason when `dflashSupported` is false.
-    public let dflashReason: String?
+    public let mtpSupported: Bool
+    /// Optional human-readable reason when `mtpSupported` is false.
+    public let mtpReason: String?
 
     /// Render as the `[String: Any]` shape the bridge contract expects.
     public func asDict() -> [String: Any] {
@@ -398,10 +398,10 @@ public struct LlamaHardwareInfo {
             "cpu_cores": NSNumber(value: cpuCores),
             "is_simulator": NSNumber(value: isSimulator),
             "metal_supported": NSNumber(value: metalSupported),
-            "dflash_supported": NSNumber(value: dflashSupported)
+            "mtp_supported": NSNumber(value: mtpSupported)
         ]
-        if let reason = dflashReason {
-            dict["dflash_reason"] = reason
+        if let reason = mtpReason {
+            dict["mtp_reason"] = reason
         }
         return dict
     }
@@ -419,7 +419,7 @@ private final class LlamaSession {
     let nBatch: UInt32
     var cancelled: Bool = false
 
-    // DFlash drafter state. Non-nil iff the user passed a `draftModelPath`
+    // MTP drafter state. Non-nil iff the user passed a `draftModelPath`
     // at load time AND the slice supports speculative decode (the
     // `eliza_llama_speculative_supported` shim probe returned true).
     let drafterModel: LlamaModelPtr?
@@ -480,7 +480,7 @@ private final class CachedTtsContext {
 /// integer value of llama.cpp's `ggml_type` enum. Returns nil for unknown
 /// types so the caller can leave the params struct at default. Fork-specific
 /// TBQ / QJL / Q4_POLAR codes mirror the patched ggml_type enum values
-/// introduced by `packages/app-core/scripts/build-llama-cpp-dflash.mjs`;
+/// introduced by `packages/app-core/scripts/build-llama-cpp-mtp.mjs`;
 /// when the linked slice doesn't have those kernels compiled in, llama.cpp
 /// reports the error at context-init time and we surface it through
 /// `loadModel`'s failure path.
@@ -501,7 +501,7 @@ private func ggmlTypeFromString(_ raw: String?) -> Int32? {
     case "q5_k": return 13
     case "q6_k": return 14
     case "q8_k": return 15
-    // Buun fork codes. Values mirror the patched enum in build-llama-cpp-dflash.mjs.
+    // Buun fork codes. Values mirror the patched enum in build-llama-cpp-mtp.mjs.
     case "tbq3", "q4_tq3": return 64
     case "tbq4", "q4_tq4": return 65
     case "qjl4": return 66
@@ -608,7 +608,7 @@ public final class LlamaBridgeImpl {
     ///
     /// When `draftModelPath` is set AND the linked slice supports speculative
     /// decode (`shim_speculative_supported()` is true), a second model +
-    /// context is loaded as the DFlash drafter and stored on the session.
+    /// context is loaded as the MTP drafter and stored on the session.
     /// Drafter load failures are non-fatal: we log and proceed without spec
     /// decode rather than failing the entire load.
     public func loadModel(
@@ -667,7 +667,7 @@ public final class LlamaBridgeImpl {
             return .failure("llama_init_from_model failed")
         }
 
-        // Optional DFlash drafter. Non-fatal: drafter load failures fall back
+        // Optional MTP drafter. Non-fatal: drafter load failures fall back
         // to plain decode rather than aborting the main model load.
         var drafterModelPtr: LlamaModelPtr? = nil
         var drafterCtxPtr: LlamaContextPtr? = nil
@@ -1348,10 +1348,10 @@ public final class LlamaBridgeImpl {
 
     /// Reports runtime capabilities. Synchronous and cheap to call.
     ///
-    /// `dflashSupported` reflects three conjuncted conditions:
+    /// `mtpSupported` reflects three conjuncted conditions:
     ///   1. The linked slice exposes `common_speculative_draft_gen`
     ///      (probed via `shim_speculative_supported()`).
-    ///   2. Metal is usable (we won't claim dflash on the simulator).
+    ///   2. Metal is usable (we won't claim mtp on the simulator).
     ///   3. The device has enough free RAM to plausibly host target +
     ///      drafter side-by-side. The 3 GB threshold matches the
     ///      headroom required for an Eliza-1 1B drafter + 7B target
@@ -1364,18 +1364,18 @@ public final class LlamaBridgeImpl {
         let metalSupported = shim_has_metal() && !isSim
         let specSlice = shim_speculative_supported()
         let memoryHeadroom = availRAM >= 3.0
-        let dflashSupported = specSlice && metalSupported && memoryHeadroom
-        let dflashReason: String?
-        if dflashSupported {
-            dflashReason = nil
+        let mtpSupported = specSlice && metalSupported && memoryHeadroom
+        let mtpReason: String?
+        if mtpSupported {
+            mtpReason = nil
         } else if !specSlice {
-            dflashReason = "linked llama slice has no common_speculative_draft_gen"
+            mtpReason = "linked llama slice has no common_speculative_draft_gen"
         } else if !metalSupported {
-            dflashReason = isSim ? "simulator: GPU unavailable" : "Metal unsupported"
+            mtpReason = isSim ? "simulator: GPU unavailable" : "Metal unsupported"
         } else if !memoryHeadroom {
-            dflashReason = "insufficient free RAM (need >= 3 GB, got \(String(format: "%.2f", availRAM)))"
+            mtpReason = "insufficient free RAM (need >= 3 GB, got \(String(format: "%.2f", availRAM)))"
         } else {
-            dflashReason = "unknown"
+            mtpReason = "unknown"
         }
         return LlamaHardwareInfo(
             backend: metalSupported ? "metal" : "cpu",
@@ -1384,8 +1384,8 @@ public final class LlamaBridgeImpl {
             cpuCores: pi.activeProcessorCount,
             isSimulator: isSim,
             metalSupported: metalSupported,
-            dflashSupported: dflashSupported,
-            dflashReason: dflashReason
+            mtpSupported: mtpSupported,
+            mtpReason: mtpReason
         )
     }
 
@@ -1564,8 +1564,8 @@ public struct LlamaHardwareInfo {
     public let cpuCores: Int
     public let isSimulator: Bool
     public let metalSupported: Bool
-    public let dflashSupported: Bool
-    public let dflashReason: String?
+    public let mtpSupported: Bool
+    public let mtpReason: String?
 
     public func asDict() -> [String: Any] {
         var dict: [String: Any] = [
@@ -1575,10 +1575,10 @@ public struct LlamaHardwareInfo {
             "cpu_cores": NSNumber(value: cpuCores),
             "is_simulator": NSNumber(value: isSimulator),
             "metal_supported": NSNumber(value: metalSupported),
-            "dflash_supported": NSNumber(value: dflashSupported)
+            "mtp_supported": NSNumber(value: mtpSupported)
         ]
-        if let reason = dflashReason {
-            dict["dflash_reason"] = reason
+        if let reason = mtpReason {
+            dict["mtp_reason"] = reason
         }
         return dict
     }
@@ -1670,8 +1670,8 @@ public final class LlamaBridgeImpl {
             cpuCores: pi.activeProcessorCount,
             isSimulator: Self.isRunningInSimulator,
             metalSupported: false,
-            dflashSupported: false,
-            dflashReason: "llama.cpp is not bundled in this iOS build"
+            mtpSupported: false,
+            mtpReason: "llama.cpp is not bundled in this iOS build"
         )
     }
 }

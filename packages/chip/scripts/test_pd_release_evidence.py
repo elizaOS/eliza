@@ -23,9 +23,7 @@ def test_manifest_diagnostic_maps_pd_blocker_classes() -> None:
     )
 
     assert diagnostic["release_credit"] is False
-    assert {"drc", "lvs", "antenna", "timing", "drv"} <= set(
-        diagnostic["blocker_classes"]
-    )
+    assert {"drc", "lvs", "antenna", "timing", "drv"} <= set(diagnostic["blocker_classes"])
     assert diagnostic["exact_artifact_path"] == item["path"]
     assert "python3 scripts/check_pd_signoff.py" in diagnostic["next_commands"]
 
@@ -90,9 +88,7 @@ def test_blocked_report_buckets_manifest_blockers_without_stale_fixed_bootrom() 
         assert payload["release_credit"] is False
         assert "release_run_missing_final_artifacts" in bucket_counts
         assert "drc_lvs_antenna_signoff" in bucket_counts
-        actions = {
-            row["bucket"]: row for row in payload["summary"]["bucket_next_actions"]
-        }
+        actions = {row["bucket"]: row for row in payload["summary"]["bucket_next_actions"]}
         assert actions["release_run_missing_final_artifacts"]["next_command"] == (
             "scripts/run_openlane.sh --release"
         )
@@ -107,9 +103,10 @@ def test_blocked_report_buckets_manifest_blockers_without_stale_fixed_bootrom() 
             by_bucket["release_run_missing_final_artifacts"]["can_close_release_from_current_repo"]
             is False
         )
-        assert by_bucket["external_review_required"]["blocked_by"][
-            "external_review_or_foundry_access"
-        ] is True
+        assert (
+            by_bucket["external_review_required"]["blocked_by"]["external_review_or_foundry_access"]
+            is True
+        )
         assert "stale_bootrom_string_frontend_blocker" not in bucket_counts
         assert diagnostic["blocker_records"][0]["release_credit"] is False
 

@@ -166,9 +166,9 @@ class Eliza1CatalogEntry:
             )
         if self.drafter_model_id:
             runtime_block += (
-                "      dflash: {\n"
+                "      mtp: {\n"
                 f'        drafterModelId: "{self.drafter_model_id}",\n'
-                f'        specType: "{self.spec_type or "dflash"}",\n'
+                f'        specType: "{self.spec_type or "mtp"}",\n'
                 "        contextSize: 4096,\n"
                 "        draftContextSize: 256,\n"
                 "        draftMin: 1,\n"
@@ -234,7 +234,7 @@ def build_catalog_entry(manifest: dict[str, object]) -> Eliza1CatalogEntry:
 
     cache_type_k = "qjl1_256"
     cache_type_v = "tbq3_0"
-    spec_type: str | None = "dflash"
+    spec_type: str | None = "mtp"
     drafter_model_id: str | None = None
     if isinstance(args_list, list):
         for i, a in enumerate(args_list):

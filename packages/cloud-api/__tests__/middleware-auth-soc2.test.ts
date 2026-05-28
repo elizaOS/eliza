@@ -21,6 +21,22 @@ import { setAuditDispatcher } from "../src/services/audit-dispatcher-singleton";
 
 let sink: InMemorySink;
 
+type ApiKeyTestVariables = {
+  authMethod?: "api_key";
+  apiKeyId?: string;
+  apiKeyPermissions?: string[];
+  user?: {
+    id: string;
+    organization_id: string | null;
+  };
+};
+
+function errorStatus(err: Error): 403 | 500 {
+  return err && typeof err === "object" && "status" in err
+    ? (err as { status: 403 }).status
+    : 500;
+}
+
 beforeEach(() => {
   sink = new InMemorySink();
   setAuditDispatcher(
@@ -58,11 +74,7 @@ describe("assertOrgMembership", () => {
       return c.json({ ok: true });
     });
     app.onError((err, c) => {
-      const status =
-        err && typeof err === "object" && "status" in err
-          ? (err as { status: number }).status
-          : 500;
-      return c.json({ error: err.message }, status as 403 | 500);
+      return c.json({ error: err.message }, errorStatus(err));
     });
     const res = await app.request("/x");
     expect(res.status).toBe(403);
@@ -84,12 +96,7 @@ describe("assertOrgMembership", () => {
       );
       return c.json({ ok: true });
     });
-    app.onError((err, c) =>
-      c.json(
-        { error: err.message },
-        "status" in err ? (err as any).status : 500,
-      ),
-    );
+    app.onError((err, c) => c.json({ error: err.message }, errorStatus(err)));
     const res = await app.request("/x");
     expect(res.status).toBe(403);
     const events = sink.snapshot();
@@ -100,15 +107,10 @@ describe("assertOrgMembership", () => {
 
 describe("requireApiKeyPermission", () => {
   function buildApp(perm: string) {
-    const app = new Hono<{ Variables: any }>();
+    const app = new Hono<{ Variables: ApiKeyTestVariables }>();
     app.use("*", requireApiKeyPermission(perm));
     app.get("/", (c) => c.json({ ok: true }));
-    app.onError((err, c) =>
-      c.json(
-        { error: err.message },
-        "status" in err ? (err as any).status : 500,
-      ),
-    );
+    app.onError((err, c) => c.json({ error: err.message }, errorStatus(err)));
     return app;
   }
 
@@ -120,7 +122,7 @@ describe("requireApiKeyPermission", () => {
   });
 
   test("exact permission match passes", async () => {
-    const app = new Hono<{ Variables: any }>();
+    const app = new Hono<{ Variables: ApiKeyTestVariables }>();
     app.use("*", async (c, next) => {
       c.set("authMethod", "api_key");
       c.set("apiKeyId", "key-1");
@@ -134,7 +136,7 @@ describe("requireApiKeyPermission", () => {
   });
 
   test("wildcard '*' grants any permission", async () => {
-    const app = new Hono<{ Variables: any }>();
+    const app = new Hono<{ Variables: ApiKeyTestVariables }>();
     app.use("*", async (c, next) => {
       c.set("authMethod", "api_key");
       c.set("apiKeyId", "key-1");
@@ -148,7 +150,7 @@ describe("requireApiKeyPermission", () => {
   });
 
   test("prefix wildcard grants matching scope", async () => {
-    const app = new Hono<{ Variables: any }>();
+    const app = new Hono<{ Variables: ApiKeyTestVariables }>();
     app.use("*", async (c, next) => {
       c.set("authMethod", "api_key");
       c.set("apiKeyId", "key-1");
@@ -162,7 +164,7 @@ describe("requireApiKeyPermission", () => {
   });
 
   test("missing permission returns 403 + emits denied audit", async () => {
-    const app = new Hono<{ Variables: any }>();
+    const app = new Hono<{ Variables: ApiKeyTestVariables }>();
     app.use("*", async (c, next) => {
       c.set("authMethod", "api_key");
       c.set("apiKeyId", "key-1");
@@ -175,12 +177,7 @@ describe("requireApiKeyPermission", () => {
     });
     app.use("*", requireApiKeyPermission("agents:write"));
     app.get("/", (c) => c.json({ ok: true }));
-    app.onError((err, c) =>
-      c.json(
-        { error: err.message },
-        "status" in err ? (err as any).status : 500,
-      ),
-    );
+    app.onError((err, c) => c.json({ error: err.message }, errorStatus(err)));
     const res = await app.request("/");
     expect(res.status).toBe(403);
     const events = sink.snapshot();

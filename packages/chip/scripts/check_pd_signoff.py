@@ -4,6 +4,7 @@ import re
 import sys
 from argparse import ArgumentParser
 from pathlib import Path
+from typing import cast
 
 import check_pd_closure
 import yaml
@@ -198,7 +199,9 @@ def write_report(
     report_path: Path | None = None,
     diagnostics: dict | None = None,
 ) -> None:
-    blocker_classes = diagnostics.get("blocker_classes", {}) if isinstance(diagnostics, dict) else {}
+    blocker_classes = (
+        diagnostics.get("blocker_classes", {}) if isinstance(diagnostics, dict) else {}
+    )
     artifact_gap = diagnostics.get("artifact_gap", {}) if isinstance(diagnostics, dict) else {}
     closest_run = artifact_gap.get("closest_run", {}) if isinstance(artifact_gap, dict) else {}
     try:
@@ -287,7 +290,9 @@ def artifact_gap_rows(manifest: dict, names: list[str]) -> list[dict]:
 def release_unblock_plan(diagnostics: dict | None) -> dict:
     artifact_gap = diagnostics.get("artifact_gap", {}) if isinstance(diagnostics, dict) else {}
     closest = artifact_gap.get("closest_run", {}) if isinstance(artifact_gap, dict) else {}
-    blocker_classes = diagnostics.get("blocker_classes", {}) if isinstance(diagnostics, dict) else {}
+    blocker_classes = (
+        diagnostics.get("blocker_classes", {}) if isinstance(diagnostics, dict) else {}
+    )
     missing_artifacts = (
         closest.get("missing_artifact_classes", []) if isinstance(closest, dict) else []
     )
@@ -318,7 +323,9 @@ def release_unblock_plan(diagnostics: dict | None) -> dict:
 def repo_artifact_generation_plan(diagnostics: dict | None) -> dict:
     artifact_gap = diagnostics.get("artifact_gap", {}) if isinstance(diagnostics, dict) else {}
     closest = artifact_gap.get("closest_run", {}) if isinstance(artifact_gap, dict) else {}
-    blocker_classes = diagnostics.get("blocker_classes", {}) if isinstance(diagnostics, dict) else {}
+    blocker_classes = (
+        diagnostics.get("blocker_classes", {}) if isinstance(diagnostics, dict) else {}
+    )
     missing_artifacts = (
         closest.get("missing_artifact_classes", []) if isinstance(closest, dict) else []
     )
@@ -1031,7 +1038,9 @@ def choose_complete_run(
     return None, best_artifacts, missing_by_run
 
 
-def closest_run_diagnostics(root: Path, manifest: dict, missing_by_run: dict[Path, list[str]]) -> dict:
+def closest_run_diagnostics(
+    root: Path, manifest: dict, missing_by_run: dict[Path, list[str]]
+) -> dict:
     required = manifest.get("required_artifacts", {})
     required_count = len(required) if isinstance(required, dict) else 0
     rows = []
@@ -1043,13 +1052,18 @@ def closest_run_diagnostics(root: Path, manifest: dict, missing_by_run: dict[Pat
                 "missing_count": len(missing),
                 "missing_artifact_classes": artifact_gap_rows(manifest, missing),
                 "next_command": (
-                    "scripts/run_openlane.sh --release && "
-                    "python3 scripts/check_pd_signoff.py"
+                    "scripts/run_openlane.sh --release && python3 scripts/check_pd_signoff.py"
                 ),
                 "release_credit": False,
             }
         )
-    rows.sort(key=lambda item: (-item["present_count"], item["missing_count"], item["run"]))
+    rows.sort(
+        key=lambda item: (
+            -cast(int, item["present_count"]),
+            cast(int, item["missing_count"]),
+            cast(str, item["run"]),
+        )
+    )
     closest = rows[0] if rows else None
     return {
         "release_credit": False,
@@ -1104,8 +1118,7 @@ def report_blocker_diagnostics(root: Path, manifest: dict, complete_run: Path | 
                 "artifact_classes": names,
                 "expected_artifact_paths": artifact_gap_rows(manifest, names),
                 "next_command": (
-                    "scripts/run_openlane.sh --release && "
-                    "python3 scripts/check_pd_signoff.py"
+                    "scripts/run_openlane.sh --release && python3 scripts/check_pd_signoff.py"
                 ),
                 "release_credit": False,
             }

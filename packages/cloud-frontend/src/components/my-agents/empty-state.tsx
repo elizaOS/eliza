@@ -17,7 +17,7 @@ function AgentsEmptyState({ onCreateNew }: EmptyStateProps) {
       action={
         <BrandButton
           onClick={onCreateNew}
-          className="bg-primary text-primary-fg hover:bg-accent-hover active:bg-accent-hover"
+          className="bg-primary text-primary-fg hover:bg-black hover:text-white active:bg-black/90"
         >
           <Server className="h-4 w-4" />
           Open runtime admin

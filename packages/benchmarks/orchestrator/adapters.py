@@ -419,18 +419,18 @@ def _has_vision_language_bundle(tier: str = "eliza-1-9b") -> bool:
     runtime = manifest_payload.get("runtime")
     kernels = manifest_payload.get("kernels")
     files = manifest_payload.get("files")
-    has_dflash_runtime = isinstance(runtime, dict) and "dflash" in runtime
-    has_dflash_kernel = (
+    has_mtp_runtime = isinstance(runtime, dict) and "mtp" in runtime
+    has_mtp_kernel = (
         isinstance(kernels, dict)
         and isinstance(kernels.get("required"), list)
-        and "dflash" in {str(item) for item in kernels["required"]}
+        and "mtp" in {str(item) for item in kernels["required"]}
     )
-    has_dflash_file = (
+    has_mtp_file = (
         isinstance(files, dict)
-        and isinstance(files.get("dflash"), list)
-        and any(isinstance(item, dict) and item.get("path") for item in files["dflash"])
+        and isinstance(files.get("mtp"), list)
+        and any(isinstance(item, dict) and item.get("path") for item in files["mtp"])
     )
-    if not (has_dflash_runtime or has_dflash_kernel or has_dflash_file):
+    if not (has_mtp_runtime or has_mtp_kernel or has_mtp_file):
         return False
     slug = tier.removeprefix("eliza-1-")
     text_candidates = [

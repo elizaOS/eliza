@@ -1,0 +1,190 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2026-01-23 15:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Screenshot and screencast\"]]\n"
+msgstr "[[!meta title=\"Captura de pantalla i enregistrament de pantalla\"]]\n"
+
+#. type: Plain text
+msgid "To take a screenshot or record a screencast:"
+msgstr "Per fer una captura o enregistrar la pantalla:"
+
+#. type: Bullet: '1. '
+msgid "To start the camera widget, either:"
+msgstr "Per iniciar el giny de la càmera, podeu:"
+
+#. type: Bullet: '   - '
+msgid "Press the **PrtScn** key of the keyboard."
+msgstr "Premeu la tecla **ImpPant** del teclat."
+
+#. type: Bullet: '   - '
+#, fuzzy
+#| msgid ""
+#| "Click on [[!img lib/camera-photo.png alt=\"Take Screenshot\" "
+#| "class=\"symbolic\" link=\"no\"]] in the system menu."
+msgid ""
+"Select the [[!img lib/applets-screenshoter.png alt=\"Take Screenshot\" "
+"class=\"symbolic\" link=\"no\"]] button in the system menu."
+msgstr ""
+"Feu clic a [[!img lib/camera-photo.png alt=\"Captura la pantalla\" "
+"class=\"symbolic\" link=\"no\"]] al menú del sistema."
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img first_steps/desktop/system-with-wifi-only.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+"     [[!img first_steps/desktop/system-with-wifi-only.png class="
+"\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "The camera widget appears at the bottom of the screen."
+msgstr "El giny de la càmera apareix a la part inferior de la pantalla."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img camera.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img camera.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '   - '
+msgid ""
+"To turn on the screenshot mode, click on the [[!img lib/camera-photo.png "
+"alt=\"Screenshot\" class=\"symbolic\" link=\"no\"]] button."
+msgstr ""
+"Per activar el mode de captura de pantalla premeu el botó [[!img lib/camera-"
+"photo.png alt=\"Screenshot\" class=\"symbolic\" link=\"no\"]]."
+
+#. type: Bullet: '   - '
+msgid ""
+"To turn on the screencast mode, click on the [[!img lib/camera-web.png "
+"alt=\"Screencast\" class=\"symbolic\" link=\"no\"]] button."
+msgstr ""
+"Per activar el mode d'enregistrament de la pantalla premeu el botó [[!img "
+"lib/camera-web.png alt=\"Enregistrament de pantalla\" class=\"symbolic\" "
+"link=\"no\"]]."
+
+#. type: Bullet: '1. '
+msgid ""
+"Click on the [[!img lib/media-record.png alt=\"Screencast\" "
+"class=\"symbolic\" link=\"no\"]] button to take a screenshot or start "
+"recording a screencast."
+msgstr ""
+"Feu clic al botó [[!img lib/media-record.png alt=\"Enregistrar la pantalla\" "
+"class=\"symbolic\" link=\"no\"]] per fer una captura de pantalla o començar "
+"a enregistrar la pantalla."
+
+#. type: Bullet: '   - '
+msgid ""
+"Screenshots are saved in the *Pictures* folder, accessible from the *Files* "
+"browser."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"Screencasts are saved in the *Videos* folder, accessible from the *Files* "
+"browser."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Screencasts don't record sound. You can record ambient sound using\n"
+"<i>[[Sound Recorder|sound_and_video]]</i>.</p>\n"
+msgstr ""
+"<p>Els gravacions de pantalla no enregistren so. Podeu gravar so ambient amb\n"
+"<i>l'[[Enregistrador de so|sound_and_video]]</i>.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#~ msgid "Screenshots are saved in **Places**&nbsp;▸ **Pictures**."
+#~ msgstr "Les captures de pantalla es desen a **Llocs**&nbsp;▸ **Pictures**."
+
+#~ msgid "Screencasts are saved in **Places**&nbsp;▸ **Videos**."
+#~ msgstr ""
+#~ "Els enregistraments de la pantalla es desen a **Llocs**&nbsp;▸ **Videos**."
+
+#~ msgid "To turn on the screenshot mode, click on the"
+#~ msgstr "Per activar el mode de captura de pantalla, feu clic a"
+
+#, no-wrap
+#~ msgid "     button.\n"
+#~ msgstr "     botó.\n"
+
+#~ msgid "To turn on the screencast mode, click on the"
+#~ msgstr "Per activar el mode d'enregistrament de pantalla, feu clic a"
+
+#, no-wrap
+#~ msgid "Taking a screenshot"
+#~ msgstr "Fer una captura de pantalla"
+
+#~ msgid ""
+#~ "To take a screenshot of the entire screen, part of the screen, or a "
+#~ "single window choose **Applications**&nbsp;▸ **Screenshot**."
+#~ msgstr ""
+#~ "Per fer una captura de pantalla de tota la pantalla, part de la pantalla "
+#~ "o una sola finestra, trieu **Aplicacions**&nbsp;▸ **Captura de pantalla**."
+
+#~ msgid ""
+#~ "You can also press the **PrtScn** key of the keyboard to take a "
+#~ "screenshot of the entire screen instantaneously. The screenshot is saved "
+#~ "in **Places**&nbsp;▸ **Pictures**."
+#~ msgstr ""
+#~ "També podeu prémer la tecla **ImpPant** del teclat per fer una captura de "
+#~ "pantalla de tota la pantalla de manera instantània. La captura de "
+#~ "pantalla es desa a **Llocs**&nbsp;▸ **Imatges**."
+
+#, no-wrap
+#~ msgid "Recording a screencast"
+#~ msgstr "Enregistrar la pantalla"
+
+#~ msgid "Press the key combination **Ctrl+Alt+Shift+R**."
+#~ msgstr "Premeu la combinació de tecles **Ctrl+Alt+Maj+R**."
+
+#~ msgid ""
+#~ "A red dot appears in the system menu near the top-right corner of the "
+#~ "desktop when recording starts."
+#~ msgstr ""
+#~ "Quan s'inicia la gravació, apareix un punt vermell al menú del sistema a "
+#~ "prop de l'extrem superior dret de l'escriptori."
+
+#~ msgid ""
+#~ "Press again the key combination **Ctrl+Alt+Shift+R** to stop the "
+#~ "screencast."
+#~ msgstr ""
+#~ "Premeu de nou la combinació de tecles **Ctrl+Alt+Maj+R** per aturar la "
+#~ "gravació de pantalla."
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>Unfortunately, this screencast has no sound and more complete applications\n"
+#~ "like <i>Kazam</i> stopped working in Tails 5.8 (December 2022). Tails 6.0 (mid\n"
+#~ "2023) should integrate better screencast features. ([[!tails_ticket 19441]])<p>\n"
+#~ msgstr ""
+#~ "<p>Malauradament, la gravació de pantalla no té so i aplicacions més completes\n"
+#~ "com <i>Kazam</i> van deixar de funcionar a Tails 5.8 (desembre de 2022). Tails 6.0 (mitjans de\n"
+#~ "2023) hauria d'integrar millors funcions de gravació de pantalla. ([[!tails_ticket 19441]])<p>\n"

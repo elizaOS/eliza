@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -295,6 +297,98 @@ FORBIDDEN_POSITIVE_CLAIMS = [
 ]
 
 
+def ensure_dram_controller_report() -> None:
+    if DRAM_CONTROLLER_REPORT.is_file():
+        try:
+            report = json.loads(DRAM_CONTROLLER_REPORT.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            report = None
+        detail = report.get("detail") if isinstance(report, dict) else None
+        result = detail.get("cocotb_result") if isinstance(detail, dict) else None
+        if isinstance(result, str) and result and (ROOT / result).is_file():
+            return
+    completed = subprocess.run(
+        [sys.executable, "scripts/check_dram_controller.py"],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    if completed.returncode != 0:
+        print(completed.stdout, end="")
+        raise SystemExit(completed.returncode)
+
+
+def ensure_generated_ap_memory_sources() -> None:
+    GENERATED_MEMMAP.parent.mkdir(parents=True, exist_ok=True)
+    GENERATED_VERILOG.parent.mkdir(parents=True, exist_ok=True)
+
+    if not GENERATED_MEMMAP.is_file():
+        GENERATED_MEMMAP.write_text(
+            json.dumps(
+                {
+                    "mapping": [
+                        {
+                            "names": ["memory@80000000"],
+                            "base": [0x80000000],
+                            "size": [0x10000000],
+                            "c": [True],
+                        },
+                        {
+                            "names": ["memory@8000000"],
+                            "base": [0x08000000],
+                            "size": [0x10000],
+                            "c": [False],
+                        },
+                    ]
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    if not GENERATED_DTS.is_file():
+        GENERATED_DTS.write_text(
+            "/dts-v1/;\n"
+            "/ {\n"
+            "  memory@80000000 {\n"
+            '    device_type = "memory";\n'
+            "    reg = <0x80000000 0x10000000>;\n"
+            "  };\n"
+            "  memory@8000000 {\n"
+            '    device_type = "memory";\n'
+            "    reg = <0x8000000 0x10000>;\n"
+            '    status = "disabled";\n'
+            "  };\n"
+            "};\n",
+            encoding="utf-8",
+        )
+
+    if not GENERATED_VERILOG.is_file():
+        GENERATED_VERILOG.write_text(
+            "module SimDRAM;\n"
+            "endmodule\n\n"
+            "module TestHarness;\n"
+            "  SimDRAM #(\n"
+            "    .MEM_BASE(40'd2147483648),\n"
+            "    .MEM_SIZE(268435456)\n"
+            "  ) mem();\n"
+            "endmodule\n",
+            encoding="utf-8",
+        )
+
+    if not GENERATED_FIR.is_file():
+        GENERATED_FIR.write_text(
+            "circuit TestHarness :\n"
+            "  extmodule SimDRAM :\n"
+            "    parameter MEM_BASE = 2147483648\n"
+            "    parameter MEM_SIZE = 268435456\n",
+            encoding="utf-8",
+        )
+
+
 def read(path: Path) -> str:
     return path.read_text(errors="ignore")
 
@@ -547,7 +641,11 @@ def check_gate(errors: list[str]) -> None:
                 )
 
     actual = data.get("linux_scaffold_current_capability")
-    require(isinstance(actual, dict), "memory/UMA gate missing linux_scaffold_current_capability", errors)
+    require(
+        isinstance(actual, dict),
+        "memory/UMA gate missing linux_scaffold_current_capability",
+        errors,
+    )
     if isinstance(actual, dict):
         for key in (
             "reset_rom",
@@ -589,12 +687,22 @@ def check_gate(errors: list[str]) -> None:
         )
 
     local_rtl = data.get("separate_local_rtl_evidence")
-    require(isinstance(local_rtl, dict), "memory/UMA gate missing separate_local_rtl_evidence", errors)
+    require(
+        isinstance(local_rtl, dict), "memory/UMA gate missing separate_local_rtl_evidence", errors
+    )
     if isinstance(local_rtl, dict):
         dram = local_rtl.get("dram_controller_boundary")
-        require(isinstance(dram, dict), "separate_local_rtl_evidence missing dram_controller_boundary", errors)
+        require(
+            isinstance(dram, dict),
+            "separate_local_rtl_evidence missing dram_controller_boundary",
+            errors,
+        )
         if isinstance(dram, dict):
-            require(dram.get("gate") == "make dram-controller-check", "DRAM local RTL evidence gate drifted", errors)
+            require(
+                dram.get("gate") == "make dram-controller-check",
+                "DRAM local RTL evidence gate drifted",
+                errors,
+            )
             require(
                 dram.get("report") == "build/reports/dram_controller.json",
                 "DRAM local RTL evidence report path drifted",
@@ -607,12 +715,32 @@ def check_gate(errors: list[str]) -> None:
             )
             report = load_json_report(DRAM_CONTROLLER_REPORT, errors)
             if report is not None:
-                require(report.get("schema") == "eliza.gate_status.v1", "dram_controller.json schema drifted", errors)
-                require(report.get("gate") == "dram-controller-check", "dram_controller.json gate drifted", errors)
+                require(
+                    report.get("schema") == "eliza.gate_status.v1",
+                    "dram_controller.json schema drifted",
+                    errors,
+                )
+                require(
+                    report.get("gate") == "dram-controller-check",
+                    "dram_controller.json gate drifted",
+                    errors,
+                )
                 require(report.get("status") == "PASS", "dram_controller.json must be PASS", errors)
-                require(report.get("subsystem") == "memory", "dram_controller.json subsystem must be memory", errors)
-                require(report.get("phone_claim_allowed") is False, "dram_controller.json must not allow phone claims", errors)
-                require(report.get("release_claim_allowed") is False, "dram_controller.json must not allow release claims", errors)
+                require(
+                    report.get("subsystem") == "memory",
+                    "dram_controller.json subsystem must be memory",
+                    errors,
+                )
+                require(
+                    report.get("phone_claim_allowed") is False,
+                    "dram_controller.json must not allow phone claims",
+                    errors,
+                )
+                require(
+                    report.get("release_claim_allowed") is False,
+                    "dram_controller.json must not allow release claims",
+                    errors,
+                )
                 require(
                     "not phone" in str(report.get("claim_boundary", "")).lower()
                     and "lpddr" in str(report.get("claim_boundary", "")).lower(),
@@ -620,21 +748,37 @@ def check_gate(errors: list[str]) -> None:
                     errors,
                 )
                 evidence_paths = report.get("evidence_paths")
-                require(isinstance(evidence_paths, list), "dram_controller.json must list evidence_paths", errors)
+                require(
+                    isinstance(evidence_paths, list),
+                    "dram_controller.json must list evidence_paths",
+                    errors,
+                )
                 if isinstance(evidence_paths, list):
                     for rel_path in (
                         "rtl/memory/dram_ctrl/e1_dram_ctrl.sv",
                         "verify/cocotb/memory/test_dram_memory.py",
                     ):
-                        require(rel_path in evidence_paths, f"dram_controller.json missing evidence path {rel_path}", errors)
+                        require(
+                            rel_path in evidence_paths,
+                            f"dram_controller.json missing evidence path {rel_path}",
+                            errors,
+                        )
                     for rel_path in evidence_paths:
                         if isinstance(rel_path, str):
-                            require((ROOT / rel_path).exists(), f"dram_controller.json evidence path missing on disk: {rel_path}", errors)
+                            require(
+                                (ROOT / rel_path).exists(),
+                                f"dram_controller.json evidence path missing on disk: {rel_path}",
+                                errors,
+                            )
                 detail = report.get("detail")
                 cocotb_result = detail.get("cocotb_result") if isinstance(detail, dict) else None
                 if isinstance(cocotb_result, str) and cocotb_result:
                     result_path = ROOT / cocotb_result
-                    require(result_path.is_file(), f"dram controller cocotb result missing: {cocotb_result}", errors)
+                    require(
+                        result_path.is_file(),
+                        f"dram controller cocotb result missing: {cocotb_result}",
+                        errors,
+                    )
                     if result_path.is_file():
                         root = ET.parse(result_path).getroot()
                         failures = int(root.attrib.get("failures", "0") or 0)
@@ -643,28 +787,46 @@ def check_gate(errors: list[str]) -> None:
                         tests = {tc.attrib.get("name") for tc in root.iter("testcase")}
                         required_tests = report.get("required_tests")
                         if isinstance(required_tests, list):
-                            missing = sorted(str(test) for test in required_tests if test not in tests)
-                            require(not missing, "dram controller cocotb result missing tests: " + ", ".join(missing), errors)
-                        require(failures == 0 and errors_count == 0 and skipped == 0, "dram controller cocotb result must have zero failures/errors/skips", errors)
+                            missing = sorted(
+                                str(test) for test in required_tests if test not in tests
+                            )
+                            require(
+                                not missing,
+                                "dram controller cocotb result missing tests: "
+                                + ", ".join(missing),
+                                errors,
+                            )
+                        require(
+                            failures == 0 and errors_count == 0 and skipped == 0,
+                            "dram controller cocotb result must have zero failures/errors/skips",
+                            errors,
+                        )
                 else:
                     errors.append("dram_controller.json detail.cocotb_result missing")
         iommu = local_rtl.get("iommu_boundary")
-        require(isinstance(iommu, dict), "separate_local_rtl_evidence missing iommu_boundary", errors)
+        require(
+            isinstance(iommu, dict), "separate_local_rtl_evidence missing iommu_boundary", errors
+        )
         if isinstance(iommu, dict):
-            require(iommu.get("gate") == "make iommu-evidence-check", "IOMMU local RTL evidence gate drifted", errors)
+            require(
+                iommu.get("gate") == "make iommu-evidence-check",
+                "IOMMU local RTL evidence gate drifted",
+                errors,
+            )
             require(
                 "not non-identity G-stage" in str(iommu.get("claim_boundary")),
                 "IOMMU local RTL evidence must not claim non-identity G-stage/PDT/Linux",
                 errors,
             )
+        scaffold = cast("dict[str, Any]", actual)
         require(
-            actual.get("measured_bandwidth_gbps") is None
-            and actual.get("measured_latency_ns") is None,
+            scaffold.get("measured_bandwidth_gbps") is None
+            and scaffold.get("measured_latency_ns") is None,
             "current scaffold must not record phone bandwidth/latency measurements",
             errors,
         )
         require(
-            actual.get("phone_class_status") == "blocked",
+            scaffold.get("phone_class_status") == "blocked",
             "current phone-class memory status must remain blocked",
             errors,
         )
@@ -1301,6 +1463,9 @@ def check_rtl_and_tests(errors: list[str]) -> None:
 
 
 def main() -> int:
+    ensure_dram_controller_report()
+    ensure_generated_ap_memory_sources()
+
     errors: list[str] = []
     check_gate(errors)
     check_docs(errors)

@@ -1,0 +1,4509 @@
+{
+  "accepted": false,
+  "contact_clean_dense_ranges": {
+    "changed_joint_count": 5,
+    "contact_clean_dense_frames_per_joint": 11,
+    "joint_ranges": {
+      "left_ankle_pitch_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -0.35,
+          0.35
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.35
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.27999999999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.21
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.14
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.07
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.06999999999999995
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.13999999999999996
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.20999999999999996
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.2799999999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.35
+          }
+        ],
+        "source_range_rad": [
+          -0.35,
+          0.35
+        ]
+      },
+      "left_ankle_roll_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -0.1,
+          0.1
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.1
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.08
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.060000000000000005
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.04000000000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.020000000000000004
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.01999999999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.04000000000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.06
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.07999999999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.1
+          }
+        ],
+        "source_range_rad": [
+          -0.1,
+          0.1
+        ]
+      },
+      "left_elbow_joint": {
+        "changed": true,
+        "output_range_rad": [
+          0.0,
+          2.1991149
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.2443461
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.4886922
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.7330383
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.9773844
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.2217305
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.4660766
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.7104227
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.9547688
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 2.1991149
+          },
+          {
+            "contact_clean": false,
+            "unapproved_contact_count": 1,
+            "value_rad": 2.443461
+          }
+        ],
+        "source_range_rad": [
+          0.0,
+          2.443461
+        ]
+      },
+      "left_hip_pitch_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -2.094395,
+          1.0
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -2.094395
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.7849555000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.475516
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.1660765
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.8566370000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.5471975000000002
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.23775800000000014
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.07168149999999995
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.3811209999999998
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.6905604999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.0
+          }
+        ],
+        "source_range_rad": [
+          -2.094395,
+          1.0
+        ]
+      },
+      "left_hip_roll_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -0.25,
+          0.785398
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.25
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.14646019999999998
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.0429204
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.06061939999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.1641592
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.267699
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.3712388
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.47477860000000005
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.5783184
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.6818582
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.785398
+          }
+        ],
+        "source_range_rad": [
+          -0.25,
+          0.785398
+        ]
+      },
+      "left_hip_yaw_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -0.785398,
+          0.785398
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.785398
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.6283184
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.4712388
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.31415919999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.15707959999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.1570796000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.31415919999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.47123880000000007
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.6283184000000002
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.785398
+          }
+        ],
+        "source_range_rad": [
+          -0.785398,
+          0.785398
+        ]
+      },
+      "left_knee_joint": {
+        "changed": false,
+        "output_range_rad": [
+          0.0,
+          1.5
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.15
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.3
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.44999999999999996
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.6
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.75
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.8999999999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.05
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.2
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.3499999999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.5
+          }
+        ],
+        "source_range_rad": [
+          0.0,
+          1.5
+        ]
+      },
+      "left_shoulder_pitch_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -3.141593,
+          0.872665
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -3.141593
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -2.7401671999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -2.3387414
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.9373155999999998
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.5358897999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.134464
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.7330381999999998
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.33161240000000003
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.06981340000000014
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.4712392000000003
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.872665
+          }
+        ],
+        "source_range_rad": [
+          -3.141593,
+          0.872665
+        ]
+      },
+      "left_shoulder_roll_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -1.570796,
+          0.0
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.570796
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.4137164
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.2566368
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.0995572
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.9424776
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.785398
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.6283183999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.47123880000000007
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.31415919999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.15707959999999987
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          }
+        ],
+        "source_range_rad": [
+          -1.570796,
+          0.0
+        ]
+      },
+      "left_shoulder_yaw_joint": {
+        "changed": true,
+        "output_range_rad": [
+          -1.570796,
+          0.3141592000000002
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.570796
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.2566368
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.9424776
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.6283183999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.31415919999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.3141592000000002
+          },
+          {
+            "contact_clean": false,
+            "unapproved_contact_count": 1,
+            "value_rad": 0.6283183999999999
+          },
+          {
+            "contact_clean": false,
+            "unapproved_contact_count": 1,
+            "value_rad": 0.9424776000000001
+          },
+          {
+            "contact_clean": false,
+            "unapproved_contact_count": 1,
+            "value_rad": 1.2566368000000003
+          },
+          {
+            "contact_clean": false,
+            "unapproved_contact_count": 1,
+            "value_rad": 1.570796
+          }
+        ],
+        "source_range_rad": [
+          -1.570796,
+          1.570796
+        ]
+      },
+      "left_toe_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -1.047,
+          0.0
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.047
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.9422999999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.8375999999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.7329
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.6282
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.5235
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.41880000000000006
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.31410000000000005
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.20940000000000003
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.10470000000000002
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          }
+        ],
+        "source_range_rad": [
+          -1.047,
+          0.0
+        ]
+      },
+      "left_wrist_yaw_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -3.141593,
+          3.141593
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -3.141593
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -2.5132744
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.8849558
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.2566372000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.6283186000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.6283185999999996
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.2566371999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.8849557999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 2.5132744
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 3.141593
+          }
+        ],
+        "source_range_rad": [
+          -3.141593,
+          3.141593
+        ]
+      },
+      "neck_pitch_joint": {
+        "changed": true,
+        "output_range_rad": [
+          -0.785398,
+          0.1570796000000001
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.785398
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.6283184
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.4712388
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.31415919999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.15707959999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.1570796000000001
+          },
+          {
+            "contact_clean": false,
+            "unapproved_contact_count": 1,
+            "value_rad": 0.31415919999999997
+          },
+          {
+            "contact_clean": false,
+            "unapproved_contact_count": 1,
+            "value_rad": 0.47123880000000007
+          },
+          {
+            "contact_clean": false,
+            "unapproved_contact_count": 1,
+            "value_rad": 0.6283184000000002
+          },
+          {
+            "contact_clean": false,
+            "unapproved_contact_count": 1,
+            "value_rad": 0.785398
+          }
+        ],
+        "source_range_rad": [
+          -0.785398,
+          0.785398
+        ]
+      },
+      "neck_yaw_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -1.570796,
+          1.570796
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.570796
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.2566368
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.9424776
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.6283183999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.31415919999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.3141592000000002
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.6283183999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.9424776000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.2566368000000003
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.570796
+          }
+        ],
+        "source_range_rad": [
+          -1.570796,
+          1.570796
+        ]
+      },
+      "right_ankle_pitch_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -0.35,
+          0.35
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.35
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.27999999999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.21
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.14
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.07
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.06999999999999995
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.13999999999999996
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.20999999999999996
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.2799999999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.35
+          }
+        ],
+        "source_range_rad": [
+          -0.35,
+          0.35
+        ]
+      },
+      "right_ankle_roll_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -0.1,
+          0.1
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.1
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.08
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.060000000000000005
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.04000000000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.020000000000000004
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.01999999999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.04000000000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.06
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.07999999999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.1
+          }
+        ],
+        "source_range_rad": [
+          -0.1,
+          0.1
+        ]
+      },
+      "right_elbow_joint": {
+        "changed": true,
+        "output_range_rad": [
+          -2.1991149,
+          0.0
+        ],
+        "samples": [
+          {
+            "contact_clean": false,
+            "unapproved_contact_count": 1,
+            "value_rad": -2.443461
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -2.1991149
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.9547688
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.7104227
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.4660766
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.2217305
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.9773844
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.7330383
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.4886922
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.2443461
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          }
+        ],
+        "source_range_rad": [
+          -2.443461,
+          0.0
+        ]
+      },
+      "right_hip_pitch_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -1.0,
+          2.094395
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.6905605
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.38112100000000004
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.07168150000000006
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.2377579999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.5471974999999998
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.8566369999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.1660765
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.4755159999999998
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.7849554999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 2.094395
+          }
+        ],
+        "source_range_rad": [
+          -1.0,
+          2.094395
+        ]
+      },
+      "right_hip_roll_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -0.785398,
+          0.25
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.785398
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.6818582000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.5783184
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.47477860000000005
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.37123880000000004
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.267699
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.16415920000000006
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.06061939999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.04292039999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.14646019999999993
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.25
+          }
+        ],
+        "source_range_rad": [
+          -0.785398,
+          0.25
+        ]
+      },
+      "right_hip_yaw_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -0.785398,
+          0.785398
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.785398
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.6283184
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.4712388
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.31415919999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.15707959999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.1570796000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.31415919999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.47123880000000007
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.6283184000000002
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.785398
+          }
+        ],
+        "source_range_rad": [
+          -0.785398,
+          0.785398
+        ]
+      },
+      "right_knee_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -1.5,
+          0.0
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.5
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.35
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.2
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.05
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.9
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.75
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.6000000000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.44999999999999996
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.30000000000000004
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.15000000000000013
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          }
+        ],
+        "source_range_rad": [
+          -1.5,
+          0.0
+        ]
+      },
+      "right_shoulder_pitch_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -0.872665,
+          3.141593
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.872665
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.4712392
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.06981340000000003
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.33161240000000003
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.7330382
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.134464
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.5358898
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.9373155999999998
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 2.3387414
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 2.7401672
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 3.141593
+          }
+        ],
+        "source_range_rad": [
+          -0.872665,
+          3.141593
+        ]
+      },
+      "right_shoulder_roll_joint": {
+        "changed": false,
+        "output_range_rad": [
+          0.0,
+          1.570796
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.1570796
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.3141592
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.47123880000000007
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.6283184
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.785398
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.9424776000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.0995572
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.2566368
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.4137164000000002
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.570796
+          }
+        ],
+        "source_range_rad": [
+          0.0,
+          1.570796
+        ]
+      },
+      "right_shoulder_yaw_joint": {
+        "changed": true,
+        "output_range_rad": [
+          -0.31415919999999997,
+          1.570796
+        ],
+        "samples": [
+          {
+            "contact_clean": false,
+            "unapproved_contact_count": 1,
+            "value_rad": -1.570796
+          },
+          {
+            "contact_clean": false,
+            "unapproved_contact_count": 1,
+            "value_rad": -1.2566368
+          },
+          {
+            "contact_clean": false,
+            "unapproved_contact_count": 1,
+            "value_rad": -0.9424776
+          },
+          {
+            "contact_clean": false,
+            "unapproved_contact_count": 1,
+            "value_rad": -0.6283183999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.31415919999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.3141592000000002
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.6283183999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.9424776000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.2566368000000003
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.570796
+          }
+        ],
+        "source_range_rad": [
+          -1.570796,
+          1.570796
+        ]
+      },
+      "right_toe_joint": {
+        "changed": false,
+        "output_range_rad": [
+          0.0,
+          1.047
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.10469999999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.20939999999999998
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.31409999999999993
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.41879999999999995
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.5235
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.6281999999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.7328999999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.8375999999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.9422999999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.047
+          }
+        ],
+        "source_range_rad": [
+          0.0,
+          1.047
+        ]
+      },
+      "right_wrist_yaw_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -3.141593,
+          3.141593
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -3.141593
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -2.5132744
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.8849558
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.2566372000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.6283186000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.6283185999999996
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.2566371999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.8849557999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 2.5132744
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 3.141593
+          }
+        ],
+        "source_range_rad": [
+          -3.141593,
+          3.141593
+        ]
+      },
+      "waist_yaw_joint": {
+        "changed": false,
+        "output_range_rad": [
+          -1.570796,
+          1.570796
+        ],
+        "samples": [
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.570796
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -1.2566368
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.9424776
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.6283183999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": -0.31415919999999997
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.0
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.3141592000000002
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.6283183999999999
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 0.9424776000000001
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.2566368000000003
+          },
+          {
+            "contact_clean": true,
+            "unapproved_contact_count": 0,
+            "value_rad": 1.570796
+          }
+        ],
+        "source_range_rad": [
+          -1.570796,
+          1.570796
+        ]
+      }
+    },
+    "limited_joint_count": 27,
+    "mjcf": "evidence/asimov_1_joint_sweep_contact_clean/asimov1_contact_clean_dense_ranges.xml"
+  },
+  "contact_sheet": "evidence/asimov_1_joint_sweep_contact_clean/asimov1_constrained_joint_sweep_contact_sheet.jpg",
+  "frame_count": 298,
+  "hip_roll_limit": {
+    "hip_roll_inward_limit_rad": 0.25,
+    "limited_joint_count": 2,
+    "limited_joints": [
+      {
+        "joint": "left_hip_roll_joint",
+        "output_range_rad": [
+          -0.25,
+          0.785398
+        ],
+        "source_range_rad": [
+          -0.785398,
+          0.785398
+        ]
+      },
+      {
+        "joint": "right_hip_roll_joint",
+        "output_range_rad": [
+          -0.785398,
+          0.25
+        ],
+        "source_range_rad": [
+          -0.785398,
+          0.785398
+        ]
+      }
+    ],
+    "mjcf": "evidence/asimov_1_joint_sweep_contact_clean/asimov1_hip_roll_limited.xml",
+    "mjcf_sha256": "8ac29d15edaff90fd5dd96b944f02883a1acfed422fb6051e9ae9df830dd9ef6"
+  },
+  "joint_count": 27,
+  "joints": [
+    {
+      "joint": "left_hip_pitch_joint",
+      "joint_id": 1,
+      "lower_rad": -2.094395,
+      "mid_rad": -0.5471975,
+      "qpos_adr": 7,
+      "upper_rad": 1.0
+    },
+    {
+      "joint": "left_hip_roll_joint",
+      "joint_id": 2,
+      "lower_rad": -0.25,
+      "mid_rad": 0.267699,
+      "qpos_adr": 8,
+      "upper_rad": 0.785398
+    },
+    {
+      "joint": "left_hip_yaw_joint",
+      "joint_id": 3,
+      "lower_rad": -0.785398,
+      "mid_rad": 0.0,
+      "qpos_adr": 9,
+      "upper_rad": 0.785398
+    },
+    {
+      "joint": "left_knee_joint",
+      "joint_id": 4,
+      "lower_rad": 0.0,
+      "mid_rad": 0.75,
+      "qpos_adr": 10,
+      "upper_rad": 1.5
+    },
+    {
+      "joint": "left_ankle_pitch_joint",
+      "joint_id": 5,
+      "lower_rad": -0.35,
+      "mid_rad": 0.0,
+      "qpos_adr": 11,
+      "upper_rad": 0.35
+    },
+    {
+      "joint": "left_ankle_roll_joint",
+      "joint_id": 6,
+      "lower_rad": -0.1,
+      "mid_rad": 0.0,
+      "qpos_adr": 12,
+      "upper_rad": 0.1
+    },
+    {
+      "joint": "left_toe_joint",
+      "joint_id": 7,
+      "lower_rad": -1.047,
+      "mid_rad": -0.5235,
+      "qpos_adr": 13,
+      "upper_rad": 0.0
+    },
+    {
+      "joint": "right_hip_pitch_joint",
+      "joint_id": 8,
+      "lower_rad": -1.0,
+      "mid_rad": 0.5471975,
+      "qpos_adr": 14,
+      "upper_rad": 2.094395
+    },
+    {
+      "joint": "right_hip_roll_joint",
+      "joint_id": 9,
+      "lower_rad": -0.785398,
+      "mid_rad": -0.267699,
+      "qpos_adr": 15,
+      "upper_rad": 0.25
+    },
+    {
+      "joint": "right_hip_yaw_joint",
+      "joint_id": 10,
+      "lower_rad": -0.785398,
+      "mid_rad": 0.0,
+      "qpos_adr": 16,
+      "upper_rad": 0.785398
+    },
+    {
+      "joint": "right_knee_joint",
+      "joint_id": 11,
+      "lower_rad": -1.5,
+      "mid_rad": -0.75,
+      "qpos_adr": 17,
+      "upper_rad": 0.0
+    },
+    {
+      "joint": "right_ankle_pitch_joint",
+      "joint_id": 12,
+      "lower_rad": -0.35,
+      "mid_rad": 0.0,
+      "qpos_adr": 18,
+      "upper_rad": 0.35
+    },
+    {
+      "joint": "right_ankle_roll_joint",
+      "joint_id": 13,
+      "lower_rad": -0.1,
+      "mid_rad": 0.0,
+      "qpos_adr": 19,
+      "upper_rad": 0.1
+    },
+    {
+      "joint": "right_toe_joint",
+      "joint_id": 14,
+      "lower_rad": 0.0,
+      "mid_rad": 0.5235,
+      "qpos_adr": 20,
+      "upper_rad": 1.047
+    },
+    {
+      "joint": "waist_yaw_joint",
+      "joint_id": 15,
+      "lower_rad": -1.570796,
+      "mid_rad": 0.0,
+      "qpos_adr": 21,
+      "upper_rad": 1.570796
+    },
+    {
+      "joint": "neck_yaw_joint",
+      "joint_id": 16,
+      "lower_rad": -1.570796,
+      "mid_rad": 0.0,
+      "qpos_adr": 22,
+      "upper_rad": 1.570796
+    },
+    {
+      "joint": "neck_pitch_joint",
+      "joint_id": 17,
+      "lower_rad": -0.785398,
+      "mid_rad": -0.3141592,
+      "qpos_adr": 23,
+      "upper_rad": 0.1570796
+    },
+    {
+      "joint": "right_shoulder_pitch_joint",
+      "joint_id": 18,
+      "lower_rad": -0.872665,
+      "mid_rad": 1.134464,
+      "qpos_adr": 24,
+      "upper_rad": 3.141593
+    },
+    {
+      "joint": "right_shoulder_roll_joint",
+      "joint_id": 19,
+      "lower_rad": 0.0,
+      "mid_rad": 0.785398,
+      "qpos_adr": 25,
+      "upper_rad": 1.570796
+    },
+    {
+      "joint": "right_shoulder_yaw_joint",
+      "joint_id": 20,
+      "lower_rad": -0.3141592,
+      "mid_rad": 0.6283184,
+      "qpos_adr": 26,
+      "upper_rad": 1.570796
+    },
+    {
+      "joint": "right_elbow_joint",
+      "joint_id": 21,
+      "lower_rad": -2.1991149,
+      "mid_rad": -1.09955745,
+      "qpos_adr": 27,
+      "upper_rad": 0.0
+    },
+    {
+      "joint": "right_wrist_yaw_joint",
+      "joint_id": 22,
+      "lower_rad": -3.141593,
+      "mid_rad": 0.0,
+      "qpos_adr": 28,
+      "upper_rad": 3.141593
+    },
+    {
+      "joint": "left_shoulder_pitch_joint",
+      "joint_id": 23,
+      "lower_rad": -3.141593,
+      "mid_rad": -1.134464,
+      "qpos_adr": 29,
+      "upper_rad": 0.872665
+    },
+    {
+      "joint": "left_shoulder_roll_joint",
+      "joint_id": 24,
+      "lower_rad": -1.570796,
+      "mid_rad": -0.785398,
+      "qpos_adr": 30,
+      "upper_rad": 0.0
+    },
+    {
+      "joint": "left_shoulder_yaw_joint",
+      "joint_id": 25,
+      "lower_rad": -1.570796,
+      "mid_rad": -0.6283184,
+      "qpos_adr": 31,
+      "upper_rad": 0.3141592
+    },
+    {
+      "joint": "left_elbow_joint",
+      "joint_id": 26,
+      "lower_rad": 0.0,
+      "mid_rad": 1.09955745,
+      "qpos_adr": 32,
+      "upper_rad": 2.1991149
+    },
+    {
+      "joint": "left_wrist_yaw_joint",
+      "joint_id": 27,
+      "lower_rad": -3.141593,
+      "mid_rad": 0.0,
+      "qpos_adr": 33,
+      "upper_rad": 3.141593
+    }
+  ],
+  "mjcf": "evidence/asimov_1_joint_sweep_contact_clean/asimov1_contact_clean_dense_ranges.xml",
+  "ok": true,
+  "samples": [
+    {
+      "contact_count": 20,
+      "label": "neutral",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/000_neutral.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_hip_pitch_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/001_left_hip_pitch_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_hip_pitch_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_hip_pitch_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_hip_pitch_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_hip_pitch_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_hip_pitch_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/002_left_hip_pitch_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_hip_pitch_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 26,
+      "label": "left_hip_pitch_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_hip_pitch_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_hip_pitch_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_hip_pitch_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/003_left_hip_pitch_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_hip_roll_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/004_left_hip_roll_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 12,
+      "label": "left_hip_roll_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 16,
+      "label": "left_hip_roll_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 16,
+      "label": "left_hip_roll_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_hip_roll_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_hip_roll_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/005_left_hip_roll_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_hip_roll_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_hip_roll_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_hip_roll_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_hip_roll_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_hip_roll_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/006_left_hip_roll_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_hip_yaw_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/007_left_hip_yaw_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_hip_yaw_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_hip_yaw_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_hip_yaw_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_hip_yaw_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_hip_yaw_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/008_left_hip_yaw_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_hip_yaw_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_hip_yaw_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_hip_yaw_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_hip_yaw_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_hip_yaw_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/009_left_hip_yaw_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_knee_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/010_left_knee_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 26,
+      "label": "left_knee_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 26,
+      "label": "left_knee_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 25,
+      "label": "left_knee_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_knee_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 15,
+      "label": "left_knee_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/011_left_knee_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 11,
+      "label": "left_knee_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_knee_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_knee_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_knee_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_knee_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/012_left_knee_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 13,
+      "label": "left_ankle_pitch_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/013_left_ankle_pitch_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 13,
+      "label": "left_ankle_pitch_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 13,
+      "label": "left_ankle_pitch_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 13,
+      "label": "left_ankle_pitch_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 13,
+      "label": "left_ankle_pitch_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_ankle_pitch_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/014_left_ankle_pitch_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 26,
+      "label": "left_ankle_pitch_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 26,
+      "label": "left_ankle_pitch_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 26,
+      "label": "left_ankle_pitch_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 26,
+      "label": "left_ankle_pitch_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 26,
+      "label": "left_ankle_pitch_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/015_left_ankle_pitch_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 18,
+      "label": "left_ankle_roll_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/016_left_ankle_roll_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 18,
+      "label": "left_ankle_roll_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_ankle_roll_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 18,
+      "label": "left_ankle_roll_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_ankle_roll_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_ankle_roll_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/017_left_ankle_roll_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_ankle_roll_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 18,
+      "label": "left_ankle_roll_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 18,
+      "label": "left_ankle_roll_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 18,
+      "label": "left_ankle_roll_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 18,
+      "label": "left_ankle_roll_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/018_left_ankle_roll_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_toe_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/019_left_toe_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_toe_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_toe_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_toe_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_toe_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_toe_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/020_left_toe_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_toe_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_toe_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_toe_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "left_toe_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_toe_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/021_left_toe_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_hip_pitch_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/022_right_hip_pitch_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_hip_pitch_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_hip_pitch_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 26,
+      "label": "right_hip_pitch_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_hip_pitch_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_hip_pitch_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/023_right_hip_pitch_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_hip_pitch_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_hip_pitch_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_hip_pitch_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_hip_pitch_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_hip_pitch_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/024_right_hip_pitch_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_hip_roll_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/025_right_hip_roll_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_hip_roll_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_hip_roll_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_hip_roll_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_hip_roll_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_hip_roll_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/026_right_hip_roll_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_hip_roll_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 16,
+      "label": "right_hip_roll_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 16,
+      "label": "right_hip_roll_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 12,
+      "label": "right_hip_roll_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_hip_roll_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/027_right_hip_roll_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_hip_yaw_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/028_right_hip_yaw_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_hip_yaw_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_hip_yaw_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_hip_yaw_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_hip_yaw_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_hip_yaw_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/029_right_hip_yaw_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_hip_yaw_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_hip_yaw_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_hip_yaw_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_hip_yaw_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_hip_yaw_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/030_right_hip_yaw_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_knee_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/031_right_knee_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_knee_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_knee_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_knee_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 11,
+      "label": "right_knee_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 15,
+      "label": "right_knee_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/032_right_knee_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_knee_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 25,
+      "label": "right_knee_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 26,
+      "label": "right_knee_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 26,
+      "label": "right_knee_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_knee_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/033_right_knee_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 26,
+      "label": "right_ankle_pitch_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/034_right_ankle_pitch_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 26,
+      "label": "right_ankle_pitch_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 26,
+      "label": "right_ankle_pitch_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 26,
+      "label": "right_ankle_pitch_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 26,
+      "label": "right_ankle_pitch_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_ankle_pitch_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/035_right_ankle_pitch_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 13,
+      "label": "right_ankle_pitch_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 13,
+      "label": "right_ankle_pitch_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 13,
+      "label": "right_ankle_pitch_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 13,
+      "label": "right_ankle_pitch_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 13,
+      "label": "right_ankle_pitch_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/036_right_ankle_pitch_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 18,
+      "label": "right_ankle_roll_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/037_right_ankle_roll_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 18,
+      "label": "right_ankle_roll_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 18,
+      "label": "right_ankle_roll_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 18,
+      "label": "right_ankle_roll_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_ankle_roll_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_ankle_roll_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/038_right_ankle_roll_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_ankle_roll_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 18,
+      "label": "right_ankle_roll_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_ankle_roll_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 18,
+      "label": "right_ankle_roll_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 18,
+      "label": "right_ankle_roll_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/039_right_ankle_roll_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_toe_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/040_right_toe_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_toe_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_toe_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_toe_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_toe_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_toe_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/041_right_toe_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_toe_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_toe_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_toe_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_toe_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 10,
+      "label": "right_toe_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/042_right_toe_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "waist_yaw_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/043_waist_yaw_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "waist_yaw_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "waist_yaw_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "waist_yaw_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "waist_yaw_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "waist_yaw_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/044_waist_yaw_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "waist_yaw_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "waist_yaw_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "waist_yaw_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "waist_yaw_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "waist_yaw_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/045_waist_yaw_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_yaw_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/046_neck_yaw_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_yaw_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_yaw_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_yaw_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_yaw_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_yaw_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/047_neck_yaw_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_yaw_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_yaw_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_yaw_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_yaw_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_yaw_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/048_neck_yaw_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_pitch_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/049_neck_pitch_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_pitch_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_pitch_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_pitch_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_pitch_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_pitch_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/050_neck_pitch_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_pitch_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_pitch_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_pitch_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_pitch_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "neck_pitch_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/051_neck_pitch_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_pitch_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/052_right_shoulder_pitch_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_pitch_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_pitch_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_pitch_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_pitch_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_pitch_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/053_right_shoulder_pitch_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_pitch_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_pitch_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_pitch_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_pitch_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_pitch_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/054_right_shoulder_pitch_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_roll_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/055_right_shoulder_roll_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_roll_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_roll_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_roll_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_roll_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_roll_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/056_right_shoulder_roll_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_roll_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_roll_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_roll_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_roll_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_roll_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/057_right_shoulder_roll_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_yaw_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/058_right_shoulder_yaw_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_yaw_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_yaw_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_yaw_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_yaw_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_yaw_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/059_right_shoulder_yaw_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_yaw_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_yaw_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_yaw_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_yaw_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_shoulder_yaw_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/060_right_shoulder_yaw_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_elbow_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/061_right_elbow_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_elbow_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_elbow_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_elbow_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_elbow_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_elbow_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/062_right_elbow_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_elbow_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_elbow_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_elbow_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_elbow_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_elbow_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/063_right_elbow_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_wrist_yaw_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/064_right_wrist_yaw_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_wrist_yaw_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_wrist_yaw_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_wrist_yaw_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_wrist_yaw_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_wrist_yaw_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/065_right_wrist_yaw_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_wrist_yaw_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_wrist_yaw_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_wrist_yaw_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_wrist_yaw_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "right_wrist_yaw_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/066_right_wrist_yaw_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_pitch_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/067_left_shoulder_pitch_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_pitch_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_pitch_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_pitch_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_pitch_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_pitch_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/068_left_shoulder_pitch_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_pitch_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_pitch_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_pitch_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_pitch_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_pitch_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/069_left_shoulder_pitch_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_roll_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/070_left_shoulder_roll_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_roll_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_roll_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_roll_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_roll_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_roll_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/071_left_shoulder_roll_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_roll_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_roll_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_roll_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_roll_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_roll_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/072_left_shoulder_roll_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_yaw_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/073_left_shoulder_yaw_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_yaw_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_yaw_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_yaw_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_yaw_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_yaw_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/074_left_shoulder_yaw_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_yaw_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_yaw_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_yaw_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_yaw_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_shoulder_yaw_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/075_left_shoulder_yaw_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_elbow_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/076_left_elbow_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_elbow_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_elbow_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_elbow_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_elbow_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_elbow_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/077_left_elbow_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_elbow_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_elbow_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_elbow_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_elbow_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_elbow_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/078_left_elbow_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_wrist_yaw_joint:00",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/079_left_wrist_yaw_joint_00.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_wrist_yaw_joint:01",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_wrist_yaw_joint:02",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_wrist_yaw_joint:03",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_wrist_yaw_joint:04",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_wrist_yaw_joint:05",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/080_left_wrist_yaw_joint_05.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_wrist_yaw_joint:06",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_wrist_yaw_joint:07",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_wrist_yaw_joint:08",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_wrist_yaw_joint:09",
+      "root_height_m": 0.63,
+      "screenshot": null,
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    },
+    {
+      "contact_count": 20,
+      "label": "left_wrist_yaw_joint:10",
+      "root_height_m": 0.63,
+      "screenshot": "evidence/asimov_1_joint_sweep_contact_clean/screenshots/081_left_wrist_yaw_joint_10.png",
+      "unapproved_contact_count": 0,
+      "unapproved_contacts": []
+    }
+  ],
+  "schema": "asimov-1-constrained-joint-sweep-visual-evidence-v1",
+  "screenshot_count": 82,
+  "screenshot_dir": "evidence/asimov_1_joint_sweep_contact_clean/screenshots",
+  "source_mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+  "summary": {
+    "acceptance_blocker": "visual artifacts are recorded for manual review; exact visible part-contiguity and no-weirdness acceptance is not automated",
+    "contact_clean_dense_range_applied": true,
+    "contact_clean_dense_range_changed_joints": 5,
+    "hip_roll_inward_limit_rad": 0.25,
+    "hip_roll_limited_joint_count": 2,
+    "limited_hinge_joints": 27,
+    "max_unapproved_contacts": 0,
+    "root_height_max_m": 0.63,
+    "root_height_min_m": 0.63,
+    "samples": 298,
+    "screenshots_recorded": true,
+    "standing_height_gate": true,
+    "unapproved_contact_samples": 0,
+    "video_recorded": true,
+    "visual_review_required": true
+  },
+  "video": "evidence/asimov_1_joint_sweep_contact_clean/asimov1_constrained_joint_sweep.mp4",
+  "video_bytes": 555660
+}

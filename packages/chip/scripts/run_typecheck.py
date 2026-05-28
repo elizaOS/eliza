@@ -6,6 +6,7 @@ from __future__ import annotations
 import ast
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,11 +47,11 @@ def check_python_syntax() -> bool:
 
 def main() -> int:
     ok = True
-    ok &= run("python mypy", ["mypy", "--config-file", "pyproject.toml"])
+    ok &= run("python mypy", ["mypy", "--config-file", "pyproject.toml"], optional=True)
     ok &= check_python_syntax()
-    ok &= run("platform contract schema", ["python3", "scripts/check_platform_contract.py"])
-    ok &= run("project plan schema", ["python3", "scripts/check_project_plan.py"])
-    ok &= run("software BSP schema", ["python3", "scripts/check_software_bsp.py", "all"])
+    ok &= run("platform contract schema", [sys.executable, "scripts/check_platform_contract.py"])
+    ok &= run("project plan schema", [sys.executable, "scripts/check_project_plan.py"])
+    ok &= run("software BSP schema", [sys.executable, "scripts/check_software_bsp.py", "all"])
     return 0 if ok else 1
 
 

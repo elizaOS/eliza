@@ -51,15 +51,15 @@ REQUIRED_TESTS = (
 # completion writeback + IRQ, and fail-closed error path are present.
 REQUIRED_RTL_TOKENS = (
     "module e1_dma_sg",
-    "S_DFETCH_AR",      # memory-resident descriptor fetch over AXI4
-    "DESC_NEXT",        # next-descriptor chain link
-    "m_arlen",          # full AXI4 burst (not AXI-Lite)
+    "S_DFETCH_AR",  # memory-resident descriptor fetch over AXI4
+    "DESC_NEXT",  # next-descriptor chain link
+    "m_arlen",  # full AXI4 burst (not AXI-Lite)
     "m_awlen",
     "BURST_INCR",
-    "m_wstrb",          # byte-granular unaligned head/tail
-    "S_ERROR",          # fail-closed error path
+    "m_wstrb",  # byte-granular unaligned head/tail
+    "S_ERROR",  # fail-closed error path
     "RESP_OKAY",
-    "FLAG_IRQ_BIT",     # completion interrupt
+    "FLAG_IRQ_BIT",  # completion interrupt
 )
 
 LINT_WAIVERS = [
@@ -173,8 +173,7 @@ def main() -> int:
         write_report(
             "BLOCKED",
             "sg_dma_rtl_absent",
-            "RTL is missing real descriptor-SG/AXI4-burst tokens: "
-            + ", ".join(missing_tokens),
+            "RTL is missing real descriptor-SG/AXI4-burst tokens: " + ", ".join(missing_tokens),
             {"missing_rtl_tokens": missing_tokens},
         )
         print("BLOCKED: SG DMA RTL tokens missing:", ", ".join(missing_tokens))

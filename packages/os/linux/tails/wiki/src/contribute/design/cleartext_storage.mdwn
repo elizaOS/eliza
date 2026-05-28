@@ -1,0 +1,22 @@
+[[!meta title="Cleartext storage"]]
+
+# Introduction
+
+Tails provides the user with the ability to store sensitive data encrypted in the Persistent Storage.
+However, some bits need to be loaded *before* reaching the Welcome screen, to allow the user to effectively use the
+Tails Welcome screen itself: language and keymap.
+
+## Sensitivity
+
+Locale-related issues are not without concern, as has been extensively discussed on [[!tails_ticket 5501]].
+
+It's therefore important to make this opt-in.
+
+# Design
+
+## Storage
+
+Data is stored in Tails FAT partition. A dedicated directory (`storage`) is created, and each "item"
+is a file inside that.
+
+The implementation of the storage itself is at [[!tails_gitweb config/chroot_local-includes/usr/lib/python3/dist-packages/tailslib/cleartext_storage.py]]

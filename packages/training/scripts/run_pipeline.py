@@ -13,7 +13,7 @@ Stages (skippable individually; see flags):
   6b. Eliza-1-typed GGUF bundle (--eliza1-bundle,  → checkpoints/<run>/eliza1-optimized/
       auto-on if the elizaOS/llama.cpp fork is       (Q4_POLAR GGUF + qjl_config.json +
       found): optimize_for_eliza1.py +                turboquant.json + eliza1_manifest.json),
-      optional DFlash drafter (--dflash-drafter)     checkpoints/<run>/dflash/drafter-<tier>.gguf
+      optional MTP drafter (--mtp-drafter)     checkpoints/<run>/mtp/drafter-<tier>.gguf
   6c. Throughput bench (llama-bench on the GGUFs)  → checkpoints/<run>/evals/throughput.json
       — prefill + gen tokens/sec, CUDA build if       (best -fa 1 -b 2048 -ngl 99 on GPU)
       available; --skip-throughput-bench to skip
@@ -83,9 +83,9 @@ def _read_json(path: Path) -> dict | None:
 
 
 def _resolve_eliza1_llama_cpp() -> Path | None:
-    """Locate the elizaOS/llama.cpp fork (Q4_POLAR / QJL1_256 / dflash GGML
+    """Locate the elizaOS/llama.cpp fork (Q4_POLAR / QJL1_256 / mtp GGML
     types). Order: $LLAMA_CPP_DIR → in-repo fork submodule
-    (packages/inference/llama.cpp) → ~/.cache/eliza-dflash/eliza-llama-cpp →
+    (packages/inference/llama.cpp) → ~/.cache/eliza-mtp/eliza-llama-cpp →
     ~/src/eliza-llama.cpp. Returns None if none has a convert_hf_to_gguf.py."""
     import os
     cands: list[Path] = []
@@ -98,7 +98,7 @@ def _resolve_eliza1_llama_cpp() -> Path | None:
             cands.append(cand)
             break
     cands += [
-        Path.home() / ".cache" / "eliza-dflash" / "eliza-llama-cpp",
+        Path.home() / ".cache" / "eliza-mtp" / "eliza-llama-cpp",
         Path.home() / "src" / "eliza-llama.cpp",
     ]
     for c in cands:
@@ -112,14 +112,14 @@ def _resolve_llama_bench(fork_dir: Path | None) -> Path | None:
     CUDA build > Vulkan build > plain CPU build > $PATH. Backend priority is the
     OUTER loop so a CUDA build under ~/.cache wins over a CPU build under the
     repo (a contended throughput bench once silently ran on the CPU binary while
-    a perfectly good CUDA build sat in ~/.cache/eliza-dflash). Globs the
+    a perfectly good CUDA build sat in ~/.cache/eliza-mtp). Globs the
     per-backend build dirs rather than hard-coding paths so it survives the
     `eliza`↔`eliza1` renames and the in-repo-submodule vs ~/.cache layouts."""
     import glob
     import shutil
     home = str(Path.home())
     bases = [b for b in (ROOT / "vendor" / "llama.cpp", fork_dir) if b is not None]
-    cache_globs = [f"{home}/.cache/eliza-dflash/*-llama-cpp"]
+    cache_globs = [f"{home}/.cache/eliza-mtp/*-llama-cpp"]
 
     def _per_base(suffixes: list[str]) -> list[str]:
         out: list[str] = []
@@ -363,9 +363,9 @@ def main() -> int:
     mb.add_argument("--no-eliza1-bundle", dest="eliza1_bundle", action="store_false",
                     help="Skip the Eliza-1 GGUF bundle stage.")
     ap.set_defaults(eliza1_bundle=None)  # None ⇒ auto (on iff the fork is found)
-    ap.add_argument("--dflash-drafter", action="store_true",
-                    help="Also distill a DFlash speculative-decode drafter for "
-                         "this tier (distill_dflash_drafter.py). Needs a GPU for "
+    ap.add_argument("--mtp-drafter", action="store_true",
+                    help="Also distill a MTP speculative-decode drafter for "
+                         "this tier (distill_mtp_drafter.py). Needs a GPU for "
                          "a real run; uses --synthetic-smoke when --eval-mode "
                          "smoke so the pipeline still validates on CPU.")
     ap.add_argument("--skip-throughput-bench", action="store_true",
@@ -684,7 +684,7 @@ def main() -> int:
     # ───────────── stage 6b: Eliza-1-typed GGUF bundle ─────────────────
     # PolarQuant 4-bit weights packed via the fork's Q4_POLAR GGML type +
     # QJL1_256 K-cache & TBQ V-cache JSON sidecars + eliza1_manifest.json,
-    # optionally paired with a DFlash drafter. optimize_for_eliza1.py is the
+    # optionally paired with a MTP drafter. optimize_for_eliza1.py is the
     # canonical orchestrator (it re-runs polarquant→qjl→turboquant idempotently
     # and then converts via the fork) — run_pipeline just delegates to it.
     fork_dir = _resolve_eliza1_llama_cpp()
@@ -702,21 +702,21 @@ def main() -> int:
         else:
             opt_dir = ckpt_dir / "eliza1-optimized"
             drafter_gguf: Path | None = None
-            if args.dflash_drafter:
-                dflash_dir = ckpt_dir / "dflash"
+            if args.mtp_drafter:
+                mtp_dir = ckpt_dir / "mtp"
                 d_cmd = [
                     "uv", "run", "--extra", "train", "python",
-                    "scripts/distill_dflash_drafter.py",
+                    "scripts/distill_mtp_drafter.py",
                     "--tier", tier_id,
                     "--target-checkpoint", str(finetuned_model),
                     "--dataset", str(train_file),
-                    "--out-dir", str(dflash_dir),
+                    "--out-dir", str(mtp_dir),
                 ]
                 if args.eval_mode == "smoke":
                     d_cmd.append("--synthetic-smoke")
                 rc = run(d_cmd, cwd=ROOT)
-                summary["stages"]["dflash_drafter"] = {"exit": rc, "output": str(dflash_dir)}
-                cand = dflash_dir / f"drafter-{tier_id}.gguf"
+                summary["stages"]["mtp_drafter"] = {"exit": rc, "output": str(mtp_dir)}
+                cand = mtp_dir / f"drafter-{tier_id}.gguf"
                 drafter_gguf = cand if cand.exists() else None
             o_cmd = [
                 "uv", "run", "--extra", "train", "python",

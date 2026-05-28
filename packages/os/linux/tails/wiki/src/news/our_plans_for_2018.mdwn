@@ -1,0 +1,64 @@
+[[!meta date="Mon, 4 Dec 2017 12:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Our plans for 2018"]]
+[[!tag announce]]
+
+As part of our current donation campaign, we recently explained [[why we
+need donations|many_hands_make_tails]] and [[what we accomplished this
+year|what_we_accomplished_in_2017]]. Today we are sharing with you some
+of our plans for the next years:
+
+### Applications and features
+
+- **Tails Server**: run onion services from Tails (VoIP chat rooms,
+  collaboration tools, web servers, messaging servers, etc.)
+  ([[!tails_ticket 5688]], [[!tails_blueprint tails_server desc="Blueprint"]]).
+  (Planned for early 2018.)
+- **VeraCrypt support in GNOME**: graphical utilities to mount VeraCrypt
+  volumes ([[!tails_ticket 11684]], [[!tails_ticket 6337]],
+  [[!tails_blueprint veracrypt desc="Blueprint"]]). (Planned for late
+  2018.)
+- **Graphical interface for the Additional Packages persistent
+  feature**: allow users to customize which applications are available
+  in their Tails ([[!tails_ticket 14568]],
+  Blueprint). (Planned for
+  late 2018.)
+
+### User research and support
+
+- **Power our help desk with a request tracker** to know better how to
+  help our user base at large ([[!tails_ticket 9803]],
+  [[!tails_blueprint RT_for_help_desk desc="Blueprint"]])
+- **Web translation platform** We have received a grant from Lush
+  Digital fund to set up a translation platform for our website. This
+  platform shall make it easier for translators to translate our
+  documentation, and to have our website translated into more languages
+  ([[!tails_ticket 10034]]). (Planned for late 2018.)
+
+### Better adoption
+
+- **Rethink the installation and upgrade process** in depth and reflect
+  on the future of *Tails Installer*, the installation on Windows and
+  macOS, and automatic upgrades ([[!tails_ticket 11679]])
+- **Give some love to our troubleshooting documentation**:
+  - Our [[known issues page|support/known_issues]] ([[!tails_ticket
+    11665]])
+  - Computers with unsupported Wi-Fi devices, very common on Mac
+    ([[!tails_ticket 11683]])
+
+### Resistance to remote exploitation
+
+- **Persistent Tor state** to have persistent entry guards
+  ([[!tails_ticket 5462]], [[!tails_blueprint persistent_Tor_state desc="Blueprint"]])
+- **Persistent seed for random number generator** to have stronger
+  crypto ([[!tails_ticket 7675]],
+  [[!tails_blueprint randomness_seeding desc="Blueprint"]])
+- **Have critical parts of Tails audited** ([[!tails_ticket 14508]])
+
+These are all items that we find important and want to prioritize. But making
+them a reality will require lots of work, time, and money; on top of all the
+day-to-day work that we do to simply keep Tails alive.
+
+If you want us to get there faster, please take one minute to make a donation.
+
+[Donate](https://tails.net/donate/)

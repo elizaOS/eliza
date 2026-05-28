@@ -16,12 +16,10 @@ from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 DATE = "2026-05-22"
 OUT_MANIFEST = (
-    ROOT
-    / "board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml"
+    ROOT / "board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml"
 )
 ROUTED_OUTPUT_MANIFEST = (
     ROOT / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml"
@@ -149,7 +147,7 @@ def write_pdf_candidate(path_text: str, artifact_id: str) -> dict[str, str]:
             "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] >> endobj\n"
             f"% {artifact_id}: blocked local factory candidate, not release evidence\n"
             "%%EOF\n"
-        ).encode("utf-8")
+        ).encode()
     )
     metadata = blocked_record(artifact_id, path_text)
     metadata.update(
@@ -186,7 +184,9 @@ def write_dir_candidate(path_text: str, artifact_id: str) -> dict[str, str]:
     }
 
 
-def write_yaml_candidate(path_text: str, artifact_id: str, source_text: str | None) -> dict[str, str]:
+def write_yaml_candidate(
+    path_text: str, artifact_id: str, source_text: str | None
+) -> dict[str, str]:
     source_path = ROOT / source_text if source_text else None
     source_payload: Any = None
     source_hash: str | None = None
@@ -218,8 +218,7 @@ def write_csv_candidate(path_text: str, artifact_id: str) -> dict[str, str]:
     path = ROOT / path_text
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        "fixture_revision,limit,result\n"
-        "not_run,not_approved,blocked_candidate_not_release\n",
+        "fixture_revision,limit,result\nnot_run,not_approved,blocked_candidate_not_release\n",
         encoding="utf-8",
     )
     return {"path": path_text, "kind": "csv", "metadata": ""}
@@ -267,10 +266,6 @@ def generate() -> dict[str, Any]:
             "power_thermal_rail_efficiency_soak_candidate",
         ),
         (
-            "board/kicad/e1-phone/production/reports/power-thermal/load-step.json",
-            "power_thermal_load_step_candidate",
-        ),
-        (
             "board/kicad/e1-phone/production/reports/rf/cellular-conducted.json",
             "rf_cellular_conducted_candidate",
         ),
@@ -309,7 +304,10 @@ def generate() -> dict[str, Any]:
             artifacts.append(write_yaml_candidate(path_text, artifact_id, None))
 
     for path_text, artifact_id in [
-        ("board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf", "assembler_dfa_report_candidate"),
+        (
+            "board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf",
+            "assembler_dfa_report_candidate",
+        ),
         (
             "board/kicad/e1-phone/production/dfm/stencil-aperture-review.pdf",
             "stencil_aperture_review_candidate",
@@ -326,8 +324,14 @@ def generate() -> dict[str, Any]:
             "board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf",
             "aoi_xray_cleaning_inspection_notes_candidate",
         ),
-        ("board/kicad/e1-phone/production/stackup/coupon-geometry.pdf", "coupon_geometry_candidate"),
-        ("board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf", "fabricator_stackup_candidate"),
+        (
+            "board/kicad/e1-phone/production/stackup/coupon-geometry.pdf",
+            "coupon_geometry_candidate",
+        ),
+        (
+            "board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf",
+            "fabricator_stackup_candidate",
+        ),
         (
             "board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf",
             "ict_or_flying_probe_quote_candidate",

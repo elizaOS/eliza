@@ -1,0 +1,47 @@
+[[!meta robots="noindex"]]
+
+<style>
+/* Display "*Unsafe Browser*" instead of "this browser" in /doc/anonymous_internet/unsafe_browser and /misc/unsafe_browser_warning */
+.doc {
+  display: inline-block;
+}
+.warning {
+  display: none;
+}
+</style>
+
+To sign in to a network using a captive portal:
+
+1. Try visiting an innocent-looking website that is common in your
+   location, for example, a search engine or news site:
+
+   - <a href="http://google.com/" target="_blank">Google</a>
+
+   - <a href="http://linkedin.com/" target="_blank">LinkedIn</a>
+
+   - <a href="http://duckduckgo.com/" target="_blank"/>DuckDuckGo</a>
+
+   - <a href="http://baidu.com/" target="_blank"/>Baidu</a>
+
+1. If you are redirected to a captive portal, sign in to the network.
+
+   If you are not redirected to a captive portal and the website loads,
+   this means that you are already connected to the Internet. Close
+   <span class="warning">this browser</span>
+   <span class="doc">the <i>Unsafe Browser</i></span>
+   and try connecting to the Tor network again.
+
+1. After Tails is connected to Tor, close
+   <span class="warning">this browser.</span>
+   <span class="doc">the <i>Unsafe Browser</i>.</span>
+
+   <div class="caution">
+
+   <p>It is particularly important that you close the <i>Unsafe Browser</i> if
+   you use accessibility features like the Screen Keyboard or the Screen Reader.
+   If you keep the <i>Unsafe Browser</i> open, a very advanced network attacker
+   might use it to deanonymize you.</p>
+
+   </div>
+
+   You can use *Tor Browser* or any other application as usual.

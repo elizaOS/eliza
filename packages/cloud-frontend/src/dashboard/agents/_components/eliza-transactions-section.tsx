@@ -219,7 +219,7 @@ export function ElizaTransactionsSection({
             <button
               type="button"
               onClick={() => fetchRecords(0, false)}
-              className="font-mono text-[11px] text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/70 transition-colors"
+              className="font-mono text-[11px] text-white/50 hover:text-white transition-colors"
             >
               RETRY
             </button>
@@ -292,7 +292,7 @@ export function ElizaTransactionsSection({
                       href={explorerUrl(tx.txHash, tx.request?.chainId)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-mono text-[11px] text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/70 transition-colors inline-flex items-center gap-1"
+                      className="font-mono text-[11px] text-white/60 hover:text-white transition-colors inline-flex items-center gap-1"
                     >
                       {truncate(tx.txHash)}
                       <svg

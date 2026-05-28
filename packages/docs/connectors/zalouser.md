@@ -38,7 +38,7 @@ ZALOUSER_COOKIE_PATH=/path/to/cookies.json
 ZALOUSER_IMEI=your-device-imei
 ```
 
-Or configure in `~/.eliza/eliza.json`:
+Or configure in `~/.local/state/eliza/eliza.json`:
 
 ```json
 {

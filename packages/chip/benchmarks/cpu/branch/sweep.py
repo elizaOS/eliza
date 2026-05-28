@@ -668,7 +668,11 @@ def load_traces(
         )
     for p in sorted(CBP5_DIR.glob("*.gz")):
         key = f"cbp5:{p.stem}"
-        if include_traces is not None and key not in include_traces and p.stem not in include_traces:
+        if (
+            include_traces is not None
+            and key not in include_traces
+            and p.stem not in include_traces
+        ):
             continue
         events, stats = read_cbp5_with_count(p)
         traces.extend(

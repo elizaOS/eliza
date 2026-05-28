@@ -1,0 +1,194 @@
+[[!meta title="Tor network configuration"]]
+
+[[!toc levels=2]]
+
+# Rationale
+
+## Circumventing Tor censorship
+
+Certain networks are restricted in ways that prevent Tor from
+connecting properly without further configuration. Examples are:
+
+* Egress port filtering (solved with `ReachableAddresses`).
+
+* The Internet is only reachable via a proxy (solved with the `*Proxy`
+  options).
+
+* Tor is explicitly blocked (the Tor people like the term "censored"),
+  which can be circumvented by using Tor bridges (solved with
+  `UseBridges`, `Bridge`, and possibly `ClientTransportPlugin`).
+
+## Trying to hide the fact one is using Tor
+
+On the one hand, hiding the fact one is using Tor is often a side effect of
+anti-censorship tools, such as Pluggable Transports: a censor who could detect
+Tor usage could also block it. On the other hand, this is _not_ the threat model
+for which anti-censorship tools such as Pluggable Transports are developed, so
+understandably, Tor Browser decided not to advertise this property to its
+users, and offers no guarantee in this respect.
+
+Tails takes a different stance than Tor Browser on this topic: while Tor Browser
+focuses on censorship circumvention, Tails _also_ aims to support other use
+cases, in which the user needs to be aware that using Tor might be risky for
+them. We want to help Tails users take this into account and choose a safer
+option whenever possible. For example:
+
+ - surveillance at home, at work, or at school, that alerts the user's
+   adversaries about suspicious network activity
+
+   This applies for example to one of our personas,
+   [[Kim|contribute/personas/kim]], and to domestic violence situations.
+
+ - regions where very few people use Tor, and the mere fact they're using Tor
+   might be used to single them out as persons of interest and to locate them
+
+Here's why we choose a different approach than Tor:
+
+ - Generally speaking, Tails and Tor Browser complement each other by addressing
+   different use cases and threat models. This is one of these cases: we believe
+   Tails is making a greater difference by trying to better support users that
+   Tor Browser won't.
+
+ - When the user chooses not to try to hide the fact they're using Tor, we try
+   our best to connect to Tor automatically. The way we do it may make it easier
+   for an adversary to tell that the user is using Tails. For details, see our
+   design documentation about [[non-Tor
+   traffic|contribute/design/Tor_enforcement]]. Since there are much fewer Tails
+   users than Tor Browser users, this risk of detection matters even more in our
+   case: identified Tails users may look more suspicious and would be easier to
+   track down.
+
+ - While we support Tor Browser's goal to fight against the narrative of Tor
+   being for criminals or suspicious to use,
+   we prioritize being pragmatic regarding the threats
+   actually faced by our users in the world as it is today.
+
+   Regardless of what the pervasive narrative around Tor becomes,
+   abusive husbands might keep finding it suspicious that their partner or child is
+   using Tor.
+
+   We are confident this different stance of ours won't sabotage the Tor
+   Project's efforts in this respect, because our impact on public discourse is
+   so much smaller than theirs.
+
+ - Even if we can't offer perfect protection against all possible adversaries, we
+   are confident that we make our users safer against this threat at least
+   against some adversaries that matter, such as abusive husbands who use less
+   sophisticated, out-of-the-box network monitoring solutions such as
+   parental control.
+
+To achieve these goals, without over-promising the benefits of anti-censorship
+tools, we're doing our best to keep ourselves up-to-date regarding the current
+state of detection risks associated with the various ways to connect to Tor.
+Accordingly, we are prepared to adjust the implementations offered to our users
+when they choose to hide the fact they're using Tor. We are conscious that at
+some point, we may have to temporarily or permanently disable this option,
+because none of the available ways to connect to Tor offers a safety level
+adequate to the situations we have in mind.
+
+# Implementation
+
+0. Tails sessions all begin with `DisableNetwork 1` in torrc so Tor will not
+   connect to the network without user intervention.
+
+0. The `tor` process is configured to not use the system resolver
+   (which is `tor` itself ⇒ catch-22) but the DNS server obtained by
+   NetworkManager instead. This enables the use of hostnames for
+   proxies and pluggable transports (which is required for e.g. Meek).
+
+0. When we connect to the network, a NetworkManager hook starts
+   _Tor Connection_ in the background, i.e. non-blocking.
+
+0. [[Time_syncing]] waits until tor has successfully bootstrapped before
+   running. This waiting happens in systemd-land, not inside a NetworkManager
+   hook.
+
+Scripts:
+
+* [[!tails_gitweb config/chroot_local-includes/usr/local/bin/tca]]
+
+* [[!tails_gitweb config/chroot_local-includes/etc/NetworkManager/dispatcher.d/10-tor.sh]]
+  (_Tor Connection_ is started here)
+
+* [[!tails_gitweb config/chroot_local-includes/etc/NetworkManager/dispatcher.d/20-time.sh]]
+  (Time syncing)
+
+* [[!tails_gitweb config/chroot_local-includes/lib/systemd/system/tor@default.service.d/writable-etc-tor.conf]]
+  and [[!tails_gitweb config/chroot_local-patches/apparmor-adjust-tor-profile.diff]]
+  (allow tor to modify its configuration)
+
+## Tor Connection
+
+_Tor Connection_ (sometimes nicknamed `tca`), is a graphical interface to
+configure tor. Configuring tor is something that we consider to be a privileged
+operation, because it can lead to deanonymization quite easily.
+
+We want:
+
+ - _Tor Connection_ to run as `amnesia`. This is required to nicely integrate
+   with the desktop environment
+ - the `amnesia` user not to be able to configure tor. ie: an attacker
+   exploiting Tor Browser and able to run code as `amnesia`, cannot change tor
+   configuration.
+ - _Tor Connection_ to be able to configure tor
+ - similarly, we want _Tor Connection_ to be able to keep some configuration
+   and state files that the user has no permission to read
+ - _Tor Connection_ to perform some specific action that require
+   root privileges: changing the system date and time is one example of this.
+   Those actions must not be permitted to the user outside of _Tor Connection_.
+
+So that's what we do:
+
+ - _Tor Connection_ is started in a dedicated, privileged, network namespace;
+   this is needed to be able to reach onion-grater properly; see
+   [[!tails_ticket 18123]]
+ - `tca-portal` is run. This is a daemon that runs as root and runs specific
+   commands if you can access its listening socket. The listening socket is a
+   unix domain socket, and the permissions make it so that only root can connect
+   to it.
+ - before _Tor Connection_ is started, a wrapper that runs as root creates
+   configuration/state files, applies restrictive permissions, and opens them.
+   Those file descriptors are then passed to _Tor Connection_ using
+   [[!tails_gitweb config/chroot_local-includes/usr/local/lib/connect-drop]].
+   _Tor Connection_ will be able to read/write those files, while amnesia will
+   not.
+ - the same wrapper also opens a connection to `tca-portal`. This portal will
+   perform specific privileged actions on behalf of _Tor Connection_.
+   `connect-drop` is responsible for this, too
+
+The code lives in:
+
+ * [[!tails_gitweb_dir config/chroot_local-includes/usr/lib/python3/dist-packages/tca]]
+ * [[!tails_gitweb config/chroot_local-includes/usr/local/bin/tca]]
+ * [[!tails_gitweb config/chroot_local-includes/usr/share/applications/tca.desktop.in]]
+ * [[!tails_gitweb config/chroot_local-includes/usr/local/lib/tca-portal]]
+ * [[!tails_gitweb config/chroot_local-includes/lib/systemd/system/tca-portal.service]]
+ * [[!tails_gitweb config/chroot_local-includes/lib/systemd/system/tca-portal.socket]]
+
+### Why privileged network namespaces
+
+The usage of _unprivileged network namespaces_ has been considered, but they
+didn't seem appropriate to our requirements.
+
+Let's suppose that we want the amnesia user to be able to enter a new network
+namespace on its own. Then, what would prevent the attacker to do exactly the
+same?
+Unprivileged namespaces seem to be appropriate when your software wants to
+drop permissions; here, we use network namespaces to become *more* privileged,
+not less.
+
+### Why connect-drop
+
+Many programs implement the acquire-then-drop-privileges pattern on their own.
+Connect-drop is a dedicated helper for this. Why so?
+
+ - Reusability. Separating building blocks is always nice.
+ - Easier audit. _Tor Connection_ is a big program, while `connect-drop` is a
+   short script. Auditing it and testing it might be simpler.
+ - Clearer definition of goal and threat model.
+ - "Hidden" ways of gaining back privileges. Running `setuid` is not always
+   enough; for example if you still have some file descriptor open, you can
+   sometimes use that again for other purposes, violating the security goal.  Of
+   course you can just be careful about it, but having one process that runs
+   another defines more clearly what is passed from the first process to the
+   second.

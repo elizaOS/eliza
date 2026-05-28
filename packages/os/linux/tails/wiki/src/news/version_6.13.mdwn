@@ -1,0 +1,67 @@
+[[!meta title="Tails 6.13"]]
+[[!meta date="Thu, 06 Mar 2025 09:30:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="features">New features</h1>
+
+## Detection of problems with Wi-Fi hardware
+
+Problems with Wi-Fi are unfortunately quite common in Tails and Linux in general.
+
+To help troubleshoot hardware compatibility issues with Wi-Fi interfaces, the
+*Tor Connection* assistant now reports when no Wi-Fi hardware is detected.
+
+[[!img no-wi-fi.png class="screenshot" alt="Warning in Tor Connection: No Wi-Fi hardware detected"]]
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [14.0.7](https://blog.torproject.org/new-release-tor-browser-1407).
+
+- Update the *Tor* client to 0.4.8.14.
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Detect partitioning errors also when Tails is started for the first time. ([[!tails_ticket 20797]])
+
+  This solves some failures when creating the Persistent Storage on a new Tails USB stick.
+
+- Fix the **Configure** and **Show Log** buttons in the notification when
+  installing additional software fails. ([[!tails_ticket 20781]])
+
+  [[!img version_6.12/additional_software.png link="no" class="screenshot" alt="Notification: The installation of your additional software failed"]]
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 6.13</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 6.0 or later to 6.13.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 6.13 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 6.13 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

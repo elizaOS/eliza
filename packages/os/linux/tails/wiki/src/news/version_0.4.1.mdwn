@@ -1,0 +1,29 @@
+[[!meta date="Sat, 06 Feb 2010 17:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Amnesia 0.4.1 released
+
+Highlighted changes:
+
+* We now ship "Hybrid" ISO images, which can be either
+  burnt on CD-ROM or dd'd to a USB stick or hard disk.
+* We now ship multilingual ISO images; initially supported (or rather
+  wanna-be-supported) languages are: ar, zh, de, en, fr, it, pt, es.
+* Icedove was replaced with claws mail, in a bit rough way.
+* Virtual keyboard:  kvkbd was replaced with onBoard.
+* Tor controller: TorK was replaced with Vidalia.
+* Anonymous, GnuPG-encrypted bug reporting is now made easy, thanks to
+  WhisperBack.
+* Users are now warned at runtime when the amnesia version they are
+  running is affected by security flaws, and which ones they are.
+
+See the online
+Changelog
+for details.
+
+[[Download it, seed it!|install]]
+
+If you want PowerPC, or other architectures, to be supported, feel
+free to write us: <amnesia@boum.org>, preferably encrypted with our
+[[OpenPGP key|doc/about/openpgp_keys]].

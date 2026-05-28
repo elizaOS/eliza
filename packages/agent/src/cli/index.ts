@@ -135,10 +135,16 @@ export async function runAutonomousCli(
       );
       await ensureMobileDeviceBridgeInferenceHandlers(runtime);
     }
-    const { startAgentTerminalTui } = await import(
-      "../tui/agent-terminal-tui.ts"
-    );
-    startAgentTerminalTui();
+    // Only load the TUI when a terminal is actually attached. The cloud
+    // image runs server-only with no TTY and may not bundle @elizaos/tui;
+    // importing agent-terminal-tui there crashes an otherwise-healthy server.
+    const { isTerminalTuiEnabled } = await import("../tui/tui-enabled.ts");
+    if (isTerminalTuiEnabled()) {
+      const { startAgentTerminalTui } = await import(
+        "../tui/agent-terminal-tui.ts"
+      );
+      startAgentTerminalTui();
+    }
     return;
   }
 

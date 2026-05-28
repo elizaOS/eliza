@@ -1,0 +1,83 @@
+[[!meta title="Tails 4.17 is out"]]
+[[!meta date="Tue, 23 Mar 2021 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes known security
+vulnerabilities. You should upgrade as soon as possible.
+
+<h1 id="upgrades">Reliability improvements to automatic upgrades</h1>
+
+- Repair automatically the file system used during upgrades.
+
+  Automatic upgrades were sometimes failing even after doing a manual upgrade
+  because of an unclean file system. ([[!tails_ticket 17902]])
+
+- Resume automatically when the download of an upgrade fails.
+
+<h1 id="changes">Other changes and updates</h1>
+
+- Update *Tor Browser* to [10.0.14](https://blog.torproject.org/new-release-tor-browser-10014).
+
+- Update *Thunderbird* to [78.8.0](https://www.thunderbird.net/en-US/thunderbird/78.8.0/releasenotes/).
+
+- Update *Tor* to 0.4.5.7.
+
+- Update *GRUB* to 2.04-16.
+
+- Update some firmware packages. This should improve the support for some
+  Wi-Fi interfaces, especially Intel, Broadcom, and Cypress interfaces.
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Improve the error message when starting the *Unsafe Browser* while offline. ([[!tails_ticket 12251]])
+
+  [[!img unsafe.png link="no" alt="New error message: You are not connected to a local network yet."]]
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="issues">Known issues</h1>
+
+[[!inline pages="news/version_4.14/broken_upgrades" raw="yes" sort="age"]]
+
+See the list of [[long-standing issues|support/known_issues]].
+
+<h1 id="get">Get Tails 4.17</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are broken from Tails 4.14 and earlier. See the
+  <a href="#broken-upgrades">known issue above</a>.
+
+- Automatic upgrades are available from Tails 4.14 or later to 4.17.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 4.17 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+<h1 id="next">What's coming up?</h1>
+
+Tails 4.18 is [[scheduled|contribute/calendar]] for April 20.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.17">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

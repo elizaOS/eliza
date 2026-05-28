@@ -1,0 +1,23 @@
+[[!meta title="Provide needed input to developers"]]
+
+Some Tails planned features require initial tests, thought and/or
+discussion before actual implementation work can start. You may want
+to contribute to this effort.
+
+*Do not panic!* Some of this preparation work can be done by people
+who lack the technical skills needed to actually implement the desired
+feature.
+
+Tasks that are currently stalled by the need for input have the
+the `T:Research`, `T:Discuss`, or `T:Test` label on our
+[[!tails_gitlab groups/tails/-/issues desc="TODO"]] list.
+You probably want to start looking at the ones that are also in the
+[[!tails_gitlab_starter]] first so that you can gain confidence...
+and we can smoothly learn to work together.
+
+You may also want to [[test experimental ISO images|contribute/how/testing]].
+
+# Talk to us
+
+You can subscribe to [[tails-dev@boum.org|doc/about/contact#tails-dev]],
+our development mailing list.

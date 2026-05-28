@@ -107,6 +107,43 @@ describe("training CLI collection options", () => {
     expect(options.includeBenchmarkMatrix).toBe(false);
   });
 
+  it("passes an action benchmark filter through for bounded live smokes", () => {
+    const options = buildRunCollectionOptionsFromCliArgs([
+      "--live",
+      "--benchmark-filter",
+      "chat-greeting-hi,todo-add-simple",
+    ]);
+
+    expect(options.actionBenchmark).toMatchObject({
+      dryRun: false,
+      useMocks: false,
+      filter: "chat-greeting-hi,todo-add-simple",
+    });
+  });
+
+  it("allows a single explicit benchmark model instead of a base-trained pair", () => {
+    const options = buildRunCollectionOptionsFromCliArgs([
+      "--live",
+      "--benchmark-model",
+      "eliza-1-0_8b",
+      "--benchmark-variant",
+      "trained",
+      "--benchmark-filter",
+      "chat-greeting-hi",
+    ]);
+
+    expect(options.actionBenchmark).toMatchObject({
+      dryRun: false,
+      useMocks: false,
+      modelId: "eliza-1-0_8b",
+      runtimeModel: "eliza-1-0_8b",
+      variant: "trained",
+      filter: "chat-greeting-hi",
+    });
+    expect(options.actionBenchmarkPair).toBeUndefined();
+    expect(options.actionBenchmarkPairs).toBeUndefined();
+  });
+
   it("accepts a Cerebras prompt cap for live reference smoke runs", () => {
     const options = buildRunCollectionOptionsFromCliArgs([
       "--live",

@@ -1,0 +1,24 @@
+[[!meta date="Sun, 20 Sep 2015 01:02:03 +0000"]]
+[[!meta title="Numerous security holes in Tails 1.5.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 1.5.1 are now fixed in
+Tails 1.6.
+
+We **strongly** encourage you to [[upgrade to
+Tails 1.6|news/version_1.6]] as soon as possible.
+
+Details
+=======
+
+ - Tor Browser: [[!mfsa 2015-96]], [[!mfsa 2015-100]],
+   [[!mfsa 2015-101]], [[!mfsa 2015-105]], [[!mfsa 2015-106]],
+   [[!mfsa 2015-110]], [[!mfsa 2015-111]], [[!mfsa 2015-112]],
+   [[!mfsa 2015-113]]
+ - bind9: [[!debsa2015 3350]]
+ - liblcms1: [[!cve CVE-2013-4276]]
+ - libldap-2.4-2: [[!debsa2015 3356]]
+ - libslp1: [[!debsa2015 3353]]
+ - ssl-cert: [[!debbug 773815]]

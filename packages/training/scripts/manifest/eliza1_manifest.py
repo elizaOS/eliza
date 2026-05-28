@@ -47,7 +47,7 @@ ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "27b-256k",
 )
 
-ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
+ELIZA_1_MTP_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
 ELIZA_1_VISION_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
 
 ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
@@ -55,7 +55,7 @@ ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
     "turboquant_q4",
     "qjl",
     "polarquant",
-    "dflash",
+    "mtp",
     "turbo3_tcq",
 )
 
@@ -159,36 +159,36 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "turboquant_q4",
         "qjl",
         "polarquant",
-        "dflash",
+        "mtp",
         "turbo3_tcq",
     ),
-    "2b": ("turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"),
+    "2b": ("turboquant_q4", "qjl", "polarquant", "mtp", "turbo3_tcq"),
     "4b": (
         "turboquant_q4",
         "qjl",
         "polarquant",
-        "dflash",
+        "mtp",
         "turbo3_tcq",
     ),
     "9b": (
         "turboquant_q4",
         "qjl",
         "polarquant",
-        "dflash",
+        "mtp",
         "turbo3_tcq",
     ),
     "27b": (
         "turboquant_q4",
         "qjl",
         "polarquant",
-        "dflash",
+        "mtp",
         "turbo3_tcq",
     ),
     "27b-256k": (
         "turboquant_q4",
         "qjl",
         "polarquant",
-        "dflash",
+        "mtp",
         "turbo3_tcq",
     ),
 }
@@ -210,7 +210,7 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
 }
 
-ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
+ELIZA_1_MTP_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
 ELIZA_1_VISION_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
@@ -686,7 +686,7 @@ def validate_manifest(
         errors.append("lineage: must be an object")
     else:
         required_lineage_slots = ["text", "voice"]
-        if tier in ELIZA_1_DFLASH_TIERS:
+        if tier in ELIZA_1_MTP_TIERS:
             required_lineage_slots.append("drafter")
         # Required lineage entries.
         for slot in required_lineage_slots:
@@ -731,7 +731,7 @@ def validate_manifest(
         errors.append("files: must be an object")
     else:
         kinds_min1 = ("text", "voice", "cache")
-        kinds_optional = ("asr", "vision", "dflash")
+        kinds_optional = ("asr", "vision", "mtp")
         # Wave-6 fully-optional file slots: missing key = "this bundle
         # does not ship this component". The validator does not require
         # an empty array for absence (TS schema makes the array itself
@@ -1008,38 +1008,38 @@ def validate_manifest(
                 if not isinstance(expressive.get("passed"), bool):
                     errors.append("evals.expressive.passed: must be a boolean")
 
-        dflash_eval = evals.get("dflash")
-        if dflash_eval is not None:
-            if not _is_object(dflash_eval):
-                errors.append("evals.dflash: must be an object when present")
+        mtp_eval = evals.get("mtp")
+        if mtp_eval is not None:
+            if not _is_object(mtp_eval):
+                errors.append("evals.mtp: must be an object when present")
             else:
-                rate = dflash_eval.get("acceptanceRate")
+                rate = mtp_eval.get("acceptanceRate")
                 if rate is not None and (
                     not isinstance(rate, (int, float))
                     or isinstance(rate, bool)
                     or not 0 <= rate <= 1
                 ):
                     errors.append(
-                        "evals.dflash.acceptanceRate: must be null or a number in [0, 1]"
+                        "evals.mtp.acceptanceRate: must be null or a number in [0, 1]"
                     )
-                speedup = dflash_eval.get("speedup")
+                speedup = mtp_eval.get("speedup")
                 if speedup is not None and (
                     not isinstance(speedup, (int, float))
                     or isinstance(speedup, bool)
                     or speedup < 0
                 ):
                     errors.append(
-                        "evals.dflash.speedup: must be null or a non-negative number"
+                        "evals.mtp.speedup: must be null or a non-negative number"
                     )
-                if not isinstance(dflash_eval.get("passed"), bool):
-                    errors.append("evals.dflash.passed: must be a boolean")
+                if not isinstance(mtp_eval.get("passed"), bool):
+                    errors.append("evals.mtp.passed: must be a boolean")
                 # A needs-hardware bench (null numbers) cannot be passed.
-                elif dflash_eval.get("passed") and (
-                    dflash_eval.get("acceptanceRate") is None
-                    or dflash_eval.get("speedup") is None
+                elif mtp_eval.get("passed") and (
+                    mtp_eval.get("acceptanceRate") is None
+                    or mtp_eval.get("speedup") is None
                 ):
                     errors.append(
-                        "evals.dflash: passed=true but acceptanceRate/speedup is null"
+                        "evals.mtp: passed=true but acceptanceRate/speedup is null"
                     )
 
         eagle3_eval = evals.get("eagle3")
@@ -1259,25 +1259,25 @@ def validate_manifest(
             "kernels.required: text variant with ctx > 64k requires turbo3_tcq"
         )
 
-    dflash_enabled = tier in ELIZA_1_DFLASH_TIERS
+    mtp_enabled = tier in ELIZA_1_MTP_TIERS
     vision_enabled = tier in ELIZA_1_VISION_TIERS
-    if dflash_enabled:
-        if not files.get("dflash"):
-            errors.append(f"files.dflash: required for DFlash-enabled tier {tier}")
-        if files.get("dflash") and not lineage.get("drafter"):
-            errors.append("lineage.drafter: required when files.dflash is non-empty")
-        if lineage.get("drafter") and not files.get("dflash"):
-            errors.append("files.dflash: required when lineage.drafter is present")
+    if mtp_enabled:
+        if not files.get("mtp"):
+            errors.append(f"files.mtp: required for MTP-enabled tier {tier}")
+        if files.get("mtp") and not lineage.get("drafter"):
+            errors.append("lineage.drafter: required when files.mtp is non-empty")
+        if lineage.get("drafter") and not files.get("mtp"):
+            errors.append("files.mtp: required when lineage.drafter is present")
     else:
-        if files.get("dflash"):
-            errors.append(f"files.dflash: unsupported for DFlash-disabled tier {tier}")
-        if "dflash" in declared_set:
+        if files.get("mtp"):
+            errors.append(f"files.mtp: unsupported for MTP-disabled tier {tier}")
+        if "mtp" in declared_set:
             errors.append(
-                f"kernels.required: dflash is unsupported for DFlash-disabled tier {tier}"
+                f"kernels.required: mtp is unsupported for MTP-disabled tier {tier}"
             )
         if lineage.get("drafter"):
             errors.append(
-                f"lineage.drafter: unsupported for DFlash-disabled tier {tier}"
+                f"lineage.drafter: unsupported for MTP-disabled tier {tier}"
             )
 
     if vision_enabled:
@@ -1382,31 +1382,31 @@ def validate_manifest(
         elif not gate["passed"]:
             readiness_errors.append("evals.expressive.passed: false")
 
-    # ── DFlash bench ────────────────────────────────────────────────────
-    # Staging manifests may record a missing/failing DFlash measurement, but
+    # ── MTP bench ────────────────────────────────────────────────────
+    # Staging manifests may record a missing/failing MTP measurement, but
     # a default-eligible bundle must prove speculative decoding was measured
     # and passed. Keep this in lockstep with the TS runtime validator.
-    dflash_gate = evals.get("dflash")
-    if not _is_object(dflash_gate):
-        if manifest["defaultEligible"] and dflash_enabled:
-            errors.append("evals.dflash: required when defaultEligible=true")
+    mtp_gate = evals.get("mtp")
+    if not _is_object(mtp_gate):
+        if manifest["defaultEligible"] and mtp_enabled:
+            errors.append("evals.mtp: required when defaultEligible=true")
     else:
-        if not dflash_enabled:
-            errors.append(f"evals.dflash: unsupported for DFlash-disabled tier {tier}")
-        if dflash_gate["passed"] and (
-            dflash_gate["acceptanceRate"] is None or dflash_gate["speedup"] is None
+        if not mtp_enabled:
+            errors.append(f"evals.mtp: unsupported for MTP-disabled tier {tier}")
+        if mtp_gate["passed"] and (
+            mtp_gate["acceptanceRate"] is None or mtp_gate["speedup"] is None
         ):
             errors.append(
-                "evals.dflash: passed=true but acceptanceRate/speedup is null"
+                "evals.mtp: passed=true but acceptanceRate/speedup is null"
             )
-        if manifest["defaultEligible"] and dflash_enabled:
-            if not dflash_gate["passed"]:
+        if manifest["defaultEligible"] and mtp_enabled:
+            if not mtp_gate["passed"]:
                 readiness_errors.append(
-                    "evals.dflash.passed: false for defaultEligible manifest"
+                    "evals.mtp.passed: false for defaultEligible manifest"
                 )
-            if dflash_gate["acceptanceRate"] is None or dflash_gate["speedup"] is None:
+            if mtp_gate["acceptanceRate"] is None or mtp_gate["speedup"] is None:
                 errors.append(
-                    "evals.dflash: defaultEligible requires measured acceptanceRate and speedup"
+                    "evals.mtp: defaultEligible requires measured acceptanceRate and speedup"
                 )
 
     # ── base-v1 provenance coverage ─────────────────────────────────────
@@ -1417,7 +1417,7 @@ def validate_manifest(
         sources = provenance.get("sourceModels")
         if _is_object(sources):
             required_slots = ["text", "voice"]
-            if dflash_enabled:
+            if mtp_enabled:
                 required_slots.append("drafter")
             for slot in ("asr", "vad", "embedding", "vision"):
                 if files.get(slot):
@@ -1526,16 +1526,16 @@ def build_manifest(
     expressive_mos: float | None = None,
     expressive_tag_leakage: float | None = None,
     expressive_passed: bool | None = None,
-    # DFlash speculative-decode bench. ``acceptance_rate`` / ``speedup`` are
+    # MTP speculative-decode bench. ``acceptance_rate`` / ``speedup`` are
     # ``None`` ("needs hardware / needs a trained drafter" — recorded, not
-    # faked) when the bench could not run. Set ``dflash_eval=True`` to emit
-    # the slot at all (a manifest with no DFlash bench just omits it).
-    dflash_eval: bool = False,
-    dflash_acceptance_rate: float | None = None,
-    dflash_speedup: float | None = None,
-    dflash_passed: bool | None = None,
+    # faked) when the bench could not run. Set ``mtp_eval=True`` to emit
+    # the slot at all (a manifest with no MTP bench just omits it).
+    mtp_eval: bool = False,
+    mtp_acceptance_rate: float | None = None,
+    mtp_speedup: float | None = None,
+    mtp_passed: bool | None = None,
     # EAGLE3 speculative-decode metadata is optional for all tiers. It is
-    # recorded separately from DFlash so manifests can describe either or both
+    # recorded separately from MTP so manifests can describe either or both
     # without changing required-tier policy.
     eagle3_kernel: Mapping[str, Any] | None = None,
     eagle3_eval: bool = False,
@@ -1572,7 +1572,7 @@ def build_manifest(
         bundle_id = f"eliza-1-{tier}"
 
     file_map: dict[str, list[dict[str, Any]]] = {}
-    for kind in ("text", "voice", "asr", "vision", "dflash", "cache"):
+    for kind in ("text", "voice", "asr", "vision", "mtp", "cache"):
         file_map[kind] = [_file_dict(f) for f in files.get(kind, ())]
     for kind in ("embedding", "imagegen", "vad", "wakeword"):
         if kind in files:
@@ -1627,16 +1627,16 @@ def build_manifest(
             "passed": bool(expressive_passed),
         }
     if (
-        dflash_eval
-        or dflash_acceptance_rate is not None
-        or dflash_speedup is not None
-        or dflash_passed is not None
+        mtp_eval
+        or mtp_acceptance_rate is not None
+        or mtp_speedup is not None
+        or mtp_passed is not None
     ):
-        evals["dflash"] = {
+        evals["mtp"] = {
             # null (None) when not measured — never a fabricated number.
-            "acceptanceRate": dflash_acceptance_rate,
-            "speedup": dflash_speedup,
-            "passed": bool(dflash_passed),
+            "acceptanceRate": mtp_acceptance_rate,
+            "speedup": mtp_speedup,
+            "passed": bool(mtp_passed),
         }
     if (
         eagle3_eval

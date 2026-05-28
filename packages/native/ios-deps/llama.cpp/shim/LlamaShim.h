@@ -74,7 +74,7 @@ void eliza_llama_log_silence(void);
 bool eliza_llama_has_metal(void);
 
 // Optional acceleration hooks. Stock iOS slices return false/NULL/no drafts;
-// DFlash-capable slices can replace these with concrete implementations.
+// MTP-capable slices can replace these with concrete implementations.
 bool eliza_llama_speculative_supported(void);
 int32_t eliza_llama_speculative_draft_gen(
     void* target_ctx,

@@ -30,7 +30,7 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] = [
  *
  * `@elizaos/plugin-local-inference` is intentionally excluded from the
  * default mobile boot list: it pulls in the bun:ffi desktop dylib path plus
- * a sizeable runtime (catalog, dflash subprocess client, voice pipeline)
+ * a sizeable runtime (catalog, mtp subprocess client, voice pipeline)
  * that the Capacitor WebView agent does not need. On mobile, embeddings
  * come either from a cloud provider, the WebView-side llama-cpp-capacitor
  * binding, or the AOSP-only FFI bridge
@@ -117,7 +117,7 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-obsidian", // Obsidian vault CLI integration
   "@elizaos/plugin-repoprompt", // RepoPrompt CLI integration and workflow orchestration
   "@elizaos/plugin-computeruse", // computer use automation (requires platform-specific binaries)
-  "@elizaos/plugin-browser", // browser automation (requires stagehand-server)
+  "@elizaos/plugin-browser", // browser automation (app/bridge first, optional stagehand fallback)
   "@elizaos/plugin-vision", // vision/image understanding (feature-gated)
   "@elizaos/plugin-cli", // CLI interface
   "@elizaos/plugin-discord", // Discord bot integration

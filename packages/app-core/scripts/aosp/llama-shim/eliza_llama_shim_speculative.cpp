@@ -6,9 +6,9 @@
  * WHY THIS FILE EXISTS — "path a" vs "path b":
  *
  *   The Android voice pipeline runs in-process (the AOSP adapter +
- *   Capacitor framework) — mic → VAD → Qwen3-ASR → DFlash-accelerated text →
+ *   Capacitor framework) — mic → VAD → Qwen3-ASR → MTP-accelerated text →
  *   OmniVoice TTS, all inside the app process, no spawned children. But the
- *   DFlash speculative decode loop today uses **path a** (`aosp-dflash-adapter.ts`):
+ *   MTP speculative decode loop today uses **path a** (`aosp-mtp-adapter.ts`):
  *   cross-compile `llama-server` per ABI, have bun spawn it as a localhost
  *   child process, and POST `/v1/chat/completions` to it. That works (and is
  *   "cheaper to validate"), but it wastes RAM (a whole second model context +
@@ -17,7 +17,7 @@
  *
  *   **Path b** binds the fork's `common_speculative_*` C++ helpers — the exact
  *   ones `llama-server`'s spec loop uses internally — through a C ABI into the
- *   in-process libllama, so the DFlash spec loop runs in the app process with
+ *   in-process libllama, so the MTP spec loop runs in the app process with
  *   no localhost server. The intended runtime contract is to dlopen
  *   `libeliza-llama-speculative-shim.so`, check
  *   eliza_speculative_supported(), and use the in-process path only when it
@@ -55,7 +55,7 @@
  *   and `llama.h` on the include path (the same checkout compile-libllama.mjs
  *   builds libllama from) once the real implementation is ported.
  *
- * llama.cpp pin: elizaOS/llama.cpp @ eliza/main (the combined fork with DFlash
+ * llama.cpp pin: elizaOS/llama.cpp @ eliza/main (the combined fork with MTP
  *   spec-decode + the eliza kernels). `common_params_speculative` field set
  *   tracked there; the setters below cover the subset the AOSP adapter
  *   overrides (n_draft / n_min / p_min / type / cache types / ctx size).
@@ -123,8 +123,8 @@ int eliza_speculative_is_compat(struct llama_context * ctx_tgt) {
 
 // Initialize. `ctx_tgt` is the in-process target llama_context (from the
 // pointer-shim's llama_init_from_model). `ctx_draft` is the drafter context.
-// `spec_type_name` is the fork's spec-type token ("dflash", "lookahead",
-// "ngram", ...). `n_draft` / `n_min` / `p_min` are the DFlash window knobs
+// `spec_type_name` is the fork's spec-type token ("mtp", "lookahead",
+// "ngram", ...). `n_draft` / `n_min` / `p_min` are the MTP window knobs
 // (0 / negative ⇒ keep the fork default). Returns the handle, or NULL on
 // failure (caller must continue without in-process speculation).
 struct eliza_speculative_handle * eliza_speculative_init(
@@ -155,7 +155,7 @@ int32_t eliza_speculative_draft(struct eliza_speculative_handle * h,
                                 int32_t * out_ids, int32_t out_cap);
 
 // Inform the spec decoder that `n_accepted` of the last drafted tokens were
-// accepted by the target model (drives DFlash's adaptive window).
+// accepted by the target model (drives MTP's adaptive window).
 void eliza_speculative_accept(struct eliza_speculative_handle * h, uint16_t n_accepted);
 
 // Print spec-decode stats (accept rate etc.) to stderr — diagnostics only.
@@ -385,7 +385,7 @@ extern "C" struct eliza_speculative_handle * eliza_speculative_init(
         }
         h->params.types = { type };
     } else {
-        h->params.types = { COMMON_SPECULATIVE_TYPE_DFLASH };
+        h->params.types = { COMMON_SPECULATIVE_TYPE_MTP };
     }
     if (n_draft > 0) h->params.draft.n_max = n_draft;
     if (n_min   > 0) h->params.draft.n_min = n_min;

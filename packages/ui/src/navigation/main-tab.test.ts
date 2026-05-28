@@ -1,6 +1,6 @@
 import type { RegistryAppInfo } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
-import { getMainTabApp } from "./main-tab";
+import { getMainTabApp, resolveDefaultLandingTab } from "./main-tab";
 
 function buildApp(overrides: Partial<RegistryAppInfo>): RegistryAppInfo {
   return {
@@ -28,6 +28,10 @@ function buildApp(overrides: Partial<RegistryAppInfo>): RegistryAppInfo {
 }
 
 describe("getMainTabApp", () => {
+  it("falls back to the clouds/avatar home surface", () => {
+    expect(resolveDefaultLandingTab([])).toBe("home");
+  });
+
   it("returns null when no app declares mainTab", () => {
     const apps = [
       buildApp({ name: "@elizaos/app-a" }),

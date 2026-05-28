@@ -1,0 +1,374 @@
+#!/usr/bin/python3
+
+import argparse
+import functools
+import logging
+import os
+import subprocess
+import sys
+import tomllib
+import unittest
+from pathlib import Path
+
+from pydantic import BaseModel
+
+# ruff: noqa: PT009
+
+
+class TestConfiguration(BaseModel):
+    """Contents of [test] section"""
+
+    skip: bool = False
+    force_all_tests: bool = False
+    tests: list[str] = []
+    real_Tor: bool = False
+
+
+class BuildConfiguration(BaseModel):
+    """Contents of [build] section"""
+
+    skip: bool = False
+
+
+class ConfigFile(BaseModel):
+    test: TestConfiguration = TestConfiguration()
+    build: BuildConfiguration = BuildConfiguration()
+
+
+@functools.lru_cache(1)
+def get_current_branch() -> str:
+    # The current Git state may not reflect the state at the time the
+    # upstream job was started (e.g. since then we git fetch + git
+    # reset --hard) so we trust the Git state described in Jenkins'
+    # environment variables instead.
+    branch = os.getenv("GIT_BRANCH") or subprocess.check_output(
+        ["/usr/bin/git", "branch", "--show-current"],
+        text=True,
+    ).rstrip("\n")
+    return branch.removeprefix("origin/")
+
+
+def normalize_branch_name(branch: str) -> str:
+    return branch.replace("/", "-").replace("+", "-")
+
+
+@functools.lru_cache(1)
+def git_on_a_tag() -> bool:
+    proc = subprocess.run(
+        ["auto/scripts/utils.sh", "git_on_a_tag"],  # noqa: S607
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return proc.returncode == 0
+
+
+def get_commit(ref: str):
+    return subprocess.check_output(
+        ["/usr/bin/git", "rev-parse", "--verify", ref],
+        stderr=subprocess.DEVNULL,
+        text=True,
+    ).strip()
+
+
+def git_only_doc_changes_since(since: str, to: str) -> bool:
+    since_commit = get_commit(since)
+    to_commit = get_commit(to)
+    cmd = [
+        "/usr/bin/git",
+        "diff",
+        f"{since_commit}...{to_commit}",
+        "--",
+        "*",
+        ":!/wiki",
+        ":!/ikiwiki.setup",
+        ":!*.po",
+    ]
+    diff = subprocess.check_output(cmd, text=True)
+    return diff == ""
+
+
+class GetConfigurationCLI:
+    def __init__(self):
+        self.args = None
+
+    def get_parser(self) -> argparse.ArgumentParser:
+        p = argparse.ArgumentParser()
+        sub = p.add_subparsers(dest="command")
+        sub.add_parser("should-build", help="Return 1 if build.skip is True")
+        sub.add_parser("should-test", help="Return 1 if test.skip is True")
+        run = sub.add_parser("run-test", help="Actually run the test suite")
+        run.add_argument("cucumber_args", nargs="*")
+        run.add_argument("--dry-run", action="store_true", default=False)
+        return p
+
+    def main(self):
+        self.args = self.get_parser().parse_args()
+        logging.basicConfig(level=logging.DEBUG)
+        config_file = (
+            Path("config/ci/per_branch/")
+            / f"{normalize_branch_name(get_current_branch())}.toml"
+        )
+        if config_file.exists():
+            with config_file.open("rb") as buf:
+                raw_data = tomllib.load(buf)
+            config = ConfigFile(**raw_data)
+        else:
+            config = ConfigFile()
+
+        match self.args.command:
+            case "should-build":
+                sys.exit(int(config.build.skip))
+            case "should-test":
+                sys.exit(int(config.test.skip))
+            case "run-test":
+                self.run_test(config, dry_run=self.args.dry_run)
+
+    def run_test(self, config: ConfigFile, dry_run: bool):
+        config_cucumber_args = self.get_cucumber_options(
+            config.test,
+            dict(os.environ),
+            get_current_branch(),
+            git_on_a_tag(),
+        )
+        logging.debug("Cucumber args (as per config): %s", config_cucumber_args)
+        logging.debug(
+            "Cucumber args, manually passed via cmdline arguments: %s",
+            self.args.cucumber_args,
+        )
+        cucumber_args = self.args.cucumber_args or config_cucumber_args
+        cmdline = [
+            "cucumber",
+            "--expand",
+            *cucumber_args,
+        ]
+        env = self.get_cucumber_environment(config.test)
+        logging.info("Running %s  with env=%s", str(cmdline), str(env))
+        if dry_run:
+            sys.exit(0)
+        proc = subprocess.run(cmdline, check=False, env={**os.environ, **env})
+        sys.exit(proc.returncode)
+
+    def get_cucumber_environment(self, config: TestConfiguration) -> dict[str, str]:
+        if not os.getenv("JENKINS_URL"):
+            return {}
+        environment = {}
+        if config.real_Tor:
+            environment["DISABLE_CHUTNEY"] = "yes"
+        return environment
+
+    def only_doc_changes(self, env: dict) -> bool:
+        print(f"Checking changes in {env}")
+        return env["UPSTREAMJOB_GIT_COMMIT"] != env[
+            "UPSTREAMJOB_GIT_BASE_BRANCH_HEAD"
+        ] and git_only_doc_changes_since(
+            env["UPSTREAMJOB_GIT_BASE_BRANCH_HEAD"],
+            env["UPSTREAMJOB_GIT_COMMIT"],
+        )
+
+    def get_cucumber_options(
+        self,
+        config: TestConfiguration,
+        env: dict,
+        current_branch: str,
+        on_a_tag: bool,
+    ) -> list[str]:
+        """
+        Given all inputs, it decides what options need to be passed to cucumber.
+
+        Since it's a pure function, we can do tests.
+
+        >>> comm = "UPSTREAMJOB_GIT_COMMIT"
+        >>> head = "UPSTREAMJOB_GIT_BASE_BRANCH_HEAD"
+        >>> cli = GetConfigurationCLI()
+        >>> cli.get_cucumber_options(TestConfiguration(force_all_tests=True), {"JENKINS_URL": "fake"})
+        []
+        >>> cli.get_cucumber_options(TestConfiguration(), {"JENKINS_URL": "fake", comm: "7.5", head: "7.5^"})
+        []
+        """
+        if not env.get("JENKINS_URL"):
+            return []
+
+        if config.tests:
+            return config.tests
+
+        if config.real_Tor:
+            options = ["--tag", "@supports_real_tor"]
+            if self.only_doc_changes(env):
+                options.extend(["--tag", "@doc"])
+        elif (
+            config.force_all_tests
+            or current_branch in ["stable", "testing", "devel"]
+            or on_a_tag
+            or env.get("ALL_TESTS", "")
+        ):
+            logging.debug("The branch needs all tests to be run")
+            options = []
+        else:
+            options = ["--tag", "~@fragile", "--tag", "~@skip_by_default"]
+            if self.only_doc_changes(env):
+                options.extend(["--tag", "@doc"])
+
+        return options
+
+
+class TestCucumberOptions(unittest.TestCase):
+    @property
+    def cli(self):
+        return GetConfigurationCLI()
+
+    @property
+    def no_force_all_tests(self):
+        return ["--tag", "~@fragile", "--tag", "~@skip_by_default"]
+
+    def run_test(self, *args, current_branch="x", on_a_tag=False):
+        res = self.cli.get_cucumber_options(
+            *args,
+            current_branch=current_branch,
+            on_a_tag=on_a_tag,
+        )
+        print(res)
+        return res
+
+    def env(
+        self,
+        jenkins_url="fake",
+        # The default commit is not special: it's just a commit that touches
+        # config/. And the default base is its parent.
+        # So it will not be a "only_doc_changes"
+        commit="a15d43c3970e1b005f06ede818ad545d4721fb8d",
+        base="e04366582584a609b30c8b685f920f87d65406d1",
+        all_tests: bool = False,
+    ):
+        return {
+            "JENKINS_URL": jenkins_url,
+            "UPSTREAMJOB_GIT_COMMIT": commit,
+            "UPSTREAMJOB_GIT_BASE_BRANCH_HEAD": base,
+            "ALL_TESTS": "",
+        }
+
+    @property
+    def commits_with_only_doc_changes(self) -> dict:
+        # Those two commits only have wiki/src/doc/ changes
+        return {
+            "commit": "be16aee15a1fa303fb2ae563439cb26abd81b971",
+            "base": "3d658a332a346dc33d06941f39a9d2c97025dd8c",
+        }
+
+    def test_no_select_tests_on_developer_machine(self):
+        res = self.run_test(
+            TestConfiguration(tests=["x"]),
+            self.env(jenkins_url=False),
+        )
+        self.assertEqual(res, [])
+
+    def test_no_force_all_tests_on_developer_machine(self):
+        # This test is a bit lame, because you can't really distinguish this from
+        # misbehavior: in both cases, the list is empty
+        res = self.run_test(
+            TestConfiguration(force_all_tests=True),
+            self.env(jenkins_url=False),
+        )
+        self.assertEqual(res, [])
+
+    def test_ignore_doc_changes_on_developer_machine(self):
+        res = self.run_test(
+            TestConfiguration(force_all_tests=True),
+            self.env(
+                jenkins_url=False,
+                **self.commits_with_only_doc_changes,
+            ),
+        )
+        self.assertEqual(res, [])
+
+    def test_force_all_tests_explicitly_set_by_user(self):
+        res = self.run_test(
+            TestConfiguration(force_all_tests=True),
+            self.env(),
+            current_branch="x",
+            on_a_tag=False,
+        )
+        self.assertEqual(res, [])
+
+    def test_force_all_tests_if_on_tag(self):
+        res = self.run_test(
+            TestConfiguration(force_all_tests=False),
+            self.env(),
+            current_branch="x",
+            on_a_tag=True,
+        )
+        self.assertEqual(res, [])
+
+    def test_force_all_tests_if_on_special_branch(self):
+        for branch in ["testing", "devel"]:
+            res = self.run_test(
+                TestConfiguration(force_all_tests=False),
+                self.env(),
+                current_branch=branch,
+                on_a_tag=True,
+            )
+            self.assertEqual(res, [])
+
+    def test_dont_force_all_tests_usually(self):
+        res = self.run_test(
+            TestConfiguration(),
+            self.env(),
+            current_branch="x",
+            on_a_tag=False,
+        )
+
+        self.assertEqual(res, self.no_force_all_tests)
+
+    def test_specific_tests_prevail_on_tag(self):
+        tests = ["foo.feature"]
+        res = self.run_test(
+            TestConfiguration(tests=tests),
+            self.env(),
+            current_branch="x",
+            on_a_tag=True,
+        )
+        self.assertEqual(res, tests)
+
+    def test_specific_tests_prevail_on_special_branch(self):
+        tests = ["foo.feature"]
+        for branch in ["testing", "devel"]:
+            res = self.run_test(
+                TestConfiguration(tests=tests),
+                self.env(),
+                current_branch=branch,
+                on_a_tag=False,
+            )
+            self.assertEqual(res, tests)
+
+    def test_real_Tor(self):
+        res = self.run_test(
+            TestConfiguration(real_Tor=True),
+            self.env(),
+        )
+        self.assertEqual(res, ["--tag", "@supports_real_tor"])
+
+    def test_real_Tor_and_doc_changes(self):
+        res = self.run_test(
+            TestConfiguration(real_Tor=True),
+            self.env(**self.commits_with_only_doc_changes),
+        )
+        self.assertEqual(res, ["--tag", "@supports_real_tor", "--tag", "@doc"])
+
+    def test_doc_changes(self):
+        res = self.run_test(
+            TestConfiguration(),
+            self.env(**self.commits_with_only_doc_changes),
+        )
+        self.assertEqual(res, [*self.no_force_all_tests, "--tag", "@doc"])
+
+
+if __name__ == "__main__":
+    if sys.argv[1] == "test":
+        args = sys.argv[:]
+        # We need to pass a "custom" argv to unittest, or "test" will be used as an
+        # argument to unittest.main()
+        args.pop(1)
+        args[0] = f"{args[0]} {sys.argv[1]}"  # this fixes ci-configuration test --help
+        unittest.main(argv=args, buffer=True)
+    else:
+        GetConfigurationCLI().main()

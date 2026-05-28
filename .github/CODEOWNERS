@@ -52,6 +52,9 @@
 # Deployment artifacts.
 /deploy/                                @elizaos/platform-team
 
+# Install / bootstrap surface.
+/install/                               @elizaos/security-team
+
 # Dependency patches.
 /patches/                               @elizaos/backend-leads @elizaos/security-team
 /plugins/**/patches/                    @elizaos/backend-leads @elizaos/security-team

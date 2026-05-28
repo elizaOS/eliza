@@ -376,9 +376,7 @@ def build_report(
             end_to_end_blockers,
         ),
     ]
-    all_blockers = [
-        blocker for gate in gates for blocker in gate.get("blockers", [])
-    ]
+    all_blockers = [blocker for gate in gates for blocker in gate.get("blockers", [])]
 
     return {
         "schema": "eliza.e1_phone_fabrication_enclosure_e2e_release_gate.v1",
@@ -475,18 +473,12 @@ def build_report(
             "routed_step_candidate_route_segment_visual_count": objective_local_progress[
                 "routed_step_visual_detail"
             ]["route_segment_visual_count"],
-            "pinout_captured_file_count": objective_local_progress[
-                "pinout_captured_file_count"
-            ],
+            "pinout_captured_file_count": objective_local_progress["pinout_captured_file_count"],
             "pinout_declared_pin_count_total": objective_local_progress[
                 "pinout_declared_pin_count_total"
             ],
-            "pinout_record_count_total": objective_local_progress[
-                "pinout_record_count_total"
-            ],
-            "pinout_public_source_count": objective_local_progress[
-                "pinout_public_source_count"
-            ],
+            "pinout_record_count_total": objective_local_progress["pinout_record_count_total"],
+            "pinout_public_source_count": objective_local_progress["pinout_public_source_count"],
             "pinout_bound_footprint_count": objective_local_progress[
                 "pinout_bound_footprint_count"
             ],
@@ -544,9 +536,7 @@ def build_report(
             "cad_connection_represented_net_count_total": objective_local_progress[
                 "cad_connection_represented_net_count_total"
             ],
-            "cad_connection_record_count": objective_local_progress[
-                "cad_connection_record_count"
-            ],
+            "cad_connection_record_count": objective_local_progress["cad_connection_record_count"],
             "cad_connection_represented_net_list_total": objective_local_progress[
                 "cad_connection_represented_net_list_total"
             ],

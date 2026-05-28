@@ -1,0 +1,42 @@
+[[!meta date="Wed, 30 Nov 2016 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 2.7.1 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_2.7]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+  - Upgrade *Tor Browser* to [6.0.7](https://blog.torproject.org/blog/tor-browser-607-released).
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+# Known issues
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 2.7.1
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, an automatic upgrade is available from 2.7 to 2.7.1.
+
+  If you cannot do an automatic upgrade or if you fail to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 2.7.1.|install/download]]
+
+# What's coming up?
+
+Tails 2.9 is [[scheduled|contribute/calendar]] for December 13.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (donating is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

@@ -220,7 +220,7 @@ export function AdminMetricsClient() {
             <button
               type="button"
               onClick={() => fetchOverview()}
-              className="border border-[#303030] px-4 py-2 text-xs font-mono text-white/60 hover:bg-white/5 transition-colors"
+              className="border-0 px-4 py-2 text-xs font-mono text-white/60 hover:bg-white/5 transition-colors"
             >
               Retry
             </button>
@@ -260,7 +260,7 @@ export function AdminMetricsClient() {
                   onClick={() => setTimeRange(range.value)}
                   disabled={loading}
                   className={`
-                    border border-[#303030] px-2 py-2 transition-colors text-xs sm:text-sm text-white/60 disabled:opacity-50 whitespace-nowrap
+                    border-0 px-2 py-2 transition-colors text-xs sm:text-sm text-white/60 disabled:opacity-50 whitespace-nowrap
                     ${timeRange === range.value ? "bg-white/10" : "hover:bg-white/5"}
                   `}
                 >
@@ -273,7 +273,7 @@ export function AdminMetricsClient() {
               type="button"
               onClick={() => fetchOverview()}
               disabled={loading}
-              className="border border-[#303030] px-3 py-2 transition-colors text-xs sm:text-sm text-white/60 disabled:opacity-50 hover:bg-white/5 flex items-center justify-center gap-2"
+              className="border-0 px-3 py-2 transition-colors text-xs sm:text-sm text-white/60 disabled:opacity-50 hover:bg-white/5 flex items-center justify-center gap-2"
             >
               {loading ? (
                 <Loader2 className="h-3 w-3 animate-spin" />

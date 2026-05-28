@@ -20,7 +20,7 @@
     "asr/<final-asr-mmproj>.gguf",
     "vad/silero-vad-v5.gguf",
     "vision/<final-mmproj>.gguf",
-    "dflash/<final-drafter-weights>.gguf"
+    "mtp/<final-drafter-weights>.gguf"
   ],
   "checksumManifest": "checksums/SHA256SUMS",
   "evalReports": [
@@ -29,7 +29,7 @@
   "licenseFiles": [
     "licenses/LICENSE.text",
     "licenses/LICENSE.voice",
-    "licenses/LICENSE.dflash",
+    "licenses/LICENSE.mtp",
     "licenses/LICENSE.eliza-1",
     "licenses/LICENSE.asr",
     "licenses/LICENSE.vision",
@@ -49,13 +49,13 @@
       "handle-response-tool-call",
       "closed-action-enum",
       "eliza-schema-guided-decode",
-      "dflash-prefill",
+      "mtp-prefill",
       "deterministic-repair"
     ],
     "testReports": {
       "plannerGrammar": "plugins/plugin-local-inference/src/services/__tests__/planner-grammar.test.ts",
       "structuredOutput": "plugins/plugin-local-inference/src/services/structured-output.test.ts",
-      "dflashStructured": "plugins/plugin-local-inference/src/services/dflash-structured.test.ts",
+      "mtpStructured": "plugins/plugin-local-inference/src/services/mtp-structured.test.ts",
       "deterministicRepair": "plugins/plugin-local-inference/src/services/structured-output/deterministic-repair.test.ts"
     }
   },

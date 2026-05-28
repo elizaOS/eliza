@@ -74,7 +74,9 @@ def test_blocked_reports() -> None:
         {2},
     )
     manufacturing = load_report("build/reports/manufacturing_artifacts.json")
-    assert manufacturing["resolved_manifest"] == "build/reports/manufacturing-resolved-artifacts.json"
+    assert (
+        manufacturing["resolved_manifest"] == "build/reports/manufacturing-resolved-artifacts.json"
+    )
     resolved = ROOT / manufacturing["resolved_manifest"]
     assert resolved.is_file()
     resolved_payload = json.loads(resolved.read_text(encoding="utf-8"))
@@ -96,7 +98,9 @@ def test_blocked_reports() -> None:
     assert classes["external_approval_metadata_blocker"] > 0
     assert classes["external_release_gate_blocker"] > 0
     for bucket in action_summary["action_buckets"]:
-        assert bucket["next_command"] == "python3 scripts/check_manufacturing_artifacts.py --release"
+        assert (
+            bucket["next_command"] == "python3 scripts/check_manufacturing_artifacts.py --release"
+        )
         assert bucket["sample_findings"]
     matrix = manufacturing["manifest_unblock_matrix"]
     assert isinstance(matrix, list)
@@ -146,12 +150,14 @@ def test_blocked_reports() -> None:
             in packet["validation_commands"]
         )
     for finding in manufacturing["findings"]:
-        assert finding["next_command"] == "python3 scripts/check_manufacturing_artifacts.py --release"
+        assert (
+            finding["next_command"] == "python3 scripts/check_manufacturing_artifacts.py --release"
+        )
         assert finding["release_blocker_class"]
         assert finding["release_action_bucket"]
-        assert "python3 scripts/check_manufacturing_artifacts.py --release" in finding[
-            "next_commands"
-        ]
+        assert (
+            "python3 scripts/check_manufacturing_artifacts.py --release" in finding["next_commands"]
+        )
     assert_blocked_report(
         "PD signoff artifacts",
         ["python3", "scripts/check_pd_signoff.py"],

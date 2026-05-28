@@ -558,7 +558,9 @@ class _LoopPredictor:
                 if entry["conf"] < 0x7:
                     entry["conf"] += 1
                 entry["early_exit_seen"] = 0
-            elif entry["iter_max"] and entry["iter_cur"] < entry["iter_max"] and entry["conf"] == 0x7:
+            elif (
+                entry["iter_max"] and entry["iter_cur"] < entry["iter_max"] and entry["conf"] == 0x7
+            ):
                 entry["conf"] -= 1
                 entry["early_exit_seen"] = 1
             else:
@@ -641,13 +643,15 @@ class _FTB:
             conf = min(old.get("target_conf", 0) + 1, conf_mask)
         if old is not None:
             bucket.remove(old)
-        bucket.append({
-            "tag": tag,
-            "target": target,
-            "kind": kind,
-            "target_conf": conf,
-            "offset": pc % self.block_bytes,
-        })
+        bucket.append(
+            {
+                "tag": tag,
+                "target": target,
+                "kind": kind,
+                "target_conf": conf,
+                "offset": pc % self.block_bytes,
+            }
+        )
         while len(bucket) > max(1, self.ways):
             bucket.pop(0)
 
@@ -777,7 +781,9 @@ class _H2P:
     def _score(self, pc: int, hist: int, target_hist: int, path_hist: int) -> int:
         weights = self._weights_for(pc)
         total = weights[0]
-        for feature, bit in zip(weights[1:], self._feature_bits(hist, target_hist, path_hist), strict=False):
+        for feature, bit in zip(
+            weights[1:], self._feature_bits(hist, target_hist, path_hist), strict=False
+        ):
             total = total + feature if bit else total - feature
         # RTL score width is intentionally wide for supported geometries; clamp
         # here instead of allowing Python evidence to exceed representable RTL.
@@ -894,12 +900,14 @@ class _ITTAGE:
                 bucket = self.storage[higher].setdefault(idx, [])
                 if len(bucket) < max(1, self.geo["ITTAGE_WAYS"]):
                     self.counters["allocations"] += 1
-                    bucket.append({
-                        "tag": tag,
-                        "target": target,
-                        "ctr": 1 << (self.geo["ITTAGE_CTR_W"] - 1),
-                        "useful": 0,
-                    })
+                    bucket.append(
+                        {
+                            "tag": tag,
+                            "target": target,
+                            "ctr": 1 << (self.geo["ITTAGE_CTR_W"] - 1),
+                            "useful": 0,
+                        }
+                    )
                     return
             for higher in range(max(provider, 0), self.geo["ITTAGE_TABLES"]):
                 idx, tag = self._index_tag(higher, pc, hist)
@@ -1014,11 +1022,7 @@ class BPUSimulator:
                 else (
                     itt_target
                     if itt_target is not None and ittage_same_event
-                    else (
-                        ftb_entry["target"]
-                        if ftb_entry
-                        else None
-                    )
+                    else (ftb_entry["target"] if ftb_entry else None)
                 )
             )
             if (
@@ -1056,11 +1060,7 @@ class BPUSimulator:
                 else (
                     itt_target
                     if itt_target is not None and ittage_same_event
-                    else (
-                        ftb_entry["target"]
-                        if ftb_entry
-                        else None
-                    )
+                    else (ftb_entry["target"] if ftb_entry else None)
                 )
             )
             if (
@@ -1097,10 +1097,7 @@ class BPUSimulator:
                     else:
                         self.counters["sc_deferred_by_timing_model"] += 1
             base_taken = taken
-            if (
-                ftb_entry is None
-                and l2_entry is not None
-            ):
+            if ftb_entry is None and l2_entry is not None:
                 self.counters["l2_ftb_hit"] += 1
                 cond_idx = (pc >> 1) % len(self.l2_cond_bim.entries)
                 cond_strong = self.l2_cond_bim.entries[cond_idx] == _mask(self.l2_cond_bim.ctr_w)
@@ -1371,7 +1368,7 @@ class BPUSimulator:
         return self.counters["misp"] * 1000.0 / instruction_count
 
     def stats(self) -> dict[str, int | float]:
-        out = dict(self.counters)
+        out: dict[str, int | float] = dict(self.counters)
         for key, value in self.ittage.counters.items():
             out[f"ittage_{key}"] = int(value)
         return out

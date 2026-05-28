@@ -538,7 +538,9 @@ test("chat SSE stream emits token + done events for assistant message", async ({
     })
     .filter(Boolean) as string[];
   expect(types).toEqual(["token", "done"]);
-  const parsedEvents = sseEvents.events.map((event) => JSON.parse(event)) as Array<{
+  const parsedEvents = sseEvents.events.map((event) =>
+    JSON.parse(event),
+  ) as Array<{
     type: string;
     text?: string;
     fullText?: string;
@@ -763,17 +765,11 @@ test("always-on chat mode starts passive browser STT and keeps capture open afte
   expect(simulated, "always-on STT shim must receive a final turn").toBe(true);
 
   await expect
-    .poll(
-      async () => page.locator("body").innerText(),
-      { timeout: 5_000 },
-    )
+    .poll(async () => page.locator("body").innerText(), { timeout: 5_000 })
     .toContain("always on browser turn");
 
   await expect
-    .poll(
-      async () => conversations.streamCalls(),
-      { timeout: 5_000 },
-    )
+    .poll(async () => conversations.streamCalls(), { timeout: 5_000 })
     .toEqual([
       expect.objectContaining({
         text: "always on browser turn",
@@ -784,7 +780,9 @@ test("always-on chat mode starts passive browser STT and keeps capture open afte
       }),
     ]);
 
-  await expect(page.getByText("Always-on assistant heard the browser turn")).toBeVisible({
+  await expect(
+    page.getByText("Always-on assistant heard the browser turn"),
+  ).toBeVisible({
     timeout: 5_000,
   });
 

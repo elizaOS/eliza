@@ -1,0 +1,124 @@
+{
+  "ok": true,
+  "benchmark_dir": "/root/robot/evidence/alberta_joint_reach",
+  "expected_env": "joint_reach",
+  "min_seeds": 3,
+  "min_steps_per_task": 16000,
+  "min_tasks": 4,
+  "checks": {
+    "benchmark_dir": true,
+    "json": true,
+    "markdown": true,
+    "plot": true,
+    "demo_json": true,
+    "demo_video": true,
+    "schema": true,
+    "expected_env": true,
+    "seeds": true,
+    "steps_per_task": true,
+    "tasks": true,
+    "result_count": true,
+    "learner_seed_pairs": true,
+    "learner_seed_coverage": true,
+    "summary_learners": true,
+    "result_learners": true,
+    "matrix_shapes": true,
+    "metrics": true,
+    "alberta_acc_gte_ppo": true,
+    "alberta_forgetting_lte_ppo": true
+  },
+  "deltas": {
+    "alberta_acc_minus_ppo": 3.8991915582262635,
+    "alberta_forgetting_minus_ppo": -10.04493309566603
+  },
+  "required_deltas": {
+    "require_alberta_acc_gte_ppo": false,
+    "require_alberta_forgetting_lte_ppo": true
+  },
+  "required_artifacts": {
+    "require_plot": true,
+    "require_demo_video": false
+  },
+  "demo": {},
+  "config": {
+    "env_kind": "joint_reach",
+    "n_tasks": 4,
+    "n_joints": 6,
+    "steps_per_task": 16000,
+    "eval_episodes": 10,
+    "seeds": 3,
+    "gamma": 0.5,
+    "actor_step_size": 0.01,
+    "critic_step_size": 0.02,
+    "actor_lamda": 0.7,
+    "critic_lamda": 0.7,
+    "log_sigma_init": -1.0,
+    "embed_dim": 16,
+    "n_prototypes": 192,
+    "gate_temperature": 0.1,
+    "proprio_random_dim": 64,
+    "obstacle_episode_steps": 80,
+    "learners": [
+      "alberta",
+      "ppo"
+    ]
+  },
+  "summary": {
+    "alberta": {
+      "acc": {
+        "mean": 38.30125825546629,
+        "std": 0.35457606889729265
+      },
+      "bwt": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "forgetting": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "fwt": {
+        "mean": 0.0,
+        "std": 0.0
+      }
+    },
+    "ppo": {
+      "acc": {
+        "mean": 34.40206669724002,
+        "std": 0.9544290917555905
+      },
+      "bwt": {
+        "mean": -9.291673975255282,
+        "std": 0.523956316186454
+      },
+      "forgetting": {
+        "mean": 10.04493309566603,
+        "std": 0.6083182952108606
+      },
+      "fwt": {
+        "mean": -0.8775604680048023,
+        "std": 0.7434026941123301
+      }
+    }
+  },
+  "seed_coverage": {
+    "alberta": [
+      1000,
+      1001,
+      1002
+    ],
+    "ppo": [
+      1000,
+      1001,
+      1002
+    ]
+  },
+  "configured_learners": [
+    "alberta",
+    "ppo"
+  ],
+  "required_learners": [
+    "alberta",
+    "ppo"
+  ]
+}

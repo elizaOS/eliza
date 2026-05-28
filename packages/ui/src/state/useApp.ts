@@ -1,7 +1,18 @@
 import { createContext, useContext } from "react";
 import type { AppContextValue } from "./types";
 
-export const AppContext = createContext<AppContextValue | null>(null);
+type AppContextObject = ReturnType<
+  typeof createContext<AppContextValue | null>
+>;
+
+const appContextGlobal = globalThis as typeof globalThis & {
+  __ELIZAOS_UI_APP_CONTEXT__?: AppContextObject;
+};
+
+export const AppContext =
+  appContextGlobal.__ELIZAOS_UI_APP_CONTEXT__ ??
+  (appContextGlobal.__ELIZAOS_UI_APP_CONTEXT__ =
+    createContext<AppContextValue | null>(null));
 
 export function useApp(): AppContextValue {
   const ctx = useContext(AppContext);

@@ -62,8 +62,8 @@ _REPO_ROOT = _HERE.parents[3]
 _FORK_LLAMA_CPP = _REPO_ROOT / "packages" / "inference" / "llama.cpp"
 
 _VENDOR_HINT = (
-    "The llama.cpp fork submodule should already be checked out by `bun "
-    "install` (scripts/ensure-llama-cpp-submodule.mjs). If it's missing:\n"
+    "The llama.cpp fork submodule should already be checked out. If it's "
+    "missing:\n"
     "  git submodule update --init packages/inference/llama.cpp\n"
     "Then build the llama-quantize + llama-cli binaries from it (one-shot, "
     "CPU-only is enough):\n"

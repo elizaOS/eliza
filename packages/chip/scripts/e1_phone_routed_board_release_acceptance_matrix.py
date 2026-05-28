@@ -25,9 +25,7 @@ DEFAULT_BURNDOWN = E1_DIR / "routed-layout-si-drc-burndown-2026-05-22.yaml"
 DEFAULT_RELEASE_PLAN = E1_DIR / "routed-release-plan.yaml"
 DEFAULT_YAML_REPORT = READINESS_DIR / f"routed-board-release-acceptance-matrix-{REPORT_DATE}.yaml"
 DEFAULT_MD_REPORT = READINESS_DIR / f"routed-board-release-acceptance-matrix-{REPORT_DATE}.md"
-DEFAULT_CANDIDATE_MANIFEST = (
-    E1_DIR / "production/routed-output-candidate-manifest-2026-05-22.yaml"
-)
+DEFAULT_CANDIDATE_MANIFEST = E1_DIR / "production/routed-output-candidate-manifest-2026-05-22.yaml"
 DEFAULT_COMPONENT_MODEL_MANIFEST = E1_DIR / "production/step/component-3d-model-manifest.yaml"
 DEFAULT_COMPONENT_MODEL_DIR = E1_DIR / "production/step/component-models"
 
@@ -107,23 +105,18 @@ def candidate_end_to_end_context(
     connection = candidate_manifest.get("cad_connection_coverage", {})
     traceability = candidate_manifest.get("kicad_cad_traceability", {})
     connection_records = [
-        item
-        for item in connection.get("connection_records", [])
-        if isinstance(item, dict)
+        item for item in connection.get("connection_records", []) if isinstance(item, dict)
     ]
     represented_net_list_total = sum(
         len(item.get("represented_nets", [])) for item in connection_records
     )
     represented_net_aliases_valid = all(
         item.get("represented_nets") == item.get("nets", [])
-        and int(item.get("represented_net_count", 0) or 0)
-        == len(item.get("represented_nets", []))
+        and int(item.get("represented_net_count", 0) or 0) == len(item.get("represented_nets", []))
         for item in connection_records
     )
     return {
-        "candidate_manifest": display_rel(candidate_manifest_path)
-        if candidate_manifest
-        else "",
+        "candidate_manifest": display_rel(candidate_manifest_path) if candidate_manifest else "",
         "component_model_manifest": display_rel(component_manifest_path)
         if component_manifest
         else "",
@@ -134,9 +127,7 @@ def candidate_end_to_end_context(
         "release_credit": bool(candidate_manifest.get("release_credit") is True),
         "source_board": candidate_manifest.get("source_board", ""),
         "source_step": candidate_manifest.get("source_step", ""),
-        "source_step_size_bytes": int(
-            candidate_manifest.get("source_step_size_bytes", 0) or 0
-        ),
+        "source_step_size_bytes": int(candidate_manifest.get("source_step_size_bytes", 0) or 0),
         "source_step_sha256": candidate_manifest.get("source_step_sha256", ""),
         "routed_step_visual_detail": {
             "footprint_envelope_count": int(visual.get("footprint_envelope_count", 0) or 0),
@@ -159,18 +150,13 @@ def candidate_end_to_end_context(
                 connection.get("assembly_manifest_connection_solid_step_part_count", 0) or 0
             ),
             "assembly_manifest_missing_connection_solid_step_part_count": int(
-                connection.get("assembly_manifest_missing_connection_solid_step_part_count", 0)
-                or 0
+                connection.get("assembly_manifest_missing_connection_solid_step_part_count", 0) or 0
             ),
             "assembly_manifest_missing_connection_solid_step_part_names": connection.get(
                 "assembly_manifest_missing_connection_solid_step_part_names", []
             ),
-            "required_connection_count": int(
-                connection.get("required_connection_count", 0) or 0
-            ),
-            "passing_connection_count": int(
-                connection.get("passing_connection_count", 0) or 0
-            ),
+            "required_connection_count": int(connection.get("required_connection_count", 0) or 0),
+            "passing_connection_count": int(connection.get("passing_connection_count", 0) or 0),
             "required_connection_terminal_marker_count": int(
                 connection.get("required_connection_terminal_marker_count", 0) or 0
             ),
@@ -227,9 +213,7 @@ def candidate_end_to_end_context(
                 traceability.get("pinout_bound_footprint_count", 0) or 0
             ),
             "all_pinout_bound_footprints_have_terminal_contract": bool(
-                traceability.get(
-                    "all_pinout_bound_footprints_have_terminal_contract", False
-                )
+                traceability.get("all_pinout_bound_footprints_have_terminal_contract", False)
             ),
             "cad_connection_count": int(traceability.get("cad_connection_count", 0) or 0),
             "cad_connection_represented_net_count_total": int(
@@ -263,14 +247,11 @@ def candidate_end_to_end_context(
                 traceability.get("cad_connection_controlled_impedance_count", 0) or 0
             ),
             "cad_connection_controlled_impedance_requirement_defined_count": int(
-                traceability.get(
-                    "cad_connection_controlled_impedance_requirement_defined_count", 0
-                )
+                traceability.get("cad_connection_controlled_impedance_requirement_defined_count", 0)
                 or 0
             ),
             "cad_connection_bend_radius_requirement_defined_count": int(
-                traceability.get("cad_connection_bend_radius_requirement_defined_count", 0)
-                or 0
+                traceability.get("cad_connection_bend_radius_requirement_defined_count", 0) or 0
             ),
             "cad_connection_supplier_release_required_count": int(
                 traceability.get("cad_connection_supplier_release_required_count", 0) or 0
@@ -285,27 +266,21 @@ def candidate_end_to_end_context(
         },
         "component_model_manifest_summary": {
             "status": component_manifest.get("status", ""),
-            "component_model_count": int(
-                component_manifest.get("component_model_count", 0) or 0
-            ),
+            "component_model_count": int(component_manifest.get("component_model_count", 0) or 0),
             "supplier_approved_model_count": int(
                 component_manifest.get("supplier_approved_model_count", 0) or 0
             ),
             "all_model_pad_counts_match_visuals": bool(
                 model_binding.get("all_model_pad_counts_match_visuals", False)
             ),
-            "visual_package_class_counts": visual_summary.get(
-                "visual_package_class_counts", {}
-            ),
+            "visual_package_class_counts": visual_summary.get("visual_package_class_counts", {}),
             "total_electrical_pad_count": int(
                 visual_summary.get("total_electrical_pad_count", 0) or 0
             ),
             "total_mechanical_pad_count": int(
                 visual_summary.get("total_mechanical_pad_count", 0) or 0
             ),
-            "total_pad_visual_count": int(
-                visual_summary.get("total_pad_visual_count", 0) or 0
-            ),
+            "total_pad_visual_count": int(visual_summary.get("total_pad_visual_count", 0) or 0),
             "all_models_have_visual_package_class": bool(
                 visual_summary.get("all_models_have_visual_package_class", False)
             ),
@@ -319,9 +294,7 @@ def candidate_end_to_end_context(
                 terminal_binding.get("support_pattern_model_count", 0) or 0
             ),
             "models_with_terminal_contract_or_no_electrical_pads_count": int(
-                terminal_binding.get(
-                    "models_with_terminal_contract_or_no_electrical_pads_count", 0
-                )
+                terminal_binding.get("models_with_terminal_contract_or_no_electrical_pads_count", 0)
                 or 0
             ),
             "non_signal_pad_contract_count": int(
@@ -334,28 +307,19 @@ def candidate_end_to_end_context(
                 terminal_binding.get("npth_mechanical_feature_contract_count", 0) or 0
             ),
             "models_with_npth_mechanical_feature_contract_count": int(
-                terminal_binding.get(
-                    "models_with_npth_mechanical_feature_contract_count", 0
-                )
-                or 0
+                terminal_binding.get("models_with_npth_mechanical_feature_contract_count", 0) or 0
             ),
             "all_pinout_bound_models_have_terminal_contract": bool(
                 terminal_binding.get("all_pinout_bound_models_have_terminal_contract", False)
             ),
             "all_pinout_bound_model_contracts_match_pad_visuals": bool(
-                terminal_binding.get(
-                    "all_pinout_bound_model_contracts_match_pad_visuals", False
-                )
+                terminal_binding.get("all_pinout_bound_model_contracts_match_pad_visuals", False)
             ),
             "all_support_pattern_models_have_explicit_provenance": bool(
-                terminal_binding.get(
-                    "all_support_pattern_models_have_explicit_provenance", False
-                )
+                terminal_binding.get("all_support_pattern_models_have_explicit_provenance", False)
             ),
             "all_non_signal_pad_contracts_match_pad_visuals": bool(
-                terminal_binding.get(
-                    "all_non_signal_pad_contracts_match_pad_visuals", False
-                )
+                terminal_binding.get("all_non_signal_pad_contracts_match_pad_visuals", False)
             ),
             "all_npth_mechanical_features_have_contract": bool(
                 terminal_binding.get("all_npth_mechanical_features_have_contract", False)
@@ -387,15 +351,10 @@ def candidate_end_to_end_context(
                 component_dir_manifest.get("non_signal_pad_contract_total_count", 0) or 0
             ),
             "npth_mechanical_feature_contract_total_count": int(
-                component_dir_manifest.get(
-                    "npth_mechanical_feature_contract_total_count", 0
-                )
-                or 0
+                component_dir_manifest.get("npth_mechanical_feature_contract_total_count", 0) or 0
             ),
             "models_with_npth_mechanical_feature_contract_count": int(
-                component_dir_manifest.get(
-                    "models_with_npth_mechanical_feature_contract_count", 0
-                )
+                component_dir_manifest.get("models_with_npth_mechanical_feature_contract_count", 0)
                 or 0
             ),
             "all_model_records_present": bool(
@@ -408,9 +367,7 @@ def candidate_end_to_end_context(
                 component_dir_manifest.get("all_records_release_credit_false", False)
             ),
             "all_pinout_bound_records_have_terminal_contract": bool(
-                component_dir_manifest.get(
-                    "all_pinout_bound_records_have_terminal_contract", False
-                )
+                component_dir_manifest.get("all_pinout_bound_records_have_terminal_contract", False)
             ),
             "all_support_pattern_records_have_explicit_provenance": bool(
                 component_dir_manifest.get(
@@ -418,19 +375,13 @@ def candidate_end_to_end_context(
                 )
             ),
             "all_terminal_contracts_match_pad_visuals": bool(
-                component_dir_manifest.get(
-                    "all_terminal_contracts_match_pad_visuals", False
-                )
+                component_dir_manifest.get("all_terminal_contracts_match_pad_visuals", False)
             ),
             "all_non_signal_pad_contracts_match_pad_visuals": bool(
-                component_dir_manifest.get(
-                    "all_non_signal_pad_contracts_match_pad_visuals", False
-                )
+                component_dir_manifest.get("all_non_signal_pad_contracts_match_pad_visuals", False)
             ),
             "all_npth_mechanical_features_have_contract": bool(
-                component_dir_manifest.get(
-                    "all_npth_mechanical_features_have_contract", False
-                )
+                component_dir_manifest.get("all_npth_mechanical_features_have_contract", False)
             ),
             "release_allowed": bool(component_dir_manifest.get("release_allowed") is True),
         },
@@ -645,16 +596,15 @@ def route_domain_rows(
                 "alias_satisfied_exact_net_count": inventory.get(
                     "alias_satisfied_exact_net_count", 0
                 ),
-                "alias_satisfied_exact_nets": inventory.get(
-                    "alias_satisfied_exact_nets", []
-                ),
+                "alias_satisfied_exact_nets": inventory.get("alias_satisfied_exact_nets", []),
                 "required_production_outputs": outputs,
                 "missing_production_outputs": missing_outputs,
                 "required_acceptance_evidence": evidence,
                 "current_blockers": current_blockers,
                 "current_presence": {
                     "nets_complete": not missing_nets,
-                    "required_outputs_complete": not missing_outputs,
+                    "candidate_required_outputs_complete": not missing_outputs,
+                    "release_required_outputs_complete": False,
                     "route_execution_ready": False,
                     "release_accepted": False,
                 },
@@ -680,9 +630,7 @@ def build_report(
 
     domains = route_domain_rows(route_inventory, burndown, release_plan)
     candidate_manifest = load_candidate_manifest(candidate_manifest_path)
-    candidate_context = candidate_end_to_end_context(
-        candidate_manifest, candidate_manifest_path
-    )
+    candidate_context = candidate_end_to_end_context(candidate_manifest, candidate_manifest_path)
     required_outputs = annotate_candidate_rows(
         collect_required_outputs(burndown, release_plan),
         candidate_manifest,
@@ -757,9 +705,9 @@ def build_report(
             "candidate_step_pinout_bound_model_count": candidate_context[
                 "component_model_manifest_summary"
             ]["pinout_bound_model_count"],
-            "candidate_step_cad_connection_count": candidate_context[
-                "cad_connection_coverage"
-            ]["passing_connection_count"],
+            "candidate_step_cad_connection_count": candidate_context["cad_connection_coverage"][
+                "passing_connection_count"
+            ],
             "candidate_step_cad_connection_terminal_marker_count": candidate_context[
                 "cad_connection_coverage"
             ]["required_connection_terminal_marker_count"],

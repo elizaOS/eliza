@@ -45,7 +45,7 @@ export interface ResolvedInjectedCharacter extends InjectedCharacterEntry {
 }
 
 export interface ClientMiddleware {
-  forceFreshOnboarding?: boolean;
+  forceFreshFirstRun?: boolean;
   preferLocalProvider?: boolean;
   desktopPermissions?: boolean;
 }
@@ -58,7 +58,7 @@ export interface AppBootConfig {
   apiToken?: string;
   cloudApiBase?: string;
   vrmAssets?: BundledVrmAsset[];
-  onboardingStyles?: unknown[];
+  firstRunStyles?: unknown[];
   characterCatalog?: CharacterCatalogData;
   envAliases?: readonly (readonly [string, string])[];
   clientMiddleware?: ClientMiddleware;

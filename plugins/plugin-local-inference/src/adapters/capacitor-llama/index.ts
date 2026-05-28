@@ -12,7 +12,6 @@
  */
 
 import fs from "node:fs";
-import os from "node:os";
 import path, { basename } from "node:path";
 import type {
 	DetokenizeTextParams,
@@ -36,6 +35,7 @@ import {
 	logger,
 	ModelType,
 	type Plugin,
+	resolveStateDir,
 } from "@elizaos/core";
 import {
 	createLocalInferenceModelHandlers,
@@ -317,7 +317,7 @@ class LocalAIManager {
 			this.config?.MODELS_DIR?.trim() || process.env.MODELS_DIR?.trim();
 		this.modelsDir = modelsDirEnv
 			? path.resolve(modelsDirEnv)
-			: path.join(os.homedir(), ".eliza", "models");
+			: path.join(resolveStateDir(), "models");
 		if (!fs.existsSync(this.modelsDir)) {
 			fs.mkdirSync(this.modelsDir, { recursive: true });
 		}
@@ -329,7 +329,7 @@ class LocalAIManager {
 			this.config?.CACHE_DIR?.trim() || process.env.CACHE_DIR?.trim();
 		this.cacheDir = cacheDirEnv
 			? path.resolve(cacheDirEnv)
-			: path.join(os.homedir(), ".eliza", "cache");
+			: path.join(resolveStateDir(), "cache");
 		if (!fs.existsSync(this.cacheDir)) {
 			fs.mkdirSync(this.cacheDir, { recursive: true });
 		}
@@ -579,7 +579,7 @@ export const localAiPlugin: Plugin = {
 		await localAIManager.initializeEnvironment();
 		const config = validateConfig();
 		const modelsDir =
-			config.MODELS_DIR || path.join(os.homedir(), ".eliza", "models");
+			config.MODELS_DIR || path.join(resolveStateDir(), "models");
 		if (!fs.existsSync(modelsDir)) {
 			logger.warn(
 				{ modelsDir },

@@ -1,0 +1,325 @@
+[[!meta title="Configuring the Persistent Storage"]]
+
+To configure the Persistent Storage, choose
+**Apps&nbsp;▸ Tails&nbsp;▸ Persistent Storage**.
+
+[[!toc levels=3]]
+
+<div class="note">
+
+<p>Only the features that are listed below can currently be made
+persistent.</p>
+
+<p>We are often asked to implement new features of the Persistent Storage: Tor
+Browser preferences, Tor configuration, desktop background, mouse and touchpad
+settings, and so on. See the [[!tails_gitlab
+groups/tails/-/issues?scope=all&utf8=✓&state=opened&label_name%5B%5D=C%3APersistence
+desc="list of issues about the Persistent Storage in our GitLab"]].<p>
+
+</div>
+
+Personal Documents
+==================
+
+<a id="persistent_folder"></a>
+
+<div class="icon">
+[[!img lib/apps/folder.png link="no" alt=""]]
+<div class="text"><h2>Persistent Folder</h2></div>
+</div>
+
+When the Persistent Folder feature is turned on, you can save your personal files and working
+documents in the *Persistent* folder.
+
+To open the *Persistent* folder:
+
+1. Choose **Apps&nbsp;▸ Accessories&nbsp;▸  Files**.
+
+1. Select the *Persistent* folder in the sidebar.
+
+System Settings
+===============
+
+<a id="welcome_screen"></a>
+
+<div class="icon">
+[[!img lib/apps/preferences-system.png link="no" alt=""]]
+<div class="text"><h2>Welcome Screen</h2></div>
+</div>
+
+When the Welcome Screen feature is turned on, the settings from the
+[[Welcome Screen|doc/first_steps/welcome_screen]] are saved in the Persistent Storage: language, keyboard,
+and additional settings.
+
+To restore your settings when starting Tails, unlock your Persistent
+Storage in the Welcome Screen.
+
+<a id="printers"></a>
+
+<div class="icon">
+[[!img lib/apps/printer.png link="no" alt=""]]
+<div class="text"><h2>Printers</h2></div>
+</div>
+
+When the Printers feature is turned on, the
+[[configuration of the printers|doc/sensitive_documents/printing_and_scanning]]
+is saved in the Persistent Storage.
+
+Network
+=======
+
+<a id="network_connections"></a>
+
+<div class="icon">
+[[!img lib/apps/network-manager.png link="no" alt=""]]
+<div class="text"><h2>Network Connections</h2></div>
+</div>
+
+When the Network Connections feature is turned on, the
+[[password for Wi-Fi networks and configuration of wired networks|doc/anonymous_internet/networkmanager]]
+are saved in the Persistent Storage.
+
+<a id="bridge">
+
+<div class="icon">
+[[!img lib/apps/tor-connection.png link="no" alt=""]]
+<div class="text"><h2>Tor Bridge</h2></div>
+</div>
+
+When the Tor Bridge feature is turned on, the last [[Tor
+bridge|doc/anonymous_internet/tor]] that you used to connect to Tor
+successfully is saved in the Persistent Storage.
+
+Applications
+============
+
+<a id="bookmarks"></a>
+
+<div class="icon">
+[[!img lib/apps/user-bookmarks.png link="no" alt=""]]
+<div class="text"><h2>Tor Browser Bookmarks</h2></div>
+</div>
+
+When the Tor Browser Bookmarks feature is turned on, changes to the bookmarks in
+[[*Tor Browser*|doc/anonymous_internet/Tor_Browser]]
+are saved in the Persistent Storage.
+
+<a id="electrum"></a>
+
+<div class="icon">
+[[!img lib/apps/electrum.png link="no" alt=""]]
+<div class="text"><h2>Electrum Bitcoin Wallet</h2></div>
+</div>
+
+When the Electrum Bitcoin Wallet feature is turned on, the bitcoin wallet and preferences of
+the [[*Electrum* bitcoin client|anonymous_internet/electrum]] are saved in the
+Persistent Storage.
+
+<a id="thunderbird"></a>
+
+<div class="icon">
+[[!img lib/apps/thunderbird.png link="no" alt=""]]
+<div class="text"><h2>Thunderbird Email Client</h2></div>
+</div>
+
+When the Thunderbird Email Client feature is turned on, the email, feeds, and OpenPGP keys in the
+[[*Thunderbird* email client|doc/anonymous_internet/thunderbird]]
+are saved in the Persistent Storage.
+
+<a id="gnupg"></a>
+
+<div class="icon">
+[[!img lib/apps/seahorse-key.png link="no" alt=""]]
+<div class="text"><h2>GnuPG</h2></div>
+</div>
+
+When the GnuPG feature is turned on, the OpenPGP keys that you create or import
+in *GnuPG* and [[*Kleopatra*|doc/encryption_and_privacy/kleopatra]] are
+saved in the Persistent Storage.
+
+<a id="pidgin"></a>
+
+<div class="icon">
+[[!img lib/apps/pidgin.png link="no" alt=""]]
+<div class="text"><h2>Pidgin Internet Messenger</h2></div>
+</div>
+
+When the Pidgin Internet Messenger feature is turned on, all the configuration files of the
+[[*Pidgin* internet messenger|doc/anonymous_internet/pidgin]]
+are saved in the Persistent Storage:
+
+- The configuration of your accounts, contacts, and chats
+
+- Your OTR encryption keys and keyring
+
+The content of the discussions is not saved, unless you configure *Pidgin* to
+do so.
+
+All the configuration options are available from the graphical interface of
+*Pidgin*. You don't need to manually edit or overwrite the configuration
+files.
+
+<a id="ssh"></a>
+
+<div class="icon">
+[[!img lib/apps/seahorse-key-ssh.png link="no" alt=""]]
+<div class="text"><h2>SSH Client</h2></div>
+</div>
+
+When the SSH Client feature is turned on, all the files related to the Secure
+Shell (SSH) client are saved in the Persistent Storage:
+
+- The SSH keys that you create or import
+
+- The public keys of the hosts you connect to
+
+- The SSH configuration file in */home/amnesia/.ssh/config*
+
+Advanced Settings
+=================
+
+<a id="additional_software"></a>
+
+<div class="icon">
+[[!img lib/apps/package-x-generic.png link="no" alt=""]]
+<div class="text"><h2>Additional Software</h2></div>
+</div>
+
+When the Additional Software feature is turned on, a list of
+[[additional software|additional_software]] of
+your choice is automatically installed every
+time you start Tails.
+
+The corresponding software packages are stored in the
+Persistent Storage. They are automatically upgraded for security after
+a network connection is established.
+
+<div class="caution">
+
+<p>The packages included in Tails are carefully tested for security.
+Installing additional packages might break the security built into Tails,
+so [[be careful with what you install|additional_software#warning]].</p>
+
+</div>
+
+<a id="dotfiles"></a>
+
+<div class="icon">
+[[!img lib/apps/preferences-desktop.png link="no" alt=""]]
+<div class="text"><h2>Dotfiles</h2></div>
+</div>
+
+When the Dotfiles feature is turned on:
+
+- The *Files* browser has a shortcut to the *Dotfiles* folder in the sidebar.
+
+  The absolute path of the *Dotfiles* folder is
+  */live/persistence/TailsData_unlocked/dotfiles*.
+
+- All the files in the
+  *Dotfiles* folder
+  are linked in the *Home* folder using Linux symbolic links.
+
+- All the files in subfolders of the
+  *Dotfiles* folder are also linked in the
+  corresponding subfolder of the *Home* folder using Linux symbolic links.
+
+For example, having the following files in
+the *Dotfiles* folder:
+
+    Dotfiles
+    ├── file_a
+    ├── folder
+    │   ├── file_b
+    │   └── subfolder
+    │       └── file_c
+    └── emptyfolder
+
+Produces the following result in the *Home* folder:
+
+    Home
+    ├── file_a → /live/persistence/TailsData_unlocked/dotfiles/file_a
+    └── folder
+        ├── file_b → /live/persistence/TailsData_unlocked/dotfiles/folder/file_b
+        └── subfolder
+            └── file_c → /live/persistence/TailsData_unlocked/dotfiles/folder/subfolder/file_c
+
+<div class="note">
+
+<p>The Dotfiles feature only links specific files, and not entire folders, from
+the Persistent Storage. Accordingly, empty folders are ignored, as shown in
+the above example.</p>
+
+</div>
+
+On Tails and Linux in general, the name of configuration files often starts
+with a dot and are sometimes called [[!wikipedia dotfiles]] for this reason.
+The Dotfiles feature of the Persistent Storage makes it easy to persist such
+"*dotfiles*", for example */home/amnesia/.gitconfig* or */home/amnesia/.bashrc*.
+
+<div class="caution">
+
+<p>Be careful if you use the Dotfiles feature to overwrite the default
+settings.</p>
+
+<p>The programs included in Tails are carefully configured with security in
+mind. You can weaken your security if you change the defaults.</p>
+
+<p>The anonymity of Tor and Tails relies on making it harder to distinguish one
+Tails user from another. In some cases, changing the default settings can break
+your anonymity.</p>
+
+</div>
+
+<h3 id="displays">Save the configuration of your displays</h3>
+
+If you have more than one display (for example, two monitors or a
+projector), you can save the configuration of your displays using the
+**Dotfiles** feature.
+
+1. Turn on the *Dotfiles* feature and restart Tails.
+
+1. Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Settings** to open the *Settings* utility.
+
+1. Choose **Displays** in the *Settings* utility.
+
+1. Configure your displays.
+
+1. Choose **Apps&nbsp;▸ Accessories&nbsp;▸ Files**.
+
+1. Select the *Dotfiles* folder in the sidebar.
+
+1. Select the [[!img lib/go-down.png alt="View Options" class="symbolic" link="no"]]
+   button in the title bar and select the option **Show Hidden Files**.
+
+1. Create a folder named *.config* (notice the `.`) in this *Dotfiles* folder.
+
+1. Copy the file *.config/monitors.xml* from your *Home* folder to this
+   *.config* folder.
+
+Deleting the data corresponding to a feature
+============================================
+
+When you turn off a feature of the Persistent Storage:
+
+- The data of the feature is not available anymore in Tails.
+
+  For example:
+
+  * If you turn off the Persistent Folder feature, the documents saved in
+    the *Persistent* folder are not available anymore in the *Files* browser.
+
+  * If you turn off the Electrum Bitcoin Wallet feature, the wallet used by
+    *Electrum* is not available anymore.
+
+- The data of the feature is still saved in the USB stick.
+
+  A **Delete Data** button appears in the setting of the feature.
+
+  [[!img delete_data.png link="no" alt=""]]
+
+  * Click the **Delete Data** button to delete the corresponding data from the
+    USB stick.
+
+  * Turn on the feature again to restore the data and make it available in
+    Tails again.

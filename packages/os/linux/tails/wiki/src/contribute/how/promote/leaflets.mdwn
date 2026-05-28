@@ -1,0 +1,37 @@
+[[!meta title="Leaflets"]]
+
+These leaflets are licensed under the [Creative Commons Attribution-ShareAlike
+4.0 International License](https://creativecommons.org/licenses/by-sa/4.0/):
+illustrations by [Andrés Fernández Cordón](https://anhdres.com/), layout by
+[Odile Carabantes](https://studiomoare.com/), text by Tails.
+
+The layout includes 1 mm of bleed on each side to match the datasheet of
+[Flyeralarm](https://www.flyeralarm.com/) for folded leaflets with cross
+fold. Flyeralarm has good prices and ships all around Europe.
+
+PDF
+---
+
+[[!map pages="contribute/how/promote/leaflets/*.pdf"]]
+
+Source
+------
+
+- [[leaflets/tails-leaflets-all-languages.indd]] (for Adobe InDesign)
+- Fonts:
+  - [Source Sans](https://fonts.google.com/specimen/Source+Sans+3)
+  - [Montserrat](https://fonts.google.com/specimen/Montserrat)
+
+Preview
+-------
+
+[[!img tails-leaflet-english.png size="x600" link="no" alt=""]]
+
+Known issues
+------------
+
+Some strings or translations might have changed on the website (for
+example [[!tails_gitweb_commit 6c2a7a23fd]]). Have a look at the Git
+history before printing many new leaflets:
+
+    git log -p --since='2020-05-22' index.* about.*

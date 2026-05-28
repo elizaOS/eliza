@@ -8,7 +8,7 @@
     "dev": "bun run --watch src/server.ts",
     "build": "bun build --target=bun --outfile dist/index.js src/server.ts",
     "start": "bun run src/server.ts",
-    "test": "bun test",
+    "test": "echo \"skip (feed): no unit tests; server is exercised by @feed/typescript-agent-example local-e2e\" >&2",
     "typecheck": "echo skip (feed) >&2"
   },
   "dependencies": {

@@ -65,8 +65,8 @@ interface DeviceCapabilities {
 	gpuSupported?: boolean;
 	lowPowerMode?: boolean;
 	thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
-	dflashSupported?: boolean;
-	dflashReason?: string;
+	mtpSupported?: boolean;
+	mtpReason?: string;
 }
 
 interface DeviceRegistration {

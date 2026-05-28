@@ -7,7 +7,7 @@ import {
   AGENT_EVENT_ALLOWED_STREAMS,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,
   type ConversationMeta,
-  clearPersistedOnboardingConfig,
+  clearPersistedFirstRunConfig,
   cloneWithoutBlockedObjectKeys,
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
@@ -61,7 +61,7 @@ export {
   type CompatRuntimeState,
   DATABASE_UNAVAILABLE_MESSAGE,
   getConfiguredCompatAgentName,
-  hasCompatPersistedOnboardingState,
+  hasCompatPersistedFirstRunState,
   isLoopbackRemoteAddress,
   readCompatJsonBody,
 } from "./compat-route-shared";
@@ -142,7 +142,7 @@ import { handleCatalogRoutes } from "./catalog-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
-import { handleOnboardingCompatRoute } from "./onboarding-routes";
+import { handleFirstRunRoute } from "./first-run-routes";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
@@ -237,7 +237,7 @@ function resolveCompatConfigPaths(): {
   const explicitConfig = process.env.ELIZA_CONFIG_PATH?.trim();
   const hasStateOverride =
     Boolean(process.env.ELIZA_STATE_DIR?.trim()) ||
-    Boolean(process.env.ELIZA_STATE_DIR?.trim());
+    Boolean(process.env.MILADY_STATE_DIR?.trim());
   const configPath =
     explicitConfig ||
     (hasStateOverride ? path.join(resolveStateDir(), "eliza.json") : undefined);
@@ -298,7 +298,7 @@ function resolveCompatPgliteDataDir(config: ElizaConfig): string {
 
   const workspaceDir =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
-  return path.join(resolveUserPath(workspaceDir), ".eliza", ".elizadb");
+  return path.join(resolveUserPath(workspaceDir), ".elizadb");
 }
 
 /**
@@ -662,7 +662,7 @@ async function handleCompatRoute(
   // Cookie + CSRF session lifecycle (setup, login, logout, me, sessions).
   if (await handleAuthSessionRoutes(req, res, state)) return true;
 
-  // Auth / pairing / onboarding status — extracted to auth-pairing-routes.ts
+  // Auth / pairing / first-run status — extracted to auth-pairing-routes.ts
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;
   if (await handleBackgroundTasksRoute(req, res, state)) return true;
   // Internal wake route called by Capacitor BackgroundRunner JSContexts on
@@ -768,7 +768,7 @@ async function handleCompatRoute(
 
     try {
       logger.info(
-        "[eliza][reset] POST /api/agent/reset: loading config, will clear onboarding state, persisted provider config, and cloud keys (GGUF / MODELS_DIR untouched)",
+        "[eliza][reset] POST /api/agent/reset: loading config, will clear first-run state, persisted provider config, and cloud keys (GGUF / MODELS_DIR untouched)",
       );
       const config = loadElizaConfig();
       logger.info(
@@ -776,7 +776,7 @@ async function handleCompatRoute(
       );
       await clearCompatPgliteDataDir(state.current, config);
       state.current = null;
-      clearPersistedOnboardingConfig(config);
+      clearPersistedFirstRunConfig(config);
       saveElizaConfig(config);
       clearCloudSecrets();
       try {
@@ -812,7 +812,7 @@ async function handleCompatRoute(
   // Catalog routes — registry SoT projections (apps, plugins, connectors)
   if (await handleCatalogRoutes(req, res, state)) return true;
 
-  if (await handleOnboardingCompatRoute(req, res, state)) return true;
+  if (await handleFirstRunRoute(req, res, state)) return true;
 
   // Benchmark trending DB read API — scaffolds gap M2 (W0-X5).
   // Producers are Python (W1-B*); this exposes per-model history + pairwise

@@ -5,7 +5,7 @@ import importlib.util
 import json
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -36,7 +36,7 @@ def measured_report(**overrides: Any) -> dict[str, Any]:
         "claim_allowed": False,
         "phone_claim_allowed": False,
         "release_claim_allowed": False,
-        "captured_utc": datetime.now(timezone.utc).isoformat(),
+        "captured_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": (
             "This cocotb report measures RTL pressure behavior only. It is not "
             "phone, release, L5/L6 silicon, DRAM, LPDDR, Android, or bandwidth evidence."
@@ -218,8 +218,7 @@ def test_result_artifact_hash_mismatch_rejected() -> None:
     if report["status"] != "blocked":
         raise AssertionError(report)
     if not any(
-        item["name"] == "result_artifacts.e1_l1d_cache.sha256"
-        and item["status"] == "invalid"
+        item["name"] == "result_artifacts.e1_l1d_cache.sha256" and item["status"] == "invalid"
         for item in report["findings"]
     ):
         raise AssertionError(report["findings"])
@@ -266,10 +265,7 @@ def test_measured_report_keeps_memory_blockers_visible_without_blocking_rtl_clai
         raise AssertionError(report)
     if report.get("memory_blocked_count", 0) <= 0:
         raise AssertionError(report)
-    if not any(
-        item["name"] == "l5_l6_memory_real_target_reports"
-        for item in report["findings"]
-    ):
+    if not any(item["name"] == "l5_l6_memory_real_target_reports" for item in report["findings"]):
         raise AssertionError(report["findings"])
     print("PASS cache pressure measured report still surfaces memory blockers")
 

@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import yaml
 
@@ -12,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
+import check_openlane_run_preflight as openlane_preflight  # noqa: E402
 import openlane_pd_blocker_summary  # noqa: E402
 
 
@@ -26,6 +28,12 @@ def run_check(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 class PhysicalGateTests(unittest.TestCase):
+    def test_openlane_pd_blocker_summary_resolves_container_work_root(self) -> None:
+        self.assertEqual(
+            openlane_pd_blocker_summary.repo_root_for(Path("/work")),
+            Path("/work"),
+        )
+
     def test_scaffold_gates_pass(self) -> None:
         commands = [
             ("scripts/check_package_cross_probe.py",),
@@ -39,10 +47,13 @@ class PhysicalGateTests(unittest.TestCase):
                 result = run_check(*command)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_openlane_preflight_scaffold_has_current_diagnostic_run(self) -> None:
+    def test_openlane_preflight_scaffold_reports_blocked_without_run_evidence(self) -> None:
         result = run_check("scripts/check_openlane_run_preflight.py")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("STATUS: PASS openlane_run_preflight", result.stdout)
+        self.assertIn("STATUS: BLOCKED openlane_run_preflight", result.stdout)
+        self.assertIn(
+            "OpenLane configs are present; run/image evidence is still blocked.", result.stdout
+        )
 
     def test_openlane_preflight_writes_mode_specific_reports(self) -> None:
         normal_report = ROOT / "build/reports/openlane_run_preflight.json"
@@ -70,6 +81,49 @@ class PhysicalGateTests(unittest.TestCase):
             )
         )
 
+    def test_openlane_release_rejects_cross_run_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            run_a = root / "runs/RUN_A/final/gds"
+            run_b = root / "runs/RUN_B/final/def"
+            run_a.mkdir(parents=True)
+            run_b.mkdir(parents=True)
+            (run_a / "e1_chip_top.gds").write_text("gds\n", encoding="utf-8")
+            (run_b / "e1_chip_top.def").write_text("def\n", encoding="utf-8")
+            manifest = {
+                "run_roots": ["runs"],
+                "required_artifacts": {
+                    "gds": {"globs": ["runs/*/final/gds/*.gds"]},
+                    "def": {"globs": ["runs/*/final/def/*.def"]},
+                },
+            }
+            with mock.patch.object(openlane_preflight, "ROOT", root):
+                blockers = openlane_preflight.release_artifact_blockers(manifest)
+
+        self.assertIn(
+            "release artifacts must come from one selected OpenLane/OpenROAD run directory",
+            blockers,
+        )
+        categories = {openlane_preflight.blocker_category(blocker) for blocker in blockers}
+        self.assertIn("release_artifacts_cross_run", categories)
+
+    def test_openlane_release_requires_native_runner_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            with (
+                mock.patch.object(openlane_preflight, "ROOT", root),
+                mock.patch.object(
+                    openlane_preflight.shutil, "which", return_value="/usr/bin/openlane"
+                ),
+            ):
+                blockers = openlane_preflight.native_openlane_release_blockers()
+
+        self.assertEqual(len(blockers), 1)
+        self.assertEqual(
+            openlane_preflight.blocker_category(blockers[0]),
+            "runner_provenance_missing",
+        )
+
     def test_openlane_preflight_custom_report_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             custom_report = Path(tmpdir) / "custom-openlane.json"
@@ -90,11 +144,12 @@ class PhysicalGateTests(unittest.TestCase):
         self.assertEqual(report["schema"], "eliza.openlane_pd_blocker_summary.v1")
         self.assertFalse(report["summary"]["release_ready"])
         self.assertFalse(report["summary"]["release_credit"])
-        self.assertGreater(report["summary"]["magic__drc_error__count"], 0)
-        self.assertIn(
-            "magic_drc_blocked",
-            {finding["code"] for finding in report["findings"]},
-        )
+        finding_codes = {finding["code"] for finding in report["findings"]}
+        if report["summary"].get("complete_run_found"):
+            self.assertGreater(report["summary"]["magic__drc_error__count"], 0)
+            self.assertIn("magic_drc_blocked", finding_codes)
+        else:
+            self.assertIn("openlane_no_complete_pd_run", finding_codes)
 
     def test_openlane_pd_blocker_summary_reports_signoff_artifact_handoff_gap(
         self,
@@ -145,9 +200,7 @@ class PhysicalGateTests(unittest.TestCase):
                             },
                             "drc_report": {
                                 "min_bytes": 4,
-                                "globs": [
-                                    f"{run_root.as_posix()}/*/reports/signoff/*drc*.rpt"
-                                ],
+                                "globs": [f"{run_root.as_posix()}/*/reports/signoff/*drc*.rpt"],
                             },
                         },
                     }
@@ -169,10 +222,7 @@ class PhysicalGateTests(unittest.TestCase):
             self.assertFalse(summary["closest_artifact_runs"][0]["release_credit"])
             self.assertIn(
                 "drc_report",
-                {
-                    row["artifact"]
-                    for row in summary["selected_run"]["missing_artifact_classes"]
-                },
+                {row["artifact"] for row in summary["selected_run"]["missing_artifact_classes"]},
             )
             self.assertEqual(summary["blocked_release_gates"][0]["gate"], "pd_release")
             self.assertIn("single e1_chip_top release run", summary["primary_action"])
@@ -216,9 +266,7 @@ class PhysicalGateTests(unittest.TestCase):
             )
 
             magic = next(
-                finding
-                for finding in report["findings"]
-                if finding["code"] == "magic_drc_blocked"
+                finding for finding in report["findings"] if finding["code"] == "magic_drc_blocked"
             )
             summary = magic["evidence"]["rule_summary"]
             self.assertEqual(summary["parsed_box_count"], 4)
@@ -335,7 +383,9 @@ class PhysicalGateTests(unittest.TestCase):
                 wirelength_pressure["top_long_nets"][0],
                 {"net": "clknet_1_0_0_clk", "length_um": 4366.51},
             )
-            self.assertEqual(wirelength_pressure["top_synthesized_numbered_nets"][0]["net"], "net963")
+            self.assertEqual(
+                wirelength_pressure["top_synthesized_numbered_nets"][0]["net"], "net963"
+            )
             self.assertIn("SRAM macro output-to-top-port", timing["next_step"])
 
     def test_openlane_pd_blocker_summary_keeps_latest_incomplete_diagnostic(self) -> None:
@@ -561,7 +611,7 @@ class PhysicalGateTests(unittest.TestCase):
             report_path.parent.mkdir(parents=True)
             report_path.write_text("", encoding="utf-8")
 
-            package_relative = run_dir.relative_to(ROOT.parents[1])
+            package_relative = run_dir.relative_to(openlane_pd_blocker_summary.REPO_ROOT)
             report = openlane_pd_blocker_summary.build_report(
                 run_dir=package_relative,
                 process_table="",
@@ -761,12 +811,12 @@ class PhysicalGateTests(unittest.TestCase):
             self.assertEqual(antenna["heuristic_diodes_inserted"], None)
             self.assertEqual(antenna["pre_repair_state_metrics"]["antenna__violating__nets"], 80)
             self.assertEqual(
-                antenna["pre_repair_state_metrics"][
-                    "design__instance__count__class:antenna_cell"
-                ],
+                antenna["pre_repair_state_metrics"]["design__instance__count__class:antenna_cell"],
                 119063,
             )
-            self.assertIn("Input-port diode protection has now been exercised", antenna["next_pd_action"])
+            self.assertIn(
+                "Input-port diode protection has now been exercised", antenna["next_pd_action"]
+            )
 
     def test_openlane_pd_blocker_summary_parses_heuristic_diode_bloat(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -877,7 +927,9 @@ class PhysicalGateTests(unittest.TestCase):
             self.assertTrue(antenna["heuristic_diode_step_skipped"])
             self.assertIsNone(antenna["heuristic_diodes_inserted"])
             self.assertEqual(antenna["config_values"]["RUN_HEURISTIC_DIODE_INSERTION"], False)
-            self.assertIn("Input-port diode protection has now been exercised", antenna["next_pd_action"])
+            self.assertIn(
+                "Input-port diode protection has now been exercised", antenna["next_pd_action"]
+            )
 
     def test_openlane_pd_blocker_summary_records_completed_margin40_segment(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -977,7 +1029,9 @@ class PhysicalGateTests(unittest.TestCase):
                 old_run_root,
             )
             run_dir = Path(tmpdir) / "RUN_2099-01-01_00-00-03_diodein_noheuristic_margin30_segment"
-            prior_run = Path(tmpdir) / "RUN_2099-01-01_00-00-02_diodein_noheuristic_margin40_segment"
+            prior_run = (
+                Path(tmpdir) / "RUN_2099-01-01_00-00-02_diodein_noheuristic_margin40_segment"
+            )
             prior_repair_dir = prior_run / "02-openroad-repairantennas"
             prior_stage_dir = prior_repair_dir / "1-diodeinsertion"
             prior_check_dir = prior_repair_dir / "2-openroad-checkantennas"
@@ -1177,9 +1231,7 @@ class PhysicalGateTests(unittest.TestCase):
                 },
             )
             self.assertEqual(
-                antenna["next_bounded_experiment"]["diagnostic_targets"][
-                    "primary_strategy"
-                ],
+                antenna["next_bounded_experiment"]["diagnostic_targets"]["primary_strategy"],
                 "mixed_route_and_diode_review",
             )
             self.assertEqual(

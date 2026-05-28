@@ -20,7 +20,7 @@ mic → ASR → drafter ∥ verifier → chunker → TTS pipeline (see
 | **Perceived response latency** | `t_tts_first_audio − t_speech_end` |
 | **Barge-in response** | `t_barge_in_hard_stop − t_barge_in_trigger` |
 | **Rollback waste** | drafter tokens rejected / drafter tokens proposed |
-| **DFlash acceptance** | when DFlash is wired |
+| **MTP acceptance** | when MTP is wired |
 | **Peak RSS / CPU / GPU** | best-effort process sampling at 100 ms |
 
 ## Running
@@ -171,8 +171,8 @@ evidence.
   corpus.
 - **GPU utilization is not yet sampled.** The Metal/Vulkan counter hooks
   are TBD; the field is optional in `BenchMetrics`.
-- **DFlash stats are driver-supplied.** The real driver must hook into
-  `dflash-server`; mock values are not accepted for release evidence.
+- **MTP stats are driver-supplied.** The real driver must hook into
+  `FFI runtime`; mock values are not accepted for release evidence.
 - **Single-process only.** The harness runs the driver in-process. For
   cold-start measurement that includes shell startup, the runner needs a
   subprocess wrapper — a follow-up.

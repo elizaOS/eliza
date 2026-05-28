@@ -1,0 +1,169 @@
+[[!meta title="Tails report for July, 2019"]]
+[[!meta date="Wed, 14 Aug 2019 07:09:52 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* [[Tails 3.15 was released on July 9th|news/version_3.15]] (bugfix release).
+
+* Tails 3.16 is [[scheduled for September 3rd|contribute/calendar]].
+
+
+Documentation and website
+=========================
+
+- We updated most of our documentation to Tails based on Debian 10
+  (Buster). ([[!tails_ticket 16282]])
+
+- We simplified and updated our description of the system requirements.
+  ([[!tails_ticket 11663]] and [[!tails_ticket 16810]]).
+
+- We fixed the display of the "Tor check" button on the homepage of *Tor
+  Browser*. ([[!tails_ticket 15312]])
+
+  This "Tor check" button is used by around 10% of users.
+
+- We removed the "% translated" indication from our website because it was
+  misleading. ([[!tails_ticket 16867]])
+
+User experience
+===============
+
+- [Odile Carabantes](https://studiomoare.com/) and Enso
+  Studio created an animation on
+  [[using the boot menu to start Tails|install/windows#animation]].
+
+- We tested 2 alternatives to *Etcher* as it has some privacy issues
+  ([[!tails_ticket 16381]]):
+
+  - Rawrite32 ([[!tails_ticket 16553]])
+  - Win32 Disk Images ([[!tails_ticket 14447]])
+
+- We proposed some small improvements to adjust *Tails Installer* to the
+  fact that we are now distributing USB images:
+
+  - Rename *Tails Installer* as *Tails Cloner* ([[!tails_ticket 16907]])
+  - Use USB images instead of ISO images in *Tails Installer* ([[!tails_ticket 16906]])
+
+- We proposed a design to use *Tails Installer* to backup the
+  persistent volume.
+
+Hot topics on our help desk
+===========================
+
+1. Many people are still having graphic card problems, specially [[!tails_ticket 16815 desc="#16815 Error starting GDM with [AMD/ATI] Carrizo"]].
+
+1. We got a lot of support requests about **'Tails not being able to delete images'**. After a while we realised it was because of a confusing part of our documentation. We will try to fix that soon: [[!tails_ticket 16975 desc="#16975 Users get confused at our documentation and think Tails does not delete images at all"]].
+
+1. Users keep trying to use Electrum even when, at the moment, it is not easy in Tails.
+
+Infrastructure
+==============
+
+- We finished fixing the description of the mechanism for the
+  [[revocation of the Tails signing
+  key|doc/about/openpgp_keys/signing_key_revocation]] after an external
+  review. ([[!tails_ticket 15604]])
+
+- We discussed additions of new people to the Tails signing key
+  revocation mechanism. ([[!tails_ticket 16665]])
+
+- The new backups system for our entire infrastructure is live.
+  ([[!tails_ticket 15071]])
+
+- We upgraded our Puppet master (sic) to Debian 10 (Buster), which
+  supports PuppetDB out of the box. This allowed us to drop a bunch of
+  hackish workarounds and it was a great way to fast-track the
+  onboarding of zen, our new sysadmin. ([[!tails_ticket 16460]])
+
+- We made great progress on our [web translation
+  platform](https://translate.tails.net/):
+  - We fixed a number of bugs identified since we submitted the platform
+    to a production workload.
+  - We modified in depth the permissions model to address issues identified
+    by a security review.
+  - We sent a public call for testing.
+  - We kept working on documentation for translators.
+  - We adjusted the resources allocated to the VM that runs this platform
+    and deployed Apache `mod_security` to make it a bit less scary.
+
+Funding
+=======
+
+- Our proposal to the [Mozilla Open Source Support](https://www.mozilla.org/en-US/moss/)
+  was accepted. It will fund our work to:
+
+  - Improve Upgrades, late 2019 and early 2020 ([[!tails_ticket 8415]] and [[!tails_ticket 15281]])
+  - Support Secure Boot, mid 2020 ([[!tails_ticket 6560]])
+  - Migrate to GitLab, early 2020 ([[!tails_ticket 15878]])
+
+Outreach
+========
+
+Past events
+-----------
+
+- A few Tails contributors attended
+  [DebConf19](https://debconf19.debconf.org/), the annual Debian
+  Developers and Contributors Conference.
+
+  intrigeri and nodens ran
+  a skill-sharing session about AppArmor.
+
+- Ulrike, anonym, and sajolida attended [Tor
+  Meeting](https://trac.torproject.org/projects/tor/wiki/org/meetings/2019Stockholm)
+  in Stockholm, Sweden.
+
+Upcoming events
+---------------
+
+- [carlosm2](https://twitter.com/dospesosinc) is organizing a [testing of
+  Tails 4.0~beta1](https://twitter.com/dospesosinc/status/1160723565802602502)
+  at the Rancho Electrónico en Ciudad de Mexico on Saturday August 17.
+
+On-going discussions
+====================
+
+- We asked for comments on a proposal for a "People" page on our website that
+  would be both trustworthy, human, and respect our pseudonyms:
+
+  <https://lists.autistici.org/message/20190720.142700.203814ca.en.html>
+
+- We asked for comments on the proposal to use *Tails Installer* to backup the
+  persistent volume:
+
+  <http://lists.autistici.org/message/20190723.163900.7bfc4f4a.en.html>
+
+Translations
+============
+
+## All the website
+
+  - de: 40% (2292) strings translated, 9% strings fuzzy, 37% words translated
+  - es: 53% (3002) strings translated, 5% strings fuzzy, 45% words translated
+  - fa: 32% (1803) strings translated, 11% strings fuzzy, 34% words translated
+  - fr: 89% (5025) strings translated, 2% strings fuzzy, 88% words translated
+  - it: 34% (1947) strings translated, 7% strings fuzzy, 30% words translated
+  - pt: 26% (1465) strings translated, 9% strings fuzzy, 22% words translated
+
+Total original words: 59619
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 69% (1216) strings translated, 14% strings fuzzy, 71% words translated
+  - es: 83% (1453) strings translated, 8% strings fuzzy, 84% words translated
+  - fa: 35% (624) strings translated, 13% strings fuzzy, 32% words translated
+  - fr: 96% (1680) strings translated, 2% strings fuzzy, 96% words translated
+  - it: 65% (1150) strings translated, 16% strings fuzzy, 66% words translated
+  - pt: 47% (823) strings translated, 14% strings fuzzy, 48% words translated
+
+Total original words: 16505
+
+Metrics
+=======
+
+* Tails has been started more than 759&thinsp;660 times this month. This makes 24&thinsp;505 boots a day on average.
+

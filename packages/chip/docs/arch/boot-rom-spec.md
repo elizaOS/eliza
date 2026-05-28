@@ -12,7 +12,7 @@ to either side must keep stable.
 | Item | Value |
 | --- | --- |
 | Architectural reset PC | `0x0000_1000` |
-| ROM aperture | `0x0000_1000 .. 0x0000_1FFF` (4 KiB, read-only) |
+| ROM aperture | `0x0000_0000 .. 0x0000_FFFF` (64 KiB, read-only) |
 | ROM word width | 32 bits, little-endian |
 | First instruction | `_reset` symbol in `fw/boot-rom/reset.S` (RV64 `csrr t0, mhartid`) |
 | Reset state | `mstatus.MIE=0`, `mie=0`, `mip=0`, `pmpcfg0=0`, `satp=0`, hart 0 only released |

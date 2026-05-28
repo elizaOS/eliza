@@ -118,7 +118,11 @@ SCOPES: tuple[ScopeSpec, ...] = (
                     ("app.package_name", "eq", ANDROID_PAYLOAD_PACKAGE_SENTINEL),
                     ("app.foreground_activity", "contains", ANDROID_PAYLOAD_PACKAGE_SENTINEL),
                     ("app.home_resolve_activity", "contains", ANDROID_PAYLOAD_PACKAGE_SENTINEL),
-                    ("app.role_holders.android.app.role.HOME", "contains", ANDROID_PAYLOAD_PACKAGE_SENTINEL),
+                    (
+                        "app.role_holders.android.app.role.HOME",
+                        "contains",
+                        ANDROID_PAYLOAD_PACKAGE_SENTINEL,
+                    ),
                     ("app.service_pid", "gt", 0),
                     ("agent.health_http", "eq", 200),
                     ("agent.health_ready", "eq", True),
@@ -502,9 +506,7 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
         "docs/evidence/android/eliza_ai_soc_e1_npu_hal_liveness.log": {
             **base,
             "capture_commands": [
-                (
-                    "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>"
-                ),
+                ("export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>"),
                 (
                     "python3 packages/chip/scripts/android/capture_e1_npu_hal_liveness.py "
                     '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" '
@@ -714,6 +716,9 @@ def validate_evidence_spec(spec: EvidenceSpec) -> list[str]:
 def evidence_blocker_class(spec: EvidenceSpec, errors: list[str]) -> str | None:
     if not errors:
         return None
+    live_contract = live_capture_contract(rel(spec.path))
+    if live_contract.get("capture_commands"):
+        return LIVE_CAPTURE_UNAVAILABLE
     if not spec.path.exists() and planned_evidence_template(spec.path) is not None:
         return PLANNED_EVIDENCE_INCOMPLETE
     if not spec.path.exists():
@@ -746,9 +751,6 @@ def evidence_blocker_category(
         return PLANNED_MISSING_EVIDENCE
     if blocker_class == PLANNED_EVIDENCE_INCOMPLETE:
         return PLANNED_INCOMPLETE_EVIDENCE
-    capture = evidence_capture_plan(spec.path)
-    if capture.get("capture_commands"):
-        return REPO_ARTIFACT_GENERATION
     return PLANNED_INCOMPLETE_EVIDENCE
 
 
@@ -768,9 +770,7 @@ def validate_runtime_evidence(spec: ScopeSpec) -> tuple[list[str], list[dict[str
     for evidence_spec in spec.required_evidence_files:
         spec_errors = validate_evidence_spec(evidence_spec)
         blocker_class = evidence_blocker_class(evidence_spec, spec_errors)
-        blocker_category = evidence_blocker_category(
-            evidence_spec, spec_errors, blocker_class
-        )
+        blocker_category = evidence_blocker_category(evidence_spec, spec_errors, blocker_class)
         errors.extend(spec_errors)
         records.append(
             {
@@ -783,13 +783,9 @@ def validate_runtime_evidence(spec: ScopeSpec) -> tuple[list[str], list[dict[str
                 "blocker_class": blocker_class,
                 "blocker_label": evidence_blocker_label(blocker_class),
                 "blocker_category": blocker_category,
-                "blocker_category_label": evidence_blocker_category_label(
-                    blocker_category
-                ),
+                "blocker_category_label": evidence_blocker_category_label(blocker_category),
                 "errors": spec_errors,
-                "planned_evidence_template": planned_evidence_template(
-                    evidence_spec.path
-                ),
+                "planned_evidence_template": planned_evidence_template(evidence_spec.path),
                 **evidence_capture_plan(evidence_spec.path),
             }
         )
@@ -835,20 +831,14 @@ def runtime_evidence_collection_inventory(evidence: dict[str, Any]) -> list[dict
                         "json_expectations": record.get("json_expectations", []),
                         "required_tokens": record.get("required_tokens", []),
                         "forbidden_tokens": record.get("forbidden_tokens", []),
-                        "planned_evidence_template": record.get(
-                            "planned_evidence_template"
-                        ),
+                        "planned_evidence_template": record.get("planned_evidence_template"),
                         "prerequisites": record.get("prerequisites", []),
                         "device_or_emulator_prerequisites": record.get(
                             "device_or_emulator_prerequisites", []
                         ),
                         "expected_file_schema": record.get("expected_file_schema"),
-                        "fail_closed_validation_rule": record.get(
-                            "fail_closed_validation_rule"
-                        ),
-                        "capture_contract_manifest": record.get(
-                            "capture_contract_manifest"
-                        ),
+                        "fail_closed_validation_rule": record.get("fail_closed_validation_rule"),
+                        "capture_contract_manifest": record.get("capture_contract_manifest"),
                         "expected_output_files": record.get("expected_output_files", []),
                         "capture_commands": record.get("capture_commands", []),
                         "validation_command": record.get("validation_command"),
@@ -859,9 +849,7 @@ def runtime_evidence_collection_inventory(evidence: dict[str, Any]) -> list[dict
                 ],
                 "blocked_evidence_file_count": len(blocked_files),
                 "blocked_evidence_class_counts": count_blocker_classes(blocked_files),
-                "blocked_evidence_category_counts": count_blocker_categories(
-                    blocked_files
-                ),
+                "blocked_evidence_category_counts": count_blocker_categories(blocked_files),
                 "next_artifacts": sorted(
                     {
                         path
@@ -923,12 +911,8 @@ def runtime_capture_area_groups(
         capture_commands: list[str] = []
         expected_files: list[str] = []
         for record in blocked_files:
-            capture_commands.extend(
-                str(command) for command in record.get("capture_commands", [])
-            )
-            expected_files.extend(
-                str(path) for path in record.get("expected_output_files", [])
-            )
+            capture_commands.extend(str(command) for command in record.get("capture_commands", []))
+            expected_files.extend(str(path) for path in record.get("expected_output_files", []))
         groups.append(
             {
                 "capture_area": scope_record.get("scope"),
@@ -937,9 +921,7 @@ def runtime_capture_area_groups(
                 "release_credit": False,
                 "blocked_evidence_file_count": len(blocked_files),
                 "blocked_evidence_class_counts": count_blocker_classes(blocked_files),
-                "blocked_evidence_category_counts": count_blocker_categories(
-                    blocked_files
-                ),
+                "blocked_evidence_category_counts": count_blocker_categories(blocked_files),
                 "next_artifacts": sorted(set(expected_files)),
                 "next_commands": list(dict.fromkeys(capture_commands))
                 + [PHONE_RUNTIME_VALIDATION_COMMAND, PHONE_RUNTIME_AGGREGATE_COMMAND],

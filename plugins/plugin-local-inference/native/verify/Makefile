@@ -44,14 +44,14 @@ gen_fixture: gen_fixture.c $(REF_OBJ) $(QJL_POLAR_OBJ)
 
 # Vulkan harness. Resolution order:
 #   1. VULKAN_SDK env var (LunarG SDK install) — preferred, gives glslangValidator
-#   2. Fetched Khronos Vulkan-Headers checkout from the dflash build script
-#      (~/.cache/eliza-dflash/vulkan-headers/include) + system libvulkan.so.1
+#   2. Fetched Khronos Vulkan-Headers checkout from the mtp build script
+#      (~/.cache/eliza-mtp/vulkan-headers/include) + system libvulkan.so.1
 #   3. Fail with a clear instruction.
 #
 # Path 2 lets the harness build on stock Linux machines that already have
-# `bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --target
+# `bun run packages/app-core/scripts/build-llama-cpp-mtp.mjs --target
 # linux-x64-vulkan` set up but no Vulkan SDK installed.
-ELIZA_DFLASH_VULKAN_HEADERS_DIR ?= $(HOME)/.cache/eliza-dflash/vulkan-headers/include
+ELIZA_MTP_VULKAN_HEADERS_DIR ?= $(HOME)/.cache/eliza-mtp/vulkan-headers/include
 SYSTEM_LIBVULKAN := $(firstword \
     $(wildcard /usr/lib/x86_64-linux-gnu/libvulkan.so.1) \
     $(wildcard /usr/lib64/libvulkan.so.1) \
@@ -77,18 +77,18 @@ else ifneq ($(strip $(HOMEBREW_VULKAN_HEADERS)$(HOMEBREW_VULKAN_LIB)),)
 	@echo "  export VK_ICD_FILENAMES=/opt/homebrew/etc/vulkan/icd.d/MoltenVK_icd.json"
 	@echo "  export DYLD_LIBRARY_PATH=/opt/homebrew/opt/vulkan-loader/lib:/opt/homebrew/opt/molten-vk/lib"
 else
-ifeq ($(wildcard $(ELIZA_DFLASH_VULKAN_HEADERS_DIR)/vulkan/vulkan.hpp),)
+ifeq ($(wildcard $(ELIZA_MTP_VULKAN_HEADERS_DIR)/vulkan/vulkan.hpp),)
 	@echo "Vulkan harness needs one of:"
 	@echo "  - VULKAN_SDK pointing at LunarG, or"
 	@echo "  - macOS: brew install molten-vk vulkan-headers vulkan-loader, or"
-	@echo "  - Fetched Khronos headers at $(ELIZA_DFLASH_VULKAN_HEADERS_DIR)"
-	@echo "    (run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-vulkan' to fetch them)"
+	@echo "  - Fetched Khronos headers at $(ELIZA_MTP_VULKAN_HEADERS_DIR)"
+	@echo "    (run 'node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-vulkan' to fetch them)"
 	@false
 else ifeq ($(SYSTEM_LIBVULKAN),)
 	@echo "Vulkan harness needs libvulkan.so.1 (apt install libvulkan1)"
 	@false
 else
-	$(CXX) $(CXXFLAGS) -I$(ELIZA_DFLASH_VULKAN_HEADERS_DIR) -I../reference -I. \
+	$(CXX) $(CXXFLAGS) -I$(ELIZA_MTP_VULKAN_HEADERS_DIR) -I../reference -I. \
 		vulkan_verify.cpp $(REF_OBJ) $(QJL_POLAR_OBJ) \
 		$(SYSTEM_LIBVULKAN) -lm -o vulkan_verify
 endif
@@ -107,14 +107,14 @@ else ifneq ($(strip $(HOMEBREW_VULKAN_HEADERS)$(HOMEBREW_VULKAN_LIB)),)
 	$(CXX) $(CXXFLAGS) -I/opt/homebrew/include -I. vulkan_bench.cpp \
 		-L/opt/homebrew/opt/vulkan-loader/lib -lvulkan -lm -o vulkan_bench
 else
-ifeq ($(wildcard $(ELIZA_DFLASH_VULKAN_HEADERS_DIR)/vulkan/vulkan.hpp),)
+ifeq ($(wildcard $(ELIZA_MTP_VULKAN_HEADERS_DIR)/vulkan/vulkan.hpp),)
 	@echo "vulkan_bench needs Vulkan headers (VULKAN_SDK, brew vulkan-headers, or the fetched Khronos headers)."
 	@false
 else ifeq ($(SYSTEM_LIBVULKAN),)
 	@echo "vulkan_bench needs libvulkan.so.1 (apt install libvulkan1)"
 	@false
 else
-	$(CXX) $(CXXFLAGS) -I$(ELIZA_DFLASH_VULKAN_HEADERS_DIR) -I. vulkan_bench.cpp \
+	$(CXX) $(CXXFLAGS) -I$(ELIZA_MTP_VULKAN_HEADERS_DIR) -I. vulkan_bench.cpp \
 		$(SYSTEM_LIBVULKAN) -lm -o vulkan_bench
 endif
 endif
@@ -246,7 +246,7 @@ android-vulkan-smoke:
 	./android_vulkan_smoke.sh
 
 # Android built-fork graph-dispatch smoke. Builds android-arm64-vulkan through
-# the dflash build script using a standalone cache, cross-compiles
+# the mtp build script using a standalone cache, cross-compiles
 # vulkan_dispatch_smoke.cpp, pushes it plus libggml-vulkan.so to a physical
 # device, and writes target-specific runtime evidence.
 android-vulkan-graph-smoke:
@@ -372,25 +372,25 @@ metal-bench-fused: metal_bench
 # constants as metal_bench so the BENCHMARK doc can join the two tables.
 HOST_UNAME_S := $(shell uname -s)
 HOST_UNAME_M := $(shell uname -m)
-HOST_DFLASH_TARGET := $(if $(filter Darwin,$(HOST_UNAME_S)),darwin-arm64-metal-fused,$(if $(filter aarch64 arm64,$(HOST_UNAME_M)),linux-aarch64-cpu,linux-x64-cpu))
-ELIZA_DFLASH_LLAMA_DIR ?= ../llama.cpp
-ELIZA_DFLASH_CPU_BIN_DIR ?= $(firstword \
-    $(wildcard $(ELIZA_DFLASH_LLAMA_DIR)/build/$(HOST_DFLASH_TARGET)/bin) \
-    $(wildcard $(HOME)/.eliza/local-inference/bin/dflash/$(HOST_DFLASH_TARGET)) \
-    $(wildcard $(ELIZA_DFLASH_LLAMA_DIR)/build/linux-x64-cpu/bin) \
-    $(wildcard $(HOME)/.eliza/local-inference/bin/dflash/linux-x64-cpu))
-GGML_INC_DIR ?= $(ELIZA_DFLASH_LLAMA_DIR)/ggml/include
-CPU_DISPATCH_SMOKE_BIN ?= qjl_mt_check.$(HOST_DFLASH_TARGET)
+HOST_MTP_TARGET := $(if $(filter Darwin,$(HOST_UNAME_S)),darwin-arm64-metal-fused,$(if $(filter aarch64 arm64,$(HOST_UNAME_M)),linux-aarch64-cpu,linux-x64-cpu))
+ELIZA_MTP_LLAMA_DIR ?= ../llama.cpp
+ELIZA_MTP_CPU_BIN_DIR ?= $(firstword \
+    $(wildcard $(ELIZA_MTP_LLAMA_DIR)/build/$(HOST_MTP_TARGET)/bin) \
+    $(wildcard $(HOME)/.eliza/local-inference/bin/mtp/$(HOST_MTP_TARGET)) \
+    $(wildcard $(ELIZA_MTP_LLAMA_DIR)/build/linux-x64-cpu/bin) \
+    $(wildcard $(HOME)/.eliza/local-inference/bin/mtp/linux-x64-cpu))
+GGML_INC_DIR ?= $(ELIZA_MTP_LLAMA_DIR)/ggml/include
+CPU_DISPATCH_SMOKE_BIN ?= qjl_mt_check.$(HOST_MTP_TARGET)
 
 $(CPU_DISPATCH_SMOKE_BIN): qjl_mt_check.c
-	@test -n "$(ELIZA_DFLASH_CPU_BIN_DIR)" || { echo "cpu-dispatch-smoke needs a built llama.cpp CPU-compatible binary dir (set ELIZA_DFLASH_CPU_BIN_DIR)."; exit 1; }
+	@test -n "$(ELIZA_MTP_CPU_BIN_DIR)" || { echo "cpu-dispatch-smoke needs a built llama.cpp CPU-compatible binary dir (set ELIZA_MTP_CPU_BIN_DIR)."; exit 1; }
 	$(CC) $(CFLAGS) -I$(GGML_INC_DIR) qjl_mt_check.c \
-		-L$(ELIZA_DFLASH_CPU_BIN_DIR) -lggml -lggml-base -lggml-cpu \
-		-Wl,-rpath,$(ELIZA_DFLASH_CPU_BIN_DIR) -lm -o $(CPU_DISPATCH_SMOKE_BIN)
+		-L$(ELIZA_MTP_CPU_BIN_DIR) -lggml -lggml-base -lggml-cpu \
+		-Wl,-rpath,$(ELIZA_MTP_CPU_BIN_DIR) -lm -o $(CPU_DISPATCH_SMOKE_BIN)
 
 cpu-dispatch-smoke: $(CPU_DISPATCH_SMOKE_BIN)
-	DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_CPU_BIN_DIR):$${DYLD_LIBRARY_PATH:-} \
-	LD_LIBRARY_PATH=$(ELIZA_DFLASH_CPU_BIN_DIR):$${LD_LIBRARY_PATH:-} \
+	DYLD_LIBRARY_PATH=$(ELIZA_MTP_CPU_BIN_DIR):$${DYLD_LIBRARY_PATH:-} \
+	LD_LIBRARY_PATH=$(ELIZA_MTP_CPU_BIN_DIR):$${LD_LIBRARY_PATH:-} \
 	./$(CPU_DISPATCH_SMOKE_BIN)
 
 cpu-bench: cpu_bench
@@ -446,7 +446,7 @@ bench: cpu-bench
 
 # Compile the GLSL compute shaders to SPIR-V. The vulkan_verify harness loads
 # .spv files. glslc resolution: prefer system glslc, fall back to the Android
-# NDK's bundled glslc (same path the dflash build script uses).
+# NDK's bundled glslc (same path the mtp build script uses).
 GLSLC ?= $(shell command -v glslc 2>/dev/null)
 ifeq ($(GLSLC),)
 NDK_GLSLC := $(firstword \
@@ -498,27 +498,27 @@ endif
 # Resolution order:
 #   1. nvcc on PATH       — required to compile (.cu -> ELF).
 #   2. CUDA_HOME/include  — defaults to /usr/local/cuda; overridable.
-#   3. ELIZA_DFLASH_LLAMA_DIR / ELIZA_DFLASH_LIBGGML_CUDA — UNUSED by this
+#   3. ELIZA_MTP_LLAMA_DIR / ELIZA_MTP_LIBGGML_CUDA — UNUSED by this
 #      harness now; retained as env so cuda_runner.sh's passthrough is inert.
 NVCC ?= $(shell command -v nvcc 2>/dev/null)
 # Distro CUDA toolkits (Debian/Ubuntu `nvidia-cuda-toolkit`) put the runtime
 # headers in /usr/include, not /usr/local/cuda/include. Probe both.
 CUDA_HOME ?= $(if $(wildcard /usr/local/cuda/include/cuda_runtime.h),/usr/local/cuda,$(if $(wildcard /usr/include/cuda_runtime.h),/usr,/usr/local/cuda))
-ELIZA_DFLASH_IN_TREE_LLAMA_DIR := $(abspath ../llama.cpp)
+ELIZA_MTP_IN_TREE_LLAMA_DIR := $(abspath ../llama.cpp)
 # Prefer the checked-out submodule when running from this repository. The
 # ~/.cache build clone can be stale relative to the active worktree, and graph
 # dispatch smokes must link against the headers/libs matching the source under
-# review. CI/external runners can still override ELIZA_DFLASH_LLAMA_DIR.
-ELIZA_DFLASH_LLAMA_DIR ?= $(if $(wildcard $(ELIZA_DFLASH_IN_TREE_LLAMA_DIR)/ggml/include/ggml.h),$(ELIZA_DFLASH_IN_TREE_LLAMA_DIR),$(HOME)/.cache/eliza-dflash/eliza-llama-cpp)
-ELIZA_DFLASH_LIBGGML_CUDA ?= $(ELIZA_DFLASH_LLAMA_DIR)/build-cuda/ggml/src/ggml-cuda/libggml-cuda.so
+# review. CI/external runners can still override ELIZA_MTP_LLAMA_DIR.
+ELIZA_MTP_LLAMA_DIR ?= $(if $(wildcard $(ELIZA_MTP_IN_TREE_LLAMA_DIR)/ggml/include/ggml.h),$(ELIZA_MTP_IN_TREE_LLAMA_DIR),$(HOME)/.cache/eliza-mtp/eliza-llama-cpp)
+ELIZA_MTP_LIBGGML_CUDA ?= $(ELIZA_MTP_LLAMA_DIR)/build-cuda/ggml/src/ggml-cuda/libggml-cuda.so
 
 # CMAKE_CUDA_ARCHITECTURES the fork build hook should pin (platform-targets
-# agent owns build-llama-cpp-dflash.mjs):
+# agent owns build-llama-cpp-mtp.mjs):
 #   linux-x64-cuda      : 80;86;89;90;100;120   (Ampere..Blackwell, mobile dGPU = 12.0)
 #   linux-aarch64-cuda  : 90a;90;100            (GH200 sm_90a + Hopper/Blackwell)
 # For a one-off local build on this machine's Blackwell mobile dGPU:
-#   ELIZA_DFLASH_CMAKE_FLAGS='-DCMAKE_CUDA_ARCHITECTURES=120;90' \
-#     node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda
+#   ELIZA_MTP_CMAKE_FLAGS='-DCMAKE_CUDA_ARCHITECTURES=120;90' \
+#     node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target linux-x64-cuda
 #
 # Compile-time arch list for the harness itself (cheap; one TU). Overridable
 # with CUDA_ARCH_FLAGS. Always emits sm_80/86/90 SASS plus compute_90 PTX —
@@ -577,7 +577,7 @@ cuda-preprocess-check:
 	@echo "  OK: tbq3_tcq_codebook.inc has 512 entries"
 	@echo "[cuda-preprocess-check] (3) fork CUDA kernel headers present (informational)"
 	@for h in turboquant.cuh turbo-tcq.cuh qjl.cuh polarquant.cuh; do \
-		if [ -f "$(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda/$$h" ]; then echo "  present: $$h"; \
+		if [ -f "$(ELIZA_MTP_LLAMA_DIR)/ggml/src/ggml-cuda/$$h" ]; then echo "  present: $$h"; \
 		else echo "  ABSENT: $$h (fork CUDA KV-cache kernels not yet landed — see CUDA_VERIFICATION.md)"; fi; \
 	done
 	@echo "[cuda-preprocess-check] OK"
@@ -634,7 +634,7 @@ else
 endif
 
 # Hardware runners. These intentionally fail without matching physical
-# hardware and a model-backed graph smoke (ELIZA_DFLASH_SMOKE_MODEL).
+# hardware and a model-backed graph smoke (ELIZA_MTP_SMOKE_MODEL).
 cuda-hardware:
 	./cuda_runner.sh
 
@@ -657,42 +657,42 @@ windows-hardware:
 # before signing off a bundle.
 #
 # The fork is the elizaOS/llama.cpp checkout the build script clones into
-# ~/.cache/eliza-dflash/eliza-llama-cpp. If the cache dir is absent, this
+# ~/.cache/eliza-mtp/eliza-llama-cpp. If the cache dir is absent, this
 # target prints a clear "fork not present, please run build first" message
 # rather than failing cryptically.
-ELIZA_DFLASH_FORK_METAL_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-metal/eliza-shipped
-ELIZA_DFLASH_FORK_VULKAN_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-vulkan/vulkan-shaders
+ELIZA_MTP_FORK_METAL_DIR := $(ELIZA_MTP_LLAMA_DIR)/ggml/src/ggml-metal/eliza-shipped
+ELIZA_MTP_FORK_VULKAN_DIR := $(ELIZA_MTP_LLAMA_DIR)/ggml/src/ggml-vulkan/vulkan-shaders
 
 verify-fork:
-ifeq ($(wildcard $(ELIZA_DFLASH_LLAMA_DIR)/.git),)
-	@echo "[verify-fork] fork not present at $(ELIZA_DFLASH_LLAMA_DIR)"
-	@echo "[verify-fork] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal'"
+ifeq ($(wildcard $(ELIZA_MTP_LLAMA_DIR)/.git),)
+	@echo "[verify-fork] fork not present at $(ELIZA_MTP_LLAMA_DIR)"
+	@echo "[verify-fork] run 'node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target darwin-arm64-metal'"
 	@echo "[verify-fork] (or any other target) first to clone it, then re-run this target."
 	@false
 else
 	@if which xcrun >/dev/null 2>&1; then \
-	  if [ ! -d "$(ELIZA_DFLASH_FORK_METAL_DIR)" ]; then \
-	    echo "[verify-fork] fork present but $(ELIZA_DFLASH_FORK_METAL_DIR) missing — fork layout drift."; \
-	    echo "[verify-fork] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal --dry-run' to stage/describe the shipped kernel patch."; \
+	  if [ ! -d "$(ELIZA_MTP_FORK_METAL_DIR)" ]; then \
+	    echo "[verify-fork] fork present but $(ELIZA_MTP_FORK_METAL_DIR) missing — fork layout drift."; \
+	    echo "[verify-fork] run 'node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target darwin-arm64-metal --dry-run' to stage/describe the shipped kernel patch."; \
 	    exit 1; \
 	  fi; \
 	  $(MAKE) metal_verify >/dev/null && \
-	  echo "[verify-fork] metal/turbo3   (patched shipped: turbo3.metal)"     && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/turbo3.metal     kernel_turbo3_dot          fixtures/turbo3.json     && \
-	  echo "[verify-fork] metal/turbo4   (patched shipped: turbo4.metal)"     && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/turbo4.metal     kernel_turbo4_dot          fixtures/turbo4.json     && \
-	  echo "[verify-fork] metal/turbo3_tcq (patched shipped: turbo3_tcq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/turbo3_tcq.metal kernel_turbo3_tcq_dot      fixtures/turbo3_tcq.json && \
-	  echo "[verify-fork] metal/qjl     (patched shipped: qjl.metal)"         && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/qjl.metal        kernel_attn_score_qjl1_256 fixtures/qjl.json        && \
-	  echo "[verify-fork] metal/polar   (patched shipped: polar.metal)"       && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar.json      && \
-		  echo "[verify-fork] metal/polar_preht (patched shipped: polar.metal)"   && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar.json && \
-		  echo "[verify-fork] metal/polar_preht + QJL residual (patched shipped: polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal kernel_mul_mv_q4_polar_preht_f32 fixtures/polar_qjl.json && \
-			  echo "[verify-fork] metal/fused_attn_qjl_tbq (patched shipped: fused_attn_qjl_tbq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/fused_attn_qjl_tbq.metal kernel_fused_attn_qjl_tbq3_f32 fixtures/fused_attn_qjl_tbq.json && \
-			  echo "[verify-fork] metal/fused_attn_qjl_tbq causal prefix (patched shipped: fused_attn_qjl_tbq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/fused_attn_qjl_tbq.metal kernel_fused_attn_qjl_tbq3_f32 fixtures/fused_attn_qjl_tbq_causal.json && \
-			  echo "[verify-fork] metal/fused_attn_qjl_polar (patched shipped: fused_attn_qjl_polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/fused_attn_qjl_polar.metal kernel_fused_attn_qjl_polar_f32 fixtures/fused_attn_qjl_polar.json && \
-			  echo "[verify-fork] metal/fused_attn_qjl_polar causal prefix (patched shipped: fused_attn_qjl_polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/fused_attn_qjl_polar.metal kernel_fused_attn_qjl_polar_f32 fixtures/fused_attn_qjl_polar_causal.json && \
+	  echo "[verify-fork] metal/turbo3   (patched shipped: turbo3.metal)"     && ./metal_verify $(ELIZA_MTP_FORK_METAL_DIR)/turbo3.metal     kernel_turbo3_dot          fixtures/turbo3.json     && \
+	  echo "[verify-fork] metal/turbo4   (patched shipped: turbo4.metal)"     && ./metal_verify $(ELIZA_MTP_FORK_METAL_DIR)/turbo4.metal     kernel_turbo4_dot          fixtures/turbo4.json     && \
+	  echo "[verify-fork] metal/turbo3_tcq (patched shipped: turbo3_tcq.metal)" && ./metal_verify $(ELIZA_MTP_FORK_METAL_DIR)/turbo3_tcq.metal kernel_turbo3_tcq_dot      fixtures/turbo3_tcq.json && \
+	  echo "[verify-fork] metal/qjl     (patched shipped: qjl.metal)"         && ./metal_verify $(ELIZA_MTP_FORK_METAL_DIR)/qjl.metal        kernel_attn_score_qjl1_256 fixtures/qjl.json        && \
+	  echo "[verify-fork] metal/polar   (patched shipped: polar.metal)"       && ./metal_verify $(ELIZA_MTP_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar.json      && \
+		  echo "[verify-fork] metal/polar_preht (patched shipped: polar.metal)"   && ./metal_verify $(ELIZA_MTP_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar.json && \
+		  echo "[verify-fork] metal/polar_preht + QJL residual (patched shipped: polar.metal)" && ./metal_verify $(ELIZA_MTP_FORK_METAL_DIR)/polar.metal kernel_mul_mv_q4_polar_preht_f32 fixtures/polar_qjl.json && \
+			  echo "[verify-fork] metal/fused_attn_qjl_tbq (patched shipped: fused_attn_qjl_tbq.metal)" && ./metal_verify $(ELIZA_MTP_FORK_METAL_DIR)/fused_attn_qjl_tbq.metal kernel_fused_attn_qjl_tbq3_f32 fixtures/fused_attn_qjl_tbq.json && \
+			  echo "[verify-fork] metal/fused_attn_qjl_tbq causal prefix (patched shipped: fused_attn_qjl_tbq.metal)" && ./metal_verify $(ELIZA_MTP_FORK_METAL_DIR)/fused_attn_qjl_tbq.metal kernel_fused_attn_qjl_tbq3_f32 fixtures/fused_attn_qjl_tbq_causal.json && \
+			  echo "[verify-fork] metal/fused_attn_qjl_polar (patched shipped: fused_attn_qjl_polar.metal)" && ./metal_verify $(ELIZA_MTP_FORK_METAL_DIR)/fused_attn_qjl_polar.metal kernel_fused_attn_qjl_polar_f32 fixtures/fused_attn_qjl_polar.json && \
+			  echo "[verify-fork] metal/fused_attn_qjl_polar causal prefix (patched shipped: fused_attn_qjl_polar.metal)" && ./metal_verify $(ELIZA_MTP_FORK_METAL_DIR)/fused_attn_qjl_polar.metal kernel_fused_attn_qjl_polar_f32 fixtures/fused_attn_qjl_polar_causal.json && \
 			  echo "[verify-fork] metal: 7/7 patched shipped shader files plus Polar preht/fused-attn variants verified against the same fixtures as the standalones"; \
 	else \
 	  echo "[verify-fork] xcrun not found — skipping Metal fork verification (macOS only)"; \
 	fi
-	@if [ -d "$(ELIZA_DFLASH_FORK_VULKAN_DIR)" ] && ls $(ELIZA_DFLASH_FORK_VULKAN_DIR)/turbo3.comp >/dev/null 2>&1; then \
+	@if [ -d "$(ELIZA_MTP_FORK_VULKAN_DIR)" ] && ls $(ELIZA_MTP_FORK_VULKAN_DIR)/turbo3.comp >/dev/null 2>&1; then \
 	  if [ -z "$(GLSLC)" ]; then \
 	    echo "[verify-fork] vulkan: glslc not found — cannot compile fork .comp -> .spv; skipping"; \
 	  elif $(MAKE) vulkan_verify >/dev/null 2>&1 && [ -x ./vulkan_verify ]; then \
@@ -700,21 +700,21 @@ else
 	    echo "[verify-fork] vulkan: compiling fork .comp -> .spv with $(GLSLC)"; \
 	    for f in turbo3 turbo4 turbo3_tcq qjl polar; do \
 	      $(GLSLC) --target-env=vulkan1.1 --target-spv=spv1.3 -fshader-stage=compute \
-	        $(ELIZA_DFLASH_FORK_VULKAN_DIR)/$$f.comp -o bench_results/fork-spv/$$f.spv || exit 1; \
+	        $(ELIZA_MTP_FORK_VULKAN_DIR)/$$f.comp -o bench_results/fork-spv/$$f.spv || exit 1; \
 	      echo "[verify-fork] vulkan/$$f (fork: vulkan-shaders/$$f.comp)"; \
 	      ./vulkan_verify bench_results/fork-spv/$$f.spv fixtures/$$f.json || exit 1; \
 	    done; \
 	    echo "[verify-fork] vulkan/polar + QJL residual (fork: vulkan-shaders/polar.comp)"; \
 	    ./vulkan_verify bench_results/fork-spv/polar.spv fixtures/polar_qjl.json || exit 1; \
 	    $(GLSLC) --target-env=vulkan1.1 --target-spv=spv1.3 -fshader-stage=compute \
-	      $(ELIZA_DFLASH_FORK_VULKAN_DIR)/polar_preht.comp -o bench_results/fork-spv/polar_preht.spv || exit 1; \
+	      $(ELIZA_MTP_FORK_VULKAN_DIR)/polar_preht.comp -o bench_results/fork-spv/polar_preht.spv || exit 1; \
 	    echo "[verify-fork] vulkan/polar_preht (fork: vulkan-shaders/polar_preht.comp)"; \
 	    ./vulkan_verify bench_results/fork-spv/polar_preht.spv fixtures/polar.json || exit 1; \
 		    echo "[verify-fork] vulkan/polar_preht + QJL residual (fork: vulkan-shaders/polar_preht.comp)"; \
 		    ./vulkan_verify bench_results/fork-spv/polar_preht.spv fixtures/polar_qjl.json || exit 1; \
 		    for f in fused_attn_qjl_tbq fused_attn_qjl_polar; do \
 		      $(GLSLC) --target-env=vulkan1.1 --target-spv=spv1.3 -fshader-stage=compute \
-		        $(ELIZA_DFLASH_FORK_VULKAN_DIR)/$$f.comp -o bench_results/fork-spv/$$f.spv || exit 1; \
+		        $(ELIZA_MTP_FORK_VULKAN_DIR)/$$f.comp -o bench_results/fork-spv/$$f.spv || exit 1; \
 		      echo "[verify-fork] vulkan/$$f (fork: vulkan-shaders/$$f.comp)"; \
 		      ./vulkan_verify bench_results/fork-spv/$$f.spv fixtures/$$f.json || exit 1; \
 		    done; \
@@ -727,7 +727,7 @@ else
 	    echo "[verify-fork] vulkan_verify not buildable on this host — skipping Vulkan fork verification"; \
 	  fi; \
 	else \
-	  echo "[verify-fork] $(ELIZA_DFLASH_FORK_VULKAN_DIR) not staged with eliza shaders (run a *-vulkan build target first); skipping Vulkan fork verification"; \
+	  echo "[verify-fork] $(ELIZA_MTP_FORK_VULKAN_DIR) not staged with eliza shaders (run a *-vulkan build target first); skipping Vulkan fork verification"; \
 	fi
 	@echo "[verify-fork] done. Compare the per-kernel pass/fail above against the standalone reference runs to detect drift."
 endif
@@ -736,96 +736,96 @@ endif
 # libggml-metal.dylib / libggml-base.dylib in the fork's
 # build/darwin-arm64-metal/bin tree, so it exercises the actual fork dispatch
 # pipeline (not the JIT). Prerequisite:
-# `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target
+# `node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target
 # darwin-arm64-metal` has succeeded and produced libggml-*.dylib + the
 # eliza kernels in default.metallib.
-ELIZA_DFLASH_METAL_DEFAULT_BUILD_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/build/darwin-arm64-metal
-ELIZA_DFLASH_METAL_FUSED_BUILD_DIR   := $(ELIZA_DFLASH_LLAMA_DIR)/build/darwin-arm64-metal-fused
-ELIZA_DFLASH_METAL_BUILD_DIR ?= $(if $(wildcard $(ELIZA_DFLASH_METAL_DEFAULT_BUILD_DIR)/bin/libggml-metal.dylib),$(ELIZA_DFLASH_METAL_DEFAULT_BUILD_DIR),$(if $(wildcard $(ELIZA_DFLASH_METAL_FUSED_BUILD_DIR)/bin/libggml-metal.dylib),$(ELIZA_DFLASH_METAL_FUSED_BUILD_DIR),$(ELIZA_DFLASH_METAL_DEFAULT_BUILD_DIR)))
-ELIZA_DFLASH_METAL_BIN_DIR   ?= $(ELIZA_DFLASH_METAL_BUILD_DIR)/bin
+ELIZA_MTP_METAL_DEFAULT_BUILD_DIR := $(ELIZA_MTP_LLAMA_DIR)/build/darwin-arm64-metal
+ELIZA_MTP_METAL_FUSED_BUILD_DIR   := $(ELIZA_MTP_LLAMA_DIR)/build/darwin-arm64-metal-fused
+ELIZA_MTP_METAL_BUILD_DIR ?= $(if $(wildcard $(ELIZA_MTP_METAL_DEFAULT_BUILD_DIR)/bin/libggml-metal.dylib),$(ELIZA_MTP_METAL_DEFAULT_BUILD_DIR),$(if $(wildcard $(ELIZA_MTP_METAL_FUSED_BUILD_DIR)/bin/libggml-metal.dylib),$(ELIZA_MTP_METAL_FUSED_BUILD_DIR),$(ELIZA_MTP_METAL_DEFAULT_BUILD_DIR)))
+ELIZA_MTP_METAL_BIN_DIR   ?= $(ELIZA_MTP_METAL_BUILD_DIR)/bin
 ELIZA_STATE_DIR ?= $(HOME)/.eliza
-ELIZA_DFLASH_TARGET ?= linux-x64-vulkan
-ifneq ($(strip $(ELIZA_DFLASH_TARGET_OUT_DIR)),)
-ELIZA_DFLASH_VULKAN_OUT_DIR ?= $(ELIZA_DFLASH_TARGET_OUT_DIR)
+ELIZA_MTP_TARGET ?= linux-x64-vulkan
+ifneq ($(strip $(ELIZA_MTP_TARGET_OUT_DIR)),)
+ELIZA_MTP_VULKAN_OUT_DIR ?= $(ELIZA_MTP_TARGET_OUT_DIR)
 else
-ELIZA_DFLASH_VULKAN_OUT_DIR ?= $(ELIZA_STATE_DIR)/local-inference/bin/dflash/$(ELIZA_DFLASH_TARGET)
+ELIZA_MTP_VULKAN_OUT_DIR ?= $(ELIZA_STATE_DIR)/local-inference/bin/mtp/$(ELIZA_MTP_TARGET)
 endif
-ELIZA_DFLASH_VULKAN_BUILD_DIR ?= $(ELIZA_DFLASH_LLAMA_DIR)/build/$(ELIZA_DFLASH_TARGET)
-ELIZA_DFLASH_VULKAN_BUILD_BIN_DIR := $(ELIZA_DFLASH_VULKAN_BUILD_DIR)/bin
-ifndef ELIZA_DFLASH_VULKAN_BIN_DIR
-ifneq ($(strip $(wildcard $(ELIZA_DFLASH_VULKAN_OUT_DIR)/libggml-vulkan.so)$(wildcard $(ELIZA_DFLASH_VULKAN_OUT_DIR)/libggml-vulkan.dylib)),)
-ELIZA_DFLASH_VULKAN_BIN_DIR := $(ELIZA_DFLASH_VULKAN_OUT_DIR)
+ELIZA_MTP_VULKAN_BUILD_DIR ?= $(ELIZA_MTP_LLAMA_DIR)/build/$(ELIZA_MTP_TARGET)
+ELIZA_MTP_VULKAN_BUILD_BIN_DIR := $(ELIZA_MTP_VULKAN_BUILD_DIR)/bin
+ifndef ELIZA_MTP_VULKAN_BIN_DIR
+ifneq ($(strip $(wildcard $(ELIZA_MTP_VULKAN_OUT_DIR)/libggml-vulkan.so)$(wildcard $(ELIZA_MTP_VULKAN_OUT_DIR)/libggml-vulkan.dylib)),)
+ELIZA_MTP_VULKAN_BIN_DIR := $(ELIZA_MTP_VULKAN_OUT_DIR)
 else
-ELIZA_DFLASH_VULKAN_BIN_DIR := $(ELIZA_DFLASH_VULKAN_BUILD_BIN_DIR)
+ELIZA_MTP_VULKAN_BIN_DIR := $(ELIZA_MTP_VULKAN_BUILD_BIN_DIR)
 endif
 endif
 
 DISPATCH_SMOKE_GGML_HEADERS := $(wildcard \
-    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml.h \
-    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml-alloc.h \
-    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml-backend.h \
-    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml-metal.h \
-    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml-vulkan.h \
-    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-common.h)
+    $(ELIZA_MTP_LLAMA_DIR)/ggml/include/ggml.h \
+    $(ELIZA_MTP_LLAMA_DIR)/ggml/include/ggml-alloc.h \
+    $(ELIZA_MTP_LLAMA_DIR)/ggml/include/ggml-backend.h \
+    $(ELIZA_MTP_LLAMA_DIR)/ggml/include/ggml-metal.h \
+    $(ELIZA_MTP_LLAMA_DIR)/ggml/include/ggml-vulkan.h \
+    $(ELIZA_MTP_LLAMA_DIR)/ggml/src/ggml-common.h)
 DISPATCH_SMOKE_REF_HEADERS := ../reference/turbo_kernels.h qjl_polar_ref.h
 
 dispatch-smoke: dispatch_smoke
-	@echo "[dispatch-smoke] running against $(ELIZA_DFLASH_METAL_BIN_DIR)"
-	GGML_METAL_PATH_RESOURCES=$(ELIZA_DFLASH_METAL_BIN_DIR) \
-	  DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
+	@echo "[dispatch-smoke] running against $(ELIZA_MTP_METAL_BIN_DIR)"
+	GGML_METAL_PATH_RESOURCES=$(ELIZA_MTP_METAL_BIN_DIR) \
+	  DYLD_LIBRARY_PATH=$(ELIZA_MTP_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
 	  ./dispatch_smoke
 
 dispatch-smoke-implemented: dispatch_smoke
-	@echo "[dispatch-smoke] running implemented routes against $(ELIZA_DFLASH_METAL_BIN_DIR)"
-	GGML_METAL_PATH_RESOURCES=$(ELIZA_DFLASH_METAL_BIN_DIR) \
-	  DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
+	@echo "[dispatch-smoke] running implemented routes against $(ELIZA_MTP_METAL_BIN_DIR)"
+	GGML_METAL_PATH_RESOURCES=$(ELIZA_MTP_METAL_BIN_DIR) \
+	  DYLD_LIBRARY_PATH=$(ELIZA_MTP_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
 	  ./dispatch_smoke
 
 metal-upscale-probe: metal_upscale_probe
-	@echo "[metal-upscale-probe] probing CLIP UPSCALE fallback against $(ELIZA_DFLASH_METAL_BIN_DIR)"
-	GGML_METAL_PATH_RESOURCES=$(ELIZA_DFLASH_METAL_BIN_DIR) \
-	  DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
+	@echo "[metal-upscale-probe] probing CLIP UPSCALE fallback against $(ELIZA_MTP_METAL_BIN_DIR)"
+	GGML_METAL_PATH_RESOURCES=$(ELIZA_MTP_METAL_BIN_DIR) \
+	  DYLD_LIBRARY_PATH=$(ELIZA_MTP_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
 	  ./metal_upscale_probe \
 	    --out ../reports/porting/2026-05-12/vision-upscale-metal-probe.json
 
 metal-upscale-probe-require: metal_upscale_probe
 	@echo "[metal-upscale-probe] requiring Metal support for CLIP UPSCALE"
-	GGML_METAL_PATH_RESOURCES=$(ELIZA_DFLASH_METAL_BIN_DIR) \
-	  DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
+	GGML_METAL_PATH_RESOURCES=$(ELIZA_MTP_METAL_BIN_DIR) \
+	  DYLD_LIBRARY_PATH=$(ELIZA_MTP_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
 	  ./metal_upscale_probe --require-metal-support
 
 dispatch_smoke: dispatch_smoke.mm $(REF_OBJ) $(QJL_POLAR_OBJ) $(DISPATCH_SMOKE_GGML_HEADERS) $(DISPATCH_SMOKE_REF_HEADERS)
 	@which xcrun >/dev/null 2>&1 || { echo "xcrun not found — Metal dispatch-smoke needs macOS Xcode tools."; exit 1; }
-	@if [ ! -f "$(ELIZA_DFLASH_METAL_BIN_DIR)/libggml-metal.dylib" ]; then \
-	    echo "[dispatch-smoke] missing $(ELIZA_DFLASH_METAL_BIN_DIR)/libggml-metal.dylib"; \
-	    echo "[dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal' first."; \
+	@if [ ! -f "$(ELIZA_MTP_METAL_BIN_DIR)/libggml-metal.dylib" ]; then \
+	    echo "[dispatch-smoke] missing $(ELIZA_MTP_METAL_BIN_DIR)/libggml-metal.dylib"; \
+	    echo "[dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target darwin-arm64-metal' first."; \
 	    exit 1; \
 	fi
 	clang++ $(CXXFLAGS) -ObjC++ -fobjc-arc \
-	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include \
-	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/src \
+	    -I$(ELIZA_MTP_LLAMA_DIR)/ggml/include \
+	    -I$(ELIZA_MTP_LLAMA_DIR)/ggml/src \
 	    -I../reference -I. \
 	    dispatch_smoke.mm \
 	    $(REF_OBJ) $(QJL_POLAR_OBJ) \
-	    -L$(ELIZA_DFLASH_METAL_BIN_DIR) -lggml-base -lggml-metal -lggml-cpu -lggml \
+	    -L$(ELIZA_MTP_METAL_BIN_DIR) -lggml-base -lggml-metal -lggml-cpu -lggml \
 	    -framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics \
-	    -Wl,-rpath,$(ELIZA_DFLASH_METAL_BIN_DIR) \
+	    -Wl,-rpath,$(ELIZA_MTP_METAL_BIN_DIR) \
 	    -lm -o dispatch_smoke
 
 metal_upscale_probe: metal_upscale_probe.cpp
 	@which xcrun >/dev/null 2>&1 || { echo "xcrun not found — Metal upscale probe needs macOS Xcode tools."; exit 1; }
-	@if [ ! -f "$(ELIZA_DFLASH_METAL_BIN_DIR)/libggml-metal.dylib" ]; then \
-	    echo "[metal-upscale-probe] missing $(ELIZA_DFLASH_METAL_BIN_DIR)/libggml-metal.dylib"; \
-	    echo "[metal-upscale-probe] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal' first."; \
+	@if [ ! -f "$(ELIZA_MTP_METAL_BIN_DIR)/libggml-metal.dylib" ]; then \
+	    echo "[metal-upscale-probe] missing $(ELIZA_MTP_METAL_BIN_DIR)/libggml-metal.dylib"; \
+	    echo "[metal-upscale-probe] run 'node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target darwin-arm64-metal' first."; \
 	    exit 1; \
 	fi
 	clang++ $(CXXFLAGS) \
-	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include \
-	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/src \
+	    -I$(ELIZA_MTP_LLAMA_DIR)/ggml/include \
+	    -I$(ELIZA_MTP_LLAMA_DIR)/ggml/src \
 	    metal_upscale_probe.cpp \
-	    -L$(ELIZA_DFLASH_METAL_BIN_DIR) -lggml-base -lggml-metal -lggml-cpu -lggml \
+	    -L$(ELIZA_MTP_METAL_BIN_DIR) -lggml-base -lggml-metal -lggml-cpu -lggml \
 	    -framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics \
-	    -Wl,-rpath,$(ELIZA_DFLASH_METAL_BIN_DIR) \
+	    -Wl,-rpath,$(ELIZA_MTP_METAL_BIN_DIR) \
 	    -lm -o metal_upscale_probe
 
 vulkan-dispatch-smoke: vulkan_dispatch_smoke
@@ -835,17 +835,17 @@ vulkan-dispatch-smoke: vulkan_dispatch_smoke
 	    echo "[vulkan-dispatch-smoke] run './linux_vulkan_smoke.sh' on physical Linux Vulkan hardware or use './android_vulkan_smoke.sh' with Android graph evidence."; \
 	    exit 2; \
 	fi
-	@echo "[vulkan-dispatch-smoke] running against $(ELIZA_DFLASH_VULKAN_BIN_DIR)"
-	@echo "[vulkan-dispatch-smoke] managed output candidate: $(ELIZA_DFLASH_VULKAN_OUT_DIR)"
-	@echo "[vulkan-dispatch-smoke] build-tree candidate: $(ELIZA_DFLASH_VULKAN_BUILD_BIN_DIR)"
+	@echo "[vulkan-dispatch-smoke] running against $(ELIZA_MTP_VULKAN_BIN_DIR)"
+	@echo "[vulkan-dispatch-smoke] managed output candidate: $(ELIZA_MTP_VULKAN_OUT_DIR)"
+	@echo "[vulkan-dispatch-smoke] build-tree candidate: $(ELIZA_MTP_VULKAN_BUILD_BIN_DIR)"
 	@echo "[vulkan-dispatch-smoke] requires ggml-vulkan to advertise and execute QJL/TBQ/Polar attention-score graph routes; symbol-only staging cannot pass"
-	@if [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.so" ] && [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.dylib" ]; then \
-	    echo "[vulkan-dispatch-smoke] missing libggml-vulkan under $(ELIZA_DFLASH_VULKAN_BIN_DIR)"; \
-	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target $(ELIZA_DFLASH_TARGET)' on a Linux Vulkan host first."; \
+	@if [ ! -f "$(ELIZA_MTP_VULKAN_BIN_DIR)/libggml-vulkan.so" ] && [ ! -f "$(ELIZA_MTP_VULKAN_BIN_DIR)/libggml-vulkan.dylib" ]; then \
+	    echo "[vulkan-dispatch-smoke] missing libggml-vulkan under $(ELIZA_MTP_VULKAN_BIN_DIR)"; \
+	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target $(ELIZA_MTP_TARGET)' on a Linux Vulkan host first."; \
 	    exit 1; \
 	fi
-	LD_LIBRARY_PATH=$(ELIZA_DFLASH_VULKAN_BIN_DIR):$$LD_LIBRARY_PATH \
-	DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_VULKAN_BIN_DIR):$$DYLD_LIBRARY_PATH \
+	LD_LIBRARY_PATH=$(ELIZA_MTP_VULKAN_BIN_DIR):$$LD_LIBRARY_PATH \
+	DYLD_LIBRARY_PATH=$(ELIZA_MTP_VULKAN_BIN_DIR):$$DYLD_LIBRARY_PATH \
 	  ./vulkan_dispatch_smoke
 
 vulkan_dispatch_smoke: force vulkan_dispatch_smoke.cpp $(REF_OBJ) $(QJL_POLAR_OBJ) $(DISPATCH_SMOKE_GGML_HEADERS) $(DISPATCH_SMOKE_REF_HEADERS)
@@ -855,27 +855,27 @@ vulkan_dispatch_smoke: force vulkan_dispatch_smoke.cpp $(REF_OBJ) $(QJL_POLAR_OB
 	    echo "[vulkan-dispatch-smoke] run './linux_vulkan_smoke.sh' on physical Linux Vulkan hardware or use './android_vulkan_smoke.sh' with Android graph evidence."; \
 	    exit 2; \
 	fi
-	@if [ ! -f "$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml.h" ] || [ ! -f "$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml-backend.h" ]; then \
-	    echo "[vulkan-dispatch-smoke] missing ggml headers under $(ELIZA_DFLASH_LLAMA_DIR)"; \
-	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target $(ELIZA_DFLASH_TARGET)' first, or override ELIZA_DFLASH_LLAMA_DIR."; \
+	@if [ ! -f "$(ELIZA_MTP_LLAMA_DIR)/ggml/include/ggml.h" ] || [ ! -f "$(ELIZA_MTP_LLAMA_DIR)/ggml/include/ggml-backend.h" ]; then \
+	    echo "[vulkan-dispatch-smoke] missing ggml headers under $(ELIZA_MTP_LLAMA_DIR)"; \
+	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target $(ELIZA_MTP_TARGET)' first, or override ELIZA_MTP_LLAMA_DIR."; \
 	    exit 1; \
 	fi
-	@if [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.so" ] && [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.dylib" ]; then \
-	    echo "[vulkan-dispatch-smoke] missing libggml-vulkan under $(ELIZA_DFLASH_VULKAN_BIN_DIR)"; \
-	    echo "[vulkan-dispatch-smoke] managed output candidate: $(ELIZA_DFLASH_VULKAN_OUT_DIR)"; \
-	    echo "[vulkan-dispatch-smoke] build-tree candidate: $(ELIZA_DFLASH_VULKAN_BUILD_BIN_DIR)"; \
-	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target $(ELIZA_DFLASH_TARGET)' on a Linux Vulkan host first."; \
-	    echo "[vulkan-dispatch-smoke] if using explicit prebuilt artifacts, set ELIZA_DFLASH_VULKAN_BIN_DIR=/path/to/the/bin-dir-containing-libggml-vulkan.so."; \
+	@if [ ! -f "$(ELIZA_MTP_VULKAN_BIN_DIR)/libggml-vulkan.so" ] && [ ! -f "$(ELIZA_MTP_VULKAN_BIN_DIR)/libggml-vulkan.dylib" ]; then \
+	    echo "[vulkan-dispatch-smoke] missing libggml-vulkan under $(ELIZA_MTP_VULKAN_BIN_DIR)"; \
+	    echo "[vulkan-dispatch-smoke] managed output candidate: $(ELIZA_MTP_VULKAN_OUT_DIR)"; \
+	    echo "[vulkan-dispatch-smoke] build-tree candidate: $(ELIZA_MTP_VULKAN_BUILD_BIN_DIR)"; \
+	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-mtp.mjs --target $(ELIZA_MTP_TARGET)' on a Linux Vulkan host first."; \
+	    echo "[vulkan-dispatch-smoke] if using explicit prebuilt artifacts, set ELIZA_MTP_VULKAN_BIN_DIR=/path/to/the/bin-dir-containing-libggml-vulkan.so."; \
 	    exit 1; \
 	fi
 	$(CXX) $(CXXFLAGS) \
-	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include \
-	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/src \
+	    -I$(ELIZA_MTP_LLAMA_DIR)/ggml/include \
+	    -I$(ELIZA_MTP_LLAMA_DIR)/ggml/src \
 	    -I../reference -I. \
 	    vulkan_dispatch_smoke.cpp \
 	    $(REF_OBJ) $(QJL_POLAR_OBJ) \
-	    -L$(ELIZA_DFLASH_VULKAN_BIN_DIR) -lggml-base -lggml-vulkan -lggml-cpu -lggml \
-	    -Wl,-rpath,$(ELIZA_DFLASH_VULKAN_BIN_DIR) \
+	    -L$(ELIZA_MTP_VULKAN_BIN_DIR) -lggml-base -lggml-vulkan -lggml-cpu -lggml \
+	    -Wl,-rpath,$(ELIZA_MTP_VULKAN_BIN_DIR) \
 	    -lm -o vulkan_dispatch_smoke
 
 force:

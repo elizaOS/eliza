@@ -38,8 +38,12 @@ describe("FlashRequest wipeData plumbing", () => {
   });
 
   it("AospBuild type accepts wipeData boolean", () => {
+    const mockBuild = MOCK_BUILDS[0];
+    expect(mockBuild).toBeDefined();
+    if (!mockBuild) throw new Error("Expected at least one mock build");
+
     const build: import("../backend/types").AospBuild = {
-      ...MOCK_BUILDS[0]!,
+      ...mockBuild,
       wipeData: true,
     };
     expect(build.wipeData).toBe(true);
@@ -52,7 +56,10 @@ describe("FlashRequest wipeData plumbing", () => {
 
 describe("dry-run gating", () => {
   function buildPlan(dryRun: boolean): FlashPlan {
-    const build = MOCK_BUILDS[0]!;
+    const build = MOCK_BUILDS[0];
+    expect(build).toBeDefined();
+    if (!build) throw new Error("Expected at least one mock build");
+
     const stepIds: FlashStepId[] = [
       "detect-device",
       "check-bootloader",
@@ -155,12 +162,15 @@ describe("downloadAndVerifyArtifacts", () => {
         fetchImpl,
       );
 
-      expect(paths["boot.img"]).toBe(join(tmp, "boot.img"));
-      expect(paths["vendor_boot.img"]).toBe(join(tmp, "vendor_boot.img"));
-      expect((await readFile(paths["boot.img"]!)).equals(contentA)).toBe(true);
-      expect((await readFile(paths["vendor_boot.img"]!)).equals(contentB)).toBe(
-        true,
-      );
+      const bootPath = paths["boot.img"];
+      const vendorBootPath = paths["vendor_boot.img"];
+      expect(bootPath).toBe(join(tmp, "boot.img"));
+      expect(vendorBootPath).toBe(join(tmp, "vendor_boot.img"));
+      if (!bootPath || !vendorBootPath) {
+        throw new Error("Expected verified boot artifacts to be downloaded");
+      }
+      expect((await readFile(bootPath)).equals(contentA)).toBe(true);
+      expect((await readFile(vendorBootPath)).equals(contentB)).toBe(true);
       expect(progress).toHaveBeenCalled();
     } finally {
       await rm(tmp, { recursive: true, force: true });

@@ -44,7 +44,7 @@ export const KvCacheType = z.enum([
 export type KvCacheType = z.infer<typeof KvCacheType>;
 
 export const KernelName = z.enum([
-  "dflash",
+  "mtp",
   "turbo3",
   "turbo4",
   "turbo3_tcq",
@@ -74,13 +74,13 @@ export const BundleRecommendation = z.object({
 });
 export type BundleRecommendation = z.infer<typeof BundleRecommendation>;
 
-export const DflashTuning = z.object({
+export const MtpTuning = z.object({
   enabled: z.boolean(),
   draft_min: z.number().int().positive(),
   draft_max: z.number().int().positive(),
   draft_gpu_layers: z.number().int(),
 });
-export type DflashTuning = z.infer<typeof DflashTuning>;
+export type MtpTuning = z.infer<typeof MtpTuning>;
 
 export const VerifyRecipe = z.object({
   build_target: z.string(),
@@ -106,7 +106,7 @@ export const GpuYamlProfile = z.object({
   fp4_supported: z.boolean(),
   nvlink: z.boolean(),
   bundle_recommendations: z.record(z.string(), BundleRecommendation),
-  dflash: DflashTuning,
+  mtp: MtpTuning,
   verify_recipe: VerifyRecipe,
 });
 export type GpuYamlProfile = z.infer<typeof GpuYamlProfile>;

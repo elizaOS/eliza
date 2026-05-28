@@ -1,6 +1,7 @@
 "use client";
 
 import { Dices, RefreshCw, Sparkles } from "lucide-react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ROUTES } from "@/lib/constants";
@@ -286,7 +287,7 @@ export default function HomePage() {
                   // No UI update needed - just let images stream
                 } else if (data.type === "image") {
                   // Preload image before swapping to avoid flash
-                  const img = new Image();
+                  const img = new window.Image();
                   img.onload = () => {
                     console.log("Image preloaded, swapping to:", data.imageUrl);
                     setPhotoPreview(data.imageUrl);
@@ -297,7 +298,7 @@ export default function HomePage() {
                   img.src = data.imageUrl;
                 } else if (data.type === "complete") {
                   // Preload final image
-                  const img = new Image();
+                  const img = new window.Image();
                   img.onload = () => {
                     console.log("Final image loaded:", data.imageUrl);
                     setPhotoPreview(data.imageUrl);
@@ -629,10 +630,13 @@ export default function HomePage() {
                         <div className="relative mb-4">
                           {photoPreview ? (
                             <>
-                              <img
+                              <Image
                                 key={photoPreview}
                                 src={photoPreview}
                                 alt="Preview"
+                                width={192}
+                                height={192}
+                                unoptimized
                                 className="w-48 h-48 rounded-full object-cover shadow-lg transition-opacity duration-300"
                               />
                               {/* Regenerate Button - Bottom Right */}

@@ -4,7 +4,7 @@
 
 This matrix maps every in-scope Trust Service Criterion to: the binding policy in [`../../POLICIES/`](../../POLICIES/), the code location(s) implementing the control, and the evidence collection method.
 
-Status: **scaffolding**. Some implementation references are aspirational and tracked in [`audits/PLAN.md`](audits/PLAN.md).
+Status: **scaffolding**. Some implementation references are aspirational and tracked in `audits/PLAN.md`.
 
 ## Legend
 

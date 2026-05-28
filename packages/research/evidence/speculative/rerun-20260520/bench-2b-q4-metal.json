@@ -1,8 +1,8 @@
 {
   "reportSchema": "eliza.speculative-benchmark.v1",
   "generatedAt": "2026-05-20T17:19:16.340Z",
-  "verifier": "plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs",
-  "speculator": "dflash",
+  "verifier": "plugins/plugin-local-inference/native/verify/mtp_drafter_runtime_smoke.mjs",
+  "speculator": "mtp",
   "tier": "2b",
   "targetModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-64k.gguf",
   "drafterModel": "evidence/speculative/nebius-drafters/drafter-2b-q4_k_m.gguf",
@@ -51,7 +51,7 @@
       "--spec-draft-p-min",
       "0.1",
       "--spec-type",
-      "dflash"
+      "mtp"
     ],
     "skippedCliFlags": [
       {
@@ -91,7 +91,7 @@
     },
     "vocabIncompatibleWarning": false,
     "draftingActive": true,
-    "dflashFailure": null,
+    "mtpFailure": null,
     "tokenizerCompatible": true,
     "outputTail": "Loading model... \n\n\n▄▄ ▄▄\n██ ██\n██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄\n██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : eliza-1-2b-64k.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   **Topic:** Speculative decoding.\n    *   **Format:** Short paragraph.\n    *   **Goal:** Explain what it is in a concise manner.\n\n2.  **Define Speculative Decoding:**\n    *\n\n[ Prompt: 481.5 t/s | Generation: 102.9 t/s ]\n[ Draft: 31 accepted / 31 generated | Acceptance: 1.0000 ]\n\nExiting..."
   },
@@ -125,7 +125,7 @@
       "--spec-draft-p-min",
       "1",
       "--spec-type",
-      "dflash"
+      "mtp"
     ],
     "skippedCliFlags": [
       {
@@ -165,7 +165,7 @@
     },
     "vocabIncompatibleWarning": false,
     "draftingActive": false,
-    "dflashFailure": null,
+    "mtpFailure": null,
     "tokenizerCompatible": true,
     "outputTail": "Loading model... \n\n\n▄▄ ▄▄\n██ ██\n██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄\n██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : eliza-1-2b-64k.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   **Topic:** Speculative decoding.\n    *   **Format:** A short paragraph.\n    *   **Goal:** Provide an informative summary/explanation.\n\n2.  **Define Speculative Decoding (Key Concepts):**\n\n\n[ Prompt: 255.2 t/s | Generation: 61.9 t/s ]\n\nExiting..."
   },
@@ -176,14 +176,14 @@
     "generationTokensPerSecondBaseline": null,
     "targetEvalTokensPerSecondWithDrafter": null,
     "draftEvalTokensPerSecondWithDrafter": null,
-    "dflashDraftedTokens": 31,
-    "dflashAcceptedTokens": 31,
-    "dflashAcceptanceRate": 1,
-    "dflashSpeedup": 1.6623586429725365,
-    "dflashDraftingActive": true,
-    "dflashFailure": null,
+    "mtpDraftedTokens": 31,
+    "mtpAcceptedTokens": 31,
+    "mtpAcceptanceRate": 1,
+    "mtpSpeedup": 1.6623586429725365,
+    "mtpDraftingActive": true,
+    "mtpFailure": null,
     "tokenizerCompatible": true,
-    "speculator": "dflash",
+    "speculator": "mtp",
     "tier": "2b",
     "backend": "unknown",
     "binarySha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9",
@@ -195,5 +195,5 @@
     "failure": null
   },
   "draftingActive": true,
-  "dflashFailure": null
+  "mtpFailure": null
 }

@@ -1,0 +1,60 @@
+[[!meta title="Try testing versions of Tails"]]
+
+If you are a Tails enthusiast, trying testing versions of Tails,
+that preview upcoming releases and
+future features, is a great way to make Tails stronger. If you like playing with
+new features, identifying problems, and breaking things, then consider
+[[subscribing to the tails-testers@boum.org mailing list|doc/about/contact#tails-testers]].
+
+This is where we announce and report back on:
+
+  - Release candidates for future releases
+  - Feature previews for upcoming improvements
+
+<div class="caution">
+
+<strong>Do not rely on these experimental Tails images for security.</strong><br />
+Only use them for testing purposes.
+
+</div>
+
+Release candidates
+==================
+
+We sometimes publish a release candidate. It has the same
+features as the upcoming release but needs testing to validate that they are
+working correctly.
+
+The release candidates are also announced in our [[news]] and
+<a href="https://download.tails.net/tails/alpha/">
+are available online</a>.
+
+What you can test on them:
+
+  - The new features, as described in the Changelog, linked from the
+    announcement.
+
+  - Any other feature of Tails, for example the ones listed in our [[manual test
+    suite|contribute/release_process/test/]].
+
+Feature previews
+================
+
+Every now and then, we also publish testing version of Tails to test more specifically a new
+feature we are working on.
+
+They are available on <https://nightly.tails.boum.org/> and are announced
+together with specific testing instructions.
+
+Pro-active testing
+==================
+
+To help spot bugs before we release them, you can do exploratory testing
+of experimental images built from our `stable` branch:
+
+<https://nightly.tails.boum.org/build_Tails_ISO_stable/lastSuccessful/archive/build-artifacts/>
+
+If you find a bug in one such image, that you cannot reproduce in the last
+released version of Tails, please [[report it using
+WhisperBack|doc/first_steps/whisperback]], making it clear which experimental
+image you are testing.

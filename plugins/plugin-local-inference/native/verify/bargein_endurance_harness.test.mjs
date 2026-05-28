@@ -22,8 +22,8 @@ function args(overrides = {}) {
 
 function kokoroRun(overrides = {}) {
   const requiredOptimizations = {
-    dflashDraftingActive: null,
-    dflashRequired: false,
+    mtpDraftingActive: null,
+    mtpRequired: false,
     streamingTtsActive: true,
   };
   return {
@@ -52,7 +52,7 @@ function kokoroRun(overrides = {}) {
       ramWithinBudget: true,
       leakSuspected: false,
       requiredOptimizations,
-      dflashPolicy: {
+      mtpPolicy: {
         status: "disabled",
         requiresDrafter: false,
         releaseMode: "fail-open-no-drafter",
@@ -70,7 +70,7 @@ function kokoroRun(overrides = {}) {
   };
 }
 
-test("records Kokoro 0_8b barge-in latency when DFlash is disabled by policy", () => {
+test("records Kokoro 0_8b barge-in latency when MTP is disabled by policy", () => {
   const report = buildBargeInReportFromE2e({
     args: args(),
     e2eReport: kokoroRun(),
@@ -83,7 +83,7 @@ test("records Kokoro 0_8b barge-in latency when DFlash is disabled by policy", (
   assert.equal(report.summary.vadVoiceDetectedToTtsCancelledMs, 4.2);
   assert.equal(report.summary.vadVoiceDetectedToLlmCancelledMs, 12.3);
   assert.equal(report.evidence.source, "assembled-local-kokoro-voice-e2e-loop");
-  assert.equal(report.evidence.dflashRequired, false);
+  assert.equal(report.evidence.mtpRequired, false);
   assert.deepEqual(report.evidence.blockers, []);
 });
 
@@ -130,13 +130,13 @@ test("records Kokoro 0_8b thirty-turn evidence without requiring a drafter", () 
   assert.deepEqual(report.evidence.blockers, []);
 });
 
-test("required optimization checks only waive DFlash when the report marks it not required", () => {
+test("required optimization checks only waive MTP when the report marks it not required", () => {
   assert.equal(
     requiredOptimizationsOk({
       summary: {
         requiredOptimizations: {
-          dflashDraftingActive: null,
-          dflashRequired: false,
+          mtpDraftingActive: null,
+          mtpRequired: false,
           streamingTtsActive: true,
         },
       },
@@ -147,8 +147,8 @@ test("required optimization checks only waive DFlash when the report marks it no
     requiredOptimizationsOk({
       summary: {
         requiredOptimizations: {
-          dflashDraftingActive: null,
-          dflashRequired: true,
+          mtpDraftingActive: null,
+          mtpRequired: true,
           streamingTtsActive: true,
         },
       },

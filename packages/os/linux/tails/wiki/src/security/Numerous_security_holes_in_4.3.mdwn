@@ -1,0 +1,20 @@
+[[!meta date="Tue, 10 Mar 2020 12:34:56 +0100"]]
+[[!meta title="Numerous security holes in Tails 4.3"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+[[Tails_4.4|news/version_4.4]] fixes many security issues that affect
+Tails 4.3. You should [[upgrade to Tails 4.4|news/version_4.4]] as
+soon as possible.
+
+ - Tor Browser: [[!mfsa 2020-09]]
+ - Thunderbird: [[!mfsa 2020-07]],  [[!debsa2020 4625]]
+ - Linux: [[!cve CVE-2019-3016]], [[!cve CVE-2019-14896]],
+          [[!cve CVE-2019-14897]], [[!cve CVE-2020-8428]],
+          [[!cve CVE-2019-19046]], [[!cve CVE-2019-19043]]
+ - cURL: [[!debsa2020 4633]]
+ - evince: [[!debsa2020 4624]]
+ - Pillow: [[!debsa2020 4631]]
+ - ppp: [[!debsa2020 4632]]
+ - WebKitGTK: [[!debsa2020 4627]]

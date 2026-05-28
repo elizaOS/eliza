@@ -1,0 +1,21 @@
+# Don't follow source'd scripts
+disable=SC1090
+disable=SC1091
+
+# We know that > is IO redirection, not a comparison
+disable=SC2065
+
+# Let's accept we are doing weird things with arrays & strings, for now
+disable=SC2124
+
+# We use "set -e" about everywhere
+disable=SC2164
+
+# dash supports 'echo -n'
+disable=SC3037
+
+# dash supports 'set -o pipefail'
+disable=SC3040
+
+# dash supports 'local'
+disable=SC3043

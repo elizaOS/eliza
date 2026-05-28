@@ -1,0 +1,36 @@
+[[!meta title="Tails report for June 2022"]]
+[[!meta date="Mon, 11 Jul 2022 09:21:12 +0200"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Here are a few highlights about what we did in May, among many other things:
+
+ - Our [[helpdesk email|support]] now has auto-reply ([[!tails_ticket 17935]]).
+
+ - Improved the UX of _Tor Connection_: people that were "exploring" the interface going back and forth used to find the wrong boxes to be automatically checked [[!tails_ticket 18546]]
+
+ - We participated in Tor hackweek. It was very fun and very useful!
+
+   - We implemented QR code scanning [[!tails_ticket 18219]]. This seems to work, but it still isn't ready for
+     inclusion.
+
+   - We added support for Snowflake [[!tails_ticket 5494]]. Again, this is a PoC: it's nice to see it working,
+     but don't expect it to be released so soon.
+
+
+Releases
+========
+
+[[Tails 5.1 was released on June 4|news/version_5.1]]. It fixed an [[important security vulnerability|security/prototype_pollution]], but it also brought many improvements, among which:
+
+ - Improvements for users who leave east of UTC: _Tor Connection_ now automatically fixes the computer clock if you choose to connect to Tor automatically; also, the time displayed in the top navigation uses the time zone selected when fixing the clock in _Tor connection_.
+
+ - _Unsafe browser_ got a new homepage, which makes it easier to understand how to sign in to the local network using a captive portal.
+
+After that, 
+[[Tails 5.1.1 was released on June 23|news/version_5.1.1]] as an emergency release.
+
+
+Metrics
+=======
+
+Tails has been started more than 772283 times this month. This makes 25742 boots a day on average.

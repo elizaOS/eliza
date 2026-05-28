@@ -1,0 +1,10 @@
+[[!meta date="Fri, 27 Nov 2009 21:03:24 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+ISO images of amnesia 0.3 for pre-Intel Apple Macs are released.
+
+We need people wanting to **test** these images, as we don't own the
+suitable hardware to do it ourselves.
+
+[[Download it, seed it!|install]]

@@ -1,0 +1,103 @@
+[[!meta robots="noindex"]]
+
+<h1 id="rufus" class="step">Download <i>Rufus</i></h1>
+
+<div class="step-image usb">[[!img inc/infography/install-rufus.png link="no" alt=""]]</div>
+<div class="step-image upgrade">[[!img inc/infography/install-rufus-with-intermediary.png link="no" alt=""]]</div>
+
+<p class="upgrade">In the following steps, you will install an intermediary Tails using the Tails USB
+image that you downloaded earlier.</p>
+
+<p><a href="https://rufus.ie/"><i>Rufus</i></a> is the Free Software tool that we recommend to install Tails from Windows.</p>
+
+1. Click on the following button to download *Rufus*:
+
+   <p class="button">[[Download <i>Rufus</i> for Windows|https://tails.net/rufus/rufus-portable.exe]]</p>
+
+   Save your download to your usual *Downloads* folder and not to the USB stick.
+
+<div class="attack">
+
+<p>We [[stopped recommending|news/rufus]] <i>balenaEtcher</i> to install Tails
+from Windows in 2025 because <i>balenaEtcher</i> shares [[!tails_ticket 16381
+desc="sensitive information"]] to the Balena company that allows identifying
+who is installing Tails.</p>
+
+</div>
+
+<h1 id="install" class="step">Install <span class="upgrade">an intermediary</span> Tails using <i>Rufus</i></h1>
+
+<div class="step-image usb">[[!img install/inc/infography/install-tails.png link="no" alt=""]]</div>
+<div class="step-image upgrade">[[!img install/inc/infography/install-upgrade-usb-only.png link="no" alt=""]]</div>
+
+1. Open the *Rufus* download.
+
+   At the security warning, confirm that you want to open *Rufus*.
+
+1. In the update policy dialog, click **No**.
+
+   [[!img install/inc/screenshots/rufus-update.png class="screenshot" alt=""]]
+
+   *Rufus* starts.
+
+   [[!img install/inc/screenshots/rufus.png class="screenshot" alt=""]]
+
+1. Plug in the USB stick on which you want to install
+   <span class="usb">Tails.</span>
+   <span class="upgrade">the intermediary Tails.</span>
+
+   <div class="caution">
+
+   <p>All the data on this USB stick will be lost.</p>
+
+   <p>Some data might still be recovered using advanced forensics tools.</p>
+
+   </div>
+
+   <div class="note upgrade"><p>The Persistent Storage of your Tails USB stick will not be
+   copied to the temporary Tails.</p></div>
+
+   Wait a few seconds until *Rufus* detects your USB stick.
+
+1. Choose your USB stick in the **Device** menu.
+
+   If your USB stick doesn't appear in the **Device** menu, make sure that you
+   saved *Rufus* to your usual *Downloads* folder and not to the USB stick
+   itself.
+
+1. Click the **Select** button.
+
+   Choose the USB image that you downloaded earlier.
+
+   <div class="note">
+   <p>Make sure that the USB image is called <i>[[!inline pages="inc/stable_amd64_img_filename" raw="yes" sort="age"]]</i> and has an
+   <i>.img</i> file extension.</p>
+
+   <p>If the image has an <i>.iso</i> file
+   extension, it is the wrong image. Please go back to the
+   <span class="windows">[[download step|windows#download]].</span>
+   <span class="upgrade-windows">[[download step|doc/upgrade/windows#download]].</span></p>
+   </div>
+
+1. Click **Start**.
+
+   Enter your password if you are asked for it.
+
+   The installation takes a few minutes.
+
+1. Close *Rufus*.
+
+   <div class="tip">
+
+   <p>After installing Tails, the USB stick no longer appears in the <i>File
+   Explorer</i> app of Windows.</p>
+
+   <p>You can still see the USB stick in the <i>Settings</i> app. Choose
+   <b>System&nbsp;▸ Storage&nbsp;▸ Advanced storage settings&nbsp;▸ Disk &
+   volumes</b>.
+
+   <p>See also how to [[uninstall Tails from Windows|doc/first_steps/uninstall/windows]].</p>
+
+ </p>
+
+   </div>

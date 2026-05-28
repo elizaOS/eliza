@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
 import importlib.util
+import json
 import subprocess
 import sys
 import tempfile
@@ -89,7 +89,9 @@ class MinimumLinuxNpuTargetTest(unittest.TestCase):
         self.assertEqual(emulator_stack["status"], "passed")
         self.assertEqual(emulator_stack["required_machine_arg"], "-M virt,e1-npu=on")
         self.assertEqual(emulator_stack["required_guest_device"], "/dev/e1-npu")
-        self.assertIn("functional qemu-system-riscv64 e1-npu MMIO", emulator_stack["claim_boundary"])
+        self.assertIn(
+            "functional qemu-system-riscv64 e1-npu MMIO", emulator_stack["claim_boundary"]
+        )
         self.assertEqual(
             emulator_stack["model"]["path"],
             "sw/qemu/qemu-device/eliza_e1_npu.c",
@@ -105,7 +107,9 @@ class MinimumLinuxNpuTargetTest(unittest.TestCase):
             generated_boot["attempt_log"]["path"],
             "build/chipyard/eliza_rocket/verilator-linux-smoke.log",
         )
-        self.assertIn("capture_chipyard_linux_evidence.sh linux-boot", generated_boot["unblock_command"])
+        self.assertIn(
+            "capture_chipyard_linux_evidence.sh linux-boot", generated_boot["unblock_command"]
+        )
         cpu_ap_bundle = next(
             gate for gate in report["gates"] if gate["name"] == "cpu_ap_transcript_bundle"
         )
@@ -287,9 +291,7 @@ class MinimumLinuxNpuTargetTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             bad_patch = Path(temp_dir) / "virt-e1-npu-integration.patch"
             bad_patch.write_text(
-                "CONFIG_ELIZA_E1_NPU\n"
-                "object_class_property_add_bool\n"
-                "e1-npu\n",
+                "CONFIG_ELIZA_E1_NPU\nobject_class_property_add_bool\ne1-npu\n",
                 encoding="utf-8",
             )
             module.QEMU_VIRT_PATCH = bad_patch
@@ -297,9 +299,7 @@ class MinimumLinuxNpuTargetTest(unittest.TestCase):
         module.QEMU_VIRT_PATCH = original_patch
         self.assertEqual(gate["status"], "blocked")
         self.assertIn("virt-e1-npu-integration.patch", next(iter(gate["missing_tokens"])))
-        missing = "\n".join(
-            token for tokens in gate["missing_tokens"].values() for token in tokens
-        )
+        missing = "\n".join(token for tokens in gate["missing_tokens"].values() for token in tokens)
         self.assertIn("0x10020000", missing)
         self.assertIn("eliza,e1-npu", missing)
 

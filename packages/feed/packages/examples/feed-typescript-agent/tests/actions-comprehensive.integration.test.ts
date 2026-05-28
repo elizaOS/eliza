@@ -26,7 +26,23 @@ interface AgentIdentity {
   agentId: string;
 }
 
-describe("A2A Comprehensive Actions Test", () => {
+// Top-level await: evaluated before describe.skipIf() so the skip condition is correct
+const serverAvailable = await (async () => {
+  try {
+    const r = await fetch("http://localhost:3000/api/health");
+    return r.ok;
+  } catch {
+    return false;
+  }
+})();
+
+if (!serverAvailable) {
+  console.log(
+    "⚠️  Feed server not running on :3000 — comprehensive actions tests will be skipped",
+  );
+}
+
+describe.skipIf(!serverAvailable)("A2A Comprehensive Actions Test", () => {
   let client: FeedA2AClient;
   let agentIdentity: AgentIdentity;
 

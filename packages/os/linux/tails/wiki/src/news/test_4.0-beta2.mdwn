@@ -1,0 +1,114 @@
+[[!meta title="Call for testing: 4.0~beta2"]]
+[[!meta date="Wed, 4 Sep 2019 17:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+You can help Tails by testing the second beta for the upcoming version 4.0!
+
+We are very excited about it and cannot wait to hear your feedback :)
+
+[[!toc levels=1]]
+
+# What's new in 4.0~beta2?
+
+Tails 4.0 will be the first version of Tails based on Debian 10
+(Buster). As such, it upgrades essentially all included software.
+
+We are particularly interested in detecting new problems with the following
+hardware:
+
+- Mac computers
+- Recent Nvidia and ATI/AMD graphics cards
+
+Other changes in Tails 4.0~beta2 include:
+
+- All changes [[included in 4.0~beta1|news/test_4.0-beta1]].
+
+- All changes [[included in Tails 3.16|news/version_3.16]].
+
+- Update *Linux* to 5.2.9. This mitigates the Spectre v1 swapgs
+  security vulnerability.
+
+- Update *tor* to 0.4.1.5.
+
+- Update *Enigmail* to 2.0.12.
+
+- Make the *GNOME Desktop* load faster.
+
+- Save about 250 MB of RAM.
+
+- In the *Applications* menu, move *Calculator* and *Terminal* to
+  where they were in Tails 3.x. This avoids the need to scroll in the
+  *Utilities* submenu.
+
+- Allow *OnionShare* to open links with *Tor Browser*.
+
+- Use the same icon for Tails Documentation in the *Applications* menu
+  as on the *Desktop*.
+
+Technical details of all the changes are listed in the
+[Changelog](https://salsa.debian.org/tails-team/tails/blob/devel/debian/changelog).
+
+<a id="known_issues"></a>
+
+# Known issues in 4.0~beta2
+
+* Tails 4.0~beta2 cannot always be built reproducibly ([[!tails_ticket 17023]]).
+  The difference we've observed is minor and has no security impact.
+
+* [Open tickets for Tails 4.0](https://redmine.tails.boum.org/code/projects/tails/issues?query_id=279)
+
+* [[Longstanding known issues|support/known_issues]]
+
+# How to test Tails 4.0~beta2?
+
+We will provide security upgrades for Tails 4.0~beta2 like we do for regular
+versions of Tails.
+
+Keep in mind that this is a test image. We tested that it is not broken in
+obvious ways, but it might still contain undiscovered issues.
+
+Please, report any new problem to <tails-testers@boum.org> (public mailing list).
+
+# Get Tails 4.0~beta2
+
+## To download 4.0~beta2
+
+### Direct download
+
+  - For USB sticks (USB image)
+    (OpenPGP signature)
+
+  - For DVDs and virtual machines (ISO image)
+    (OpenPGP signature)
+
+### BitTorrent download
+
+  - For USB sticks (USB image)
+
+  - For DVDs and virtual machines (ISO image)
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from 4.0~beta1.
+
+- You can do a [[manual upgrade|doc/upgrade#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - Install from Windows
+  - Install from macOS
+  - Install from Linux
+
+<div class="caution"><p>All the data on this USB stick will be lost.</p></div>
+
+# What's coming up?
+
+Tails 4.0 is [[scheduled|contribute/calendar]] for October 22.
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.0-beta2">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

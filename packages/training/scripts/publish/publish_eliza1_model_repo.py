@@ -42,7 +42,7 @@ PUBLISH_METADATA_FILES = frozenset({"README.md", "lineage.json"})
 PUBLISHABLE_RELEASE_STATES = frozenset({"base-v1", "upload-candidate", "final"})
 CHECKSUMS_REL = "checksums/SHA256SUMS"
 WEIGHT_PAYLOAD_DIRS = frozenset(
-    {"text", "tts", "asr", "vad", "vision", "embedding", "dflash", "wakeword"}
+    {"text", "tts", "asr", "vad", "vision", "embedding", "mtp", "wakeword"}
 )
 REQUIRED_FINAL_FLAGS = (
     "weights",
@@ -115,14 +115,14 @@ def _manifest_sha_errors(manifest: dict[str, Any]) -> list[str]:
         if isinstance(entry, dict) and isinstance(entry.get("sha256"), str)
     }
     errors: list[str] = []
-    for entry in files.get("dflash", []):
+    for entry in files.get("mtp", []):
         if not isinstance(entry, dict):
             continue
         sha = entry.get("sha256")
         if isinstance(sha, str) and sha in text_shas:
             path = entry.get("path", "<unknown>")
             errors.append(
-                f"{path}: DFlash drafter sha256 matches a text artifact; "
+                f"{path}: MTP drafter sha256 matches a text artifact; "
                 "release drafter must be a distinct distilled model"
             )
     return errors
@@ -361,11 +361,11 @@ def _release_evidence_errors(
                 "evidence/release.json weights missing manifest payload path(s): "
                 f"{missing_weights}"
             )
-        if tier not in M.ELIZA_1_DFLASH_TIERS:
-            unexpected = sorted(p for p in weights_set if p.startswith("dflash/"))
+        if tier not in M.ELIZA_1_MTP_TIERS:
+            unexpected = sorted(p for p in weights_set if p.startswith("mtp/"))
             if unexpected:
                 errors.append(
-                    f"evidence/release.json weights lists DFlash path(s) for {tier}: "
+                    f"evidence/release.json weights lists MTP path(s) for {tier}: "
                     f"{unexpected}"
                 )
         if tier not in M.ELIZA_1_VISION_TIERS:

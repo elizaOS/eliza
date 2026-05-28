@@ -30,10 +30,11 @@ import os
 import signal
 import subprocess
 import sys
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT_PATH = ROOT / "build/reports/tapeout-readiness.json"
@@ -794,12 +795,8 @@ GATES: tuple[GateSpec, ...] = (
     ),
 )
 
-CHIP_TAPEOUT_GATES: tuple[GateSpec, ...] = tuple(
-    spec for spec in GATES if spec.scope == "chip"
-)
-PHONE_PRODUCT_GATES: tuple[GateSpec, ...] = tuple(
-    spec for spec in GATES if spec.scope == "phone"
-)
+CHIP_TAPEOUT_GATES: tuple[GateSpec, ...] = tuple(spec for spec in GATES if spec.scope == "chip")
+PHONE_PRODUCT_GATES: tuple[GateSpec, ...] = tuple(spec for spec in GATES if spec.scope == "phone")
 
 
 def select_gates(scope: str) -> tuple[GateSpec, ...]:
@@ -1096,17 +1093,27 @@ def blocker_phase_plan(results: list[GateResult]) -> list[dict[str, object]]:
     for phase in AGGREGATE_RELEASE_PHASES:
         gate_names = {
             str(name)
-            for name in phase.get("gates", set())
+            for name in cast("Iterable[object]", phase.get("gates", set()))
             if isinstance(name, str)
         }
-        matched = [
-            blocked_by_name[name]
-            for name in sorted(gate_names)
-            if name in blocked_by_name
-        ]
+        matched = [blocked_by_name[name] for name in sorted(gate_names) if name in blocked_by_name]
         if not matched:
             continue
         next_actions = [blocker_action(result) for result in matched]
+        if len(matched) != len(next_actions):
+            raise RuntimeError(f"{phase['phase']}: gate/action count mismatch")
+        blocked_gate_details = []
+        for index, result in enumerate(matched):
+            action = next_actions[index]
+            blocked_gate_details.append(
+                {
+                    "name": result.name,
+                    "blocker_dependency": result.blocker_dependency,
+                    "validation_command": action["validation_command"],
+                    "next_action": action["next_action"],
+                    "evidence": result.evidence,
+                }
+            )
         rows.append(
             {
                 "phase": phase["phase"],
@@ -1146,19 +1153,8 @@ def blocker_phase_plan(results: list[GateResult]) -> list[dict[str, object]]:
                     if any(action["dependency"] == dependency for action in next_actions)
                 },
                 "blocked_gates": [result.name for result in matched],
-                "blocked_gate_details": [
-                    {
-                        "name": result.name,
-                        "blocker_dependency": result.blocker_dependency,
-                        "validation_command": action["validation_command"],
-                        "next_action": action["next_action"],
-                        "evidence": result.evidence,
-                    }
-                    for result, action in zip(matched, next_actions, strict=True)
-                ],
-                "validation_commands": [
-                    action["validation_command"] for action in next_actions
-                ],
+                "blocked_gate_details": blocked_gate_details,
+                "validation_commands": [action["validation_command"] for action in next_actions],
                 "acceptance_commands": phase["acceptance_commands"],
                 "sample_evidence": [result.evidence for result in matched[:5]],
             }
@@ -1212,12 +1208,13 @@ def run_gate(spec: GateSpec) -> GateResult:
             stdout, _ = proc.communicate()
         combined_timeout = stdout or ""
         evidence = (
-            f"STATUS: BLOCKED {spec.name} exceeded "
-            f"{GATE_TIMEOUT_SECONDS}s aggregate gate timeout"
+            f"STATUS: BLOCKED {spec.name} exceeded {GATE_TIMEOUT_SECONDS}s aggregate gate timeout"
         )
         if combined_timeout.strip():
-            evidence = evidence + "; partial output: " + _first_evidence_line(
-                spec.name, combined_timeout, 124
+            evidence = (
+                evidence
+                + "; partial output: "
+                + _first_evidence_line(spec.name, combined_timeout, 124)
             )
         return GateResult(
             name=spec.name,

@@ -1,0 +1,18 @@
+[[!meta date="Thu, 20 Jun 2019 12:34:56 +0200"]]
+[[!meta title="Numerous security holes in Tails 3.14"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.14 are now fixed in Tails 3.14.1.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.14.1|news/version_3.14.1]] as soon as possible.
+
+ - Tor Browser: [[!mfsa 2019-18]]
+ - Linux: [[!debsa2019 4465]]
+ - Thunderbird: [[!debsa2019 4451]]
+ - D-Bus: [[!debsa2019 4462]]
+ - Vim: [[!debsa2019 4467]]
+ - FFmpeg: [[!debsa2019 4449]]
+ - WPA: [[!debsa2019 4450]]

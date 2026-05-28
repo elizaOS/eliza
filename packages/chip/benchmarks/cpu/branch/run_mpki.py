@@ -61,6 +61,7 @@ def _display_path(path: Path) -> str:
     except ValueError:
         return str(path)
 
+
 # Workload-class averages for CBP2016 64KB TAGE-SC-L on the CBP2025 training
 # trace set, computed from reference_results_training_set.csv in
 # https://github.com/ramisheikh/cbp2025 (commit 6074966). Per-trace MPKI from

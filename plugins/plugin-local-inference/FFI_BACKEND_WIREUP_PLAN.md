@@ -3,9 +3,9 @@
 Status (2026-05-19): **Steps A–E landed. Plus slot save/restore, prewarm,
 and speculative decoding. The desktop FFI adapter is the default
 text-generation path on desktop.** Vision describe (mmproj) and
-parallel-slot resize remain on the subprocess `dflash-server` fallback
+parallel-slot resize remain on the subprocess `FFI runtime` fallback
 because they require native C work in `eliza-llama-shim.c` that this
-JS-only effort cannot deliver. `dflash-server.ts` retirement (Step F)
+JS-only effort cannot deliver. `ffi-streaming-backend.ts` retirement (Step F)
 stays blocked on those two parity items.
 
 This doc is now a status record + a follow-up backlog. The original
@@ -22,7 +22,7 @@ implementation plan is preserved at the bottom for archival.
   is the explicit opt-out. No `=ffi` opt-in flag — FFI is the default.
 - **`backend.ts`** — `LocalInferenceBackend` interface has 12 optional
   methods covering everything `engine.ts` previously called directly on
-  the `dflashLlamaServer` singleton. `BackendDispatcher` has matching
+  the `mtpLlamaServer` singleton. `BackendDispatcher` has matching
   forwarders that throw actionable "active backend (X) does not
   implement Y" errors when the active backend lacks a feature.
 - **`backend.ts`** — `BackendDispatcher` accepts `ffiStreaming` +
@@ -32,7 +32,7 @@ implementation plan is preserved at the bottom for archival.
 
 ### Engine call-site refactor
 
-- **`engine.ts`** — every direct `dflashLlamaServer.X(...)` call (16
+- **`engine.ts`** — every direct `mtpLlamaServer.X(...)` call (16
   sites, including vision describe, slot persistence, prewarm,
   parallel-resize, drafter introspection) now routes through
   `this.dispatcher.X(...)`. The only remaining reference to the
@@ -43,7 +43,7 @@ implementation plan is preserved at the bottom for archival.
 - **`services/desktop-llama-adapter.ts`** — bun:ffi adapter for the
   desktop `libllama.{dylib,so,dll}` + `libeliza-llama-shim.{dylib,so,dll}`
   pair. Mirrors the verified AOSP adapter pattern with desktop-specific
-  path resolution (`$ELIZA_STATE_DIR/local-inference/bin/dflash/<platform>-<arch>-<backend>/`).
+  path resolution (`$ELIZA_STATE_DIR/local-inference/bin/mtp/<platform>-<arch>-<backend>/`).
   Exposes:
   - Model + ctx load via shim params (pointer-style, since llama.cpp's
     `_default_params` returns struct-by-value).
@@ -60,14 +60,14 @@ implementation plan is preserved at the bottom for archival.
     sets spec_mode via `eliza_llama_context_set_spec_mode`, and routes
     decode through `eliza_llama_decode_unified`. Per-step
     `drafterDrafted` / `drafterAccepted` counters populated by diffing
-    the `eliza_llama_dflash_stats` block before/after each step.
+    the `eliza_llama_mtp_stats` block before/after each step.
 
 ### Desktop runtime
 
 - **`services/desktop-ffi-backend-runtime.ts`** — production
   `FfiBackendRuntime` impl. `supported()` does a cheap disk probe;
   `acquire(plan)` loads dylibs, mmaps the model, resolves the drafter
-  path from `plan.catalog.runtime.dflash.drafterModelPath`, and returns
+  path from `plan.catalog.runtime.mtp.drafterModelPath`, and returns
   the session; `release()` tears everything down (drafter first, then
   main ctx, then model — same order the shim's lifetime rules expect).
 
@@ -136,7 +136,7 @@ that throws an actionable error — see "Remaining work" below.
 **Default builds skip vision entirely.** No mtmd target, no shim
 vision wrappers, `bindVision()` returns null, `describeImage` throws an
 actionable "vision build flag not set" error. The subprocess
-`dflash-server` keeps the historical vision path for users who haven't
+`FFI runtime` keeps the historical vision path for users who haven't
 flipped the flag yet.
 
 **To enable on a build host**:
@@ -173,11 +173,11 @@ tokenize → encode_chunk per image-chunk → fetch embeddings → drive
 llama_decode → generate loop) and run a runtime smoke test against a
 known mmproj GGUF.
 
-## What's still on the subprocess `dflash-server` fallback
+## What's still on the subprocess `FFI runtime` fallback
 
 Nothing functional. Embeddings (`embed`) are still subprocess-only
 because the kernel-required embedding model surface lives in
-`dflash-server.ts` — but that's a separate Eliza-specific kernel that
+`ffi-streaming-backend.ts` — but that's a separate Eliza-specific kernel that
 won't be FFI-bound for compatibility reasons. Calling `dispatcher.embed`
 against an FFI session throws the existing
 `"Active backend does not implement embed"` error.
@@ -202,14 +202,14 @@ against an FFI session throws the existing
 
 ---
 
-## Step F — retire `dflash-server.ts`
+## Step F — retire `ffi-streaming-backend.ts`
 
 Blocked on vision + parallel-resize parity above. Once both are
 implemented in the shim + adapter, the file can be deleted via:
 
-1. Confirm no remaining `dflashLlamaServer.X` references in `engine.ts`
+1. Confirm no remaining `mtpLlamaServer.X` references in `engine.ts`
    (already true — refactor done).
-2. Relocate the ~50 utility exports `dflash-server.ts` provides to other
+2. Relocate the ~50 utility exports `ffi-streaming-backend.ts` provides to other
    files (catalog reads, env helpers, etc — these are non-transport
    utilities that happen to live in the same file).
 3. Delete the file + remove the dispatcher constructor arg.

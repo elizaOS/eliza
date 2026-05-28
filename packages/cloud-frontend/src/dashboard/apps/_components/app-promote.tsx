@@ -108,7 +108,7 @@ export function AppPromote({ app }: AppPromoteProps) {
         <Button
           onClick={() => setShowPromoteDialog(true)}
           size="sm"
-          className="bg-[#FF5800] hover:bg-[#FF5800]/80 text-white rounded-sm"
+          className="bg-[#FF5800] hover:bg-black hover:text-white text-white rounded-sm"
         >
           <Megaphone className="h-4 w-4 mr-1.5" />
           Launch Promotion

@@ -1,0 +1,79 @@
+[[!meta title="Uninstalling Tails using Windows"]]
+
+[[!inline pages="doc/first_steps/uninstall.intro" raw="yes" sort="age"]]
+
+[[!toc startlevel=2]]
+
+Erasing Tails from the USB stick
+--------------------------------
+
+First, erase Tails from the USB stick:
+
+1. Start on Windows.
+
+1. Select the **Start** [[!img lib/start.png alt="" class="symbolic" link="no"]]
+   button and open the *Settings* app.
+
+1. In the *Settings* app, choose **System&nbsp;▸ Storage&nbsp;▸ Advanced
+   storage settings&nbsp;▸ Disk & volumes**.
+
+1. Plug in the Tails USB stick that you want to uninstall.
+
+   [[!img disks.png class="screenshot" alt=""]]
+
+1. Identify the USB stick in the list of disks.
+
+1. Identify the volume called **TAILS**, which has a FAT32 file system.
+
+   This volume corresponds to the Tails system partition on the USB stick.
+
+   1. Select the **Properties** button corresponding to the **TAILS** volume.
+
+   1. In the properties of the **TAILS** volume, select **Delete**.
+
+      Windows gives no feedback after deletion.
+
+   1. Select **Disks & volumes** to go back to the list of volumes.
+
+1. If there is a [[Persistent Storage|doc/persistent_storage]] on the USB
+   stick, a volume called **(No label)** also appears on the USB stick.
+
+   This volume corresponds to the Tails Persistent Storage on the USB stick.
+
+   1. Select the **Properties** button corresponding to the **(No label)** volume.
+
+   1. In the properties of the **(No label)** volume, select **Delete**.
+
+      Windows gives no feedback after deletion.
+
+   1. Select **Disks & volumes** to go back to the list of volumes.
+
+1. The USB stick now has no volumes and is entirely unallocated.
+
+Creating a new partition on the USB stick
+-----------------------------------------
+
+Then, create a new partition on the USB stick:
+
+1. Select the **Properties** button corresponding to the USB stick.
+
+1. In the properties of the USB stick, select **Convert to MBR**.
+
+1. Select **Disks & volumes** to go back to the list of volumes.
+
+1. Select the **Create Volume** button for the USB stick and choose **Create
+   Simple Volume**.
+
+1. In the **New Volume** dialog, enter a label of your choice and select
+   **Format**.
+
+1. Unplug the USB stick.
+
+1. Close the *Settings* app.
+
+1. Select the **Start** [[!img lib/start.png alt="" class="symbolic" link="no"]]
+   button and open the *File Explorer* app.
+
+1. Plug back the USB stick.
+
+   Your new volume appears in the left sidebar of the *File Explorer*.

@@ -2,7 +2,7 @@
  * Voice on/off state machine.
  *
  * Per `packages/inference/AGENTS.md` §4 + this scope's design goals,
- * voice is OFF by default. Text + drafter are hot; TTS, ASR, the
+ * voice is OFF by default. Text + native MTP are hot; TTS, ASR, the
  * speaker preset cache and phrase cache, the chunker, the rollback
  * queue, the barge-in controller, and the ring buffer are NOT in RAM.
  *
@@ -29,9 +29,9 @@
  */
 
 import type {
-	DflashDrafterHandle,
 	KernelSet,
 	MmapRegionHandle,
+	MtpDraftHandle,
 	RefCountedResource,
 	SchedulerSlot,
 	SharedResourceRegistry,
@@ -74,7 +74,7 @@ export interface TextResources {
 	readonly textWeights: MmapRegionHandle;
 	readonly kernels: KernelSet;
 	readonly scheduler: SchedulerSlot;
-	readonly drafter: DflashDrafterHandle;
+	readonly mtp: MtpDraftHandle;
 }
 
 /**

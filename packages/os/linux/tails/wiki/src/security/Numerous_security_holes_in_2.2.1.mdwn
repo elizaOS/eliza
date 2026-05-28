@@ -1,0 +1,22 @@
+[[!meta date="Sun, 24 Apr 2016 01:02:03 +0000"]]
+[[!meta title="Numerous security holes in Tails 2.2.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 2.2.1 are now fixed in Tails 2.3.
+
+We **strongly** encourage you to [[upgrade to Tails 2.3|news/version_2.3]] as soon as possible.
+
+Details
+=======
+
+* Tor Browser: [[!mfsa 2016-39]], [[!mfsa 2016-44]], [[!mfsa 2016-47]]
+* icedove: [[!debsa2016 3520]]
+* git: [[!debsa2016 3521]]
+* libgd3: [[!debsa2016 3556]]
+* pidgin-otr: [[!debsa2016 3528]]
+* srtp: [[!debsa2016 3539]]
+* imagemagick: [[!debsa2016 3547]]
+* samba: [[!debsa2016 3548]]
+* openssh: [[!debsa2016 3550]]

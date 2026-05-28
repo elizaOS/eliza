@@ -1,0 +1,25 @@
+#!/bin/sh
+
+set -e
+
+PREREQ=""
+
+prereqs() {
+    echo "${PREREQ}"
+}
+
+case "${1}" in
+prereqs)
+    prereqs
+    exit 0
+    ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+# Add the exFAT module so that the ISO can be found on an exfat partition
+# when using fromiso=, which matters in particular for kexec-based bootloaders,
+# most importantly for Heads (https://github.com/linuxboot/heads).
+manual_add_modules exfat
+
+exit 0

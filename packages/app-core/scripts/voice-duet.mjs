@@ -11,7 +11,7 @@
  * B's TTS → A's ring → … **endless** (or `--turns N`). No speakers, no mic —
  * a `DuetAudioBridge { aToB, bToA }` wired in memory.
  *
- * All tricks on: DFlash speculative decoding, KV-prefix prewarm, guided
+ * All tricks on: MTP speculative decoding, KV-prefix prewarm, guided
  * structured decode (`ELIZA_LOCAL_GUIDED_DECODE` default on) + the fused
  * streaming decoders when the fused build advertises them, and the documented
  * reduced-optimization fallback (`ELIZA_LOCAL_ALLOW_STOCK_KV=1`) only where a
@@ -23,7 +23,7 @@
  * streams B's reply PCM frames back the same way. Same wiring, two address
  * spaces, no co-resident 2× RSS.
  *
- * **No faking.** If the tier bundle, the DFlash `llama-server` binary, the
+ * **No faking.** If the tier bundle, the MTP `llama-server` binary, the
  * fused `libelizainference`, or the required kernels are missing, this prints
  * the exact missing-prereq checklist + the fix command and exits non-zero. It
  * never runs a silent stub-TTS duet and never pretends a model loaded.
@@ -41,7 +41,7 @@
  *   ttftFromUtteranceEndMs           — peer stops speaking → responder's first
  *                                       token (THE headline TTFT-from-last-utterance)
  *   firstAudioIntoPeerRingFromUtteranceEndMs — the duet round-trip
- *   + the per-stage spans from latency-trace.ts, the DFlash accept-rate, the
+ *   + the per-stage spans from latency-trace.ts, the MTP accept-rate, the
  *   structured-decode token-savings %, tok/s, and RSS-over-N-turns.
  */
 
@@ -74,7 +74,7 @@ function parseArgs(argv) {
     help: false,
     // Sweep knobs (threaded through to the fused llama-server args / scheduler).
     parallel: null, // server slots
-    draftMax: null, // DFlash draft window upper bound
+    draftMax: null, // MTP draft window upper bound
     draftMin: null,
     ctxSizeDraft: null, // drafter context size
     prewarmLeadMs: null, // prewarm-ahead lead
@@ -139,7 +139,7 @@ const USAGE = `Usage: bun run voice:duet [-- <options>]
 
 Sweep knobs (the scientific grind — see verify/voice_duet_sweep.mjs):
   --parallel <N>          llama-server slots
-  --draft-max <N>         DFlash draft window upper bound (--draft-min too)
+  --draft-max <N>         MTP draft window upper bound (--draft-min too)
   --ctx-size-draft <N>    drafter context size
   --prewarm-lead-ms <ms>  prewarm-ahead lead
   --chunk-words <N>       phrase-chunker max words per phrase
@@ -232,9 +232,9 @@ async function loadCharacter(pathOrNull, fallback) {
 // ---------------------------------------------------------------------------
 
 /**
- * Translate the harness sweep knobs into the env vars the DFlash llama-server
+ * Translate the harness sweep knobs into the env vars the MTP llama-server
  * launcher + the voice scheduler read. We set env (not argv) because the
- * llama-server is spawned deep in `dflash-server.ts`; these are the documented
+ * llama-server is spawned deep in `ffi-streaming-backend.ts`; these are the documented
  * knobs it honours. Returns the prior env values so a sweep can restore them.
  */
 function applySweepKnobs(args) {
@@ -244,10 +244,10 @@ function applySweepKnobs(args) {
     prior[k] = process.env[k];
     process.env[k] = String(v);
   };
-  set("ELIZA_DFLASH_PARALLEL", args.parallel);
-  set("ELIZA_DFLASH_DRAFT_MAX", args.draftMax);
-  set("ELIZA_DFLASH_DRAFT_MIN", args.draftMin);
-  set("ELIZA_DFLASH_CTX_SIZE_DRAFT", args.ctxSizeDraft);
+  set("ELIZA_MTP_PARALLEL", args.parallel);
+  set("ELIZA_MTP_DRAFT_MAX", args.draftMax);
+  set("ELIZA_MTP_DRAFT_MIN", args.draftMin);
+  set("ELIZA_MTP_CTX_SIZE_DRAFT", args.ctxSizeDraft);
   set("ELIZA_VOICE_CHUNK_WORDS", args.chunkWords);
   set("ELIZA_KV_CACHE_TYPE", args.kvCacheType);
   set("ELIZA_INFERENCE_FUSED_BACKEND", args.backend);
@@ -262,12 +262,12 @@ function applySweepKnobs(args) {
 
 async function inspectDuetPrereqs(args) {
   // Reuse the interactive harness's full prereq inspector (catalog entry, bundle
-  // install, DFlash binary + kernel coverage, fused libelizainference, VAD,
+  // install, MTP binary + kernel coverage, fused libelizainference, VAD,
   // ASR). It's parameterised by `args.modelId` for the tier the duet runs.
   const { inspectActiveOptimizations } = await import(
     "./voice-interactive.mjs"
   );
-  return inspectActiveOptimizations({ modelId: args.model, noDflash: false });
+  return inspectActiveOptimizations({ modelId: args.model, noMtp: false });
 }
 
 function printPrereqs(report, model) {
@@ -443,35 +443,12 @@ async function snapshotHistograms() {
   }
 }
 
-async function readDflashMetrics() {
-  try {
-    const { dflashLlamaServer } = await import(
-      "../../../plugins/plugin-local-inference/src/services/dflash-server.ts"
-    );
-    if (typeof dflashLlamaServer.getMetrics === "function") {
-      return await dflashLlamaServer.getMetrics();
-    }
-  } catch {
-    /* ignore */
-  }
+async function readMtpMetrics() {
   return null;
 }
 
 async function readServerRssMb() {
-  // Best-effort: scrape VmHWM from /proc/<pid>/status of the dflash server.
-  try {
-    const { getDflashRuntimeStatus } = await import(
-      "../../../plugins/plugin-local-inference/src/services/dflash-server.ts"
-    );
-    const status = getDflashRuntimeStatus();
-    const pid = status?.serverPid ?? status?.pid;
-    if (!pid || process.platform !== "linux") return null;
-    const txt = await fs.readFile(`/proc/${pid}/status`, "utf8");
-    const m = txt.match(/VmHWM:\s+(\d+)\s+kB/);
-    return m ? Math.round(Number(m[1]) / 1024) : null;
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -513,7 +490,7 @@ async function writeReport(reportPath, payload) {
     "",
     "## Run metrics",
     "",
-    `- DFlash accept-rate (token-weighted): ${m.dflashAcceptRate == null ? "—" : `${(m.dflashAcceptRate * 100).toFixed(1)}%`} (drafted=${m.dflashDrafted ?? 0}, accepted=${m.dflashAccepted ?? 0})`,
+    `- MTP accept-rate (token-weighted): ${m.mtpAcceptRate == null ? "—" : `${(m.mtpAcceptRate * 100).toFixed(1)}%`} (drafted=${m.mtpDrafted ?? 0}, accepted=${m.mtpAccepted ?? 0})`,
     `- structured-decode token-savings %: ${fmtPct(m.structuredDecodeTokenSavingsPct?.p50)} (p50)`,
     `- tok/s: ${fmtNum(m.tokensPerSecond?.p50)} (p50)`,
     `- server RSS: first=${m.rss?.firstMb ?? "—"}MB last=${m.rss?.lastMb ?? "—"}MB max=${m.rss?.maxMb ?? "—"}MB leakSuspected=${m.rss?.leakSuspected ?? false}`,
@@ -689,7 +666,7 @@ async function main() {
   await pushB.start();
 
   const runMetrics = new VoiceRunMetrics();
-  let priorMetrics = await readDflashMetrics();
+  let priorMetrics = await readMtpMetrics();
   // Emotion-fidelity accumulator: A's intended emotion vs B's ASR-perceived
   // emotion over the loop. Recorded honestly — `perceiver` says which sensor
   // produced B's label; `null` accuracy when neither the GGUF-ASR nor a
@@ -785,26 +762,26 @@ async function main() {
     completedTurns += 1;
     // Latency: snapshot the consumer's trace (it has the duet spans).
     const trace = await snapshotTrace(consumerRoom);
-    // DFlash delta this turn.
-    const cur = await readDflashMetrics();
-    let dflashAcc = null;
-    let dflashAccepted = null;
-    let dflashDrafted = null;
+    // MTP delta this turn.
+    const cur = await readMtpMetrics();
+    let mtpAcc = null;
+    let mtpAccepted = null;
+    let mtpDrafted = null;
     if (cur && priorMetrics) {
       const dDrafted = (cur.drafted ?? 0) - (priorMetrics.drafted ?? 0);
       const dAccepted = (cur.accepted ?? 0) - (priorMetrics.accepted ?? 0);
       if (dDrafted > 0) {
-        dflashDrafted = dDrafted;
-        dflashAccepted = dAccepted;
-        dflashAcc = dAccepted / dDrafted;
+        mtpDrafted = dDrafted;
+        mtpAccepted = dAccepted;
+        mtpAcc = dAccepted / dDrafted;
       }
     }
     if (cur) priorMetrics = cur;
     const rssMb = await readServerRssMb();
     runMetrics.recordTurn({
-      dflashAcceptRate: dflashAcc,
-      dflashAccepted,
-      dflashDrafted,
+      mtpAcceptRate: mtpAcc,
+      mtpAccepted,
+      mtpDrafted,
       // Structured-decode token-savings %: feed the guided-decode bench's
       // counter if exposed; null otherwise (recorded, not faked).
       structuredDecodeTokenSavingsPct: cur?.structuredDecodeSavingsPct ?? null,
@@ -844,7 +821,7 @@ async function main() {
       anomalies: trace?.anomalies ?? null,
       intendedEmotion: intended,
       perceivedEmotion: perceived,
-      dflashAcceptRate: dflashAcc,
+      mtpAcceptRate: mtpAcc,
       aToBPcm,
       bToAPcm,
     });
@@ -853,7 +830,7 @@ async function main() {
     log(
       c(
         "dim",
-        `  turn ${completedTurns}: ttft-from-utterance-end=${fmtMs(d.ttftFromUtteranceEndMs)} round-trip=${fmtMs(d.firstAudioIntoPeerRingFromUtteranceEndMs)} ttft=${fmtMs(d.ttftMs)} envelope→replyText=${fmtMs(d.envelopeToReplyTextMs)} dflash-accept=${dflashAcc == null ? "—" : `${Math.round(dflashAcc * 100)}%`}`,
+        `  turn ${completedTurns}: ttft-from-utterance-end=${fmtMs(d.ttftFromUtteranceEndMs)} round-trip=${fmtMs(d.firstAudioIntoPeerRingFromUtteranceEndMs)} ttft=${fmtMs(d.ttftMs)} envelope→replyText=${fmtMs(d.envelopeToReplyTextMs)} mtp-accept=${mtpAcc == null ? "—" : `${Math.round(mtpAcc * 100)}%`}`,
       ),
     );
   };
@@ -1069,7 +1046,7 @@ async function main() {
             histograms?.firstAudioIntoPeerRingFromUtteranceEndMs?.p50 ?? null,
           structured_decode_token_savings_pct:
             runMetrics.summary().structuredDecodeTokenSavingsPct?.p50 ?? null,
-          dflash_acceptance: runMetrics.summary().dflashAcceptRate,
+          mtp_acceptance: runMetrics.summary().mtpAcceptRate,
           expressive_tag_faithfulness: accuracy,
           e2e_loop_ok: completedTurns > 0,
         },

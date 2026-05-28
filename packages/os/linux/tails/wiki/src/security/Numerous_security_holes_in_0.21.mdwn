@@ -1,0 +1,25 @@
+[[!meta date="Fri, 29 Nov 2013 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.21"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes affect Tails 0.21.
+
+We **strongly** encourage you to [[upgrade to Tails
+0.22|news/version_0.22]] as soon as possible.
+
+Details
+=======
+
+ - Iceweasel / NSS: [[!mfsa 2013-103]], [[!mfsa 2013-104]], [[!mfsa
+   2013-108]], [[!mfsa 2013-109]], [[!mfsa 2013-111]], [[!mfsa 2013-113]],
+   [[!mfsa 2013-114]], [[!mfsa 2013-115]], [[!mfsa 2013-116]],
+   [[!mfsa 2013-117]], [[!debsa2013 2800]], [[!cve CVE-2013-1739]]
+   [[!cve CVE-2013-1741]], [[!cve CVE-2013-5605]] and [[!cve
+   CVE-2013-5606]]
+ - curl: [[!debsa2013 2798]]
+ - ICU: [[!debsa2013 2786]]
+ - GIMP: [[!debsa2013 2813]]
+ - Ruby 1.8: [[!debsa2013 2809]]
+ - OpenJPEG: [[!debsa2013 2808]]

@@ -7,16 +7,29 @@ import {
 function createDesktopFixture() {
   const desktop = {
     openSettings: vi.fn(),
-    openSurfaceWindow: vi.fn(async (surface, browse, alwaysOnTop) => ({
-      id: `${surface}-1`,
-      surface,
-      browse,
-      alwaysOnTop,
-    })),
-    openAppWindow: vi.fn(async (params) => ({
-      id: "app-1",
-      ...params,
-    })),
+    openSurfaceWindow: vi.fn(
+      async (surface: string, _browse?: string, alwaysOnTop?: boolean) => ({
+        id: `${surface}-1`,
+        surface,
+        title: surface,
+        singleton: false,
+        alwaysOnTop: alwaysOnTop ?? false,
+      }),
+    ),
+    openAppWindow: vi.fn(
+      async (options: {
+        slug?: string;
+        title: string;
+        path: string;
+        alwaysOnTop?: boolean;
+      }) => ({
+        id: "app-1",
+        surface: "app" as const,
+        singleton: false,
+        ...options,
+        alwaysOnTop: options.alwaysOnTop ?? false,
+      }),
+    ),
     setManagedWindowAlwaysOnTop: vi.fn(
       (id: string, flag: boolean) => id === "app-1" && flag === true,
     ),
@@ -52,7 +65,6 @@ describe("window RPC handlers", () => {
       }),
     ).resolves.toMatchObject({
       surface: "browser",
-      browse: "https://example.com",
       alwaysOnTop: true,
     });
 
@@ -74,7 +86,6 @@ describe("window RPC handlers", () => {
       }),
     ).resolves.toMatchObject({
       surface: "chat",
-      browse: undefined,
       alwaysOnTop: false,
     });
     await expect(
@@ -212,7 +223,7 @@ describe("dynamic-view RPC handlers", () => {
     await expect(
       handlers.dynamicViewRegister({ manifest, update: true }),
     ).resolves.toBe(manifest);
-    await expect(handlers.dynamicViewList(undefined)).resolves.toEqual({
+    await expect(handlers.dynamicViewList()).resolves.toEqual({
       views: [manifest],
     });
     await expect(
@@ -234,7 +245,7 @@ describe("dynamic-view RPC handlers", () => {
     await expect(
       handlers.dynamicViewUnregister({ viewId: manifest.id }),
     ).resolves.toEqual({ removed: true });
-    await expect(handlers.dynamicViewSessions(undefined)).resolves.toEqual({
+    await expect(handlers.dynamicViewSessions()).resolves.toEqual({
       sessions: [session],
     });
 

@@ -60,7 +60,7 @@ html.eliza-electrobun-frameless [data-no-camera-drag="true"] {
   -webkit-app-region: no-drag;
 }
 
-/* Onboarding full-screen VRM canvas would otherwise stay no-drag (companion rule above). */
-html.eliza-electrobun-frameless .onboarding-screen canvas {
+/* First-run full-screen VRM canvas would otherwise stay no-drag (companion rule above). */
+html.eliza-electrobun-frameless .first-run-screen canvas {
   -webkit-app-region: drag;
 }

@@ -150,7 +150,11 @@ def parse_adb_targets(adb_devices_output: str) -> list[dict[str, str]]:
 
 
 def choose_ready_serial(adb_devices_output: str) -> str | None:
-    ready = [target["serial"] for target in parse_adb_targets(adb_devices_output) if target["state"] == "device"]
+    ready = [
+        target["serial"]
+        for target in parse_adb_targets(adb_devices_output)
+        if target["state"] == "device"
+    ]
     return ready[0] if len(ready) == 1 else None
 
 
@@ -339,7 +343,9 @@ def main() -> int:
     parser.add_argument("components", nargs="*", help="Optional component ids to capture")
     parser.add_argument("--timeout-seconds", type=int, default=120)
     parser.add_argument("--dry-run", action="store_true", help="List required commands only")
-    parser.add_argument("--adb-serial", help="adb serial to pass to canonical probes via ADB_SERIAL")
+    parser.add_argument(
+        "--adb-serial", help="adb serial to pass to canonical probes via ADB_SERIAL"
+    )
     parser.add_argument(
         "--adb-connect",
         action="append",

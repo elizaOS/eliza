@@ -4,7 +4,7 @@
  */
 
 import {
-  normalizeOnboardingProviderId,
+  normalizeFirstRunProviderId,
   WALLET_RPC_PROVIDER_OPTIONS,
 } from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
@@ -303,7 +303,7 @@ function isCloudServiceRouteSelected(route: unknown): boolean {
   const routeRecord = route as Record<string, unknown>;
   return (
     routeRecord.transport === "cloud-proxy" &&
-    normalizeOnboardingProviderId(routeRecord.backend) === "elizacloud"
+    normalizeFirstRunProviderId(routeRecord.backend) === "elizacloud"
   );
 }
 
