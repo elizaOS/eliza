@@ -97,3 +97,41 @@ def test_trained_policy_passes_honest_walk_gate():
         f"no alternating gait: {report['foot_contact_switches']} contact switches"
     )
     assert report["walk_forward_pass"], f"walk gate failed: {report['fail_reasons']}"
+
+
+@pytest.mark.slow
+def test_text_command_drives_trained_policy_to_walk():
+    """Full LLM-action -> RL bridge: a free-form text instruction is parsed to
+    a velocity command and the trained policy walks forward under it."""
+    pytest.importorskip("jax")
+    pytest.importorskip("mujoco_playground")
+
+    ckpt = _resolve_checkpoint()
+    if ckpt is None:
+        pytest.skip(
+            "no trained walk checkpoint found (set ROBOT_WALK_CKPT). This "
+            "benchmark is run post-merge against a converged checkpoint."
+        )
+
+    os.environ.setdefault("JAX_PLATFORMS", "cpu")
+    os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
+    env_name = os.environ.get("ROBOT_WALK_ENV", "H1JoystickGaitTracking")
+
+    from eliza_robot.rl.meta.locomotion_command import velocity_from_text
+
+    cmd = velocity_from_text("walk forward fast")
+    assert cmd.vx > 0  # the bridge produced a forward command from text
+
+    mod = _load_eval_module()
+    report = mod.evaluate_and_render(
+        env_name,
+        ckpt / "final_params",
+        command=cmd.as_tuple(),
+        eval_steps=500,
+        seed=0,
+        render=False,
+        out_dir=ckpt,
+    )
+    assert report["walk_forward_pass"], (
+        f"text->command->policy did not walk: {report['fail_reasons']}"
+    )
