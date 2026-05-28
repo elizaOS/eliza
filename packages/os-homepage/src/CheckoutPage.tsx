@@ -487,7 +487,11 @@ export function CheckoutPage() {
               {status === "email-sent" ? (
                 <p className="checkout-message">Check your inbox.</p>
               ) : null}
-              {message ? <p className="checkout-message">{message}</p> : null}
+              {message ? (
+                <p className="checkout-message" role="alert">
+                  {message}
+                </p>
+              ) : null}
             </div>
           </div>
         </section>

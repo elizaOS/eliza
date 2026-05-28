@@ -198,6 +198,19 @@ interface ButtonHover {
   paletteViolations: string[];
 }
 
+/**
+ * Structured finding for the orange->black (or orange->white) hover
+ * anti-pattern: a primary button rests on brand orange and its hover
+ * destination collapses to black or white. Recorded — not thrown — so the
+ * report/contact-sheet surfaces it without aborting the whole suite.
+ */
+interface HoverViolation {
+  text: string;
+  restBackground: string;
+  hoverBackground: string;
+  kind: "orange->black" | "orange->white";
+}
+
 interface PageReport {
   route: string;
   slug: string;
@@ -212,6 +225,7 @@ interface PageReport {
   radiusViolations: RadiusViolation[];
   buttonHovers: ButtonHover[];
   paletteViolations: string[];
+  hoverViolations: HoverViolation[];
   screenshotIssues: string[];
   loadOk: boolean;
   loadError?: string;
@@ -335,6 +349,7 @@ function buildContactSheet(reports: PageReport[]): string {
         const failedRequests = r.failedRequests ?? [];
         const radiusViolations = r.radiusViolations ?? [];
         const paletteViolations = r.paletteViolations ?? [];
+        const hoverViolations = r.hoverViolations ?? [];
         const screenshotIssues = r.screenshotIssues ?? [];
         if (!r.loadOk) issues.push(`LOAD FAIL: ${r.loadError ?? "unknown"}`);
         if (consoleErrors.length)
@@ -345,6 +360,8 @@ function buildContactSheet(reports: PageReport[]): string {
           issues.push(`${radiusViolations.length} radius violations`);
         if (paletteViolations.length)
           issues.push(`${paletteViolations.length} palette violations`);
+        for (const hv of hoverViolations)
+          issues.push(`hover ${hv.kind}: "${hv.text}"`);
         if (screenshotIssues.length)
           issues.push(`${screenshotIssues.length} screenshot issues`);
         const issueHtml = issues.length
@@ -456,6 +473,34 @@ function paletteCheckTransition(
 function paletteCheckSingle(label: string, color: string): string | null {
   if (bucket(color) === "blue")
     return `${label}: blue color present (${color})`;
+  return null;
+}
+
+/**
+ * The orange->black anti-pattern: a button rests on brand orange and its
+ * hover destination collapses to black (or white). Both directions of that
+ * collapse are wrong — resting orange should darken to a deeper orange, not
+ * jump to a non-orange neutral. Returns a structured finding or null.
+ */
+function detectHoverViolation(
+  text: string,
+  restBackground: string,
+  hoverBackground: string,
+): HoverViolation | null {
+  if (bucket(restBackground) !== "orange") return null;
+  const dest = bucket(hoverBackground);
+  if (dest === "black") {
+    return { text, restBackground, hoverBackground, kind: "orange->black" };
+  }
+  if (dest === "white") {
+    return { text, restBackground, hoverBackground, kind: "orange->white" };
+  }
+  // An orange button whose hover background goes fully transparent collapses
+  // onto whatever is behind it. On the black cloud theme that reads as
+  // orange->black — the same anti-pattern, just spelled as `transparent`.
+  if (dest === "transparent") {
+    return { text, restBackground, hoverBackground, kind: "orange->black" };
+  }
   return null;
 }
 
@@ -583,6 +628,7 @@ async function auditPage(
   radiusViolations: RadiusViolation[];
   buttonHovers: ButtonHover[];
   paletteViolations: string[];
+  hoverViolations: HoverViolation[];
 }> {
   const raw = await page.evaluate(() => {
     interface RawColors {
@@ -592,9 +638,9 @@ async function auditPage(
       boxShadow: string;
     }
     interface RawHover {
+      index: number;
       text: string;
       rest: RawColors;
-      hover: RawColors;
       focus: RawColors;
     }
     interface RawRadius {
@@ -677,46 +723,18 @@ async function auditPage(
       document.querySelectorAll<HTMLElement>(
         "button, a[role=button], [data-slot=button]",
       ),
-    ).slice(0, 8);
-
-    const findHoverRule = (b: HTMLElement): RawColors | null => {
-      const out: Partial<RawColors> = {};
-      try {
-        for (const sheet of Array.from(document.styleSheets)) {
-          let rules: CSSRuleList | null = null;
-          try {
-            rules = sheet.cssRules;
-          } catch {
-            continue;
-          }
-          if (!rules) continue;
-          for (const rule of Array.from(rules)) {
-            if (!(rule instanceof CSSStyleRule)) continue;
-            if (!rule.selectorText.includes(":hover")) continue;
-            const base = rule.selectorText.replace(/:hover/g, "");
-            try {
-              if (!b.matches(base.trim())) continue;
-            } catch {
-              continue;
-            }
-            if (rule.style.color) out.text = rule.style.color;
-            if (rule.style.backgroundColor)
-              out.background = rule.style.backgroundColor;
-            if (rule.style.borderColor)
-              out.borderColor = rule.style.borderColor;
-            if (rule.style.boxShadow) out.boxShadow = rule.style.boxShadow;
-          }
-        }
-      } catch {}
-      if (Object.keys(out).length === 0) return null;
-      const rest = readColors(b);
-      return {
-        text: out.text ?? rest.text,
-        background: out.background ?? rest.background,
-        borderColor: out.borderColor ?? rest.borderColor,
-        boxShadow: out.boxShadow ?? rest.boxShadow,
-      };
-    };
+    )
+      .filter((b) => {
+        const rect = b.getBoundingClientRect();
+        const cs = getComputedStyle(b);
+        return (
+          rect.width >= 8 &&
+          rect.height >= 8 &&
+          cs.display !== "none" &&
+          cs.visibility !== "hidden"
+        );
+      })
+      .slice(0, 8);
 
     const findFocusRule = (b: HTMLElement): RawColors | null => {
       const out: Partial<RawColors> = {};
@@ -760,14 +778,19 @@ async function auditPage(
       };
     };
 
-    const buttonHovers: RawHover[] = buttons.map((b) => {
+    // Tag each sampled button so the Playwright layer can re-locate it and
+    // genuinely trigger :hover (computed-style scraping of CSS rules under-
+    // reports — Tailwind variants, layered specificity, and JS-driven hover
+    // are all invisible to it). Rest + focus colors are read here; the real
+    // hover background is measured after a live `locator.hover()`.
+    const buttonHovers: RawHover[] = buttons.map((b, index) => {
+      b.setAttribute("data-audit-btn", String(index));
       const rest = readColors(b);
-      const hover = findHoverRule(b) ?? rest;
       const focus = findFocusRule(b) ?? rest;
       return {
+        index,
         text: (b.textContent ?? "").trim().slice(0, 40),
         rest,
-        hover,
         focus,
       };
     });
@@ -782,18 +805,49 @@ async function auditPage(
     return result;
   });
 
-  const buttonHovers: ButtonHover[] = raw.buttonHovers.map((b) => {
+  // Genuinely hover each tagged button and re-read its computed background
+  // AFTER the hover settles, so rest vs hover actually differ. CSS-rule
+  // scraping (the previous approach) recorded rest==hover and missed every
+  // real transition.
+  const buttonHovers: ButtonHover[] = [];
+  const hoverViolations: HoverViolation[] = [];
+
+  for (const b of raw.buttonHovers) {
+    const locator = page.locator(`[data-audit-btn="${b.index}"]`).first();
+    let hover: ButtonColors = b.rest;
+    try {
+      await locator.scrollIntoViewIfNeeded({ timeout: 1000 });
+      await locator.hover({ timeout: 1000 });
+      // Let transitions/transforms settle before sampling.
+      await page.waitForTimeout(200);
+      hover = await locator.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return {
+          text: cs.color,
+          background: cs.backgroundColor,
+          borderColor: cs.borderTopColor,
+          boxShadow: cs.boxShadow,
+        };
+      });
+    } catch {
+      // Off-screen / detached / overlapped — fall back to rest colors. The
+      // button simply contributes no hover finding rather than a false one.
+    }
+    // Move the pointer away so the next button starts from a clean rest
+    // state (avoids a lingering :hover on an overlapping sibling).
+    await page.mouse.move(0, 0).catch(() => {});
+
     const paletteViolations: string[] = [];
     const bgFlag = paletteCheckTransition(
       `button "${b.text}" bg`,
       b.rest.background,
-      b.hover.background,
+      hover.background,
     );
     if (bgFlag) paletteViolations.push(bgFlag);
     const txtFlag = paletteCheckTransition(
       `button "${b.text}" text`,
       b.rest.text,
-      b.hover.text,
+      hover.text,
     );
     if (txtFlag) paletteViolations.push(txtFlag);
     const restBlue = paletteCheckSingle(
@@ -806,8 +860,31 @@ async function auditPage(
       b.focus.borderColor,
     );
     if (focusBlue) paletteViolations.push(focusBlue);
-    return { ...b, paletteViolations };
-  });
+
+    const hoverViolation = detectHoverViolation(
+      b.text,
+      b.rest.background,
+      hover.background,
+    );
+    if (hoverViolation) hoverViolations.push(hoverViolation);
+
+    buttonHovers.push({
+      text: b.text,
+      rest: b.rest,
+      hover,
+      focus: b.focus,
+      paletteViolations,
+    });
+  }
+
+  // Strip the audit tags so they don't leak into screenshots / DOM dumps.
+  await page
+    .evaluate(() => {
+      for (const el of document.querySelectorAll("[data-audit-btn]")) {
+        el.removeAttribute("data-audit-btn");
+      }
+    })
+    .catch(() => {});
 
   const paletteViolations: string[] = [];
   for (const b of buttonHovers) paletteViolations.push(...b.paletteViolations);
@@ -819,6 +896,7 @@ async function auditPage(
     radiusViolations: raw.radiusViolations,
     buttonHovers,
     paletteViolations,
+    hoverViolations,
   };
 }
 
@@ -1357,6 +1435,7 @@ for (const viewport of VIEWPORTS) {
           radiusViolations: [],
           buttonHovers: [],
           paletteViolations: [],
+          hoverViolations: [],
           screenshotIssues: [],
           loadOk: false,
         };

@@ -316,7 +316,7 @@ function RouteFallback() {
       className="os-shell"
       style={{
         minHeight: "100vh",
-        background: "var(--brand-blue, #0066ff)",
+        background: "var(--brand-blue, #0b35f1)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
