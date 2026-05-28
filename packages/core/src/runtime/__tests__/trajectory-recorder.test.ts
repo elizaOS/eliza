@@ -307,6 +307,53 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(trajectory?.metrics.toolCallFailures).toBe(1);
 	});
 
+	it("round-trips empty-object tool args + empty schema properties as {} not '[object Object]'", async () => {
+		// Live regression (milady dog-site session, 2026-05-28): a recorded
+		// HANDLE_RESPONSE tool call surfaced as args="[object Object]" because
+		// sanitizeForRecord did String(value) on an empty object. That corrupts
+		// any trajectory analysis / eval / training that reads
+		// stages[].model.toolCalls[].args or model.tools[].parameters.properties.
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-empty-args",
+			rootMessage: { id: "msg-empty-args", text: "status?" },
+		});
+		await recorder.recordStage(id, {
+			stageId: "stage-planner-empty-args",
+			kind: "planner",
+			iteration: 1,
+			startedAt: 1,
+			endedAt: 2,
+			latencyMs: 1,
+			model: {
+				modelType: "ACTION_PLANNER",
+				modelName: "gpt-oss-120b",
+				provider: "cerebras",
+				prompt: "p",
+				response: "",
+				toolCalls: [{ id: "c1", name: "NO_PARAM_TOOL", args: {} }],
+				tools: [
+					{
+						name: "NO_PARAM_TOOL",
+						description: "no params",
+						parameters: { type: "object", properties: {} },
+					},
+				],
+				toolChoice: "auto",
+			},
+		} as RecordedStage);
+		await recorder.endTrajectory(id, "finished");
+
+		const trajectory = await recorder.load(id);
+		const planner = trajectory?.stages.find((s) => s.kind === "planner");
+		const args = planner?.model?.toolCalls?.[0]?.args;
+		expect(args).toEqual({});
+		expect(args).not.toBe("[object Object]");
+		const props = planner?.model?.tools?.[0]?.parameters?.properties;
+		expect(props).toEqual({});
+		expect(props).not.toBe("[object Object]");
+	});
+
 	it("does not count terminal task failure as evaluator failure", async () => {
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
 		const id = recorder.startTrajectory({

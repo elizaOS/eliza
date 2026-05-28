@@ -841,7 +841,14 @@ function sanitizeForRecord(
 		const entries = Object.entries(value as Record<string, unknown>);
 		if (entries.length === 0) {
 			seen.delete(value);
-			return String(value);
+			// An empty object must round-trip as an empty object, not String(value).
+			// String({}) === "[object Object]", which silently corrupted recorded
+			// tool-call args (a no-param tool's args:{}) and empty JSON-schema
+			// `properties` maps in the trajectory — breaking any downstream
+			// debugging/eval/training that reads stages[].model.toolCalls[].args.
+			// String(Object.create(null)) additionally throws, so this is also a
+			// latent crash fix.
+			return {};
 		}
 		const output: Record<string, unknown> = {};
 		for (const [key, entry] of entries.slice(
