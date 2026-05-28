@@ -103,14 +103,15 @@ describe("startup shell assets", () => {
     expect(source).not.toContain("radial-gradient");
   });
 
-  it("keeps the first-run shell on the elizaOS white and blue surface", () => {
+  it("keeps the first-run shell on the tokenized onboarding surface", () => {
     const source = readFileSync(
       resolve(repoRoot, "packages/ui/src/components/shell/FirstRunShell.tsx"),
       "utf8",
     );
 
-    expect(source).toContain("bg-[#F7F9FF]");
-    expect(source).toContain("text-[#0B35F1]");
+    expect(source).toContain("bg-bg");
+    expect(source).toContain("text-txt");
+    expect(source).toContain("bg-accent");
     expect(source).not.toContain("bg-black");
     expect(source).not.toContain("radial-gradient");
     expect(source).not.toContain("blur-[");
