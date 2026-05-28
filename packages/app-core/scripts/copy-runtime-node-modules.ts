@@ -170,13 +170,42 @@ function readJson<T>(filePath: string): T {
   return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
 }
 
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function isRetryableRemoveError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const code = (error as { code?: string }).code;
+  return (
+    code === "EBUSY" ||
+    code === "EMFILE" ||
+    code === "ENFILE" ||
+    code === "ENOTEMPTY" ||
+    code === "EPERM"
+  );
+}
+
 function rmRecursive(pathToRemove: string): void {
-  fs.rmSync(pathToRemove, {
-    force: true,
-    maxRetries: 5,
-    recursive: true,
-    retryDelay: 100,
-  });
+  const maxAttempts = 8;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      fs.rmSync(pathToRemove, {
+        force: true,
+        maxRetries: 5,
+        recursive: true,
+        retryDelay: 100,
+      });
+      return;
+    } catch (error) {
+      if (!isRetryableRemoveError(error) || attempt === maxAttempts - 1) {
+        throw error;
+      }
+      sleepSync(100 * (attempt + 1));
+    }
+  }
 }
 
 function packagePath(name: string, baseDir: string): string {
@@ -725,7 +754,7 @@ function copyPackageDir(
   rootDestDir: string,
 ): boolean {
   const dest = packagePath(name, targetNodeModules);
-  fs.rmSync(dest, { recursive: true, force: true });
+  rmRecursive(dest);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   const relativeDest = path.relative(sourceDir, dest);
   const destIsInsideSource =
