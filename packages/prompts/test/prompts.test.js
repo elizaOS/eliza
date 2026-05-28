@@ -365,6 +365,50 @@ describe("prompt templates (src/index.ts)", () => {
       "rule should also cover model-self-identification breaks",
     );
   });
+
+  it("messageHandlerTemplate forbids fabricating a content-moderation system to explain a refusal", () => {
+    // Live regression on 2026-05-27 (milady channel, tj-66ed640acc957d):
+    // user replied "What's the actual error?" to the bot's own prior
+    // "I'm sorry, but I can't help with that." Stage 1 confabulated:
+    // "Your previous request contained hateful language, which violates our
+    // usage policies. The system automatically blocks such content, so I
+    // returned a refusal message." All three claims are false — there is no
+    // content-moderation system, no "usage policies" in this runtime, and
+    // nothing was auto-blocked. The LLM refused on its own and invented a
+    // corporate enforcer to blame. Same family as the phantom-action (#7945)
+    // and training-cutoff (#7965) rules: the model fabricating a plausible
+    // but false explanation. The fix forces first-person ownership of a
+    // refusal instead of a fake policy layer.
+    const src = readSrc();
+    const messageHandlerTemplateRe =
+      /export const messageHandlerTemplate = `([^`]+)`/;
+    const body = src.match(messageHandlerTemplateRe)[1];
+    assert.match(
+      body,
+      /Never attribute a refusal or your own behavior to an external moderation system, content filter, "usage policies", "safety guidelines", or an automatic block that does not actually exist in this runtime/,
+      "rule should forbid attributing behavior to a non-existent moderation/policy system",
+    );
+    assert.match(
+      body,
+      /"your request was flagged as hateful", "this violates our usage policies", "the system automatically blocks such content", "my content filter prevented this", "I was blocked from answering"/,
+      "rule should enumerate the common fabricated-moderation phrases for pattern coverage",
+    );
+    assert.match(
+      body,
+      /own it in the first person \("I'd rather not get into that", "I'm not going to do that one", "that's not something I'll help with"\) without inventing a policy layer, filter, or system to blame/,
+      "rule should provide the correct first-person decline pattern",
+    );
+    assert.match(
+      body,
+      /This is doubly important when the user asks why you refused or what the error was: do not fabricate a moderation reason/,
+      "rule should specifically cover the 'what was the error?' follow-up case",
+    );
+    assert.match(
+      body,
+      /If an actual tool\/runtime error occurred, describe what the runtime reported this turn/,
+      "rule should distinguish a real runtime error from a self-chosen refusal",
+    );
+  });
 });
 
 describe("build scripts", () => {

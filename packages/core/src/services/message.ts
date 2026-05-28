@@ -1392,7 +1392,26 @@ interface StrategyResult {
  */
 type FailureReplyAttempt =
 	| { kind: "text"; value: string }
-	| { kind: "noProvider" };
+	| { kind: "noProvider" }
+	| { kind: "rateLimited" };
+
+/**
+ * Detect provider rate-limit / 429 failures so the user-facing failure reply
+ * can say "I'm being rate-limited, try again shortly" instead of the opaque
+ * generic "something went wrong". The AI SDK surfaces these as
+ * `AI_RetryError: Failed after N attempts. Last error: Too Many Requests`.
+ */
+export function isRateLimitError(error: unknown): boolean {
+	if (!(error instanceof Error)) return false;
+	const haystack = `${error.name} ${error.message}`.toLowerCase();
+	return (
+		haystack.includes("too many requests") ||
+		haystack.includes("rate limit") ||
+		haystack.includes("rate_limit") ||
+		haystack.includes("ratelimit") ||
+		haystack.includes("429")
+	);
+}
 
 export function buildFailureReplyPrompt(recentMessages: string): string {
 	return [
@@ -10145,6 +10164,7 @@ export class DefaultMessageService implements IMessageService {
 		prompt: string,
 		stage: string,
 	): Promise<FailureReplyAttempt> {
+		let sawRateLimit = false;
 		for (const modelType of [
 			ModelType.TEXT_LARGE,
 			ModelType.RESPONSE_HANDLER,
@@ -10181,6 +10201,7 @@ export class DefaultMessageService implements IMessageService {
 				) {
 					return { kind: "noProvider" };
 				}
+				if (isRateLimitError(error)) sawRateLimit = true;
 				runtime.logger.warn(
 					{
 						src: "service:message",
@@ -10191,6 +10212,13 @@ export class DefaultMessageService implements IMessageService {
 					"Structured failure reply generation failed for model",
 				);
 			}
+		}
+		// Every model slot failed without a usable reply. When the dominant
+		// cause was provider rate-limiting (429 across the same provider), tell
+		// the user that plainly instead of the opaque generic message — the
+		// honest signal is "try again shortly", not "something broke".
+		if (sawRateLimit) {
+			return { kind: "rateLimited" };
 		}
 		return { kind: "text", value: "" };
 	}
@@ -10237,15 +10265,22 @@ export class DefaultMessageService implements IMessageService {
 			);
 		}
 
-		let replyText = attempt.value;
+		let replyText = attempt.kind === "rateLimited" ? "" : attempt.value;
 		if (!replyText) {
 			// Last-ditch fallback when every model call above also failed.
 			// Voice-neutral so any character can ship this default; characters
 			// can override with their own phrasing via
-			// character.templates.transientFailureReply.
-			replyText =
-				runtime.character.templates?.transientFailureReply ||
-				"Something went wrong on my end. Please try again.";
+			// character.templates.transientFailureReply (or
+			// rateLimitedReply for the throttling-specific case).
+			if (attempt.kind === "rateLimited") {
+				replyText =
+					runtime.character.templates?.rateLimitedReply ||
+					"My model provider is rate-limiting me right now — give it a few seconds and try again.";
+			} else {
+				replyText =
+					runtime.character.templates?.transientFailureReply ||
+					"Something went wrong on my end. Please try again.";
+			}
 		}
 
 		replyText = truncateToCompleteSentence(replyText.trim(), 2000);
