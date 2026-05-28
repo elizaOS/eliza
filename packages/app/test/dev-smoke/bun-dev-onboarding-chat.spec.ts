@@ -25,7 +25,7 @@ function browserFailureCollector(page: Page): string[] {
     const text = message.text();
     if (/^\[RenderTelemetry\]/.test(text)) return;
     if (
-      /^Failed to load resource: the server responded with a status of (400|401|404) /i.test(
+      /^Failed to load resource: the server responded with a status of (401|404) /i.test(
         text,
       )
     ) {
@@ -141,6 +141,7 @@ async function seedCompletedFirstRunStorage(page: Page): Promise<void> {
     localStorage.setItem("eliza:first-run-complete", "1");
     localStorage.setItem("eliza:setup:step", "activate");
     localStorage.setItem("eliza:ui-shell-mode", "native");
+    localStorage.setItem("eliza:chat:voiceMuted", "true");
     localStorage.setItem(
       "elizaos:active-server",
       JSON.stringify({
