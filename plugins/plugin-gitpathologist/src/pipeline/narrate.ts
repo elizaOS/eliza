@@ -45,43 +45,86 @@ export async function narrate(
   const useModelFn = (runtime as UseModelLike | null)?.useModel;
   const budget = Math.max(0, Math.floor(ctx.budget));
 
-  if (typeof useModelFn !== "function") {
-    logger.warn(`${LOG_PREFIX} runtime has no useModel; skipping rot-cause narration`);
-    return { rotCauses, llmCalls };
-  }
-
   for (const drift of ctx.drifts) {
-    if (llmCalls >= budget) break;
     const idx = indexBySha.get(drift.sha);
     if (idx === undefined) continue;
     const point = ctx.timeline[idx];
     if (!point) continue;
     const before = ctx.timeline.slice(Math.max(0, idx - 3), idx);
     const after = ctx.timeline.slice(idx + 1, idx + 4);
-    const diff = scrubSecrets(fetchDiffSnippet(ctx.repoRoot, point.sha, ctx.surfacePath, 8 * 1024));
-    try {
-      const result = await callModel(
-        useModelFn,
-        buildPrompt(ctx.surfacePath, point, before, after, diff)
+    const fallback = deterministicRotCause(point, before, after, drift);
+
+    if (typeof useModelFn === "function" && llmCalls < budget) {
+      const diff = scrubSecrets(
+        fetchDiffSnippet(ctx.repoRoot, point.sha, ctx.surfacePath, 8 * 1024)
       );
-      llmCalls += 1;
-      const parsed = parseRotCause(result);
-      if (parsed) {
-        rotCauses.push({
-          shaRange: rangeFor(point, after),
-          category: parsed.category,
-          evidence: evidenceShas(point, before, after),
-          narrative: parsed.narrative,
-        });
-        continue;
+      try {
+        const result = await callModel(
+          useModelFn,
+          buildPrompt(ctx.surfacePath, point, before, after, diff)
+        );
+        llmCalls += 1;
+        const parsed = parseRotCause(result);
+        if (parsed) {
+          rotCauses.push({
+            ...fallback,
+            category: parsed.category,
+            narrative: parsed.narrative,
+          });
+          continue;
+        }
+        logger.warn(`${LOG_PREFIX} model returned unparseable rot cause for ${point.sha}`);
+      } catch (err) {
+        logger.warn(`${LOG_PREFIX} model call failed for ${point.sha}: ${(err as Error).message}`);
       }
-      logger.warn(`${LOG_PREFIX} model returned unparseable rot cause for ${point.sha}`);
-    } catch (err) {
-      logger.warn(`${LOG_PREFIX} model call failed for ${point.sha}: ${(err as Error).message}`);
+    } else if (typeof useModelFn !== "function" && llmCalls === 0 && rotCauses.length === 0) {
+      logger.warn(`${LOG_PREFIX} runtime has no useModel; using deterministic rot-cause fallback`);
     }
+
+    rotCauses.push(fallback);
   }
 
   return { rotCauses, llmCalls };
+}
+
+function deterministicRotCause(
+  point: CommitHealthPoint,
+  before: CommitHealthPoint[],
+  after: CommitHealthPoint[],
+  drift: InflectionPoint
+): RotCause {
+  const category = categorizeDeterministically(point, before, after);
+  const flags = point.riskFlags.length > 0 ? point.riskFlags.join(", ") : "no explicit flags";
+  const previousScore = before.at(-1)?.score;
+  const nextScore = after.at(-1)?.score;
+  const narrative = [
+    `${point.sha.slice(0, 7)} marks a ${Math.abs(drift.delta).toFixed(2)}-point quality drop on this surface, with ${point.churn} churn across ${point.files.length} file(s) and ${flags}.`,
+    `The surrounding window moves from ${typeof previousScore === "number" ? previousScore.toFixed(2) : "no prior score"} to ${point.score.toFixed(2)}${typeof nextScore === "number" ? ` and then ${nextScore.toFixed(2)}` : ""}, so this commit is a deterministic inflection even without LLM narration.`,
+  ].join(" ");
+  return {
+    shaRange: rangeFor(point, after),
+    category,
+    evidence: evidenceShas(point, before, after),
+    narrative,
+  };
+}
+
+function categorizeDeterministically(
+  point: CommitHealthPoint,
+  before: CommitHealthPoint[],
+  after: CommitHealthPoint[]
+): RotCategory {
+  const subject = point.subject.toLowerCase();
+  const flags = new Set(point.riskFlags.map((flag) => flag.toLowerCase()));
+  if (point.type === "revert" || subject.includes("revert")) return "revert-cycle";
+  if (point.type === "merge" || flags.has("merge")) return "bad-merge";
+  if (flags.has("hotfix") || subject.includes("hotfix") || subject.includes("quick fix")) {
+    return "rushed-fix";
+  }
+  const neighboringChurn = [...before, ...after].reduce((sum, commit) => sum + commit.churn, 0);
+  if (point.churn > 500 || neighboringChurn > 1000) return "churn-spiral";
+  if (point.files.length > 8 || flags.has("large-change")) return "scope-creep";
+  return "other";
 }
 
 function rangeFor(point: CommitHealthPoint, after: CommitHealthPoint[]): [string, string] {
