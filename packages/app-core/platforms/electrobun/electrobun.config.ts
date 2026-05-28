@@ -468,6 +468,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
           // src, but workspace TS resolution can drag the source graph in.
           "@elizaos/agent",
           "@elizaos/app-core",
+          "@elizaos/shared",
           // Plugins — initialized by the API subprocess, never the bun shell.
           "@elizaos/plugin-sql",
           "@elizaos/plugin-local-inference",
