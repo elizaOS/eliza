@@ -53,6 +53,11 @@ export function getTimer() {
 	};
 }
 
+function resolveTscBin(): string {
+	const workspaceTsc = join(process.cwd(), "../../node_modules/.bin/tsc");
+	return existsSync(workspaceTsc) ? workspaceTsc : "tsc";
+}
+
 /**
  * Creates a standardized Bun build configuration for elizaOS packages
  */
@@ -250,7 +255,7 @@ export async function generateDts(
 	console.log("Generating TypeScript declarations...");
 	try {
 		// Use incremental compilation for faster subsequent builds
-		await $`tsc --emitDeclarationOnly --project ${tsconfigPath} --composite false --incremental false --types node,bun`;
+		await $`${resolveTscBin()} --emitDeclarationOnly --project ${tsconfigPath} --composite false --incremental false --types node,bun`;
 		console.log(
 			`✓ TypeScript declarations generated successfully (${timer.elapsed()}ms)`,
 		);
@@ -950,7 +955,7 @@ async function generateTypeScriptDeclarations() {
 
 	// Generate TypeScript declarations using tsc
 	console.log("   Compiling TypeScript declarations...");
-	await $`tsc --project tsconfig.declarations.json`;
+	await $`${resolveTscBin()} --project tsconfig.declarations.json`;
 
 	// Post-process: add `.js` extensions to all relative specifiers so external
 	// consumers compiled under `moduleResolution: "nodenext"` can resolve them.
