@@ -331,9 +331,6 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
     if (packageName === "@elizaos/plugin-openai") {
       return await import("@elizaos/plugin-openai");
     }
-    if (packageName === "@elizaos/plugin-gitpathologist") {
-      return await import("@elizaos/plugin-gitpathologist");
-    }
     return await import(packageName);
   } catch {
     const sourceEntry = resolveWorkspacePluginSourceEntry(packageName);
