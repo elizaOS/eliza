@@ -287,15 +287,15 @@ kbd {
   background-color: hsl(240 4.8% 10%);
 }
 
-/* Focus visible improvements */
+/*
+ * Baseline focus indicator for bare focusables (links, non-primitive elements).
+ * UI primitives override this with `focus-visible:outline-none` + a Tailwind
+ * `ring-2 ring-ring ring-offset-2`, so each element shows exactly one indicator:
+ * primitives → ring, everything else → this outline. No stacked box-shadow.
+ */
 :focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px var(--focus);
-}
-
-[data-theme="dark"] :focus-visible {
-  box-shadow: 0 0 0 4px var(--focus);
 }
 
 /*

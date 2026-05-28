@@ -196,7 +196,7 @@ export function ChatConversationItem({
         className={
           isGameModal
             ? "flex h-auto w-full min-w-0 flex-1 cursor-pointer flex-col !items-start !justify-start overflow-hidden rounded-none border-none bg-transparent p-0 !text-left"
-            : "m-0 flex h-auto w-full min-w-0 flex-1 cursor-pointer items-center gap-2 overflow-hidden rounded-none border-0 bg-transparent p-0 text-left hover:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+            : "m-0 flex h-auto w-full min-w-0 flex-1 cursor-pointer items-center gap-2 overflow-hidden rounded-none border-0 bg-transparent p-0 text-left hover:bg-transparent"
         }
         onClick={() => {
           if (suppressClickRef.current) {

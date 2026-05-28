@@ -30,15 +30,12 @@ const INLINE_TEXTAREA_MAX_HEIGHT_PX = 128;
 const INLINE_STACKED_INLINE_PADDING_PX = 12;
 
 const inlineTextareaClass =
-  "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden appearance-none rounded-none border-0 bg-transparent px-2 py-[6px] text-sm leading-5 text-txt shadow-none outline-none ring-0 placeholder:text-muted-strong focus:!border-0 focus:!outline-none focus:!ring-0 focus-visible:!border-0 focus-visible:!outline-none focus-visible:!ring-0 focus-visible:!ring-offset-0 focus-visible:!shadow-none";
+  "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden appearance-none rounded-none border-0 bg-transparent px-2 py-[6px] text-sm leading-5 text-txt outline-none placeholder:text-muted-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 const inlineMeasureTextareaClass = `${inlineTextareaClass} pointer-events-none fixed left-0 top-0 z-[-1] opacity-0`;
 
-const chatComposerFocusResetClass =
-  "[&_button:focus]:!outline-none [&_button:focus-visible]:!outline-none [&_button:focus-visible]:!ring-0 [&_button:focus-visible]:!ring-offset-0 [&_button:focus-visible]:!shadow-none [&_textarea:focus]:!outline-none [&_textarea:focus-visible]:!outline-none [&_textarea:focus-visible]:!ring-0 [&_textarea:focus-visible]:!ring-offset-0 [&_textarea:focus-visible]:!shadow-none";
-
 const inlineComposerSurfaceClass =
-  "border-[color-mix(in_srgb,var(--border)_62%,var(--txt)_38%)] bg-[color-mix(in_srgb,var(--bg)_78%,var(--txt)_16%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_12px_30px_rgba(0,0,0,0.42)] ring-1 ring-inset ring-white/15 backdrop-blur-sm";
+  "border-[color-mix(in_srgb,var(--border)_62%,var(--txt)_38%)] bg-[color-mix(in_srgb,var(--bg)_78%,var(--txt)_16%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ring-1 ring-inset ring-white/15 backdrop-blur-sm";
 
 type InlineTextareaMeasurement = {
   scrollHeight: number;
@@ -159,23 +156,11 @@ export function ChatComposer({
   placeholder,
   textareaAriaLabel,
 }: ChatComposerProps) {
-  const [isNarrow, setIsNarrow] = useState(
-    () => typeof window !== "undefined" && window.innerWidth < 310,
-  );
   const [isInlineMultiline, setIsInlineMultiline] = useState(false);
   const [inlineMeasureVersion, setInlineMeasureVersion] = useState(0);
   const inlineRootRef = useRef<HTMLDivElement | null>(null);
   const inlineMeasureRef = useRef<HTMLTextAreaElement | null>(null);
   const lastInlineSingleLineWidthRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(max-width: 309px)");
-    const sync = () => setIsNarrow(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
 
   const isGameModal = variant === "game-modal";
   const isInline = layout === "inline";
@@ -193,7 +178,7 @@ export function ChatComposer({
         : t("common.send")
       : t("chat.stopSpeaking");
   const actionButtonLabel = isGameModal ? undefined : actionButtonTitle;
-  const inputPlaceholder = isNarrow ? t("common.message") : t("common.message");
+  const inputPlaceholder = t("common.message");
   const voiceButtonTitle = isAgentStarting
     ? t("chat.agentStarting")
     : voice.isListening
@@ -374,7 +359,7 @@ export function ChatComposer({
         triggerVariant={isInline ? "ghost" : "surface"}
         triggerClassName={
           isInline
-            ? "h-8 w-8 shrink-0 rounded-sm bg-bg p-0 text-muted shadow-none transition-colors hover:bg-bg hover:text-txt focus-visible:ring-0 focus-visible:ring-offset-0"
+            ? "h-8 w-8 shrink-0 rounded-sm bg-bg p-0 text-muted shadow-none transition-colors hover:bg-bg hover:text-txt"
             : "h-[46px] w-[46px] shrink-0"
         }
         triggerIconClassName={isInline ? "h-4.5 w-4.5" : "h-4 w-4"}
@@ -388,7 +373,7 @@ export function ChatComposer({
         <Button
           variant="ghost"
           size="icon"
-          className={`h-8 w-8 shrink-0 rounded-sm bg-bg p-0 text-muted shadow-none transition-colors hover:bg-bg hover:text-txt focus-visible:ring-0 focus-visible:ring-offset-0 ${
+          className={`h-8 w-8 shrink-0 rounded-sm bg-bg p-0 text-muted shadow-none transition-colors hover:bg-bg hover:text-txt ${
             chatPendingImagesCount > 0 ? "text-accent hover:text-accent" : ""
           }`}
           onClick={onAttachImage}
@@ -440,7 +425,7 @@ export function ChatComposer({
       <Button
         variant="ghost"
         size="icon"
-        className={`h-8 w-8 shrink-0 rounded-sm p-0 shadow-none transition-colors focus-visible:ring-0 focus-visible:ring-offset-0 active:scale-95 ${
+        className={`h-8 w-8 shrink-0 rounded-sm p-0 shadow-none transition-colors active:scale-95 ${
           voice.isListening
             ? "bg-accent text-bg hover:bg-accent/90 hover:text-bg"
             : "bg-bg text-muted hover:bg-bg hover:text-txt"
@@ -464,7 +449,7 @@ export function ChatComposer({
         variant="ghost"
         data-testid="chat-composer-action"
         size="icon"
-        className="h-8 w-8 shrink-0 rounded-sm bg-txt p-0 text-bg shadow-none transition-transform focus-visible:ring-0 focus-visible:ring-offset-0 active:scale-95 disabled:opacity-40"
+        className="h-8 w-8 shrink-0 rounded-sm bg-txt p-0 text-bg shadow-none transition-transform active:scale-95 disabled:opacity-40"
         onClick={onSend}
         disabled={isComposerLocked || !hasDraft}
         title={actionButtonLabel}
@@ -478,7 +463,7 @@ export function ChatComposer({
       <Button
         variant="surfaceDestructive"
         data-testid="chat-composer-action"
-        className="h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 focus-visible:ring-0 focus-visible:ring-offset-0"
+        className="h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25"
         onClick={onStop}
         size="icon"
         title={actionButtonLabel}
@@ -492,7 +477,7 @@ export function ChatComposer({
       <Button
         variant="surfaceDestructive"
         data-testid="chat-composer-action"
-        className="h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 focus-visible:ring-0 focus-visible:ring-offset-0"
+        className="h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25"
         onClick={onStopSpeaking}
         size="icon"
         title={actionButtonLabel}
@@ -524,8 +509,8 @@ export function ChatComposer({
         data-inline-layout={isInlineMultiline ? "stacked" : "single-line"}
         className={
           isInlineMultiline
-            ? `flex min-h-[64px] flex-col gap-1 rounded-[22px] border px-1.5 py-1.5 ${inlineComposerSurfaceClass} ${chatComposerFocusResetClass}`
-            : `flex min-h-[40px] items-center gap-1 rounded-sm border px-1 py-1 ${inlineComposerSurfaceClass} ${chatComposerFocusResetClass}`
+            ? `flex min-h-[64px] flex-col gap-1 rounded-[22px] border px-1.5 py-1.5 ${inlineComposerSurfaceClass}`
+            : `flex min-h-[40px] items-center gap-1 rounded-sm border px-1 py-1 ${inlineComposerSurfaceClass}`
         }
       >
         <textarea
@@ -565,8 +550,8 @@ export function ChatComposer({
       data-chat-composer="true"
       className={
         isGameModal
-          ? `relative flex w-full items-end gap-2 transition-all max-[380px]:gap-1.5 ${chatComposerFocusResetClass}`
-          : `flex items-center gap-1.5 sm:gap-2 ${chatComposerFocusResetClass}`
+          ? "relative flex w-full items-end gap-2 transition-all max-[380px]:gap-1.5"
+          : "flex items-center gap-1.5 sm:gap-2"
       }
     >
       {!isGameModal && !hideAttachButton ? (
@@ -575,7 +560,7 @@ export function ChatComposer({
           size="icon"
           className={
             isInline
-              ? `h-8 w-8 shrink-0 rounded-sm bg-bg p-0 text-muted shadow-none transition-colors hover:bg-bg hover:text-txt focus-visible:ring-0 focus-visible:ring-offset-0 ${
+              ? `h-8 w-8 shrink-0 rounded-sm bg-bg p-0 text-muted shadow-none transition-colors hover:bg-bg hover:text-txt ${
                   chatPendingImagesCount > 0
                     ? "text-accent hover:text-accent"
                     : ""
@@ -648,10 +633,10 @@ export function ChatComposer({
           density={isInline ? null : undefined}
           className={
             isGameModal
-              ? "w-full min-w-0 min-h-0 h-[46px] resize-none overflow-y-hidden max-h-[200px] outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 font-[var(--font-chat)] disabled:opacity-50 rounded-sm border border-transparent bg-transparent px-4 pb-[13px] pt-[13px] text-[15px] leading-[1.55] text-txt-strong placeholder:text-muted"
+              ? "w-full min-w-0 min-h-0 h-[46px] resize-none overflow-y-hidden max-h-[200px] outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 font-[var(--font-chat)] disabled:opacity-50 rounded-sm border border-transparent bg-transparent px-4 pb-[13px] pt-[13px] text-[15px] leading-[1.55] text-txt-strong placeholder:text-muted"
               : isInline
                 ? inlineTextareaClass
-                : "w-full min-w-0 min-h-0 h-[38px] resize-none overflow-y-hidden max-h-[200px] outline-none ring-0 shadow-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 font-[var(--font-chat)] disabled:opacity-50 rounded-sm border-0 bg-card/40 px-4 py-[8px] text-[15px] leading-[1.55] text-txt placeholder:text-muted"
+                : "w-full min-w-0 min-h-0 h-[38px] resize-none overflow-y-hidden max-h-[200px] outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 font-[var(--font-chat)] disabled:opacity-50 rounded-sm border-0 bg-card/40 px-4 py-[8px] text-[15px] leading-[1.55] text-txt placeholder:text-muted"
           }
           placeholder={placeholder ?? defaultTextareaPlaceholder}
           rows={1}
@@ -712,7 +697,7 @@ export function ChatComposer({
           data-testid="chat-composer-action"
           className={
             isInline
-              ? "h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 focus-visible:ring-0 focus-visible:ring-offset-0"
+              ? "h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25"
               : "ml-1 flex items-center justify-center rounded-sm transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0"
           }
           onClick={onStop}
@@ -736,7 +721,7 @@ export function ChatComposer({
           data-testid="chat-composer-action"
           className={
             isInline
-              ? "h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25 focus-visible:ring-0 focus-visible:ring-offset-0"
+              ? "h-8 w-8 shrink-0 rounded-sm bg-danger/15 p-0 text-danger shadow-none transition-colors hover:bg-danger/25"
               : "ml-1 flex items-center justify-center rounded-sm transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0"
           }
           onClick={onStopSpeaking}
@@ -753,7 +738,7 @@ export function ChatComposer({
           variant="ghost"
           data-testid="chat-composer-action"
           size="icon"
-          className={`h-8 w-8 shrink-0 rounded-sm p-0 shadow-none transition-colors focus-visible:ring-0 focus-visible:ring-offset-0 active:scale-95 ${
+          className={`h-8 w-8 shrink-0 rounded-sm p-0 shadow-none transition-colors active:scale-95 ${
             voice.isListening
               ? "bg-accent text-bg hover:bg-accent/90 hover:text-bg"
               : "bg-bg text-muted hover:bg-bg hover:text-txt"
@@ -783,7 +768,7 @@ export function ChatComposer({
                     : "select-none rounded-sm border border-transparent bg-transparent text-muted-strong shadow-none ring-0 transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-card hover:text-txt active:scale-95 opacity-80"
                 }`
               : isInline
-                ? "h-8 w-8 shrink-0 rounded-sm bg-txt p-0 text-bg shadow-none transition-transform focus-visible:ring-0 focus-visible:ring-offset-0 active:scale-95 disabled:opacity-40"
+                ? "h-8 w-8 shrink-0 rounded-sm bg-txt p-0 text-bg shadow-none transition-transform active:scale-95 disabled:opacity-40"
                 : "ml-1 h-[38px] w-9 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt transition-colors select-none active:scale-95 disabled:ring-0 disabled:opacity-40"
           }
           onClick={onSend}

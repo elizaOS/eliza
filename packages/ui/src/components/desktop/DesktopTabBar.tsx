@@ -51,7 +51,7 @@ function TabButton({
         type="button"
         title={tab.label}
         onClick={onClick}
-        className="min-w-0 truncate leading-none focus:outline-none"
+        className="min-w-0 truncate leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         {tab.label}
       </button>
@@ -62,7 +62,7 @@ function TabButton({
           e.stopPropagation();
           onClose();
         }}
-        className="ml-0.5 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-border/40 group-hover:opacity-100 focus:opacity-100 focus:outline-none"
+        className="ml-0.5 shrink-0 rounded p-0.5 opacity-0 transition-opacity hover:bg-border/40 group-hover:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         aria-label={`Close ${tab.label}`}
       >
         <X className="h-2.5 w-2.5" />
