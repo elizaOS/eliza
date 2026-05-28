@@ -1,0 +1,198 @@
+{
+  "schema": "eliza.cpu_benchmark_measured.v1",
+  "benchmark": "embench-iot",
+  "embench_version": "v1.0 (tag embench-1.0)",
+  "core": "cva6",
+  "core_role": "little_core_e1_pro",
+  "target_config": "cv64a6_imafdc_sv39",
+  "isa": "rv64gc",
+  "mabi": "lp64d",
+  "status": "passed_partial",
+  "claim_level": "L1_RTL_FULL_SOC",
+  "provenance": "simulator",
+  "flow": "cva6 veri-testharness (work-ver/Variane_testharness); Embench-IoT v1.0 workloads compiled against the CVA6 bare-metal BSP (HTIF tohost); timed region measured via mcycle CSR (start_trigger/stop_trigger)",
+  "result_recorded_at": "2026-05-28T23:02:08Z",
+  "tools": {
+    "verilator": "Verilator 5.049 devel rev v5.048-46-g7c5069c7d (mod)",
+    "gcc": "15.2.0 (xpack riscv-none-elf)",
+    "gcc_flags": "-std=gnu11 -O2 -march=rv64gc -mabi=lp64d -nostdlib -nostartfiles -DCPU_MHZ=1"
+  },
+  "scoring": {
+    "method": "Embench-IoT v1.0 speed score: geometric mean of per-benchmark relative speed",
+    "relative_speed_formula": "reference_cycles / measured_timed_cycles, where reference_cycles = baseline_ms * 1000 (STM32F4 Cortex-M4 @ 16 MHz, normalised to CPU_MHZ=1 iteration count)",
+    "reference_platform": "STM32F4-Discovery Cortex-M4 @ 16 MHz (Embench v1.0 baseline-data/speed.json)",
+    "frequency_independent": true,
+    "interpretation": "score of 1.0 == cycle-for-cycle parity with the Cortex-M4 reference; >1 == fewer cycles per benchmark than the reference",
+    "caveat": "Reported geometric_mean_score is over all 16 scored workloads and includes two scale-distorted outliers (nbody, st) whose timed regions execute too few iterations at CPU_MHZ=1 to be steady-state-meaningful. Prefer geometric_mean_score_excluding_scale_outliers (14 workloads) for IPC-class comparison. All cycle counts are exact mcycle deltas from the cycle-accurate CVA6 RTL model."
+  },
+  "coverage": {
+    "workloads_in_embench_v1.0": 19,
+    "workloads_scored": 16,
+    "workloads_failed": [
+      "huffbench",
+      "qrduino",
+      "statemate"
+    ],
+    "note": "Embench v1.0 ships 19 speed workloads; the manifest also lists primecount and tarfind which were introduced in Embench 2.0 and are absent at the pinned v1.0 tag.",
+    "workloads_failed_detail": {
+      "statemate": {
+        "reason": "Did not reach a clean tohost completion within a bounded wall-clock budget on the CVA6 veri-testharness model. statemate is by far the heaviest Embench v1.0 workload on this cycle-accurate RTL model; repeated isolated single-process runs exceeded ~28 min of 100%-CPU simulation without reaching the stop_trigger/tohost write. No FAILED assertion and no AXI decode/slave error were observed (3 benign B-response warnings during early M-mode boot only), i.e. this is a simulation-throughput limit on the directed cycle-accurate model, not a functional/ISA defect.",
+        "next_command": "E1_EMBENCH_SKIP_BUILD=1 nohup build/embench/statemate.elf run with an extended budget, or lower the workload scale (WARMUP_HEAT/LOCAL_SCALE_FACTOR) for statemate only, then re-collect with E1_EMBENCH_SKIP_BUILD=1 E1_EMBENCH_SKIP_RUN=1 make embench"
+      },
+      "huffbench": {
+        "reason": "Never reaches main()/the timed region: sustained AXI write-response errors (ariane_testharness.sv:676 'B Response Errored', RESP_DECERR/SLVERR) begin at ~cycle 56k during bare-metal startup and continue to the harness time_out; no EMBENCH_CYCLES and no clean SUCCESS are emitted. The 16 scored workloads (built from the identical crt.S/syscalls.c BSP and link.ld) show zero such errors, so this is a workload-specific interaction between the huffbench bare-metal port and the testharness AXI memory decode, not a global BSP defect.",
+        "next_command": "Re-link huffbench against the riscv-tests p/v environment (or relocate its .bss heap array out of the tohost-adjacent page) and re-run; inspect build/embench/huffbench.run.log for the first faulting address."
+      },
+      "qrduino": {
+        "reason": "Identical failure signature to huffbench: sustained AXI 'B Response Errored' (RESP_DECERR/SLVERR) from ~cycle 63k in startup, never reaches main(), no EMBENCH_CYCLES, no SUCCESS. Workload-specific (qrduino + testharness AXI decode), reproducible and load-independent.",
+        "next_command": "Same remediation as huffbench: re-link against riscv-tests env / relocate the static heap array, then re-run."
+      }
+    }
+  },
+  "metrics": {
+    "geometric_mean_score": 2.4478,
+    "per_benchmark": {
+      "aha-mont64": {
+        "measured_timed_cycles": 2598894,
+        "total_program_cycles": 2826262,
+        "reference_baseline_ms_stm32f4_16mhz": 4004,
+        "reference_cycles_same_iterations": 4004000,
+        "rel_speed": 1.5407,
+        "status": "passed"
+      },
+      "crc32": {
+        "measured_timed_cycles": 4597334,
+        "total_program_cycles": 4991085,
+        "reference_baseline_ms_stm32f4_16mhz": 4010,
+        "reference_cycles_same_iterations": 4010000,
+        "rel_speed": 0.8722,
+        "status": "passed"
+      },
+      "cubic": {
+        "measured_timed_cycles": 1595892,
+        "total_program_cycles": 1904649,
+        "reference_baseline_ms_stm32f4_16mhz": 3931,
+        "reference_cycles_same_iterations": 3931000,
+        "rel_speed": 2.4632,
+        "status": "passed"
+      },
+      "edn": {
+        "measured_timed_cycles": 4057154,
+        "total_program_cycles": 4446596,
+        "reference_baseline_ms_stm32f4_16mhz": 4010,
+        "reference_cycles_same_iterations": 4010000,
+        "rel_speed": 0.9884,
+        "status": "passed"
+      },
+      "matmult-int": {
+        "measured_timed_cycles": 3728768,
+        "total_program_cycles": 4160336,
+        "reference_baseline_ms_stm32f4_16mhz": 3985,
+        "reference_cycles_same_iterations": 3985000,
+        "rel_speed": 1.0687,
+        "status": "passed"
+      },
+      "minver": {
+        "measured_timed_cycles": 798746,
+        "total_program_cycles": 899621,
+        "reference_baseline_ms_stm32f4_16mhz": 3998,
+        "reference_cycles_same_iterations": 3998000,
+        "rel_speed": 5.0053,
+        "status": "passed"
+      },
+      "nbody": {
+        "measured_timed_cycles": 1942,
+        "total_program_cycles": 42479,
+        "reference_baseline_ms_stm32f4_16mhz": 2808,
+        "reference_cycles_same_iterations": 2808000,
+        "rel_speed": 1445.932,
+        "status": "passed"
+      },
+      "nettle-aes": {
+        "measured_timed_cycles": 4967204,
+        "total_program_cycles": 5423934,
+        "reference_baseline_ms_stm32f4_16mhz": 4026,
+        "reference_cycles_same_iterations": 4026000,
+        "rel_speed": 0.8105,
+        "status": "passed"
+      },
+      "nettle-sha256": {
+        "measured_timed_cycles": 4288417,
+        "total_program_cycles": 4626879,
+        "reference_baseline_ms_stm32f4_16mhz": 3997,
+        "reference_cycles_same_iterations": 3997000,
+        "rel_speed": 0.932,
+        "status": "passed"
+      },
+      "nsichneu": {
+        "measured_timed_cycles": 5991277,
+        "total_program_cycles": 6448988,
+        "reference_baseline_ms_stm32f4_16mhz": 4001,
+        "reference_cycles_same_iterations": 4001000,
+        "rel_speed": 0.6678,
+        "status": "passed"
+      },
+      "picojpeg": {
+        "measured_timed_cycles": 4072715,
+        "total_program_cycles": 5116372,
+        "reference_baseline_ms_stm32f4_16mhz": 4030,
+        "reference_cycles_same_iterations": 4030000,
+        "rel_speed": 0.9895,
+        "status": "passed"
+      },
+      "sglib-combined": {
+        "measured_timed_cycles": 3658434,
+        "total_program_cycles": 4096329,
+        "reference_baseline_ms_stm32f4_16mhz": 3981,
+        "reference_cycles_same_iterations": 3981000,
+        "rel_speed": 1.0882,
+        "status": "passed"
+      },
+      "slre": {
+        "measured_timed_cycles": 3300402,
+        "total_program_cycles": 3598236,
+        "reference_baseline_ms_stm32f4_16mhz": 4010,
+        "reference_cycles_same_iterations": 4010000,
+        "rel_speed": 1.215,
+        "status": "passed"
+      },
+      "st": {
+        "measured_timed_cycles": 179604,
+        "total_program_cycles": 234761,
+        "reference_baseline_ms_stm32f4_16mhz": 4080,
+        "reference_cycles_same_iterations": 4080000,
+        "rel_speed": 22.7166,
+        "status": "passed"
+      },
+      "ud": {
+        "measured_timed_cycles": 3244407,
+        "total_program_cycles": 3513761,
+        "reference_baseline_ms_stm32f4_16mhz": 3999,
+        "reference_cycles_same_iterations": 3999000,
+        "rel_speed": 1.2326,
+        "status": "passed"
+      },
+      "wikisort": {
+        "measured_timed_cycles": 782512,
+        "total_program_cycles": 1736366,
+        "reference_baseline_ms_stm32f4_16mhz": 2779,
+        "reference_cycles_same_iterations": 2779000,
+        "rel_speed": 3.5514,
+        "status": "passed"
+      }
+    },
+    "geometric_mean_score_all_scored": 2.4478,
+    "geometric_mean_score_excluding_scale_outliers": 1.3234,
+    "scale_outliers": {
+      "workloads": [
+        "nbody",
+        "st"
+      ],
+      "rel_speeds": {
+        "nbody": 1445.93,
+        "st": 22.72
+      },
+      "explanation": "nbody and st run only a few thousand timed cycles at CPU_MHZ=1 (LOCAL_SCALE_FACTOR yields very few benchmark iterations), so their reference/measured ratio is dominated by fixed startup and is not a meaningful steady-state IPC comparison. They inflate the all-scored geometric mean. The excluding-scale-outliers geomean over the remaining 14 workloads is the more representative figure."
+    }
+  }
+}

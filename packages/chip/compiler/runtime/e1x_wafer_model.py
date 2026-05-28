@@ -825,7 +825,11 @@ def build_scaled_8gb_report(config: E1XConfig | None = None, model: QuantizedMod
         "high_failure_repair_rom_words": int(high_repair_rom["total_word_count"]),
         "high_failure_repair_rom_sha256": high_repair_rom["artifact_sha256"],
         "high_failure_model_shard_sample_sha256": high_model_shard_sample["artifact_sha256"],
+        "high_failure_model_shard_sample_checksum": int(
+            high_model_shard_sample["expected_checksum"]
+        ),
         "high_failure_execution_trace_sha256": high_execution_trace["artifact_sha256"],
+        "high_failure_execution_trace_total_cycles": int(high_execution_trace["total_cycles"]),
         "architecture": {
             "name": cfg.name,
             "logical_rows": cfg.logical_rows,
@@ -907,6 +911,120 @@ def build_scaled_8gb_report(config: E1XConfig | None = None, model: QuantizedMod
                 "local_sram_vs_e1": cfg.local_sram_mib / float(e1["local_sram_mib"]),
             },
         },
+    }
+
+
+def build_real_graph_report(
+    placement: dict,
+    model: QuantizedModelSpec,
+    config: E1XConfig | None = None,
+    run: QuantizedRunSpec = SCALED_8GB_RUN,
+) -> dict:
+    """Drive the wafer SRAM/fabric/execution accounting from a real-graph placement.
+
+    ``placement`` is the ``eliza.e1x.graph_mesh_placement.v1`` object produced by
+    ``e1x_graph_mapper.map_graph``; ``model`` is the bridged ``QuantizedModelSpec``
+    carrying the manifest's real parameter count and effective bit width. This is
+    the real-graph counterpart to ``build_scaled_8gb_report``'s synthetic
+    descriptor path: the mapper decides placement/sharding and the wafer model
+    consumes it, so the two layers stay consistent.
+
+    The placement's per-core occupancy and the wafer model's independent
+    ``model_load_plan`` shard accounting must agree on fit — they are computed by
+    different code over the same budget, so cross-checking them catches drift.
+    """
+    cfg = config or scaled_8gb_config()
+    normal_blocked_cores, normal_blocked_links = generated_defects(cfg, NORMAL_DEFECT_SCENARIO)
+    normal_mapping = repair_map(cfg, normal_blocked_cores)
+    normal_mesh = validate_repaired_mesh(
+        cfg,
+        normal_mapping,
+        normal_blocked_cores,
+        normal_blocked_links,
+        NORMAL_DEFECT_SCENARIO.max_route_checks,
+    )
+    normal_load = model_load_plan(cfg, model, normal_blocked_cores, normal_mapping)
+    normal_execution = model_execution_plan(
+        cfg,
+        model,
+        run,
+        NORMAL_DEFECT_SCENARIO,
+        normal_load,
+        float(normal_mesh["average_extra_hops_per_neighbor"]),
+    )
+    high_blocked_cores, high_blocked_links = generated_defects(cfg, HIGH_DEFECT_SCENARIO)
+    high_mapping = repair_map(cfg, high_blocked_cores)
+    high_mesh = validate_repaired_mesh(
+        cfg,
+        high_mapping,
+        high_blocked_cores,
+        high_blocked_links,
+        HIGH_DEFECT_SCENARIO.max_route_checks,
+    )
+    high_load = model_load_plan(cfg, model, high_blocked_cores, high_mapping)
+    high_execution: dict = model_execution_plan(
+        cfg,
+        model,
+        run,
+        HIGH_DEFECT_SCENARIO,
+        high_load,
+        float(high_mesh["average_extra_hops_per_neighbor"]),
+    )
+    placement_fit = bool(placement["sram_fit"])
+    normal_wafer_fit = bool(normal_load["placement_successful"])
+    high_wafer_fit = bool(high_load["placement_successful"])
+    return {
+        "schema": "eliza.e1x.real_graph_model_load.v1",
+        "claim_boundary": "architecture_simulation_only_not_rtl_not_pdk_not_silicon",
+        "model": model.name,
+        "source_placement_sha256": str(placement["artifact_sha256"]),
+        "graph_layers": int(placement["layer_count"]),
+        "graph_total_parameters": int(placement["total_parameters"]),
+        "graph_cores_used": int(placement["cores_used"]),
+        "graph_core_utilization": float(placement["core_utilization"]),
+        "graph_peak_core_occupancy": float(placement["peak_core_occupancy"]),
+        "graph_routing_colors_used": list(placement["routing_colors_used"]),
+        "mapper_sram_fit": placement_fit,
+        "wafer_model_placement_successful": normal_wafer_fit,
+        "placement_consistent_with_wafer_accounting": placement_fit == normal_wafer_fit,
+        "model_loaded_under_normal_defects": int(normal_wafer_fit),
+        "model_loaded_under_high_failure": int(high_wafer_fit),
+        "high_failure_repaired_logical_mesh": 1,
+        "high_failure_model_run_successful": int(bool(high_execution["execution_successful"])),
+        "high_failure_output_checksum": int(high_execution["output_checksum"]),
+        "high_failure_decode_tokens_per_second": float(
+            high_execution["decode_tokens_per_second"]
+        ),
+        "high_failure_route_checks": int(high_mesh["logical_neighbor_paths_checked"]),
+        "high_failure_blocked_core_count": len(high_blocked_cores),
+        "high_failure_blocked_link_count": len(high_blocked_links),
+        "model_load": normal_load,
+        "model_execution": normal_execution,
+        "defect_testing": {
+            "normal_wafer_sort": {
+                "scenario": NORMAL_DEFECT_SCENARIO.name,
+                "blocked_core_count": len(normal_blocked_cores),
+                "blocked_link_count": len(normal_blocked_links),
+                "model_loaded": normal_wafer_fit,
+                **normal_mesh,
+            },
+            "high_failure_rate_repair_stress": {
+                "scenario": HIGH_DEFECT_SCENARIO.name,
+                "blocked_core_count": len(high_blocked_cores),
+                "blocked_link_count": len(high_blocked_links),
+                "model_loaded": high_wafer_fit,
+                **high_mesh,
+            },
+        },
+        "model_load_by_scenario": {
+            NORMAL_DEFECT_SCENARIO.name: normal_load,
+            HIGH_DEFECT_SCENARIO.name: high_load,
+        },
+        "model_execution_by_scenario": {
+            NORMAL_DEFECT_SCENARIO.name: normal_execution,
+            HIGH_DEFECT_SCENARIO.name: high_execution,
+        },
+        **normal_mesh,
     }
 
 

@@ -451,6 +451,20 @@ e1x-formal:
 e1x-formal-test:
 	@$(PYTHON) -m pytest scripts/test_e1x_formal.py -q
 
+.PHONY: e1x-boot-repair-fw e1x-boot-repair-fw-test e1x-graph-mapper e1x-graph-mapper-test
+
+e1x-boot-repair-fw:
+	@$(PYTHON) scripts/check_e1x_boot_repair_fw.py
+
+e1x-boot-repair-fw-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_boot_repair_fw.py -q
+
+e1x-graph-mapper:
+	@$(PYTHON) scripts/check_e1x_graph_mapper.py
+
+e1x-graph-mapper-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_graph_mapper.py -q
+
 benchmark-sim-metrics-test:
 	@$(PYTHON) scripts/test_simulator_arch_metrics.py
 

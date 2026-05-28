@@ -14,6 +14,7 @@ verify/cocotb/results/*.xml
 verify/cocotb/*/results/
 verify/cocotb/**/trace_hart_*.dasm
 verify/cocotb/**/boot_rom.hex
+verify/cocotb/e1x_boot_fw/e1x_boot_repair_vectors.h
 verify/cocotb/**/*.vcd
 verify/cocotb/build/
 verify/cocotb/sim_build/
@@ -29,6 +30,14 @@ verify/formal/hello_dma/
 verify/formal/hello_soc_top/
 verify/formal/bpu/ftq/
 verify/formal/bpu/ras/
+verify/formal/e1x/e1x_mesh_router_bmc/
+verify/formal/e1x/e1x_mesh_router_prove/
+verify/formal/e1x/e1x_repair_route_table_bmc/
+verify/formal/e1x/e1x_repair_route_table_prove/
+verify/formal/e1x/e1x_repair_state_bmc/
+verify/formal/e1x/e1x_repair_state_prove/
+verify/formal/e1x/e1x_credit_router_bmc/
+verify/formal/e1x/e1x_credit_router_prove/
 __pycache__/
 *.pyc
 *.vcd
