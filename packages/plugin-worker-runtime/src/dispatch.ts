@@ -39,11 +39,6 @@ export interface DispatchContext {
   rpcAuth?: {
     kms: KmsClient;
     keyId: string;
-    /**
-     * When `false` (legacy installs awaiting re-key), bad/missing macs
-     * log a WARN but do not reject. New installs always set this true.
-     */
-    enforce?: boolean;
   };
   /**
    * SOC2 A-5: permission grants for this plugin install. When set, the
@@ -72,25 +67,19 @@ export function createWorkerRpcDispatcher(
 
     // SOC2 A-4: HMAC verification.
     if (context.rpcAuth) {
-      const enforce = context.rpcAuth.enforce !== false;
       const macOk = await verifyMac(message, context.rpcAuth);
       if (!macOk) {
-        if (enforce) {
-          reply({
-            type: "worker-rpc-result",
-            requestId: message.requestId,
-            ok: false,
-            error: {
-              name: "RpcAuthError",
-              message: "Worker RPC message MAC missing or invalid",
-              code: "RPC_AUTH_FAILED",
-            },
-          });
-          return;
-        }
-        process.stderr.write(
-          "[worker-rpc] WARN: legacy unsigned RPC accepted; re-key plugin to enforce MAC.\n",
-        );
+        reply({
+          type: "worker-rpc-result",
+          requestId: message.requestId,
+          ok: false,
+          error: {
+            name: "RpcAuthError",
+            message: "Worker RPC message MAC missing or invalid",
+            code: "RPC_AUTH_FAILED",
+          },
+        });
+        return;
       }
     }
 

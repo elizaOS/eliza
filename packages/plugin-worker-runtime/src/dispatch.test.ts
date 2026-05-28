@@ -41,7 +41,7 @@ function mockChannel(): {
 }
 
 describe("dispatcher HMAC enforcement", () => {
-  it("rejects messages without a MAC when enforce is true", async () => {
+  it("rejects messages without a MAC", async () => {
     const kms = new MemoryKmsAdapter();
     const keyId = systemKey("plugin-rpc-test");
     await kms.getOrCreateKey(keyId);
@@ -55,7 +55,7 @@ describe("dispatcher HMAC enforcement", () => {
     const dispatch = createWorkerRpcDispatcher(registry, {
       runtime: {} as never,
       channel: { send: channel.send } as never,
-      rpcAuth: { kms, keyId, enforce: true },
+      rpcAuth: { kms, keyId },
     });
     await dispatch({
       type: "worker-rpc",
@@ -83,7 +83,7 @@ describe("dispatcher HMAC enforcement", () => {
     const dispatch = createWorkerRpcDispatcher(registry, {
       runtime: {} as never,
       channel: { send: channel.send } as never,
-      rpcAuth: { kms, keyId, enforce: true },
+      rpcAuth: { kms, keyId },
     });
     const args = { message: null, state: null };
     const tagBytes = await kms.hmac(
