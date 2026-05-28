@@ -121,7 +121,11 @@ type AgentModule = {
 };
 
 async function loadAgentModule(): Promise<AgentModule> {
-	return (await import("@elizaos/agent")) as AgentModule;
+	const [{ bootElizaRuntime }, { dispatchRoute }] = await Promise.all([
+		import("@elizaos/agent/runtime"),
+		import("@elizaos/agent/api"),
+	]);
+	return { bootElizaRuntime, dispatchRoute };
 }
 
 interface IosBridgeHost {

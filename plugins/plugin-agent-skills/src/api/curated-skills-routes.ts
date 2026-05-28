@@ -23,8 +23,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { logger, resolveStateDir } from "@elizaos/core";
-import type { RouteRequestContext } from "@elizaos/shared";
+import { logger, type RouteRequestContext, resolveStateDir } from "@elizaos/core";
 import { PutCuratedSkillSourceRequestSchema } from "@elizaos/shared";
 
 const CURATED_SKILL_NAME_RE = /^[a-z0-9-]+$/;
