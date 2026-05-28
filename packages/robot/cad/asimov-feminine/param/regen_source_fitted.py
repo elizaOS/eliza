@@ -74,9 +74,9 @@ for _k in list(SLIM.keys()):
 # mate, so nothing that mates is touched. No centroid shift (it would shear the
 # Y-axis drums across their z-span).
 TORSO = dict(
-    cinch_y_min=0.84, cinch_z=0.135, cinch_sigma=0.075,   # waist width (Y)
-    bust_gain=1.12, bust_z=0.175, bust_sigma=0.05, bust_halfdeg=58.0,
-    back_in=0.95, back_z=0.150, back_sigma=0.07, back_halfdeg=45.0,
+    cinch_y_min=0.82, cinch_z=0.135, cinch_sigma=0.075,   # waist width (Y)
+    bust_gain=1.30, bust_z=0.180, bust_sigma=0.055, bust_halfdeg=66.0,
+    back_in=0.94, back_z=0.150, back_sigma=0.07, back_halfdeg=45.0,
     z_lo=0.02, z_hi=0.235,   # shaping confined between pelvis skirt and shoulders
 )
 
@@ -133,17 +133,25 @@ def _torso_warp(mesh):
     return m
 
 
+# Pelvis (IMU_ORIGIN): the hip sockets sit at the lateral +-Y extremes with their
+# axis along Y, so a Y-only narrow is ALONG their axis (circular XZ faces stay
+# round) -- the same trick as the torso drums. The waist bore (top) and a small
+# Z-axis circular boss near the top would be egged by Y scaling, so all three
+# reserved levels (waist mate, both hips, self origin) are locked with a ramp and
+# the boss sits inside the waist-mate lock. Net effect: the mid/lower pelvis body
+# narrows in width while every mating ring and round feature is preserved.
+PELVIS = dict(narrow_y=0.88, ramp=0.022)
+
+
 def _pelvis_warp(mesh):
-    """Narrow the pelvis in Y toward the waist-top mate; keep hip sockets full."""
     reserved = C.reserved_levels("IMU_ORIGIN")
-    waist_top = max(reserved)
     m = mesh.copy()
     v = m.vertices.copy()
     z = v[:, 2]
+    w = W.connection_weight(z, reserved, ramp=PELVIS["ramp"])  # 0 at mates -> 1 free
     cy = float(v[:, 1].mean())
-    t = np.clip((z - mesh.bounds[0][2]) / max(waist_top - mesh.bounds[0][2], 1e-6), 0, 1)
-    f = 1.0 + (0.90 - 1.0) * t  # 1.0 at hips -> 0.90 at waist top
-    v[:, 1] = cy + (v[:, 1] - cy) * f
+    fy = 1.0 + (PELVIS["narrow_y"] - 1.0) * w
+    v[:, 1] = cy + (v[:, 1] - cy) * fy
     m.vertices = v
     return m
 
