@@ -62,6 +62,7 @@ interface RuntimeWithActions {
     name?: string;
     description?: string;
     descriptionCompressed?: string;
+    compressedDescription?: string;
     similes?: string[];
     tags?: string[];
     mode?: string;
@@ -712,8 +713,14 @@ function truncate(value: string, maxChars: number): string {
 function actionDescription(action: {
   description?: string;
   descriptionCompressed?: string;
+  compressedDescription?: string;
 }): string {
-  return action.descriptionCompressed ?? action.description ?? "";
+  return (
+    action.descriptionCompressed ??
+    action.compressedDescription ??
+    action.description ??
+    ""
+  );
 }
 
 function listActions(

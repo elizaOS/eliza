@@ -20,6 +20,7 @@ import { EncryptionError } from "../types.ts";
 // ============================================================================
 
 const ALGORITHM_GCM = "aes-256-gcm";
+const ALGORITHM_CBC = "aes-256-cbc";
 const IV_LENGTH = 16;
 const _AUTH_TAG_LENGTH = 16;
 const KEY_LENGTH = 32; // 256 bits
@@ -80,6 +81,15 @@ export function deriveKeyScrypt(
 		r: 8,
 		p: 1,
 	});
+}
+
+export function deriveKeyFromAgentId(
+	agentId: string,
+	salt: string = "default-salt",
+): Buffer {
+	return createHash("sha256")
+		.update(agentId + salt)
+		.digest();
 }
 
 /**
@@ -151,6 +161,28 @@ export function encrypt(
 	return encryptGcm(plaintext, key, keyId);
 }
 
+export function encryptCbc(
+	plaintext: string,
+	key: Buffer,
+	keyId: string = "default",
+): EncryptedSecret {
+	if (key.length !== KEY_LENGTH) {
+		throw new EncryptionError(
+			`Invalid key length: expected ${KEY_LENGTH}, got ${key.length}`,
+		);
+	}
+	const iv = randomBytes(IV_LENGTH);
+	const cipher = createCipheriv(ALGORITHM_CBC, key, iv);
+	let encrypted = cipher.update(plaintext, "utf8", "base64");
+	encrypted += cipher.final("base64");
+	return {
+		value: encrypted,
+		iv: iv.toString("base64"),
+		algorithm: "aes-256-cbc",
+		keyId,
+	};
+}
+
 // ============================================================================
 // Decryption
 // ============================================================================
@@ -190,6 +222,24 @@ export function decryptGcm(encrypted: EncryptedSecret, key: Buffer): string {
 	return decrypted;
 }
 
+export function decryptCbc(encrypted: EncryptedSecret, key: Buffer): string {
+	if (key.length !== KEY_LENGTH) {
+		throw new EncryptionError(
+			`Invalid key length: expected ${KEY_LENGTH}, got ${key.length}`,
+		);
+	}
+	if (encrypted.algorithm !== "aes-256-cbc") {
+		throw new EncryptionError(
+			`Algorithm mismatch: expected aes-256-cbc, got ${encrypted.algorithm}`,
+		);
+	}
+	const iv = Buffer.from(encrypted.iv, "base64");
+	const decipher = createDecipheriv(ALGORITHM_CBC, key, iv);
+	let decrypted = decipher.update(encrypted.value, "base64", "utf8");
+	decrypted += decipher.final("utf8");
+	return decrypted;
+}
+
 /**
  * Decrypt a value using the appropriate algorithm
  *
@@ -197,10 +247,15 @@ export function decryptGcm(encrypted: EncryptedSecret, key: Buffer): string {
  * @param key - The decryption key (32 bytes)
  * @returns The decrypted plaintext
  */
-export function decrypt(encrypted: EncryptedSecret, key: Buffer): string {
+export function decrypt(encrypted: EncryptedSecret | string, key: Buffer): string {
+	if (typeof encrypted === "string") {
+		return encrypted;
+	}
 	switch (encrypted.algorithm) {
 		case "aes-256-gcm":
 			return decryptGcm(encrypted, key);
+		case "aes-256-cbc":
+			return decryptCbc(encrypted, key);
 		default:
 			throw new EncryptionError(
 				`Unsupported algorithm: ${encrypted.algorithm}`,
@@ -225,7 +280,7 @@ export function isEncryptedSecret(value: unknown): value is EncryptedSecret {
 		typeof obj.value === "string" &&
 		typeof obj.iv === "string" &&
 		typeof obj.algorithm === "string" &&
-		obj.algorithm === "aes-256-gcm"
+		(obj.algorithm === "aes-256-gcm" || obj.algorithm === "aes-256-cbc")
 	);
 }
 
@@ -306,6 +361,12 @@ export class KeyManager {
 		this.currentKeyId = "default";
 	}
 
+	initializeFromAgentId(agentId: string, salt?: string): void {
+		const key = deriveKeyFromAgentId(agentId, salt);
+		this.keys.set("default", key);
+		this.currentKeyId = "default";
+	}
+
 	/**
 	 * Add a key for decryption (supports key rotation)
 	 */
@@ -365,7 +426,10 @@ export class KeyManager {
 	/**
 	 * Decrypt a value (automatically selects the correct key)
 	 */
-	decrypt(encrypted: EncryptedSecret): string {
+	decrypt(encrypted: EncryptedSecret | string): string {
+		if (typeof encrypted === "string") {
+			return encrypted;
+		}
 		const key = this.keys.get(encrypted.keyId);
 		if (!key) {
 			throw new EncryptionError(
@@ -401,6 +465,7 @@ export class KeyManager {
 // ============================================================================
 
 export {
+	ALGORITHM_CBC,
 	ALGORITHM_GCM,
 	DEFAULT_PBKDF2_ITERATIONS,
 	DEFAULT_SALT_LENGTH,

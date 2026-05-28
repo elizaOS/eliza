@@ -33,6 +33,7 @@ export type RuntimeActionLike = {
 	name: string;
 	description?: string;
 	descriptionCompressed?: string;
+	compressedDescription?: string;
 	similes?: string[];
 	tags?: string[];
 	examples?: unknown;
@@ -63,6 +64,7 @@ export type ActionCatalogEntry = {
 	normalizedName: string;
 	description: string;
 	descriptionCompressed?: string;
+	compressedDescription?: string;
 	similes: string[];
 	tags: string[];
 	examples?: unknown;
@@ -264,6 +266,7 @@ export function actionEntrySearchText(
 		action.name,
 		action.description,
 		action.descriptionCompressed,
+		action.compressedDescription,
 		...(action.similes ?? []),
 		...(action.tags ?? []),
 		extractSearchableText(action.examples),
@@ -272,6 +275,7 @@ export function actionEntrySearchText(
 			child.name,
 			child.description,
 			child.descriptionCompressed,
+			child.compressedDescription,
 			...child.similes,
 			...child.tags,
 			extractSearchableText(child.examples),
@@ -409,6 +413,9 @@ function materializeEntry(
 		description,
 		descriptionCompressed: normalizeOptionalString(
 			action.descriptionCompressed,
+		),
+		compressedDescription: normalizeOptionalString(
+			action.compressedDescription,
 		),
 		similes: normalizeStringArray(action.similes),
 		tags: normalizeStringArray(action.tags),

@@ -118,9 +118,11 @@ function collapseGroupedActionsForMainChat(
 function renderCompressedDescription(item: {
 	description?: string;
 	descriptionCompressed?: string;
+	compressedDescription?: string;
 }): string {
 	return (
 		item.descriptionCompressed ??
+		item.compressedDescription ??
 		(item.description ? compressPromptDescription(item.description) : "")
 	);
 }
