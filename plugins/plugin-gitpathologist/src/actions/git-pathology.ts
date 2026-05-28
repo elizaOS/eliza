@@ -123,15 +123,13 @@ export const gitPathologyAction: Action & { suppressPostActionContinuation: true
   parameters: [
     {
       name: "action",
-      description:
-        "Which gitpathologist action: report or list. Default: report.",
+      description: "Which gitpathologist action: report or list. Default: report.",
       required: false,
       schema: { type: "string" as const, enum: ["report", "list"] },
     },
     {
       name: "surface",
-      description:
-        "Path or glob to analyze (relative to repo root). Required for action=report.",
+      description: "Path or glob to analyze (relative to repo root). Required for action=report.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -192,8 +190,7 @@ export const gitPathologyAction: Action & { suppressPostActionContinuation: true
 
     const surfacePath = readString(params, "surface");
     if (!surfacePath) {
-      const text =
-        "action=report requires a `surface` param (path or glob relative to repo root).";
+      const text = "action=report requires a `surface` param (path or glob relative to repo root).";
       if (callback) await callback({ text });
       return { success: false, text, error: "MISSING_SURFACE" };
     }
