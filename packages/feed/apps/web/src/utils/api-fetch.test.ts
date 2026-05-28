@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
-import { apiFetch, getPrivyAccessToken } from "./api-fetch";
+import { apiFetch, getAccessToken } from "./api-fetch";
 
 const originalFetch = globalThis.fetch;
 const originalWindow = globalThis.window;
@@ -44,7 +44,7 @@ describe("apiFetch", () => {
     });
   });
 
-  it("returns null when the Privy access token getter rejects", async () => {
+  it("returns null when the access token getter rejects", async () => {
     setWindow(() =>
       Promise.reject({
         code: "session_expired",
@@ -53,7 +53,7 @@ describe("apiFetch", () => {
       }),
     );
 
-    await expect(getPrivyAccessToken()).resolves.toBeNull();
+    await expect(getAccessToken()).resolves.toBeNull();
   });
 
   it("still performs the request when token retrieval rejects", async () => {
