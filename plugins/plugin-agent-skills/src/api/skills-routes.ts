@@ -150,7 +150,6 @@ export interface SkillsRouteContext {
     config: ElizaConfig,
     runtime: AgentRuntime | null,
   ) => Promise<SkillEntry[]>;
-  saveElizaConfig: (config: ElizaConfig) => void;
 }
 
 export interface SkillsServerState {
@@ -361,7 +360,6 @@ export async function handleSkillsRoutes(
     error,
     readJsonBody,
     discoverSkills,
-    saveElizaConfig,
   } = ctx;
 
   // ── GET /api/skills/catalog ───────────────────────────────────────────
