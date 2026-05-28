@@ -213,7 +213,7 @@ function runOnHostWithShell(
       });
       return;
     }
-    const useProcessGroup = process.platform !== "win32" && opts.timeoutMs <= 10_000;
+    const useProcessGroup = process.platform !== "win32";
     const proc = spawn(
       shell.command,
       [...shellArgsForCommand(shell), opts.command],
