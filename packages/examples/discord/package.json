@@ -8,7 +8,7 @@
     "dev": "bun --watch run agent.ts",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run typecheck"

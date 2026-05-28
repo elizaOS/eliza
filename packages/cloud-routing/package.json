@@ -7,7 +7,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json && node ../scripts/prepare-package-dist.mjs packages/cloud-routing",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "biome check src"
   },
   "devDependencies": {

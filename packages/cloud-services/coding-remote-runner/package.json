@@ -7,7 +7,7 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "bun test",
     "docker:build": "docker build -t eliza-coding-remote-runner:local ."
   },

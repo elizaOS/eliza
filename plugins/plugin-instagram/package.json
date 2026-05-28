@@ -43,7 +43,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "lint:check": "bunx @biomejs/biome check .",
     "build:ts": "bun run build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "publishConfig": {
     "access": "public"

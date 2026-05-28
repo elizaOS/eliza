@@ -24,7 +24,7 @@
   "scripts": {
     "build": "tsup src/index.ts src/register-routes.ts --format esm --dts --clean",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {

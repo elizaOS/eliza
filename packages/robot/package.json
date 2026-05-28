@@ -48,7 +48,7 @@
     "clean": "rm -rf dist .turbo",
     "lint": "bunx @biomejs/biome check --write ./src",
     "lint:check": "bunx @biomejs/biome check ./src",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "vitest run && bun run test:py",
     "test:py": "uv run pytest tests/ -q || python -m pytest tests/ -q",
     "format": "bunx @biomejs/biome format --write ./src",

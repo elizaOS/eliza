@@ -52,7 +52,7 @@
     "build": "bun run build.ts",
     "dev": "bun --hot build.ts",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "clean": "rm -rf dist .turbo",

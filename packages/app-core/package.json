@@ -28,7 +28,7 @@
     "clean": "rm -rf dist",
     "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "node ../scripts/run-vitest.mjs run --config vitest.config.ts",
     "test:auth": "node ../scripts/run-vitest.mjs run --config vitest.config.ts --no-file-parallelism src/api/auth src/api/auth-bootstrap-routes src/services/auth-store src/cli/program/register.auth",
     "lint": "bunx @biomejs/biome check src",

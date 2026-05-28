@@ -25,7 +25,7 @@
   ],
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

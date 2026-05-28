@@ -8,7 +8,7 @@
     "dev": "bun --no-env-file --watch run server.ts",
     "test": "vitest run --passWithNoTests",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "build": "bun run typecheck"
   },
   "dependencies": {

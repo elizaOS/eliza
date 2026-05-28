@@ -41,7 +41,7 @@
     "build": "bun run build.ts",
     "dev": "bun run build.ts",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit --rootDir ../..",
+    "typecheck": "tsgo --noEmit --rootDir ../..",
     "test": "vitest run --passWithNoTests"
   },
   "publishConfig": {

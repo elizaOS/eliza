@@ -213,6 +213,31 @@
       "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
       "outputs": ["dist/**"]
     },
+    "@elizaos/plugin-host-shim#build": {
+      "dependsOn": ["@elizaos/plugin-remote-manifest#build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-host-shim-android#build": {
+      "dependsOn": [
+        "@elizaos/plugin-host-shim#build",
+        "@elizaos/plugin-remote-manifest#build"
+      ],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-host-shim-electrobun#build": {
+      "dependsOn": [
+        "@elizaos/plugin-host-shim#build",
+        "@elizaos/plugin-remote-manifest#build"
+      ],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-host-shim-ios#build": {
+      "dependsOn": [
+        "@elizaos/plugin-host-shim#build",
+        "@elizaos/plugin-remote-manifest#build"
+      ],
+      "outputs": ["dist/**"]
+    },
     "@elizaos/plugin-agent-skills#build": {
       "dependsOn": [
         "@elizaos/core#build",
@@ -320,6 +345,14 @@
     },
     "@elizaos/app#typecheck": {
       "dependsOn": ["@elizaos/plugin-lifeops#build", "@elizaos/ui#build"],
+      "outputs": []
+    },
+    "@elizaos/example-autonomous#typecheck": {
+      "dependsOn": [
+        "@elizaos/app-core#build",
+        "@elizaos/agent#build",
+        "^build"
+      ],
       "outputs": []
     },
     "@elizaos/example-telegram#typecheck": {

@@ -12,7 +12,7 @@
     "clean": "rm -rf dist .vercel",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

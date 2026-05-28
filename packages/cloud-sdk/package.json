@@ -9,7 +9,7 @@
   "sideEffects": false,
   "scripts": {
     "build": "bun run build.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "bun test src",
     "test:e2e": "ELIZA_CLOUD_SDK_LIVE=1 vitest run --config vitest.live.config.ts src/live.e2e.test.ts",
     "lint": "biome check .",

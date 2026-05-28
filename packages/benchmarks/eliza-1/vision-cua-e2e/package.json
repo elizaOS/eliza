@@ -16,7 +16,7 @@
     "fixtures:generate": "bun run scripts/generate-fixtures.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "sharp": "^0.34.0"

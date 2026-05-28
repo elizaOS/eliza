@@ -28,7 +28,7 @@
     "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
     "generate:css-strings": "node ../scripts/generate-css-strings.mjs",
-    "typecheck": "bun run generate:css-strings && tsc --noEmit -p tsconfig.json",
+    "typecheck": "bun run generate:css-strings && tsgo --noEmit -p tsconfig.json",
     "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.config.ts",
     "test:slow": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.e2e.config.ts",
     "test:e2e": "bun run test:slow",

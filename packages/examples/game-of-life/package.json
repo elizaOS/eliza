@@ -10,7 +10,7 @@
     "stats": "bun run game.ts --stats",
     "test": "bun run game.ts --fast --agents=2 --ticks=3",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "build": "bun run typecheck"
   },
   "dependencies": {

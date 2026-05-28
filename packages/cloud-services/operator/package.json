@@ -34,7 +34,7 @@
   "scripts": {
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "build": "bunx pepr build",
     "dev": "bunx pepr dev",
     "deploy:local": "bunx pepr build && ./scripts/deploy-local.sh"

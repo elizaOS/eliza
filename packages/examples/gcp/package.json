@@ -13,7 +13,7 @@
     "dev": "tsx handler.ts",
     "start": "node dist/handler.js",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "docker:build": "docker build -t eliza-worker-ts .",
     "docker:run": "docker run -p 8080:8080 -e OPENAI_API_KEY=$OPENAI_API_KEY eliza-worker-ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

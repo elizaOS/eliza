@@ -9,7 +9,7 @@
     "build:ssr": "bun --bun vite build --ssr src/entry-server.tsx --outDir dist-ssr",
     "prerender": "node scripts/prerender.mjs",
     "preview": "bun --bun vite preview --port 3000 --strictPort",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "vitest run",
     "test:e2e": "node scripts/run-e2e.mjs",
     "test:e2e:live-auth": "node scripts/run-e2e.mjs tests/e2e/live-auth-backend.spec.ts",

@@ -55,7 +55,7 @@
     "dev": "bun --hot build.ts",
     "test": "vitest run",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "clean": "rm -rf dist .turbo",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",

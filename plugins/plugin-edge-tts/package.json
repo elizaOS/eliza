@@ -78,7 +78,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
     "test:live": "bun run test:e2e"
   },

@@ -7,7 +7,7 @@
     "lint:fix": "biome check --write .",
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "bun test",
     "test:unit": "bun test __tests__/unit/",
     "test:integration": "bun test __tests__/integration/ --pass-with-no-tests"

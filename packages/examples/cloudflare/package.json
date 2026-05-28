@@ -14,7 +14,7 @@
     "secret": "wrangler secret put OPENAI_API_KEY",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "build": "bun run typecheck"
   },
   "dependencies": {

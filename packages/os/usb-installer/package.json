@@ -18,7 +18,7 @@
     "dev": "vite",
     "prebuild": "node ../../shared/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts",
     "test:linux-virtual-usb": "ELIZAOS_USB_TEST_SCSI_DEBUG=1 vitest run --config ./vitest.config.ts src/__tests__/linux-virtual-block-device-e2e.test.ts",
     "test:e2e": "playwright test",

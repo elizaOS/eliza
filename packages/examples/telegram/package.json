@@ -7,7 +7,7 @@
     "start": "bun run telegram-agent.ts",
     "dev": "bun --watch run telegram-agent.ts",
     "test": "bun test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "build": "bun run typecheck"
   },

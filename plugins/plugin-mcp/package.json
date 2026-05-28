@@ -44,7 +44,7 @@
     "dev": "bun --hot build.ts",
     "clean": "rm -rf dist .turbo",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",

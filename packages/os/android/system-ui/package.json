@@ -14,7 +14,7 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts"
   },
   "peerDependencies": {

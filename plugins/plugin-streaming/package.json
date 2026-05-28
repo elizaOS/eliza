@@ -42,7 +42,7 @@
     "test": "vitest run",
     "lint": "bunx @biomejs/biome check --write --unsafe src",
     "lint:check": "bunx @biomejs/biome check src",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."

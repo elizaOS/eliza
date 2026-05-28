@@ -14,7 +14,7 @@
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "build": "bun run typecheck"
   },
   "dependencies": {

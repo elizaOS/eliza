@@ -27,7 +27,7 @@
   "scripts": {
     "build": "tsc --noCheck -p tsconfig.json",
     "dev": "tsc --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "bun test",
     "test:unit": "bun test src/__tests__/",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

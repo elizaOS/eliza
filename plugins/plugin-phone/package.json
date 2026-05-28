@@ -24,7 +24,7 @@
     }
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:views && bun run build:types",

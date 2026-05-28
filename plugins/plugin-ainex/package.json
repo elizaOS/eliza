@@ -70,7 +70,7 @@
     "build": "tsdown --config build.config.ts",
     "clean": "rm -rf dist .turbo",
     "lint": "echo \"Lint skipped for release\"",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "vitest run"
   },
   "publishConfig": {

@@ -30,7 +30,7 @@
 		"lint:check": "bunx @biomejs/biome check .",
 		"format": "bunx @biomejs/biome format --write .",
 		"format:check": "bunx @biomejs/biome format .",
-		"typecheck": "tsc --noEmit",
+		"typecheck": "tsgo --noEmit",
 		"build:views": "bunx --bun vite build --config vite.config.views.ts"
 	},
 	"dependencies": {

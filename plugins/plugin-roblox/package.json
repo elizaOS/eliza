@@ -38,7 +38,7 @@
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "vitest run __tests__/",
     "test:unit": "vitest run __tests__/",
     "test:integration": "echo 'Integration tests require elizaos CLI - skipping'",

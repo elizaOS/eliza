@@ -39,7 +39,7 @@
         "lint:fix": "biome check --write src/",
         "format": "biome format src/",
         "format:fix": "biome format --write src/",
-        "typecheck": "tsc --noEmit -p tsconfig.json"
+        "typecheck": "tsgo --noEmit -p tsconfig.json"
     },
     "agentConfig": {
         "pluginType": "elizaos:client:1.0.0",

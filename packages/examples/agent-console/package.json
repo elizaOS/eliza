@@ -8,7 +8,7 @@
     "start": "bun run server.ts",
     "dev": "bun --hot run server.ts",
     "test": "bun test action-scanner.test.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",

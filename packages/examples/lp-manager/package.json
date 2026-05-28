@@ -9,7 +9,7 @@
     "test": "bun test --pass-with-no-tests",
     "test:watch": "bun test --watch",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "build": "bun run typecheck"
   },
   "dependencies": {

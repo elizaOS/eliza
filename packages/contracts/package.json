@@ -24,7 +24,7 @@
   ],
   "scripts": {
     "build": "tsc --noCheck -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",

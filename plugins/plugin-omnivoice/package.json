@@ -65,7 +65,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "typecheck": "tsc --noEmit --rootDir ../.."
+    "typecheck": "tsgo --noEmit --rootDir ../.."
   },
   "publishConfig": {
     "access": "public"

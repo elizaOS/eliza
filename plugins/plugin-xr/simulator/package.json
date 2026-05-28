@@ -12,7 +12,7 @@
   "scripts": {
     "build": "vite build",
     "build:watch": "vite build --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "iwer": "^2.1.1",

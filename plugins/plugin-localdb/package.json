@@ -39,7 +39,7 @@
     "build": "tsup --config tsup.config.ts",
     "dev": "tsup --config tsup.config.ts --watch",
     "clean": "rm -rf dist .turbo",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "echo \"Lint skipped\"",
     "lint:check": "bun run lint",
     "test": "echo \"No tests\""

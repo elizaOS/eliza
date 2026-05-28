@@ -173,36 +173,48 @@ function resolveElizaPackageDir(packageName) {
     : path.join(elizaRoot, "packages", packageName);
 }
 
-function ensureWorkspacePackageBuilt(packageName, packageDir, entryFile) {
-  if (!existsSync(path.join(packageDir, "package.json"))) {
-    throw new Error(`Missing ${packageName} package at ${packageDir}`);
-  }
-  if (existsSync(path.join(packageDir, entryFile))) {
-    return;
-  }
+function buildWorkspacePackageAsync(packageName, packageDir) {
   console.log(`[eliza] Building ${packageName} for desktop startup...`);
-  execFileSync(BUN_EXECUTABLE, ["run", "build"], {
-    cwd: packageDir,
-    env: { ...process.env },
-    stdio: "inherit",
+  return new Promise((resolve, reject) => {
+    const child = spawn(BUN_EXECUTABLE, ["run", "build"], {
+      cwd: packageDir,
+      env: { ...process.env },
+      stdio: "inherit",
+    });
+    child.on("error", reject);
+    child.on("exit", (code) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(`${packageName} build exited with code ${code}`)),
+    );
   });
 }
 
-function ensureDesktopRuntimePackagesBuilt() {
-  ensureWorkspacePackageBuilt(
-    "@elizaos/security",
-    resolveElizaPackageDir("security"),
-    "dist/index.js",
-  );
-  ensureWorkspacePackageBuilt(
-    "@elizaos/plugin-remote-manifest",
-    resolveElizaPackageDir("plugin-remote-manifest"),
-    "dist/index.js",
-  );
-  ensureWorkspacePackageBuilt(
-    "@elizaos/plugin-worker-runtime",
-    resolveElizaPackageDir("plugin-worker-runtime"),
-    "dist/index.js",
+// These three runtime packages have no build interdependency among themselves,
+// so any that are missing their dist entry are built concurrently rather than
+// in series. Each existing dist is skipped (fast path), so a warm tree returns
+// immediately with no spawned processes.
+async function ensureDesktopRuntimePackagesBuilt() {
+  const targets = [
+    ["@elizaos/security", resolveElizaPackageDir("security")],
+    [
+      "@elizaos/plugin-remote-manifest",
+      resolveElizaPackageDir("plugin-remote-manifest"),
+    ],
+    [
+      "@elizaos/plugin-worker-runtime",
+      resolveElizaPackageDir("plugin-worker-runtime"),
+    ],
+  ];
+  const stale = [];
+  for (const [name, dir] of targets) {
+    if (!existsSync(path.join(dir, "package.json"))) {
+      throw new Error(`Missing ${name} package at ${dir}`);
+    }
+    if (!existsSync(path.join(dir, "dist/index.js"))) stale.push([name, dir]);
+  }
+  await Promise.all(
+    stale.map(([name, dir]) => buildWorkspacePackageAsync(name, dir)),
   );
 }
 
@@ -437,7 +449,7 @@ export * from ${JSON.stringify(entryTs)};
 }
 
 ensureBunRootPackageLink("jsdom");
-ensureDesktopRuntimePackagesBuilt();
+await ensureDesktopRuntimePackagesBuilt();
 
 async function allocateDistinctLoopbackPort(preferredPort, reservedPorts) {
   let candidate = preferredPort;

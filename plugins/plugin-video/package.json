@@ -38,7 +38,7 @@
   "scripts": {
     "build": "bun run build.ts",
     "dev": "bun run build.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts"
   },
   "agentConfig": {

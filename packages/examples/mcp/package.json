@@ -7,7 +7,7 @@
     "start": "bun run server.ts",
     "test": "bun run test-client.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "build": "bun run typecheck"
   },
   "dependencies": {

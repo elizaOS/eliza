@@ -9,7 +9,7 @@
     "test": "vitest run __tests__ --passWithNoTests",
     "test:watch": "vitest",
     "test:live": "LIVE_TEST=true vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run typecheck"

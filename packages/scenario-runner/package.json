@@ -56,7 +56,7 @@
     "build": "tsc --noCheck -p tsconfig.build.json",
     "test": "vitest run --config vitest.config.ts --passWithNoTests",
     "test:pr:e2e": "SCENARIO_USE_LLM_PROXY=1 bun src/cli.ts run test/scenarios --scenario deterministic-pr-smoke --report-dir ../../reports/scenarios/pr-deterministic --run-dir ../../reports/scenarios/pr-deterministic",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@elizaos/plugin-lifeops": "workspace:*",

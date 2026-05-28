@@ -9,7 +9,7 @@
     "bench:real-llm": "LOG_LEVEL=${LOG_LEVEL:-fatal} bun run src/bench.ts --real-llm",
     "bench:real-llm:quick": "LOG_LEVEL=${LOG_LEVEL:-fatal} bun run src/bench.ts --real-llm --scenarios=single-message,conversation-10",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "build": "bun run typecheck"
   }
 }

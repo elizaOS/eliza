@@ -12,7 +12,7 @@
     "test": "bun x vitest run",
     "test:watch": "bun x vitest",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {},
   "devDependencies": {

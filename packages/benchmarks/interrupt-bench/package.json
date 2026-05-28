@@ -16,7 +16,7 @@
     "bench:smoke": "bun run scripts/cerebras-smoke.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*"

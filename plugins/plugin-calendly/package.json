@@ -24,7 +24,7 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm --clean && tsc --declaration --emitDeclarationOnly --noEmit false",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {

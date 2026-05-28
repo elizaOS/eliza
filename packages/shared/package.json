@@ -30,7 +30,7 @@
     "prepublishOnly": "bun run build",
     "build": "bun run build:i18n && bun run build:dist",
     "build:i18n": "node scripts/generate-keywords.mjs --target ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",

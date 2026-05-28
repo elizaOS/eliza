@@ -9,7 +9,7 @@
     "dev": "vite",
     "prebuild": "node ../../shared/scripts/sync-to-public.mjs ./public",
     "build": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.main.json && vite build",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.main.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json&& tsgo --noEmit -p tsconfig.main.json",
     "test": "vitest run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check src vite.config.ts vitest.config.ts",
     "package:mac": "electrobun build --platform darwin",

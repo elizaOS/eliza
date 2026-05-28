@@ -71,7 +71,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check . --no-errors-on-unmatched",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
     "test": "bunx vitest run --config vitest.config.ts",
     "test:unit": "bunx vitest run --config vitest.config.ts --dir __tests__/unit",
     "test:integration": "bunx vitest run --config vitest.config.ts --dir __tests__/integration",

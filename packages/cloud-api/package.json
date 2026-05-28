@@ -12,7 +12,7 @@
     "build": "tsc --noEmit",
     "deploy": "wrangler deploy --env production",
     "codegen": "node src/_generate-router.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "bun test __tests__",
     "test:audit": "node test/_audit-coverage.mjs",
     "test:e2e": "node test/e2e/run-e2e-batches.mjs",

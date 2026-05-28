@@ -11,7 +11,7 @@
     "bench": "bun run game.ts --bench",
     "test": "bun run game.ts --bench --no-prompt --iterations=5",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "build": "bun run typecheck"
   },
   "dependencies": {
