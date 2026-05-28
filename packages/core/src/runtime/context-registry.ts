@@ -18,16 +18,6 @@ export {
 	normalizeContextList,
 } from "./context-normalization";
 
-/**
- * Canonical first-party context definitions.
- *
- * The list lives in `./default-contexts` (PLAN.md §4.3 taxonomy with role
- * gates). This export is kept for backward compatibility; the source of truth
- * is `DEFAULT_CONTEXT_DEFINITIONS`.
- */
-export const FIRST_PARTY_CONTEXT_DEFINITIONS: readonly ContextDefinition[] =
-	DEFAULT_CONTEXT_DEFINITIONS;
-
 export class ContextRegistryError extends Error {
 	constructor(message: string) {
 		super(message);
@@ -39,7 +29,7 @@ export class ContextRegistry {
 	readonly #definitions = new Map<AgentContext, ContextDefinition>();
 
 	constructor(
-		definitions: readonly ContextDefinition[] = FIRST_PARTY_CONTEXT_DEFINITIONS,
+		definitions: readonly ContextDefinition[] = DEFAULT_CONTEXT_DEFINITIONS,
 	) {
 		this.registerMany(definitions);
 	}

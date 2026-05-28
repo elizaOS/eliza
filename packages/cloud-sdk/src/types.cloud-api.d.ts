@@ -105,4 +105,5 @@ export interface AgentDetailDto extends AgentListItemDto {
 }
 export type AgentsResponse = ApiSuccessEnvelope<AgentListItemDto[]>;
 export type AgentResponse = ApiSuccessEnvelope<AgentDetailDto>;
+export {};
 //# sourceMappingURL=types.cloud-api.d.ts.map

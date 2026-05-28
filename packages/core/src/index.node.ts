@@ -174,7 +174,6 @@ export * from "./runtime/cleanup-scope";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/conversation-compaction-hook";
-export * from "./runtime/cost-table";
 export * from "./runtime/execute-planned-tool-call";
 export {
 	detectLocaleFromText,

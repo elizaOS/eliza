@@ -13,7 +13,7 @@ import {
 	normalizePromptSegments,
 	renderContextObject,
 } from "./context-renderer";
-import { computeCallCostUsd } from "./cost-table";
+import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { extractJsonObjects, parseJsonObject } from "./json-output";
 import {
 	buildModelInputBudget,

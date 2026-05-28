@@ -146,7 +146,10 @@ export const SYSTEM_PROMPTS = {
 };
 
 export const CONTEXTUAL_CHUNK_ENRICHMENT_PROMPT_TEMPLATE =
-	buildEnrichmentPrompt({ contentType: "default", includeFullDocument: true });
+	buildEnrichmentPrompt({
+		contentType: "default",
+		includeFullDocument: true,
+	});
 export const CACHED_CHUNK_PROMPT_TEMPLATE = buildEnrichmentPrompt({
 	contentType: "default",
 	includeFullDocument: false,

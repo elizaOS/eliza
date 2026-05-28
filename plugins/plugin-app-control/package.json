@@ -31,7 +31,7 @@
 		"format": "bunx @biomejs/biome format --write .",
 		"format:check": "bunx @biomejs/biome format .",
 		"typecheck": "tsc --noEmit",
-		"build:views": "vite build --config vite.config.views.ts"
+		"build:views": "bunx --bun vite build --config vite.config.views.ts"
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
