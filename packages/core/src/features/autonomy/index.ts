@@ -9,7 +9,6 @@ export {
 	disableAutonomousModeAction,
 	enableAutonomousModeAction,
 	escalateAction,
-	sendToAdminAction,
 } from "./action";
 // Providers
 export { adminChatProvider, autonomyStatusProvider } from "./providers";
@@ -31,7 +30,6 @@ export type { AutonomyConfig, AutonomyStatus } from "./types";
 // mobile agent explodes with `ReferenceError: <name> is not defined`
 // when a consumer dereferences a re-exported binding at runtime.
 import {
-	sendToAdminAction as _bs_1_sendToAdminAction,
 	escalateAction as _bs_1a_escalateAction,
 	enableAutonomousModeAction as _bs_1b_enableAutonomousModeAction,
 	disableAutonomousModeAction as _bs_1c_disableAutonomousModeAction,
@@ -51,7 +49,6 @@ import {
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
 const __bundle_safety_FEATURES_AUTONOMY_INDEX__ = [
-	_bs_1_sendToAdminAction,
 	_bs_1a_escalateAction,
 	_bs_1b_enableAutonomousModeAction,
 	_bs_1c_disableAutonomousModeAction,
