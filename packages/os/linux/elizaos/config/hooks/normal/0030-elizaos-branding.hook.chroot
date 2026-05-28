@@ -1,0 +1,76 @@
+#!/bin/sh
+# Apply elizaOS branding inside the chroot:
+#   - Plymouth: set elizaos theme as default + rebuild initramfs.
+#   - GDM: blue greeter background + elizaos logo.
+#   - Wallpaper: install /usr/share/backgrounds/elizaos/ default.
+#   - Icon theme: register /usr/share/icons/hicolor/<size>/apps/elizaos.png.
+#
+# PNG assets are generated outside the chroot by
+# scripts/generate-elizaos-brand-assets.sh and staged in
+# config/includes.chroot/usr/share/{plymouth,backgrounds,icons}/ at
+# build time. This hook only wires them as defaults.
+set -eu
+
+# Plymouth default theme.
+if command -v plymouth-set-default-theme >/dev/null 2>&1; then
+    plymouth-set-default-theme -R elizaos
+fi
+
+# GDM blue background and desktop wallpaper defaults. Headless profiles do not
+# install dconf, so keep those builds quiet and leave the assets available.
+if command -v dconf >/dev/null 2>&1; then
+    mkdir -p /etc/dconf/db/gdm.d
+    cat > /etc/dconf/db/gdm.d/01-elizaos <<'EOF'
+[org/gnome/desktop/background]
+picture-uri='file:///usr/share/backgrounds/elizaos/login.png'
+primary-color='#0B35F1'
+secondary-color='#0B35F1'
+picture-options='zoom'
+
+[org/gnome/login-screen]
+logo='/usr/share/icons/hicolor/256x256/apps/elizaos.png'
+fallback-logo='/usr/share/icons/hicolor/256x256/apps/elizaos.png'
+EOF
+
+    mkdir -p /etc/dconf/db/local.d
+    cat > /etc/dconf/db/local.d/01-elizaos-wallpaper <<'EOF'
+[org/gnome/desktop/background]
+picture-uri='file:///usr/share/backgrounds/elizaos/desktop.png'
+picture-uri-dark='file:///usr/share/backgrounds/elizaos/desktop.png'
+primary-color='#0B35F1'
+picture-options='zoom'
+
+[org/gnome/desktop/screensaver]
+picture-uri='file:///usr/share/backgrounds/elizaos/desktop.png'
+primary-color='#0B35F1'
+EOF
+
+    dconf update || true
+fi
+
+# Icon cache refresh.
+if [ -d /usr/share/icons/hicolor ] && command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache --force /usr/share/icons/hicolor || true
+fi
+
+# /etc/os-release branding.
+cat > /etc/os-release <<'EOF'
+PRETTY_NAME="elizaOS Linux"
+NAME="elizaOS"
+ID=elizaos
+ID_LIKE=debian
+VERSION_CODENAME=trixie
+ANSI_COLOR="38;2;11;53;241"
+HOME_URL="https://elizaos.ai/"
+SUPPORT_URL="https://elizaos.ai/support"
+EOF
+
+# Console login banner — replace the stock "Debian GNU/Linux 13" prompt with
+# elizaOS branding. \s \m expand to OS name + arch; \n \l to hostname + tty.
+cat > /etc/issue <<'EOF'
+elizaOS Linux (\s \m) \n \l
+
+EOF
+cat > /etc/issue.net <<'EOF'
+elizaOS Linux (\s \m)
+EOF

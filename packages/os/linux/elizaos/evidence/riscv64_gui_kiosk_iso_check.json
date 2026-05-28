@@ -1,0 +1,67 @@
+{
+  "arch": "riscv64",
+  "checks": {
+    "agent_bundle": {
+      "path": "squashfs-root/opt/elizaos/app/agent-bundle.js",
+      "present": true
+    },
+    "cage": {
+      "path": "squashfs-root/usr/bin/cage",
+      "present": true
+    },
+    "epiphany_browser": {
+      "path": "squashfs-root/usr/bin/epiphany-browser",
+      "present": true
+    },
+    "grim": {
+      "path": "squashfs-root/usr/bin/grim",
+      "present": true
+    },
+    "kiosk_enabled": {
+      "path": "squashfs-root/etc/systemd/system/graphical.target.wants/elizaos-kiosk.service",
+      "present": true
+    },
+    "kiosk_service": {
+      "path": "squashfs-root/etc/systemd/system/elizaos-kiosk.service",
+      "present": true
+    },
+    "node": {
+      "path": "squashfs-root/usr/bin/node",
+      "present": true
+    },
+    "seatd_enabled": {
+      "path": "squashfs-root/etc/systemd/system/multi-user.target.wants/seatd.service",
+      "present": true
+    },
+    "seatd_service": {
+      "path": "squashfs-root/usr/lib/systemd/system/seatd.service",
+      "present": true
+    },
+    "start_cage": {
+      "path": "squashfs-root/usr/local/lib/elizaos/start-cage",
+      "present": true
+    },
+    "start_kiosk": {
+      "path": "squashfs-root/usr/local/lib/elizaos/start-kiosk",
+      "present": true
+    },
+    "virtio_gpu_modules": {
+      "path": "squashfs-root/etc/modules-load.d/elizaos-virtio-gpu.conf",
+      "present": true
+    },
+    "xorg": {
+      "path": "squashfs-root/usr/bin/Xorg",
+      "present": true
+    }
+  },
+  "claim_boundary": "static ISO squashfs payload check for graphical kiosk dependencies; not a pixel-rendered GUI runtime screenshot or physical display claim",
+  "iso": {
+    "bytes": 926879744,
+    "path": "out/elizaos-linux-riscv64-gui-20260527T181540Z.iso",
+    "sha256": "69e27b799a0617b5c1eaaf7dd4eef330fe29c3b2364a22cb7c27c9777fb3c0a7"
+  },
+  "missing": [],
+  "schema": "eliza.os.linux.gui_kiosk_iso_check.v1",
+  "squashfs": "live/filesystem.squashfs",
+  "status": "pass"
+}

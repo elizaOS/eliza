@@ -1,0 +1,34 @@
+# Architecture-neutral packages for every elizaOS Linux build.
+# Arch-specific kernels and bootloaders live in per-arch lists.
+
+# Live system base.
+live-boot
+live-config
+live-config-systemd
+systemd-sysv
+# Required by live-config's 0030-user-setup to create the live `user`
+# account at boot. live-config pulls it only as a Recommends, and auto/config
+# builds with --apt-recommends false, so it MUST be listed explicitly — without
+# it no login account is created and both GDM autologin and console login fail.
+user-setup
+
+# elizaOS runtime dependencies.
+ca-certificates
+curl
+# Local agent runs privileged system-management tasks via passwordless
+# sudo (see /etc/sudoers.d/010-elizaos-agent); visudo validates it at build.
+sudo
+git
+python3
+sqlite3
+xdg-utils
+fontconfig
+fonts-noto-core
+fonts-noto-mono
+fonts-dejavu-core
+
+# Diagnostics (small set; keep image lean).
+pciutils
+usbutils
+htop
+strace
