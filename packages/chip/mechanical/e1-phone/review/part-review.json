@@ -1,17 +1,17 @@
 {
   "claim_boundary": "Automated part-by-part CAD review index; thumbnails are top-view bounding-box and exploded-context projection proxies, not human industrial-design signoff.",
   "status": "pass",
-  "part_count": 234,
+  "part_count": 258,
   "contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
   "contact_sheet_check": {
     "size": [
       1560,
-      8224
+      9064
     ],
     "mean_rgb": [
-      214.986,
-      202.037,
-      184.621
+      217.52,
+      204.056,
+      183.981
     ],
     "channel_spans": [
       255,
@@ -24,12 +24,12 @@
   "exploded_contact_sheet_check": {
     "size": [
       1560,
-      8224
+      9064
     ],
     "mean_rgb": [
-      27.419,
-      29.69,
-      34.771
+      27.471,
+      29.756,
+      34.85
     ],
     "channel_spans": [
       250,
@@ -4661,6 +4661,141 @@
       "stl": "mechanical/e1-phone/out/charger_battery_power_sense_trace_marker.stl"
     },
     {
+      "name": "display_bias_power_flex_marker",
+      "role": "flex/cable",
+      "material": "display bias/backlight AVDD/AVEE flex marker from bias IC to display connector",
+      "bounds_mm": [
+        [
+          18.0,
+          40.5,
+          -1.41
+        ],
+        [
+          24.0,
+          41.5,
+          -1.29
+        ]
+      ],
+      "span_mm": [
+        6.0,
+        1.0,
+        0.12
+      ],
+      "volume_mm3": 0.72,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "obj": "mechanical/e1-phone/out/display_bias_power_flex_marker.obj",
+      "stl": "mechanical/e1-phone/out/display_bias_power_flex_marker.stl"
+    },
+    {
+      "name": "rear_camera_power_flex_marker",
+      "role": "flex/cable",
+      "material": "rear camera AVDD/DVDD/reset power-control flex marker",
+      "bounds_mm": [
+        [
+          8.0,
+          58.15,
+          -1.41
+        ],
+        [
+          16.0,
+          58.85,
+          -1.29
+        ]
+      ],
+      "span_mm": [
+        8.0,
+        0.7,
+        0.12
+      ],
+      "volume_mm3": 0.672,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "obj": "mechanical/e1-phone/out/rear_camera_power_flex_marker.obj",
+      "stl": "mechanical/e1-phone/out/rear_camera_power_flex_marker.stl"
+    },
+    {
+      "name": "front_camera_power_flex_marker",
+      "role": "flex/cable",
+      "material": "front camera AVDD/DVDD/reset power-control flex marker",
+      "bounds_mm": [
+        [
+          -18.5,
+          58.15,
+          -1.41
+        ],
+        [
+          -11.5,
+          58.85,
+          -1.29
+        ]
+      ],
+      "span_mm": [
+        7.0,
+        0.7,
+        0.12
+      ],
+      "volume_mm3": 0.588,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "obj": "mechanical/e1-phone/out/front_camera_power_flex_marker.obj",
+      "stl": "mechanical/e1-phone/out/front_camera_power_flex_marker.stl"
+    },
+    {
+      "name": "wifi_bt_host_control_trace_marker",
+      "role": "PCB trace marker",
+      "material": "Wi-Fi/Bluetooth PCIe/SDIO/UART/enable host-control route marker",
+      "bounds_mm": [
+        [
+          11.5,
+          35.0,
+          -1.41
+        ],
+        [
+          24.5,
+          36.0,
+          -1.29
+        ]
+      ],
+      "span_mm": [
+        13.0,
+        1.0,
+        0.12
+      ],
+      "volume_mm3": 1.56,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "obj": "mechanical/e1-phone/out/wifi_bt_host_control_trace_marker.obj",
+      "stl": "mechanical/e1-phone/out/wifi_bt_host_control_trace_marker.stl"
+    },
+    {
+      "name": "cellular_host_control_trace_marker",
+      "role": "PCB trace marker",
+      "material": "cellular USB2/PCIe/reset/disable host-control route marker",
+      "bounds_mm": [
+        [
+          -25.0,
+          38.0,
+          -1.41
+        ],
+        [
+          -13.0,
+          39.0,
+          -1.29
+        ]
+      ],
+      "span_mm": [
+        12.0,
+        1.0,
+        0.12
+      ],
+      "volume_mm3": 1.44,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "obj": "mechanical/e1-phone/out/cellular_host_control_trace_marker.obj",
+      "stl": "mechanical/e1-phone/out/cellular_host_control_trace_marker.stl"
+    },
+    {
       "name": "bottom_speaker_lead_pair",
       "role": "flex/cable",
       "material": "bottom speaker differential lead pair marker",
@@ -4796,6 +4931,33 @@
       "stl": "mechanical/e1-phone/out/haptic_flex_tail.stl"
     },
     {
+      "name": "sensor_hub_i2c_flex_marker",
+      "role": "flex/cable",
+      "material": "sensor hub I2C flex/trace marker",
+      "bounds_mm": [
+        [
+          -12.5,
+          34.1,
+          -1.41
+        ],
+        [
+          -7.5,
+          34.9,
+          -1.29
+        ]
+      ],
+      "span_mm": [
+        5.0,
+        0.8,
+        0.12
+      ],
+      "volume_mm3": 0.48,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "obj": "mechanical/e1-phone/out/sensor_hub_i2c_flex_marker.obj",
+      "stl": "mechanical/e1-phone/out/sensor_hub_i2c_flex_marker.stl"
+    },
+    {
       "name": "sim_esim_signal_flex_marker",
       "role": "flex/cable",
       "material": "SIM/eSIM signal route marker to the side tray region",
@@ -4929,6 +5091,60 @@
       "mass_estimate_included": true,
       "obj": "mechanical/e1-phone/out/wifi_bt_rf1_feed_development_envelope.obj",
       "stl": "mechanical/e1-phone/out/wifi_bt_rf1_feed_development_envelope.stl"
+    },
+    {
+      "name": "soc_shield_ground_spring_marker",
+      "role": "ground spring",
+      "material": "SoC shield can to PCB ground spring marker",
+      "bounds_mm": [
+        [
+          -7.3,
+          24.15,
+          -1.21
+        ],
+        [
+          -3.7,
+          24.85,
+          -0.99
+        ]
+      ],
+      "span_mm": [
+        3.6,
+        0.7,
+        0.22
+      ],
+      "volume_mm3": 0.554,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "obj": "mechanical/e1-phone/out/soc_shield_ground_spring_marker.obj",
+      "stl": "mechanical/e1-phone/out/soc_shield_ground_spring_marker.stl"
+    },
+    {
+      "name": "radio_shield_ground_spring_marker",
+      "role": "ground spring",
+      "material": "radio shield can to PCB/chassis ground spring marker",
+      "bounds_mm": [
+        [
+          -24.8,
+          32.65,
+          -1.21
+        ],
+        [
+          -21.2,
+          33.35,
+          -0.99
+        ]
+      ],
+      "span_mm": [
+        3.6,
+        0.7,
+        0.22
+      ],
+      "volume_mm3": 0.554,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "obj": "mechanical/e1-phone/out/radio_shield_ground_spring_marker.obj",
+      "stl": "mechanical/e1-phone/out/radio_shield_ground_spring_marker.stl"
     },
     {
       "name": "haptic_lra",
@@ -5552,9 +5768,63 @@
       "stl": "mechanical/e1-phone/out/charger_to_battery_power_sense_to_terminal.stl"
     },
     {
-      "name": "bottom_speaker_lead_pair_from_terminal",
+      "name": "display_bias_power_flex_from_terminal",
       "role": "connection terminal",
-      "material": "from terminal marker for bottom_speaker_lead_pair on main_pcb; local CAD connection evidence only",
+      "material": "from terminal marker for display_bias_power_flex on backlight_bias_package_marker; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          24.707,
+          35.786,
+          5.54
+        ],
+        [
+          25.157,
+          36.006,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/display_bias_power_flex_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/display_bias_power_flex_from_terminal.stl"
+    },
+    {
+      "name": "display_bias_power_flex_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for display_bias_power_flex on display_fpc_connector; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          23.103,
+          55.674,
+          5.54
+        ],
+        [
+          23.553,
+          55.894,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/display_bias_power_flex_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/display_bias_power_flex_to_terminal.stl"
+    },
+    {
+      "name": "rear_camera_power_flex_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for rear_camera_power_flex on main_pcb; local CAD connection evidence only",
       "bounds_mm": [
         [
           28.775,
@@ -5564,6 +5834,222 @@
         [
           29.225,
           -63.89,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/rear_camera_power_flex_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/rear_camera_power_flex_from_terminal.stl"
+    },
+    {
+      "name": "rear_camera_power_flex_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for rear_camera_power_flex on rear_camera_module; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          21.065,
+          58.489,
+          5.54
+        ],
+        [
+          21.515,
+          58.709,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/rear_camera_power_flex_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/rear_camera_power_flex_to_terminal.stl"
+    },
+    {
+      "name": "front_camera_power_flex_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for front_camera_power_flex on main_pcb; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -29.225,
+          63.89,
+          5.54
+        ],
+        [
+          -28.775,
+          64.11,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/front_camera_power_flex_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/front_camera_power_flex_from_terminal.stl"
+    },
+    {
+      "name": "front_camera_power_flex_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for front_camera_power_flex on front_camera_module; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -19.454,
+          68.508,
+          5.54
+        ],
+        [
+          -19.004,
+          68.728,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/front_camera_power_flex_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/front_camera_power_flex_to_terminal.stl"
+    },
+    {
+      "name": "wifi_bt_host_control_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for wifi_bt_host_control on wifi_bt_module_keepout; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          20.637,
+          42.421,
+          5.54
+        ],
+        [
+          21.087,
+          42.641,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/wifi_bt_host_control_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/wifi_bt_host_control_from_terminal.stl"
+    },
+    {
+      "name": "wifi_bt_host_control_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for wifi_bt_host_control on soc_package_marker; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -6.787,
+          55.803,
+          5.54
+        ],
+        [
+          -6.337,
+          56.023,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/wifi_bt_host_control_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/wifi_bt_host_control_to_terminal.stl"
+    },
+    {
+      "name": "cellular_host_control_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for cellular_host_control on cellular_lga_module_keepout; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -15.482,
+          45.873,
+          5.54
+        ],
+        [
+          -15.032,
+          46.093,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/cellular_host_control_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/cellular_host_control_from_terminal.stl"
+    },
+    {
+      "name": "cellular_host_control_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for cellular_host_control on soc_package_marker; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -7.332,
+          55.733,
+          5.54
+        ],
+        [
+          -6.882,
+          55.953,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/cellular_host_control_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/cellular_host_control_to_terminal.stl"
+    },
+    {
+      "name": "bottom_speaker_lead_pair_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for bottom_speaker_lead_pair on main_pcb; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -17.625,
+          63.89,
+          5.54
+        ],
+        [
+          -17.175,
+          64.11,
           5.56
         ]
       ],
@@ -5611,12 +6097,12 @@
       "material": "from terminal marker for bottom_microphone_flex on main_pcb; local CAD connection evidence only",
       "bounds_mm": [
         [
-          -29.225,
+          -6.025,
           63.89,
           5.54
         ],
         [
-          -28.775,
+          -5.575,
           64.11,
           5.56
         ]
@@ -5665,12 +6151,12 @@
       "material": "from terminal marker for top_microphone_flex on main_pcb; local CAD connection evidence only",
       "bounds_mm": [
         [
-          -17.625,
+          5.575,
           63.89,
           5.54
         ],
         [
-          -17.175,
+          6.025,
           64.11,
           5.56
         ]
@@ -5719,12 +6205,12 @@
       "material": "from terminal marker for earpiece_receiver_lead_flex on main_pcb; local CAD connection evidence only",
       "bounds_mm": [
         [
-          -6.025,
+          17.175,
           63.89,
           5.54
         ],
         [
-          -5.575,
+          17.625,
           64.11,
           5.56
         ]
@@ -5773,12 +6259,12 @@
       "material": "from terminal marker for haptic_flex on main_pcb; local CAD connection evidence only",
       "bounds_mm": [
         [
-          5.575,
+          28.775,
           63.89,
           5.54
         ],
         [
-          6.025,
+          29.225,
           64.11,
           5.56
         ]
@@ -5822,18 +6308,72 @@
       "stl": "mechanical/e1-phone/out/haptic_flex_to_terminal.stl"
     },
     {
+      "name": "sensor_hub_i2c_flex_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for sensor_hub_i2c_flex on main_pcb; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -29.225,
+          -64.11,
+          5.54
+        ],
+        [
+          -28.775,
+          -63.89,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/sensor_hub_i2c_flex_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/sensor_hub_i2c_flex_from_terminal.stl"
+    },
+    {
+      "name": "sensor_hub_i2c_flex_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for sensor_hub_i2c_flex on sensor_hub_package_marker; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          7.481,
+          35.616,
+          5.54
+        ],
+        [
+          7.931,
+          35.836,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/sensor_hub_i2c_flex_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/sensor_hub_i2c_flex_to_terminal.stl"
+    },
+    {
       "name": "sim_esim_signal_flex_from_terminal",
       "role": "connection terminal",
       "material": "from terminal marker for sim_esim_signal_flex on main_pcb; local CAD connection evidence only",
       "bounds_mm": [
         [
-          17.175,
-          63.89,
+          -17.625,
+          -64.11,
           5.54
         ],
         [
-          17.625,
-          64.11,
+          -17.175,
+          -63.89,
           5.56
         ]
       ],
@@ -5935,13 +6475,13 @@
       "material": "from terminal marker for compute_som_sodimm_carrier on main_pcb; local CAD connection evidence only",
       "bounds_mm": [
         [
-          28.775,
-          63.89,
+          -6.025,
+          -64.11,
           5.54
         ],
         [
-          29.225,
-          64.11,
+          -5.575,
+          -63.89,
           5.56
         ]
       ],
@@ -5984,18 +6524,126 @@
       "stl": "mechanical/e1-phone/out/compute_som_sodimm_carrier_to_terminal.stl"
     },
     {
+      "name": "soc_shield_ground_spring_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for soc_shield_ground_spring on soc_shield_can; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -6.787,
+          55.803,
+          5.54
+        ],
+        [
+          -6.337,
+          56.023,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/soc_shield_ground_spring_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/soc_shield_ground_spring_from_terminal.stl"
+    },
+    {
+      "name": "soc_shield_ground_spring_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for soc_shield_ground_spring on main_pcb; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          5.575,
+          -64.11,
+          5.54
+        ],
+        [
+          6.025,
+          -63.89,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/soc_shield_ground_spring_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/soc_shield_ground_spring_to_terminal.stl"
+    },
+    {
+      "name": "radio_shield_ground_spring_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for radio_shield_ground_spring on radio_shield_can; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -22.064,
+          50.89,
+          5.54
+        ],
+        [
+          -21.614,
+          51.11,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/radio_shield_ground_spring_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/radio_shield_ground_spring_from_terminal.stl"
+    },
+    {
+      "name": "radio_shield_ground_spring_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for radio_shield_ground_spring on main_pcb; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          17.175,
+          -64.11,
+          5.54
+        ],
+        [
+          17.625,
+          -63.89,
+          5.56
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "obj": "mechanical/e1-phone/out/radio_shield_ground_spring_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/radio_shield_ground_spring_to_terminal.stl"
+    },
+    {
       "name": "cellular_main_rf_feed_from_terminal",
       "role": "connection terminal",
       "material": "from terminal marker for cellular_main_rf_feed on cellular_lga_module_keepout; local CAD connection evidence only",
       "bounds_mm": [
         [
-          -15.482,
-          45.873,
+          -16.002,
+          45.694,
           5.54
         ],
         [
-          -15.032,
-          46.093,
+          -15.552,
+          45.914,
           5.56
         ]
       ],
@@ -6043,13 +6691,13 @@
       "material": "from terminal marker for cellular_diversity_rf_feed on cellular_lga_module_keepout; local CAD connection evidence only",
       "bounds_mm": [
         [
-          -16.002,
-          45.694,
+          -16.522,
+          45.515,
           5.54
         ],
         [
-          -15.552,
-          45.914,
+          -16.072,
+          45.735,
           5.56
         ]
       ],
@@ -6097,13 +6745,13 @@
       "material": "from terminal marker for cellular_antenna_aperture_tuner on cellular_lga_module_keepout; local CAD connection evidence only",
       "bounds_mm": [
         [
-          -16.522,
-          45.515,
+          -15.482,
+          45.873,
           5.54
         ],
         [
-          -16.072,
-          45.735,
+          -15.032,
+          46.093,
           5.56
         ]
       ],
@@ -6151,13 +6799,13 @@
       "material": "from terminal marker for cellular_gnss_rf_feed on cellular_lga_module_keepout; local CAD connection evidence only",
       "bounds_mm": [
         [
-          -15.482,
-          45.873,
+          -16.002,
+          45.694,
           5.54
         ],
         [
-          -15.032,
-          46.093,
+          -15.552,
+          45.914,
           5.56
         ]
       ],
@@ -6205,13 +6853,13 @@
       "material": "from terminal marker for wifi_bt_rf0_feed on wifi_bt_module_keepout; local CAD connection evidence only",
       "bounds_mm": [
         [
-          20.637,
-          42.421,
+          20.14,
+          42.657,
           5.54
         ],
         [
-          21.087,
-          42.641,
+          20.59,
+          42.877,
           5.56
         ]
       ],
@@ -6259,13 +6907,13 @@
       "material": "from terminal marker for wifi_bt_rf1_feed on wifi_bt_module_keepout; local CAD connection evidence only",
       "bounds_mm": [
         [
-          20.14,
-          42.657,
+          19.644,
+          42.894,
           5.54
         ],
         [
-          20.59,
-          42.877,
+          20.094,
+          43.114,
           5.56
         ]
       ],

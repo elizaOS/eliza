@@ -343,8 +343,8 @@
   "mechanical_cases": [
     {
       "id": "routed_board_step_and_clearance",
-      "status": "blocked_waiting_for_routed_board_step",
-      "source_status": "blocked_concept_pcb_no_routed_step",
+      "status": "blocked_waiting_for_physical_routed_board_clearance_result",
+      "source_status": "blocked_local_routed_step_candidate_not_release",
       "pass": false,
       "required_evidence": [
         "board-step-readiness.json",

@@ -128,6 +128,7 @@ def test_autodetected_clang_without_lld_is_blocked() -> None:
                 "RISCV_CC": "",
                 "RISCV_CLANG_CANDIDATES": "clang",
                 "REQUIRE_QEMU": "0",
+                "ELIZA_RUN_QEMU_DISABLE_REPO_TOOLS": "1",
             }
         )
     if result.returncode != 0:

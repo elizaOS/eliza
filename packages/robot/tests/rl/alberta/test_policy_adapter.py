@@ -14,7 +14,15 @@ from eliza_robot.curriculum.loader import load_curriculum
 from eliza_robot.profiles.schema import load_profile
 from eliza_robot.rl.alberta.agent import AlbertaContinualController, AlbertaControllerConfig
 from eliza_robot.rl.alberta.features import FeatureConfig
-from eliza_robot.rl.alberta.train_robot import steps_per_task_from_total, train_robot
+from eliza_robot.rl.alberta.train_robot import (
+    _action_scale_gate_passed,
+    _build_action_scale_schedule,
+    _promotion_blocker,
+    _promotion_passed,
+    _telemetry_sample_from_info,
+    steps_per_task_from_total,
+    train_robot,
+)
 from eliza_robot.rl.text_conditioned.inference_loop import (
     InferenceLoopConfig,
     _proprio_from_telemetry,
@@ -176,6 +184,36 @@ def test_asimov_policy_loop_validation_checkpoint_is_alberta_format(
     assert np.isfinite(action).all()
 
 
+def test_train_robot_goal_sample_uses_tracked_motion_torso_height_and_carries_contacts() -> None:
+    sample = _telemetry_sample_from_info(
+        1.25,
+        {
+            "root_x": 0.0,
+            "root_y": 0.0,
+            "torso_z": 0.2,
+            "tracked_x": 0.31,
+            "tracked_y": 0.02,
+            "tracked_z": 0.27,
+            "root_yaw": 0.1,
+            "imu_roll": 0.01,
+            "imu_pitch": 0.02,
+            "left_foot_contact": True,
+            "right_foot_contact": False,
+            "stand_height_m": 0.25,
+        },
+    )
+
+    assert sample.torso_x_m == 0.0
+    assert sample.torso_y_m == 0.0
+    assert sample.torso_z_m == 0.2
+    assert sample.extra["left_foot_contact"] is True
+    assert sample.extra["right_foot_contact"] is False
+    assert sample.extra["root_x_m"] == 0.0
+    assert sample.extra["tracked_x_m"] == 0.31
+    assert sample.extra["tracked_y_m"] == 0.02
+    assert sample.extra["tracked_z_m"] == 0.27
+
+
 def test_train_robot_manifest_is_reproducible_and_bridge_loadable(
     tmp_path: Path,
 ) -> None:
@@ -204,9 +242,18 @@ def test_train_robot_manifest_is_reproducible_and_bridge_loadable(
     assert manifest["requested_total_steps"] == 1
     assert manifest["total_steps"] == 1
     assert manifest["episode_steps"] == 4
+    assert manifest["action_scale"] == 0.3
+    assert manifest["action_scale_schedule"]["schema"] == "alberta-action-scale-schedule-v1"
+    assert manifest["action_scale_schedule"]["initial_scale"] == 0.15
+    assert manifest["action_scale_schedule"]["target_scale"] == 0.3
+    assert manifest["action_scale_schedule"]["final_scale"] >= 0.15
+    assert manifest["history"][0]["action_scale_start"] == 0.15
+    assert manifest["phase_promotion"]["phases"][0]["action_scale_target"] == 0.3
     assert manifest["eval_episodes"] == 1
     assert manifest["seed"] == 123
     assert manifest["domain_rand"] is False
+    assert manifest["controller"]["gamma"] == 0.97
+    assert manifest["controller"]["normalize"] is True
     assert manifest["controller"]["actor_step_size"] == 5e-3
     assert manifest["controller"]["critic_step_size"] == 1e-2
     assert manifest["controller"]["actor_lamda"] == AlbertaControllerConfig.actor_lamda
@@ -268,6 +315,66 @@ def test_steps_per_task_from_total_rejects_invalid_budget() -> None:
 def test_train_robot_enables_domain_randomization_by_default() -> None:
     signature = inspect.signature(train_robot)
     assert signature.parameters["domain_rand"].default is True
+
+
+def test_phase_promotion_requires_physical_success() -> None:
+    assert _promotion_passed(
+        {"success_rate": 1.0, "physical_success": True},
+        1.0,
+    )
+    assert _promotion_blocker(
+        {"success_rate": 1.0, "physical_success": True},
+        1.0,
+    ) is None
+
+    assert not _promotion_passed(
+        {"success_rate": 1.0, "physical_success": False},
+        1.0,
+    )
+    assert (
+        _promotion_blocker({"success_rate": 1.0, "physical_success": False}, 1.0)
+        == "phase_physical_success_missing"
+    )
+
+    assert not _promotion_passed(
+        {"success_rate": 0.5, "physical_success": True},
+        1.0,
+    )
+    assert (
+        _promotion_blocker({"success_rate": 0.5, "physical_success": True}, 1.0)
+        == "phase_success_rate_below_threshold"
+    )
+
+
+def test_action_scale_schedule_starts_stable_and_requires_no_fall_physical_gate() -> None:
+    schedule = _build_action_scale_schedule(
+        target_scale=0.3,
+        initial_scale=None,
+        increment=0.05,
+        min_success_rate=1.0,
+    )
+
+    assert schedule["schema"] == "alberta-action-scale-schedule-v1"
+    assert schedule["enabled"] is True
+    assert schedule["initial_scale"] == 0.15
+    assert schedule["target_scale"] == 0.3
+    assert schedule["criteria"] == {
+        "failure_rate_lte": 0.0,
+        "physical_success": True,
+        "success_rate_gte": 1.0,
+    }
+    assert _action_scale_gate_passed(
+        {"success_rate": 1.0, "failure_rate": 0.0, "physical_success": True},
+        min_success_rate=1.0,
+    )
+    assert not _action_scale_gate_passed(
+        {"success_rate": 1.0, "failure_rate": 0.5, "physical_success": True},
+        min_success_rate=1.0,
+    )
+    assert not _action_scale_gate_passed(
+        {"success_rate": 1.0, "failure_rate": 0.0, "physical_success": False},
+        min_success_rate=1.0,
+    )
 
 
 def test_profile_proprio_uses_profile_leg_joint_order() -> None:

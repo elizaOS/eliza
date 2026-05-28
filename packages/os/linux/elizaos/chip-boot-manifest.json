@@ -22,7 +22,7 @@
     "evidence": [
       {
         "id": "generated-eliza-ap-boot",
-        "status": "missing",
+        "status": "blocked",
         "path": "evidence/generated_eliza_ap_boot.json",
         "producer": "scripts/capture-chip-boot-evidence.py --boot-transcript /path/to/generated-ap-serial.log",
         "requiredMarkers": [
@@ -34,7 +34,7 @@
       },
       {
         "id": "elizaos-agent-live",
-        "status": "missing",
+        "status": "blocked",
         "path": "evidence/generated_eliza_ap_agent_live.json",
         "schema": "evidence/agent-live-evidence.schema.json",
         "producer": "scripts/capture-chip-boot-evidence.py --boot-transcript /path/to/generated-ap-serial.log --agent-transcript /path/to/agent-health.log",

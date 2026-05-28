@@ -1,4 +1,5 @@
 {
+  "all_pad_visuals_have_contract": true,
   "at_mm": {
     "rotation": 0.0,
     "x": 27.0,
@@ -23,11 +24,11 @@
   "layer": "F.Cu",
   "local_discrete_step_bbox_matches_envelope": true,
   "local_discrete_step_bbox_mm": {
-    "depth": 1.0,
-    "height": 0.55,
-    "width": 2.4
+    "depth": 1.0000002,
+    "height": 0.5500002,
+    "width": 2.4000002
   },
-  "local_discrete_step_bytes": 15556,
+  "local_discrete_step_bytes": 15572,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 1.0,
     "height": 0.55,
@@ -35,7 +36,7 @@
   },
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/D_USB2_ESD.local-envelope.step",
   "local_discrete_step_import_status": "pass",
-  "local_discrete_step_sha256": "263c8d8edafefb4ab636d07f5286004828292a8d7d3c8581bbbb2b21b937bbc7",
+  "local_discrete_step_sha256": "3a7e48fe05e05a5b97321f313491572f4044fd8816a0d2cadf205faa713e9c17",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
@@ -60,6 +61,45 @@
   "npth_mechanical_feature_contract_source": "",
   "npth_mechanical_feature_count": 0,
   "npth_mechanical_features": [],
+  "pad_contract_covered_count": 6,
+  "pad_contract_records": [
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "generated_development_footprint_support_pattern_basis",
+      "covered": true,
+      "pad": "1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "generated_development_footprint_support_pattern_basis",
+      "covered": true,
+      "pad": "2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "generated_development_footprint_support_pattern_basis",
+      "covered": true,
+      "pad": "3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "generated_development_footprint_support_pattern_basis",
+      "covered": true,
+      "pad": "4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "generated_development_footprint_support_pattern_basis",
+      "covered": true,
+      "pad": "5"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "generated_development_footprint_support_pattern_basis",
+      "covered": true,
+      "pad": "6"
+    }
+  ],
   "pad_count": 6,
   "pad_names": [
     "1",
@@ -91,5 +131,6 @@
   "support_pattern_has_explicit_provenance": true,
   "terminal_contract_count": 6,
   "terminal_contract_matches_pad_visuals": true,
+  "uncovered_pad_visuals": [],
   "visual_package_class": "protection_land_pattern"
 }

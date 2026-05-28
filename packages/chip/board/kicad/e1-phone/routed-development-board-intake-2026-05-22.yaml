@@ -25,6 +25,8 @@ local_copper_zone_filled_polygon_count: 6
 local_copper_zone_release_credit: false
 route_length_total_mm: 5543.028
 controlled_impedance_route_count: 48
+route_classification_gap_count: 0
+route_classification_gaps: []
 route_traceability_summary:
   classes:
     audio_control_aon:
@@ -208,15 +210,24 @@ route_traceability_summary:
       - WIFI_SDIO_D2
       - WIFI_SDIO_D3
     sim_nfc_sensor:
-      route_count: 8
-      segment_count: 16
-      length_mm: 383.29
+      route_count: 17
+      segment_count: 34
+      length_mm: 557.357
       nets:
       - ESIM_CLK
       - ESIM_IO
       - ESIM_RST
       - ESIM_VCC
+      - NFC_EN
+      - NFC_I2C_SCL
+      - NFC_I2C_SDA
+      - NFC_IRQ_N
+      - NFC_RF_N
+      - NFC_RF_P
+      - SENSOR_I2C_SCL
+      - SENSOR_I2C_SDA
       - USIM_CLK
+      - USIM_DET
       - USIM_IO
       - USIM_RST
       - USIM_VCC
@@ -245,22 +256,6 @@ route_traceability_summary:
       - UFS_RX_P
       - UFS_TX_N
       - UFS_TX_P
-    unclassified:
-      route_count: 11
-      segment_count: 22
-      length_mm: 228.651
-      nets:
-      - CELL_RESET_N
-      - CELL_W_DISABLE_N
-      - NFC_EN
-      - NFC_I2C_SCL
-      - NFC_I2C_SDA
-      - NFC_IRQ_N
-      - NFC_RF_N
-      - NFC_RF_P
-      - SENSOR_I2C_SCL
-      - SENSOR_I2C_SDA
-      - USIM_DET
     usb2_diff:
       route_count: 5
       segment_count: 10
@@ -272,22 +267,24 @@ route_traceability_summary:
       - USB_DN
       - USB_DP
     wireless_control_bt_uart:
-      route_count: 7
-      segment_count: 14
-      length_mm: 129.854
+      route_count: 9
+      segment_count: 18
+      length_mm: 184.438
       nets:
       - BT_EN
       - BT_UART_CTS_N
       - BT_UART_RTS_N
       - BT_UART_RX
       - BT_UART_TX
+      - CELL_RESET_N
+      - CELL_W_DISABLE_N
       - WIFI_EN
       - WIFI_HOST_WAKE
   domains:
     cellular_wifi_bt_rf_host:
-      route_count: 36
-      segment_count: 72
-      length_mm: 855.743
+      route_count: 47
+      segment_count: 94
+      length_mm: 1084.394
       nets:
       - BT_EN
       - BT_UART_CTS_N
@@ -299,15 +296,26 @@ route_traceability_summary:
       - CELL_PCIE_RX_P
       - CELL_PCIE_TX_N
       - CELL_PCIE_TX_P
+      - CELL_RESET_N
       - CELL_RF_DIV
       - CELL_RF_MAIN
       - CELL_USB2_DN
       - CELL_USB2_DP
+      - CELL_W_DISABLE_N
       - ESIM_CLK
       - ESIM_IO
       - ESIM_RST
       - ESIM_VCC
+      - NFC_EN
+      - NFC_I2C_SCL
+      - NFC_I2C_SDA
+      - NFC_IRQ_N
+      - NFC_RF_N
+      - NFC_RF_P
+      - SENSOR_I2C_SCL
+      - SENSOR_I2C_SDA
       - USIM_CLK
+      - USIM_DET
       - USIM_IO
       - USIM_RST
       - USIM_VCC
@@ -456,22 +464,6 @@ route_traceability_summary:
       - USB_DN
       - USB_DP
       - VBUS
-    unmapped:
-      route_count: 11
-      segment_count: 22
-      length_mm: 228.651
-      nets:
-      - CELL_RESET_N
-      - CELL_W_DISABLE_N
-      - NFC_EN
-      - NFC_I2C_SCL
-      - NFC_I2C_SDA
-      - NFC_IRQ_N
-      - NFC_RF_N
-      - NFC_RF_P
-      - SENSOR_I2C_SCL
-      - SENSOR_I2C_SDA
-      - USIM_DET
     usb_c_power_sidekey_spine:
       route_count: 23
       segment_count: 46
@@ -544,8 +536,8 @@ coverage:
     routed_or_aliased_net_count: 27
     missing_nets: []
   - id: cellular_wifi_bt_rf_host
-    required_net_count: 37
-    routed_or_aliased_net_count: 37
+    required_net_count: 48
+    routed_or_aliased_net_count: 48
     missing_nets: []
   - id: compute_memory_storage_escape
     required_net_count: 25
@@ -2172,9 +2164,12 @@ routes:
   segment_count: 2
   length_mm: 27.306
   manhattan_length_mm: 37.0
-  source_domains: []
-  source_net_groups: []
-  route_classes: []
+  source_domains:
+  - cellular_wifi_bt_rf_host
+  source_net_groups:
+  - control
+  route_classes:
+  - wireless_control_bt_uart
   controlled_impedance_targets_ohm: []
   length_limits_mm: []
   skew_limits_mm: []
@@ -2195,9 +2190,12 @@ routes:
   segment_count: 2
   length_mm: 27.278
   manhattan_length_mm: 37.0
-  source_domains: []
-  source_net_groups: []
-  route_classes: []
+  source_domains:
+  - cellular_wifi_bt_rf_host
+  source_net_groups:
+  - control
+  route_classes:
+  - wireless_control_bt_uart
   controlled_impedance_targets_ohm: []
   length_limits_mm: []
   skew_limits_mm: []
@@ -2703,9 +2701,12 @@ routes:
   segment_count: 2
   length_mm: 15.243
   manhattan_length_mm: 21.4
-  source_domains: []
-  source_net_groups: []
-  route_classes: []
+  source_domains:
+  - cellular_wifi_bt_rf_host
+  source_net_groups:
+  - nfc
+  route_classes:
+  - sim_nfc_sensor
   controlled_impedance_targets_ohm: []
   length_limits_mm: []
   skew_limits_mm: []
@@ -2726,9 +2727,12 @@ routes:
   segment_count: 2
   length_mm: 14.884
   manhattan_length_mm: 20.8
-  source_domains: []
-  source_net_groups: []
-  route_classes: []
+  source_domains:
+  - cellular_wifi_bt_rf_host
+  source_net_groups:
+  - nfc
+  route_classes:
+  - sim_nfc_sensor
   controlled_impedance_targets_ohm: []
   length_limits_mm: []
   skew_limits_mm: []
@@ -2749,9 +2753,12 @@ routes:
   segment_count: 2
   length_mm: 13.127
   manhattan_length_mm: 17.4
-  source_domains: []
-  source_net_groups: []
-  route_classes: []
+  source_domains:
+  - cellular_wifi_bt_rf_host
+  source_net_groups:
+  - nfc
+  route_classes:
+  - sim_nfc_sensor
   controlled_impedance_targets_ohm: []
   length_limits_mm: []
   skew_limits_mm: []
@@ -2772,9 +2779,12 @@ routes:
   segment_count: 2
   length_mm: 13.153
   manhattan_length_mm: 17.3
-  source_domains: []
-  source_net_groups: []
-  route_classes: []
+  source_domains:
+  - cellular_wifi_bt_rf_host
+  source_net_groups:
+  - nfc
+  route_classes:
+  - sim_nfc_sensor
   controlled_impedance_targets_ohm: []
   length_limits_mm: []
   skew_limits_mm: []
@@ -2795,9 +2805,12 @@ routes:
   segment_count: 2
   length_mm: 7.654
   manhattan_length_mm: 8.8
-  source_domains: []
-  source_net_groups: []
-  route_classes: []
+  source_domains:
+  - cellular_wifi_bt_rf_host
+  source_net_groups:
+  - nfc
+  route_classes:
+  - sim_nfc_sensor
   controlled_impedance_targets_ohm: []
   length_limits_mm: []
   skew_limits_mm: []
@@ -2818,9 +2831,12 @@ routes:
   segment_count: 2
   length_mm: 5.687
   manhattan_length_mm: 6.4
-  source_domains: []
-  source_net_groups: []
-  route_classes: []
+  source_domains:
+  - cellular_wifi_bt_rf_host
+  source_net_groups:
+  - nfc
+  route_classes:
+  - sim_nfc_sensor
   controlled_impedance_targets_ohm: []
   length_limits_mm: []
   skew_limits_mm: []
@@ -2841,9 +2857,12 @@ routes:
   segment_count: 2
   length_mm: 29.091
   manhattan_length_mm: 38.5
-  source_domains: []
-  source_net_groups: []
-  route_classes: []
+  source_domains:
+  - cellular_wifi_bt_rf_host
+  source_net_groups:
+  - sensors
+  route_classes:
+  - sim_nfc_sensor
   controlled_impedance_targets_ohm: []
   length_limits_mm: []
   skew_limits_mm: []
@@ -2864,9 +2883,12 @@ routes:
   segment_count: 2
   length_mm: 29.351
   manhattan_length_mm: 38.5
-  source_domains: []
-  source_net_groups: []
-  route_classes: []
+  source_domains:
+  - cellular_wifi_bt_rf_host
+  source_net_groups:
+  - sensors
+  route_classes:
+  - sim_nfc_sensor
   controlled_impedance_targets_ohm: []
   length_limits_mm: []
   skew_limits_mm: []
@@ -4077,9 +4099,12 @@ routes:
   segment_count: 2
   length_mm: 45.877
   manhattan_length_mm: 58.7
-  source_domains: []
-  source_net_groups: []
-  route_classes: []
+  source_domains:
+  - cellular_wifi_bt_rf_host
+  source_net_groups:
+  - identity
+  route_classes:
+  - sim_nfc_sensor
   controlled_impedance_targets_ohm: []
   length_limits_mm: []
   skew_limits_mm: []

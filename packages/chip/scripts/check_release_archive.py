@@ -14,6 +14,8 @@ REQUIRED_SUFFIXES = [
     "reports/formal_manifest.json",
     "reports/cocotb/manifest.json",
     "reports/qemu_smoke.log",
+    "reports/qemu_smoke.manifest",
+    "renode/eliza_e1_status.json",
     "netlist/e1_chip_synth.v",
     "source/Makefile",
     "source/scripts/check_mvp_status.py",
@@ -169,6 +171,16 @@ REQUIRED_TEXT = {
     "source/sim/renode/eliza_e1_smoke.schema.json": [
         "qemu_virt_reference",
         "eliza_e1_uart.transcript",
+    ],
+    "reports/qemu_smoke.manifest": [
+        "evidence_kind=qemu-executable-transcript",
+        "qemu_command=qemu-system-riscv64 -machine virt",
+        "banner=eliza e1 qemu",
+    ],
+    "renode/eliza_e1_status.json": [
+        '"model_kind": "qemu_virt_reference"',
+        '"claim_boundary": "qemu-virt software reference only; not e1-chip hardware ABI boot evidence"',
+        '"status":',
     ],
 }
 

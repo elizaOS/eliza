@@ -33,8 +33,8 @@ concept_cad_status:
   assembly_clearance_case_count: 14
   manufacturing_readiness_status: cad_package_pass
   manufacturing_release_ready: false
-  board_step_readiness_status: blocked_concept_pcb_no_routed_step
-  routed_board_clearance_status: blocked_waiting_for_routed_board_step
+  board_step_readiness_status: blocked_local_routed_step_candidate_not_release
+  routed_board_clearance_status: blocked_waiting_for_physical_routed_board_clearance_result
   tolerance_stack_status: cad_tolerance_stack_pass
   gdt_release_status: gdt_release_package_ready
   gdt_fai_results_status: blocked_no_fai_results
@@ -115,7 +115,7 @@ tolerance_stack_items:
       - full_cad_boolean_interference_report
       - gd_t_first_article_cmm_results_for_release_characteristics
 routed_board_clearance_context:
-  status: blocked_waiting_for_routed_board_step
+  status: blocked_waiting_for_physical_routed_board_clearance_result
   expected_clearance_case_count: 10
   complete_clearance_result_count: 0
   production_step_files: []

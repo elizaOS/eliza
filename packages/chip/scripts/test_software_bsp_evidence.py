@@ -112,11 +112,8 @@ class SoftwareBspEvidenceTest(unittest.TestCase):
         # surfaces the pending evidence contracts with capture/validate
         # commands for targets that are not release-ready.
         self.assertIn("aosp BSP external evidence pending", result.stdout)
-        self.assertIn("u-boot BSP external evidence pending", result.stdout)
-        self.assertIn(
-            "missing docs/evidence/linux/u_boot_eliza_build.log",
-            result.stdout,
-        )
+        self.assertNotIn("u-boot BSP external evidence pending", result.stdout)
+        self.assertNotIn("missing docs/evidence/linux/u_boot_eliza_build.log", result.stdout)
         self.assertNotIn("BSP check failed", result.stdout)
 
     def test_require_evidence_fails_closed_on_missing_external_logs(self) -> None:
@@ -134,9 +131,8 @@ class SoftwareBspEvidenceTest(unittest.TestCase):
         self.assertIn("buildroot BSP scaffold and evidence checks passed.", result.stdout)
         self.assertIn("linux BSP scaffold and evidence checks passed.", result.stdout)
         self.assertIn("opensbi BSP scaffold and evidence checks passed.", result.stdout)
-        self.assertIn("u-boot BSP check failed", result.stdout)
         self.assertIn("aosp BSP check failed", result.stdout)
-        self.assertIn("u-boot BSP BLOCKED: missing evidence", result.stdout)
+        self.assertNotIn("u-boot BSP BLOCKED: missing evidence", result.stdout)
         self.assertIn("aosp BSP BLOCKED: external evidence", result.stdout)
 
     def test_status_helper_reports_missing_external_logs(self) -> None:

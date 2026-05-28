@@ -10,8 +10,8 @@
     "contact_tolerance_mm": 0.02,
     "seat_tolerance_mm": 0.05
   },
-  "total_parts_in_manifest": 234,
-  "parts_loaded": 234,
+  "total_parts_in_manifest": 258,
+  "parts_loaded": 258,
   "parts_placed_in_sequence": 99,
   "steps": [
     {
@@ -781,49 +781,14 @@
       "label": "Side-frame closure: snap onto perimeter + drive 10 screws",
       "insertion_axis": "+Z",
       "tool": "S5 snap platen 25 N (8 snaps), Wera 7440 torque map (10 screws)",
-      "pass": false,
+      "pass": true,
       "parts": [
         {
           "part": "orange_side_frame",
           "insertion_axis": "+Z",
-          "path_clear": false,
-          "min_clearance_during_insertion_mm": -31.4748,
-          "blocking_parts": [
-            "battery_back_void_foam_pad",
-            "battery_pouch",
-            "bottom_mic",
-            "bottom_speaker_module",
-            "display_fpc_connector",
-            "orange_battery_left_rib",
-            "orange_battery_right_rib",
-            "orange_screw_boss_1",
-            "orange_screw_boss_10",
-            "orange_screw_boss_2",
-            "orange_screw_boss_3",
-            "orange_screw_boss_4",
-            "orange_screw_boss_5",
-            "orange_screw_boss_6",
-            "orange_screw_boss_7",
-            "orange_screw_boss_8",
-            "orange_screw_boss_9",
-            "orange_usb_reinforcement_saddle",
-            "pmic_shield_can",
-            "radio_shield_can",
-            "rear_camera_cover_adhesive_bottom",
-            "rear_camera_cover_adhesive_left",
-            "rear_camera_cover_adhesive_right",
-            "rear_camera_cover_adhesive_top",
-            "rear_camera_cover_glass",
-            "rear_camera_module",
-            "rear_flash_led",
-            "soc_shield_can",
-            "split_interconnect_bottom_connector",
-            "split_interconnect_bottom_flex_tail",
-            "split_interconnect_side_flex",
-            "split_interconnect_top_connector",
-            "split_interconnect_top_flex_tail",
-            "top_mic"
-          ]
+          "path_clear": true,
+          "min_clearance_during_insertion_mm": 0.75,
+          "blocking_parts": []
         },
         {
           "part": "power_button_labyrinth_upper_rail",
@@ -1020,7 +985,7 @@
     ]
   },
   "fpc_routing": {
-    "pass": false,
+    "pass": true,
     "count": 4,
     "routes": [
       {
@@ -1043,27 +1008,21 @@
         "flex": "split top flex tail",
         "keepout": "split_interconnect_top_flex_tail",
         "connector": "split_interconnect_top_connector",
-        "unpinched": false,
-        "min_clearance_mm": -1.651,
-        "pinching_parts": [
-          "orange_side_frame"
-        ]
+        "unpinched": true,
+        "min_clearance_mm": 0.0,
+        "pinching_parts": []
       },
       {
         "flex": "split bottom flex tail",
         "keepout": "split_interconnect_bottom_flex_tail",
         "connector": "split_interconnect_bottom_connector",
-        "unpinched": false,
-        "min_clearance_mm": -1.651,
-        "pinching_parts": [
-          "orange_side_frame"
-        ]
+        "unpinched": true,
+        "min_clearance_mm": 0.0,
+        "pinching_parts": []
       }
     ]
   },
-  "trapped_parts": [
-    "orange_side_frame"
-  ],
-  "device_assemblable": false,
-  "runtime_s": 2.22
+  "trapped_parts": [],
+  "device_assemblable": true,
+  "runtime_s": 23.54
 }

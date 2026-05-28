@@ -110,6 +110,116 @@ def _motion_matrix_shape_ok(result: dict[str, Any], n_tasks: int) -> bool:
     return True
 
 
+def _trajectory_matrix_shape_ok(result: dict[str, Any], n_tasks: int) -> bool:
+    matrix = result.get("trajectory_matrix")
+    if not isinstance(matrix, list) or len(matrix) != n_tasks:
+        return False
+    for row in matrix:
+        if not isinstance(row, list) or len(row) != n_tasks:
+            return False
+        for item in row:
+            if not isinstance(item, dict):
+                return False
+            steps = item.get("steps")
+            summary = item.get("summary")
+            if not isinstance(steps, list) or len(steps) < 2:
+                return False
+            if not isinstance(summary, dict):
+                return False
+            if not _finite_number(summary.get("mean_forward_progress_m")):
+                return False
+            endpoints = (steps[0], steps[-1])
+            if not all(isinstance(step, dict) for step in endpoints):
+                return False
+            if not all(
+                _finite_number(step.get("x")) and _finite_number(step.get("y"))
+                for step in endpoints
+            ):
+                return False
+    return True
+
+
+def _average_motion(items: Any) -> dict[str, float] | None:
+    if not isinstance(items, list) or not items:
+        return None
+    required = (
+        "success_rate",
+        "passed_obstacle_rate",
+        "mean_forward_progress_m",
+        "mean_return",
+    )
+    rows = [item for item in items if isinstance(item, dict)]
+    if len(rows) != len(items):
+        return None
+    out: dict[str, float] = {}
+    for key in required:
+        values = [item.get(key) for item in rows]
+        if not all(_finite_number(value) for value in values):
+            return None
+        out[key] = float(sum(float(value) for value in values) / len(values))
+    return out
+
+
+def _final_motion_row_average(result: dict[str, Any]) -> dict[str, float] | None:
+    matrix = result.get("motion_matrix")
+    if not isinstance(matrix, list) or not matrix:
+        return None
+    return _average_motion(matrix[-1])
+
+
+def _obstacle_baseline_comparisons(
+    results: list[Any],
+) -> dict[str, Any]:
+    by_learner: dict[str, dict[str, float]] = {}
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        name = result.get("name")
+        if name not in REQUIRED_LEARNERS:
+            continue
+        baseline = _average_motion(result.get("motion_baseline"))
+        final = _final_motion_row_average(result)
+        if baseline is None or final is None:
+            continue
+        by_learner[str(name)] = {
+            "baseline_success_rate": baseline["success_rate"],
+            "baseline_passed_obstacle_rate": baseline["passed_obstacle_rate"],
+            "baseline_forward_progress_m": baseline["mean_forward_progress_m"],
+            "baseline_return": baseline["mean_return"],
+            "final_success_rate": final["success_rate"],
+            "final_passed_obstacle_rate": final["passed_obstacle_rate"],
+            "final_forward_progress_m": final["mean_forward_progress_m"],
+            "final_return": final["mean_return"],
+            "delta_success_rate": final["success_rate"] - baseline["success_rate"],
+            "delta_passed_obstacle_rate": (
+                final["passed_obstacle_rate"] - baseline["passed_obstacle_rate"]
+            ),
+            "delta_forward_progress_m": (
+                final["mean_forward_progress_m"] - baseline["mean_forward_progress_m"]
+            ),
+            "delta_return": final["mean_return"] - baseline["mean_return"],
+        }
+    baseline_is_control = all(
+        learner in by_learner
+        and by_learner[learner]["baseline_forward_progress_m"] <= 0.5
+        and by_learner[learner]["baseline_passed_obstacle_rate"] <= 0.25
+        and by_learner[learner]["baseline_success_rate"] <= 0.25
+        for learner in REQUIRED_LEARNERS
+    )
+    learning_beats_baseline = any(
+        learner in by_learner
+        and by_learner[learner]["delta_forward_progress_m"] >= 1.0
+        and by_learner[learner]["delta_passed_obstacle_rate"] >= 0.5
+        and by_learner[learner]["delta_success_rate"] >= 0.5
+        for learner in REQUIRED_LEARNERS
+    )
+    return {
+        "by_learner": by_learner,
+        "baseline_is_control": baseline_is_control,
+        "learning_beats_baseline": learning_beats_baseline,
+    }
+
+
 def _learner_seed_coverage(results: list[Any], learners: tuple[str, ...]) -> dict[str, list[int]]:
     coverage: dict[str, set[int]] = {name: set() for name in learners}
     for result in results:
@@ -203,6 +313,7 @@ def validate_alberta_benchmark_artifacts(
             forgetting_delta is not None and forgetting_delta <= 0.0
         ),
     }
+    obstacle_baseline = _obstacle_baseline_comparisons(results)
     enforced_delta_gates = {
         "alberta_acc_gte_ppo": (
             observed_comparisons["alberta_acc_gte_ppo"]
@@ -215,6 +326,16 @@ def validate_alberta_benchmark_artifacts(
             else True
         ),
     }
+    demo_learner_results = (
+        demo.get("learner_results", {})
+        if isinstance(demo.get("learner_results"), dict)
+        else {}
+    )
+    demo_required_learners_have_traces = all(
+        isinstance(demo_learner_results.get(name), dict)
+        and demo_learner_results[name].get("has_trajectory_traces") is True
+        for name in REQUIRED_LEARNERS
+    )
     checks = {
         "benchmark_dir": benchmark_dir.is_dir(),
         "json": json_path.is_file(),
@@ -224,6 +345,7 @@ def validate_alberta_benchmark_artifacts(
             demo_json_path.is_file()
             and demo.get("schema") == "robot-alberta-obstacle-demo-v1"
             and demo.get("ok") is True
+            and demo_required_learners_have_traces
         )
         if require_demo_video
         else True,
@@ -284,6 +406,18 @@ def validate_alberta_benchmark_artifacts(
                 for result in results
             )
         ),
+        "trajectory_matrix_shapes": True
+        if expected_env != "obstacle_course"
+        else (
+            bool(results)
+            and n_tasks > 0
+            and all(
+                isinstance(result, dict)
+                and result.get("name") in configured_learners
+                and _trajectory_matrix_shape_ok(result, n_tasks)
+                for result in results
+            )
+        ),
         "obstacle_motion_summary": True
         if expected_env != "obstacle_course"
         else all(
@@ -317,6 +451,12 @@ def validate_alberta_benchmark_artifacts(
             and float(motion[name]["final_collision_rate_mean"]) <= 0.25
             for name in REQUIRED_LEARNERS
         ),
+        "obstacle_passive_baseline_control": True
+        if expected_env != "obstacle_course"
+        else bool(obstacle_baseline["baseline_is_control"]),
+        "obstacle_beats_passive_baseline": True
+        if expected_env != "obstacle_course"
+        else bool(obstacle_baseline["learning_beats_baseline"]),
         "metrics": required_learners_present
         and all(_metric_block_ok(summary, name) for name in configured_learners),
         "alberta_acc_gte_ppo": enforced_delta_gates["alberta_acc_gte_ppo"],
@@ -352,6 +492,7 @@ def validate_alberta_benchmark_artifacts(
         "config": config,
         "summary": summary,
         "motion": motion,
+        "obstacle_baseline": obstacle_baseline,
         "seed_coverage": seed_coverage,
         "configured_learners": list(configured_learners),
         "required_learners": list(REQUIRED_LEARNERS),

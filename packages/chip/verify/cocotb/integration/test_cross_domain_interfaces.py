@@ -30,13 +30,9 @@ cross-domain edge.  Per docs/arch/soc-integration.md the edges are:
 
 What this test does NOT cover:
 
-  - Real fetched instructions through the L1I prefetch path.  That
-    requires a wired L1I cache instance, which is BLOCKED at this top
-    until per-core wrappers ship (cocotb test coverage lives under
-    verify/cocotb/cache/).
-  - CHI -> AXI4 traffic on the fabric.  The CHI bridge is structurally
-    instantiated but its request side is tied off in this top (no SLC
-    instance).  CHI->AXI4 round-trip stays in verify/cocotb/axi4/.
+  - Real core-driven fetched instructions.  The SoC now wires the BPU
+    fetch-stream demand path into L1I/L2 cache RTL, but the cluster remains
+    in lite mode unless a real core wrapper is compiled in.
 """
 
 from __future__ import annotations
@@ -102,6 +98,17 @@ FTQ_IDX_W = 6  # $clog2(FTQ_ENTRIES=64)
 RAS_IDX_W = 6  # $clog2(RAS_SPEC_ENTRIES=64)
 BR_KIND_W = 3
 DRAM_BASE = 0x8000_0000
+DISPLAY_BASE = 0x1003_0000
+DISPLAY_FB_BASE = 0x00
+DISPLAY_MODE = 0x04
+DISPLAY_H_PORCH = 0x08
+DISPLAY_HB_VF = 0x0C
+DISPLAY_VS_VB = 0x10
+DISPLAY_STRIDE = 0x14
+DISPLAY_FORMAT = 0x18
+DISPLAY_ENABLE = 0x1C
+DISPLAY_FETCHED = 0x34
+DISPLAY_FMT_XR24 = 0x3432_5258
 
 
 async def reset(dut):
@@ -601,10 +608,113 @@ async def bpu_fetch_stream_drives_soc_l1i_demand_lanes(dut):
 
     dut.l1i_demand_ready_i.value = 1
     dut.l1i_demand_ready_lane1_i.value = 1
-    for _ in range(4):
+    drained = False
+    # The integrated L1I path now backpressures demand behind the real
+    # SLC/CHI/DRAM-backed L2 refill path, so lane drain can take longer than
+    # the former synthetic one-cycle backing responder.
+    for _ in range(128):
         await RisingEdge(dut.clk)
-    assert int(dut.l1i_demand_valid_o.value) == 0
-    assert int(dut.l1i_demand_valid_lane1_o.value) == 0
+        if int(dut.l1i_demand_valid_o.value) == 0 and int(dut.l1i_demand_valid_lane1_o.value) == 0:
+            drained = True
+            break
+    assert drained, "L1I demand lanes did not drain after ready returned"
+
+
+@cocotb.test()
+async def bpu_fetch_stream_fills_integrated_l1i_l2_slc_dram_path(dut):
+    """SoC demand lanes fill through real L1I, L2, SLC, CHI, and DRAM RTL."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+    dut.l1i_demand_enable_i.value = 1
+    dut.l1i_demand_ready_i.value = 1
+    dut.l1i_demand_ready_lane1_i.value = 1
+
+    block_pc = 0x8002_2000
+    first_target_block = 0x8002_4000
+    final_target = 0x8002_8000
+
+    for pc, target in (
+        (block_pc, first_target_block),
+        (first_target_block, final_target),
+    ):
+        dut.resolve_i.value = encode_resolve(
+            pc=pc,
+            valid=True,
+            taken=True,
+            misp=False,
+            kind=BR_DIRECT,
+            target=target,
+        )
+        await RisingEdge(dut.clk)
+        dut.resolve_i.value = 0
+        await RisingEdge(dut.clk)
+
+    dut.lkp_valid_i.value = 1
+    dut.lkp_pc_i.value = block_pc
+    await RisingEdge(dut.clk)
+    dut.lkp_valid_i.value = 0
+    assert int(dut.pred_redirect_valid_o.value) == 0b11
+
+    dut.fetch_pop_i.value = 1
+    saw_demands = False
+    saw_l1i_miss = False
+    saw_l1i_lane1_miss = False
+    saw_l1i_l2_acq = False
+    saw_lane1_l2_acq = False
+    saw_l2_l3_acq = False
+    saw_l2_l3_grant = False
+    saw_slc_dram_acq = False
+    saw_slc_dram_grant = False
+    saw_resp = False
+    saw_lane1_resp = False
+
+    for _ in range(160):
+        await RisingEdge(dut.clk)
+        saw_demands |= (
+            int(dut.l1i_demand_valid_o.value) == 1
+            and int(dut.l1i_demand_valid_lane1_o.value) == 1
+        )
+        saw_l1i_miss |= int(dut.l1i_cache_miss_valid_o.value) == 1
+        saw_l1i_lane1_miss |= int(dut.l1i_cache_miss_valid_lane1_o.value) == 1
+        saw_l1i_l2_acq |= int(dut.l1i_l2_acq_valid_o.value) == 1
+        saw_lane1_l2_acq |= (
+            int(dut.l1i_l2_acq_valid_o.value) == 1
+            and int(dut.l1i_l2_active_lane1_o.value) == 1
+        )
+        saw_l2_l3_acq |= int(dut.l2_l3_acq_valid_o.value) == 1
+        saw_l2_l3_grant |= int(dut.l2_l3_grant_valid_o.value) == 1
+        saw_slc_dram_acq |= int(dut.slc_dram_acq_valid_o.value) == 1
+        saw_slc_dram_grant |= int(dut.slc_dram_grant_valid_o.value) == 1
+        saw_resp |= int(dut.l1i_cache_resp_valid_o.value) == 1
+        saw_lane1_resp |= int(dut.l1i_cache_resp_valid_lane1_o.value) == 1
+        if (
+            saw_demands
+            and saw_l1i_miss
+            and saw_l1i_lane1_miss
+            and saw_l1i_l2_acq
+            and saw_lane1_l2_acq
+            and saw_l2_l3_acq
+            and saw_l2_l3_grant
+            and saw_slc_dram_acq
+            and saw_slc_dram_grant
+            and saw_resp
+            and saw_lane1_resp
+        ):
+            break
+
+    dut.fetch_pop_i.value = 0
+
+    assert saw_demands, "SoC did not emit dual L1I demand lanes"
+    assert saw_l1i_miss, "integrated L1I did not issue scalar miss"
+    assert saw_l1i_lane1_miss, "integrated L1I did not issue lane-1 miss"
+    assert saw_l1i_l2_acq, "L1I miss bridge did not acquire from L2"
+    assert saw_lane1_l2_acq, "lane-1 miss did not acquire from L2"
+    assert saw_l2_l3_acq, "integrated L2 did not acquire backing line"
+    assert saw_l2_l3_grant, "integrated L2 backing grant did not return"
+    assert saw_slc_dram_acq, "integrated L2 miss did not reach SLC->DRAM path"
+    assert saw_slc_dram_grant, "SLC->DRAM path did not return a grant"
+    assert saw_resp, "integrated L1I did not return scalar IFU response"
+    assert saw_lane1_resp, "integrated L1I did not return lane-1 IFU response"
 
 
 @cocotb.test()
@@ -829,6 +939,39 @@ async def test_dram_ctrl_dfi_traffic(dut):
 
 
 @cocotb.test()
+async def display_scanout_reads_fabric_dram(dut):
+    """Display scanout issues AXI4 reads through the production fabric.
+
+    The integrated top uses `e1_display_scanout` instead of the legacy
+    SRAM-style per-pixel reader.  This test programs a tiny XR24 mode backed by
+    the main fabric DRAM aperture and waits until the scanout controller reports
+    fetched words, proving:
+
+      display MMIO -> e1_display_scanout -> 32->128 width converter
+        -> e1_axi4_interconnect master[11] -> e1_dram_ctrl
+    """
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    await write_mmio(dut, DISPLAY_BASE + DISPLAY_FB_BASE, DRAM_BASE)
+    await write_mmio(dut, DISPLAY_BASE + DISPLAY_MODE, (1 << 16) | 4)
+    await write_mmio(dut, DISPLAY_BASE + DISPLAY_H_PORCH, (1 << 16) | 1)
+    await write_mmio(dut, DISPLAY_BASE + DISPLAY_HB_VF, (1 << 16) | 1)
+    await write_mmio(dut, DISPLAY_BASE + DISPLAY_VS_VB, (1 << 16) | 1)
+    await write_mmio(dut, DISPLAY_BASE + DISPLAY_STRIDE, 16)
+    await write_mmio(dut, DISPLAY_BASE + DISPLAY_FORMAT, DISPLAY_FMT_XR24)
+    await write_mmio(dut, DISPLAY_BASE + DISPLAY_ENABLE, 1)
+
+    fetched = 0
+    for _ in range(512):
+        await RisingEdge(dut.clk)
+        fetched = await read_mmio(dut, DISPLAY_BASE + DISPLAY_FETCHED)
+        if fetched >= 1:
+            break
+    assert fetched >= 1, "display scanout never fetched a word from fabric DRAM"
+
+
+@cocotb.test()
 async def test_cva6_executes_from_bootrom(dut):
     """CVA6 little-core fetch from boot ROM -- lite-mode behaviour.
 
@@ -841,17 +984,11 @@ async def test_cva6_executes_from_bootrom(dut):
     `test_cva6_dram_read_write.py` through the dedicated `e1_cva6_unit_tb`
     harness (run via `make cocotb-cva6-cpu`).
 
-    At the SoC integration top the cluster still operates in lite tie-off
-    mode: the per-core AXI port shape is 128-bit (matching the L1D cache
-    line) while CVA6's native AXI is 64-bit, so a 64<->128 AXI4 data-width
-    converter is the remaining gap before slot 0 can drive real fabric
-    traffic.  That converter is the next-step blocker; see
-    `docs/evidence/integration/cross-domain-interfaces.yaml`
-    `cluster_to_fabric.blocked_reason` for the full chain.
-
-    This test therefore asserts the SoC top's quiet-under-reset baseline:
-    in lite mode no AXI4 traffic from the cluster reaches the fabric, so
-    no DMA / NPU IRQ should rise spuriously.
+    The dedicated `make cocotb-cva6-soc` target now covers real slot-0 SoC
+    CVA6 fetch and store/load traffic through the 64<->128 AXI4 bridge.  This
+    cross-domain smoke test still uses the lightweight integration harness, so
+    it asserts the quiet-under-reset baseline: no synthetic cluster traffic
+    reaches the fabric, and no DMA / NPU IRQ should rise spuriously.
     """
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset(dut)

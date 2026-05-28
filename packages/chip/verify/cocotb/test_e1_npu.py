@@ -772,6 +772,25 @@ async def npu_runtime_abi_sequence_matches_rtl_and_writes_coverage(dut):
         "gemm_shapes": [{"m": 2, "n": 2, "k": 3, "precision": "int8"}],
         "gemm_s4_shapes": [{"m": 2, "n": 2, "k": 3, "precision": "int4"}],
         "vector_shapes": [{"length": 6, "op": "vrelu_s8", "precision": "int8"}],
+        "saturation_cases": {
+            "relu4_negative_lanes_zeroed": True,
+            "vrelu_negative_lanes_zeroed": True,
+        },
+        "invalid_programming_cases": {
+            "gemm_zero_dimensions": True,
+            "descriptor_timeout": True,
+            "empty_queue": True,
+            "unaligned_base": True,
+            "missing_valid_owner": True,
+            "malformed_writeback_request": True,
+            "ternary_reserved_encoding": True,
+        },
+        "irq_paths": {
+            "done_irq_asserted": True,
+            "done_irq_clear_deasserts": True,
+            "error_irq_asserted": True,
+            "error_irq_clear_deasserts": True,
+        },
         "status_bits": ["busy", "done", "error"],
         "descriptor_queue": {
             "registers": [
@@ -809,6 +828,9 @@ async def npu_runtime_abi_sequence_matches_rtl_and_writes_coverage(dut):
             "errors",
             "desc_read_beats",
             "desc_write_beats",
+            "stall_cycles",
+            "scratch_bytes",
+            "thermal_throttle",
         ],
         "proof_boundary": {
             "nnapi_acceleration": False,

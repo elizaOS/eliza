@@ -21,7 +21,7 @@ manifest.
 | `e1_slc_to_chi_line_shim`    | (adapter)   | Maps SLC 512-bit `dram_acq` lines onto the CHI burst request signals |
 | `e1_chi_to_axi4_bridge`      | Interconnect| CHI ↔ AXI4 burst translation; drives fabric master `m[0]` |
 | `e1_riscv_iommu`             | IOMMU       | RISC-V IOMMU v1.0.1; MMIO bridged onto debug aperture; drives fabric master `m[1]` |
-| `e1_axi4_interconnect`       | Interconnect| 2-master × 4-slave fabric (DRAM + decode-err sentinels) |
+| `e1_axi4_interconnect`       | Interconnect| 12-master × 4-slave fabric (CHI, IOMMU, CVA6 slot 0, 8 cluster masters, display scanout; DRAM + decode-err sentinels) |
 | `e1_axi4_dram_model`         | Memory      | Behavioural DRAM south of the AXI4 fabric |
 | `pmc_top`                    | Power       | AON Ibex management core mailbox + droop / AVFS telemetry |
 | `e1_weight_buffer_sram`      | Memory / PD | Sky130 OpenRAM 2 KB hard macro at 0x1004_0000 |
@@ -81,6 +81,13 @@ bpu_top.fetch_entry / vector redirects
    →  ftq_to_fetch_stream
       →  fetch_stream_to_l1i_demand
          →  l1i_demand_*_o / l1i_demand_*_lane1_o
+         →  e1_l1i_cache
+            →  e1_l1i_dual_miss_to_l2
+               →  e1_l2_cache
+                  →  e1_slc
+                     →  e1_slc_to_chi_line_shim
+                        →  e1_chi_to_axi4_bridge
+                           →  AXI4 fabric → e1_dram_ctrl
 ```
 
 The SoC boundary exposes the ordered fetch-control stream and an optional
@@ -88,22 +95,35 @@ L1I demand bridge.  `fetch_stream_ready_i` remains the external stream
 backpressure input; when `l1i_demand_enable_i` is set, the demand bridge also
 participates in FTQ-pop backpressure.  The demand ports carry 40-bit physical
 addresses plus FTQ index, segment index, and branch kind for lane 0 and lane 1.
-This lets a downstream fetch/cache wrapper connect the L1I's scalar and
-lane-1 IFU demand inputs, including the independent lane-1 miss/refill channel,
+The same demand stream also feeds the integrated L1I/L2 path in this top:
+`e1_l1i_cache` consumes scalar/lane-1 IFU demand and FTQ prefetch requests,
+`e1_l1i_dual_miss_to_l2` arbitrates scalar and lane-1 misses, and
+`e1_l2_cache` sends misses into the integration SLC client port. Cold fills
+then traverse `e1_slc`, the line-to-CHI shim, the CHI-to-AXI bridge, the AXI4
+fabric, and `e1_dram_ctrl` before returning to L2/L1I.  This proves
+target-block lane 1 can fill through real cache and memory hierarchy RTL
 without reconstructing target-block metadata from scalar next-PC state.
 Verified by `bpu_vector_redirect_lanes_are_soc_visible`,
 `bpu_fetch_stream_backpressures_soc_ftq_pop`, and
-`bpu_fetch_stream_drives_soc_l1i_demand_lanes`.
+`bpu_fetch_stream_drives_soc_l1i_demand_lanes`, and
+`bpu_fetch_stream_fills_integrated_l1i_l2_slc_dram_path`.
 
 ### CPU cluster → AXI4 fabric
 
 The cluster presents 8 per-core AXI4 master ports (1 big + 3 mid + 4
-little) with `AXI_ADDR_W=40`, `AXI_DATA_W=128`, `AXI_ID_W=8`.  The
-integrated top currently routes only the cache-side `CHI → AXI4` bridge
-into the fabric (master 0); the per-core cluster ports stay tied off in
-`e1_cluster_top` lite mode until the core wrappers ship.  This is the
-documented BLOCKED edge — see
-`docs/evidence/integration/cross-domain-interfaces.yaml`.
+little) with `AXI_ADDR_W=40`, `AXI_DATA_W=128`, `AXI_ID_W=8`.  The default
+`e1_cluster_top` instance remains in lite tie-off mode, but the optional
+`+define+E1_CLUSTER_SLOT0_CVA6` integration build now instantiates the real
+CVA6 wrapper, upsizes its 64-bit AXI4 master to 128 bits, and routes it into
+fabric master 2.  The in-band `cocotb-cva6-soc` proof boots from preloaded
+shared DRAM at `0x8000_0000` and drives fetch/store/load traffic through
+`e1_axi4_interconnect` and `e1_dram_ctrl`.
+
+The default lite cluster wrapper still needs to be replaced with production
+per-core wrappers for all cluster slots.  The full 8-bit per-core AXI4 master
+geometry is already threaded through fabric masters 3..10; in lite mode those
+ports remain quiet, while the slot-0 CVA6 path separately proves the adapter
+and shared-memory route through fabric master 2.
 
 ### CHI → AXI4 (cache south boundary)
 
@@ -125,10 +145,10 @@ integration test can drive the CHI bridge end-to-end without a full
 cache hierarchy.  Production SLC geometry stays under
 `verify/cocotb/cache/`.
 
-The `e1_chi_to_axi4_bridge` issues 6-bit IDs; the fabric runs 4-bit IDs
-for the rest of the masters.  An adapter at the boundary slices the
-low 4 bits and pads the high 2 bits to zero on the way back.  See
-`rtl/top/adapters/README.md` for the documented width drift.  Verified
+The `e1_chi_to_axi4_bridge` issues 6-bit IDs; the fabric carries the
+production 8-bit cluster ID width.  The attach-point adapter zero-pads
+CHI IDs up to 8 bits and slices responses back to 6 bits.  See
+`rtl/top/adapters/README.md` for the documented width adapters.  Verified
 by `test_slc_passthrough` (single line read) and
 `test_dram_ctrl_dfi_traffic` (back-to-back reads through the DRAM
 controller scheduler).
@@ -181,6 +201,20 @@ mailbox surface is documented in `rtl/power/power_pkg.sv`.  Note that
 the PMC mailbox read path is registered (`rdata_q`), so a CPU read
 takes one extra cycle compared to the combinational v0 peripherals.
 
+### Display scanout → AXI4 fabric
+
+The integrated display aperture at `0x1003_0000` instantiates
+`e1_display_scanout`, the production-shape framebuffer reader.  Its 32-bit
+AXI4 read master is upsized through `e1_axi4_width_converter` and attached to
+fabric master 11, then routed to `e1_dram_ctrl` at the main DRAM aperture.  The
+cross-domain test programs a tiny XR24 mode and waits for the scanout
+controller's fetched-word counter to advance, proving the MMIO → scanout →
+width-converter → fabric → DRAM path.
+
+This does not prove real panel bring-up: the DSI host/PHY, panel DCS init,
+async pixel-clock CDC, DTS/software binding, and hardware-in-loop or
+cycle-accurate bandwidth evidence remain separate display production gates.
+
 ## Address map
 
 | Base         | Length  | Region        | Notes |
@@ -208,9 +242,10 @@ display masters drive.
 
 | Adapter location | Reason |
 |------------------|--------|
-| CHI bridge ID width 6 → fabric ID width 4 | `e1_chi_to_axi4_bridge` declares `ID_WIDTH=6` per AMBA CHI; the fabric uses 4-bit IDs.  Adapter slices the low 4 bits on the master side and zero-pads the high 2 bits on the response side.  Tracked in `rtl/top/adapters/README.md`. |
-| IOMMU downstream ID width 6 → fabric ID width 4 | Same drift as the CHI bridge; same adapter pattern. |
-| Cluster AXI4 ID width 8 → fabric ID width 4 | BLOCKED until per-core cluster wrappers ship.  When unblocked, the cluster's 8-bit IDs (`{cluster_id, core_id, hart_local_id}`) get sliced to the fabric's 4-bit width with the same documented pattern. |
+| CHI bridge ID width 6 → fabric ID width 8 | `e1_chi_to_axi4_bridge` declares `ID_WIDTH=6` per AMBA CHI; the fabric carries the production 8-bit cluster ID width.  Adapter zero-pads to 8 bits on the master side and slices back to 6 bits on responses.  Tracked in `rtl/top/adapters/README.md`. |
+| IOMMU downstream ID width 6 → fabric ID width 8 | Same zero-pad / response-slice adapter pattern as the CHI bridge. |
+| CVA6 slot-0 ID width 4 → fabric ID width 8 | The optional in-band CVA6 path routes through fabric master 2 after 64→128 data-width conversion and zero-pads CVA6's 4-bit IDs to the 8-bit fabric contract. |
+| Cluster AXI4 ID width 8 → fabric ID width 8 | No drift; all eight `e1_cluster_top` per-core master ports are attached directly to fabric masters 3..10. |
 
 ## What this top does NOT prove
 
@@ -218,8 +253,9 @@ These items remain BLOCKED until later work; the integration top is
 explicit about them:
 
 - Real CPU execution (no core wrappers in lite mode).
-- Real coherent MESI traffic (cache RTL not instantiated; covered in
-  `verify/cocotb/cache/`).
+- Real coherent MESI traffic across multiple cores (cache RTL has directed
+  integration coverage here and broader coverage under `verify/cocotb/cache/`,
+  but full multi-core snoop/coherency traffic is not proven by this top).
 - Real DFI 5.0 PHY (BLOCKED under
   `docs/evidence/memory/lpddr-phy-procurement.yaml`).
 - IPC / GB6 / MLPerf numbers — BLOCKED until silicon.

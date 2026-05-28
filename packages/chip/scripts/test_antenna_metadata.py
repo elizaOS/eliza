@@ -50,8 +50,8 @@ class AntennaMetadataBlockedStateTests(unittest.TestCase):
                 {"missing_openlane_antenna_metadata_report": 1},
             )
             self.assertIn(gate.ANTENNA_REPORT_GLOB, payload["report_search"]["globs"])
-            self.assertIn("runs", payload["report_search"]["roots"])
-            self.assertIn("derived-runs", payload["report_search"]["roots"])
+            self.assertIn(str(root / "runs"), payload["report_search"]["roots"])
+            self.assertIn(str(root / "derived-runs"), payload["report_search"]["roots"])
             self.assertEqual(payload["findings"][0]["severity"], "blocker")
 
     def test_malformed_openlane_report_is_hard_fail(self) -> None:

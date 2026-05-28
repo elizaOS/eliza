@@ -72,7 +72,7 @@ CLEARANCE_NEXT_COMMANDS = [
     "python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report",
     (
         "python3 scripts/aggregate_tapeout_readiness.py --scope phone "
-        "--report build/reports/phone-release-readiness-current.json"
+        "--report build/reports/phone-release-readiness.json"
     ),
 ]
 
@@ -621,7 +621,7 @@ def first_article_physical_fit_action_inventory(
         "python3 scripts/check_e1_phone_first_article_content.py",
         (
             "python3 scripts/aggregate_tapeout_readiness.py --scope phone "
-            "--report build/reports/phone-release-readiness-current.json"
+            "--report build/reports/phone-release-readiness.json"
         ),
     ]
     rows = []
@@ -739,7 +739,9 @@ def routed_board_gap(
                     "supplier_geometry_families": supplier_families_for_case(
                         case_id, supplier_index
                     ),
-                    "next_artifacts": [artifact for artifact in next_artifacts if artifact],
+                    "next_artifacts": list(
+                        dict.fromkeys(artifact for artifact in next_artifacts if artifact)
+                    ),
                     "next_commands": CLEARANCE_NEXT_COMMANDS,
                     "missing": missing,
                     "release_credit": False,
@@ -794,7 +796,7 @@ def routed_clearance_release_action_inventory(
         "python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report",
         (
             "python3 scripts/aggregate_tapeout_readiness.py --scope phone "
-            "--report build/reports/phone-release-readiness-current.json"
+            "--report build/reports/phone-release-readiness.json"
         ),
     ]
     rows = []

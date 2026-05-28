@@ -229,10 +229,14 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
                 "live_device_validation",
                 "actionable_external_dependency",
             }
-            if finding.get("effective_blocker_dependency") != "repo_artifact_generation":
-                assert finding.get("effective_blocker_dependency") != finding.get(
-                    "blocker_dependency"
-                ) or finding.get("blocker_dependency") != "repo_artifact_generation"
+            assert finding.get("blocker_dependency") == finding.get(
+                "effective_blocker_dependency"
+            )
+            assert finding.get("original_blocker_dependency") in {
+                "repo_artifact_generation",
+                "live_device_validation",
+                "actionable_external_dependency",
+            }
 
         manufacturing_phase = phase_map["manufacturing_package_release"]
         manufacturing_generation_counts = manufacturing_phase["repo_generation_category_counts"]

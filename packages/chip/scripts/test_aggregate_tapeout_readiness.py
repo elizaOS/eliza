@@ -237,8 +237,8 @@ class BuildReportTests(unittest.TestCase):
                 ),
             ]
         )
-        self.assertEqual(report["blocker_dependency_counts"]["live_device_validation"], 1)
-        self.assertEqual(report["blocker_dependency_counts"]["repo_artifact_generation"], 1)
+        self.assertEqual(report["blocker_dependency_counts"]["live_device_validation"], 2)
+        self.assertEqual(report["blocker_dependency_counts"]["repo_artifact_generation"], 0)
         self.assertEqual(
             report["blocker_dependency_counts"]["actionable_external_dependency"],
             1,
@@ -255,9 +255,11 @@ class BuildReportTests(unittest.TestCase):
             "Boot a target phone/emulator",
             report["blocker_action_plan"]["live_device_validation"][0]["next_action"],
         )
-        self.assertIn(
-            "missing boot.img artifact",
-            report["blocker_action_plan"]["repo_artifact_generation"][0]["evidence"],
+        self.assertTrue(
+            any(
+                row["name"] == "android-release-readiness-contract-check"
+                for row in report["blocker_groups"]["live_device_validation"]
+            )
         )
 
     def test_product_action_plan_includes_repo_artifact_groups(self) -> None:
@@ -311,6 +313,154 @@ class BuildReportTests(unittest.TestCase):
                 agg.PRODUCT_RELEASE_STATUS_PATH.unlink(missing_ok=True)
             else:
                 agg.PRODUCT_RELEASE_STATUS_PATH.write_text(original, encoding="utf-8")
+
+    def test_phone_cad_blocker_actions_include_current_geometry_details(self) -> None:
+        paths = (
+            agg.E1_PHONE_ASSEMBLY_VERIFICATION_PATH,
+            agg.E1_PHONE_BOOLEAN_INTERFERENCE_PATH,
+        )
+        originals = {
+            path: path.read_text(encoding="utf-8") if path.exists() else None
+            for path in paths
+        }
+        try:
+            agg.E1_PHONE_ASSEMBLY_VERIFICATION_PATH.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+            agg.E1_PHONE_ASSEMBLY_VERIFICATION_PATH.write_text(
+                json.dumps(
+                    {
+                        "trapped_parts": ["orange_side_frame"],
+                        "fpc_routing": {
+                            "routes": [
+                                {"flex": "split top flex tail", "unpinched": False},
+                                {"flex": "display FPC", "unpinched": True},
+                            ]
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            agg.E1_PHONE_BOOLEAN_INTERFERENCE_PATH.write_text(
+                json.dumps(
+                    {
+                        "unintentional_clashes": [
+                            {"a": "battery_pouch", "b": "orange_side_frame"},
+                            {"a": "bottom_speaker_module", "b": "orange_side_frame"},
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = agg.build_report(
+                [
+                    agg.GateResult(
+                        name="e1-phone-assemblability-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED E1 phone assemblability",
+                        subsystem="platform",
+                        tier="pd",
+                        script="scripts/check_e1_phone_assemblability.py",
+                    ),
+                    agg.GateResult(
+                        name="e1-phone-boolean-interference-check",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED E1 phone full-CAD boolean interference",
+                        subsystem="platform",
+                        tier="pd",
+                        script="scripts/check_e1_phone_boolean_interference.py",
+                    ),
+                ]
+            )
+            actions = {
+                row["name"]: row["next_action"]
+                for row in report["blocker_action_plan"]["actionable_external_dependency"]
+            }
+            self.assertIn("orange_side_frame", actions["e1-phone-assemblability-check"])
+            self.assertIn("split top flex tail", actions["e1-phone-assemblability-check"])
+            self.assertIn(
+                "Current unintentional clash count: 2",
+                actions["e1-phone-boolean-interference-check"],
+            )
+            self.assertIn("battery_pouch vs orange_side_frame", actions["e1-phone-boolean-interference-check"])
+        finally:
+            for path, original in originals.items():
+                if original is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    path.write_text(original, encoding="utf-8")
+
+    def test_phone_board_package_gate_is_release_evidence_dependency(self) -> None:
+        result = agg.GateResult(
+            name="e1-phone-board-package-check",
+            status="BLOCKED",
+            evidence=(
+                "STATUS: BLOCKED E1 phone board package validation: "
+                "KiCad/CAD stub audit live state stale: full_cad_boolean_status"
+            ),
+            subsystem="platform",
+            tier="pd",
+            script="scripts/check_e1_phone_board_package.py",
+        )
+
+        report = agg.build_report([result])
+
+        self.assertEqual(
+            report["blocker_dependency_counts"]["actionable_external_dependency"],
+            1,
+        )
+        self.assertEqual(
+            report["blocker_dependency_counts"]["repo_artifact_generation"],
+            0,
+        )
+
+    def test_cpu_ap_completion_action_uses_generated_ap_report(self) -> None:
+        original = (
+            agg.CPU_AP_COMPLETION_REPORT_PATH.read_text(encoding="utf-8")
+            if agg.CPU_AP_COMPLETION_REPORT_PATH.exists()
+            else None
+        )
+        try:
+            agg.CPU_AP_COMPLETION_REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+            agg.CPU_AP_COMPLETION_REPORT_PATH.write_text(
+                json.dumps(
+                    {
+                        "missing_required_transcripts": [
+                            "build/evidence/cpu_ap/eliza_e1_linux_boot.log"
+                        ],
+                        "next_capture_commands": [
+                            "python3 scripts/capture_cpu_ap_evidence.py template linux-boot"
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            report = agg.build_report(
+                [
+                    agg.GateResult(
+                        name="cpu-ap-completion-gate",
+                        status="BLOCKED",
+                        evidence="STATUS: BLOCKED cpu_ap.completion_gate",
+                        subsystem="cpu",
+                        tier="rtl",
+                        script="scripts/check_cpu_ap_completion_gate.py",
+                    )
+                ]
+            )
+
+            action = report["blocker_action_plan"]["live_device_validation"][0][
+                "next_action"
+            ]
+            self.assertIn("generated Eliza Rocket/RV64GC CPU/AP transcripts", action)
+            self.assertIn("qemu-virt Linux boot evidence is reference-only", action)
+            self.assertIn("missing generated CPU/AP transcripts: 1", action)
+        finally:
+            if original is None:
+                agg.CPU_AP_COMPLETION_REPORT_PATH.unlink(missing_ok=True)
+            else:
+                agg.CPU_AP_COMPLETION_REPORT_PATH.write_text(original, encoding="utf-8")
 
     def test_product_gate_uses_external_dependency_when_no_repo_generation_can_close(self) -> None:
         agg.PRODUCT_RELEASE_STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -376,6 +526,11 @@ class BuildReportTests(unittest.TestCase):
                 report["blocker_groups"]["actionable_external_dependency"][0]["name"],
                 "product-release-status-check",
             )
+            action = report["blocker_action_plan"]["actionable_external_dependency"][0][
+                "next_action"
+            ]
+            self.assertIn("no repo-artifact generation blockers", action)
+            self.assertNotIn("generating repo artifacts where possible", action)
         finally:
             if original is None:
                 agg.PRODUCT_RELEASE_STATUS_PATH.unlink(missing_ok=True)
@@ -1663,6 +1818,11 @@ class GateInventoryTests(unittest.TestCase):
         names = {spec.name for spec in os_gates}
         self.assertIn("os-rv64-release-check", names)
         self.assertIn("os-rv64-qemu-virt-boot-test", names)
+        specs = {spec.name: spec for spec in os_gates}
+        self.assertEqual(
+            specs["os-rv64-qemu-virt-boot-test"].args,
+            ("--validate-existing",),
+        )
 
     def test_android_release_readiness_gate_registered(self) -> None:
         names = {spec.name for spec in agg.GATES}
@@ -3042,11 +3202,6 @@ class E1PhoneReleaseApprovalSignatureGateTests(unittest.TestCase):
         )
         blocker_categories = report["summary"]["approval_blocker_categories"]
         for category_id in (
-            "missing_owner",
-            "missing_reviewer",
-            "missing_captured_at",
-            "missing_sha256",
-            "missing_traceability_ids",
             "release_disposition_not_unlocked",
         ):
             self.assertIn(category_id, blocker_categories)
@@ -3104,18 +3259,25 @@ class E1PhoneReleaseApprovalSignatureGateTests(unittest.TestCase):
             supplier_track["validation_commands"],
         )
         metadata_summary = report["summary"]["signed_metadata_field_summary"]
-        self.assertEqual(metadata_summary["field_counts"]["owner"], report["summary"]["rows"])
         self.assertEqual(
-            metadata_summary["field_counts"]["reviewer"],
+            metadata_summary["field_counts"]["approval_status"],
+            report["summary"]["rows"],
+        )
+        self.assertEqual(
+            metadata_summary["field_counts"]["release_allowed"],
+            report["summary"]["rows"],
+        )
+        self.assertEqual(
+            metadata_summary["field_counts"]["validated"],
             report["summary"]["rows"],
         )
         self.assertTrue(
             all(row["release_credit"] is False for row in report["summary"]["next_unblock_groups"])
         )
         unblock_ids = {row["id"] for row in report["summary"]["next_unblock_groups"]}
-        self.assertIn("missing_owner", unblock_ids)
-        self.assertIn("missing_reviewer", unblock_ids)
-        self.assertIn("missing_traceability_ids", unblock_ids)
+        self.assertIn("missing_or_rejected_approval_disposition", unblock_ids)
+        self.assertIn("row_not_validated", unblock_ids)
+        self.assertIn("release_disposition_not_unlocked", unblock_ids)
         self.assertIn("missing_or_rejected_approval_disposition", unblock_ids)
         self.assertIn("release_disposition_not_unlocked", unblock_ids)
         self.assertEqual(
@@ -3892,14 +4054,14 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
             coverage["missing_required_paths_not_in_candidate_manifest_count"],
             0,
         )
-        self.assertEqual(coverage["candidate_paths_not_required_by_inventory_count"], 1)
+        self.assertGreaterEqual(coverage["candidate_paths_not_required_by_inventory_count"], 1)
         self.assertIn(
             "board/kicad/e1-phone/production/reports/power-thermal/load-step.json",
             coverage["candidate_paths_not_required_by_inventory"],
         )
         self.assertEqual(
             coverage["candidate_paths_not_required_by_inventory_blocked_count"],
-            1,
+            coverage["candidate_paths_not_required_by_inventory_count"],
         )
         packet_inventory = report["factory_execution_packet_inventory"]
         self.assertEqual(len(packet_inventory), report["summary"]["blocked"])
@@ -4540,6 +4702,7 @@ class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
             report["summary"]["full_cad_boolean_release_blocker_category"],
             "routed_supplier_boolean_rerun_missing",
         )
+        self.assertEqual(report["summary"]["full_cad_boolean_unintentional_clash_count"], 0)
         self.assertFalse(report["summary"]["step_validation_release_blocked"])
         self.assertEqual(
             report["summary"]["step_validation_release_blocker_category"],

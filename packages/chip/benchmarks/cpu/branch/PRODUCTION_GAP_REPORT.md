@@ -624,13 +624,13 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
      `pred_redirect_valid_o[]`/`pred_redirect_pc_o[]` and the delayed
      late-redirect lane vectors at the structural SoC boundary instead of
      discarding them as unused BPU internals. It also exposes the ordered
-   `fetch_stream_*_o` two-lane fetch-control stream with
-   `fetch_stream_ready_i`; `bpu_fetch_stream_backpressures_soc_ftq_pop`
-   proves SoC-level backpressure holds the FTQ head, preserves lane 1, and
-   prevents the scalar L1I prefetch shim from consuming a stalled stream.
-    `bpu_fetch_stream_drives_soc_l1i_demand_lanes` proves the integrated SoC
-    now also exposes lane-0/lane-1 L1I IFU demand ports with FTQ/segment/kind
-    provenance and demand-ready backpressure.
+     `fetch_stream_*_o` two-lane fetch-control stream with
+     `fetch_stream_ready_i`; `bpu_fetch_stream_backpressures_soc_ftq_pop`
+     proves SoC-level backpressure holds the FTQ head, preserves lane 1, and
+     prevents the scalar L1I prefetch shim from consuming a stalled stream.
+     `bpu_fetch_stream_drives_soc_l1i_demand_lanes` proves the integrated SoC
+     now also exposes lane-0/lane-1 L1I IFU demand ports with FTQ/segment/kind
+     provenance and demand-ready backpressure.
 
 ## Ranked remaining RTL-facing gaps
 
@@ -649,12 +649,17 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
    `e1_soc_integrated` now surfaces the widened prediction and late-redirect
    lanes plus the ordered fetch-control stream and lane-0/lane-1 L1I demand
    ports at the SoC boundary, with ready inputs that backpressure FTQ pop until
-   downstream fetch logic can accept both lanes. `e1_l1i_dual_miss_to_l2`
-   now bridges the scalar and lane-1 L1I miss/refill pipes onto the production
-   L2 L1I acquire/grant channel, with focused cocotb coverage for lane-1
-   demux, scalar priority, and flush. The remaining integration gap is
-   SoC-level instantiation of the production fetch/cache hierarchy behind
-   `e1_soc_integrated`, not a missing lane-1 miss-to-L2 mechanism.
+   downstream fetch logic can accept both lanes. It also instantiates the
+   production fetch-cache chain behind that boundary: `e1_l1i_cache` consumes
+   the demand and FTQ prefetch streams, `e1_l1i_dual_miss_to_l2` arbitrates
+   scalar and lane-1 misses, and `e1_l2_cache` services the L1I acquire/grant
+   path through the integration SLC, line-to-CHI shim, CHI-to-AXI bridge, AXI4
+   fabric, and DRAM controller. Focused cocotb now covers lane-1 demux, scalar
+   priority, flush, and the SoC-level BPU fetch-stream -> L1I -> dual-miss
+   bridge -> L2 -> SLC/CHI/DRAM -> L1I-response path
+   (`bpu_fetch_stream_fills_integrated_l1i_l2_slc_dram_path`). The remaining
+   integration gap is real core-driven fetch through the production cluster
+   wrappers, not a BPU-to-L1I/L2/shared-cache/DRAM top-level wiring hole.
 2. **Speculative history recovery survivor replay**: redirect recovery now
    restores speculative direction and target histories from the resolved FTQ
    snapshot and applies the actual resolved outcome. The remaining precision
@@ -780,5 +785,8 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
    (`target_block_two_ahead_fetch_stream_accepts_cold_lane_one_miss`).
    `e1_l1i_dual_miss_to_l2` then arbitrates scalar and lane-1 misses onto the
    L2 L1I acquire/grant channel and demuxes returned line beats back to the
-   originating refill lane. The remaining non-BPU work is full SoC/core/cache
-   top instantiation behind the already-exposed demand ports.
+   originating refill lane. `e1_soc_integrated` now wires that path through an
+   internal L1I + dual-miss bridge + L2 + SLC/CHI/DRAM path, and `make
+   cocotb-cross-domain` proves both scalar and lane-1 demand fills return
+   through the integrated cache and memory hierarchy. The remaining non-BPU
+   work is real core-wrapper fetch into that path.

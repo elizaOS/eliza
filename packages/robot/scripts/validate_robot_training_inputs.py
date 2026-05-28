@@ -44,6 +44,7 @@ SUPPORTED_REWARD_KEYS = {
     "torso_height_tolerance_ratio",
     "upright_weight",
     "velocity_track_weight",
+    "movement_progress_weight",
     "yaw_track_weight",
     "gait_phase_weight",
     "stance_contact_weight",
@@ -81,6 +82,7 @@ SUPPORTED_SUCCESS_KEYS = {
     "max_translation_drift_m",
     "max_abs_delta_yaw_rad",
     "no_fall",
+    "min_alternating_foot_contacts",
 }
 
 

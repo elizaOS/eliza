@@ -2,8 +2,9 @@
 
 This document is a requirements gate, not implementation evidence. The current
 repo-local executable CPU path is the tiny contract model in
-`rtl/cpu/e1_cpu_subsystem_stub.sv`; it is useful for fetch/execute and bus
-bring-up, but it is not a Linux-capable hart.
+`rtl/cpu/e1_tiny_cpu_contract.sv`; the legacy
+`rtl/cpu/e1_cpu_subsystem_stub.sv` name is a compatibility alias only. The
+contract model is useful for fetch/execute and bus bring-up, but it is not a Linux-capable hart.
 
 It also separates two targets that must not be conflated:
 
@@ -174,9 +175,10 @@ python3 scripts/capture_cpu_ap_evidence.py hashes
 ```
 # Linux-Capable CPU Contract
 
-`rtl/cpu/e1_cpu_subsystem_stub.sv` is a tiny executable contract model. It
-is useful for fetch/execute, bus, and negative trap tests, but it is not a
-Linux-capable application processor.
+`rtl/cpu/e1_tiny_cpu_contract.sv` is a tiny executable contract model. The
+legacy `rtl/cpu/e1_cpu_subsystem_stub.sv` module is a compatibility alias only.
+The contract model is useful for fetch/execute, bus, and negative trap tests,
+but it is not a Linux-capable application processor.
 
 Required closure before any CPU/AP claim:
 

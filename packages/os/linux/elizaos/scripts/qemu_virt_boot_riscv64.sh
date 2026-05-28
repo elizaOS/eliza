@@ -313,7 +313,15 @@ QEMU_STDIN_PID=$!
 QEMU_PID=$!
 QEMU_RC=124
 QEMU_TIMED_OUT=0
+NEXT_HEARTBEAT_S=0
 while kill -0 "${QEMU_PID}" >/dev/null 2>&1; do
+    NOW_EPOCH="$(date -u +%s)"
+    ELAPSED_S=$(( NOW_EPOCH - START_EPOCH ))
+    if [ "${ELAPSED_S}" -ge "${NEXT_HEARTBEAT_S}" ]; then
+        printf 'qemu_virt_boot: waiting elapsed_s=%s timeout_s=%s\n' \
+            "${ELAPSED_S}" "${TIMEOUT_SECS}" >&2
+        NEXT_HEARTBEAT_S=$(( ELAPSED_S + 30 ))
+    fi
     if boot_markers_present; then
         QEMU_RC=0
         kill "${QEMU_PID}" >/dev/null 2>&1
@@ -326,7 +334,6 @@ while kill -0 "${QEMU_PID}" >/dev/null 2>&1; do
         wait "${QEMU_PID}" >/dev/null 2>&1
         break
     fi
-    NOW_EPOCH="$(date -u +%s)"
     if [ $(( NOW_EPOCH - START_EPOCH )) -ge "${TIMEOUT_SECS}" ]; then
         QEMU_RC=124
         QEMU_TIMED_OUT=1

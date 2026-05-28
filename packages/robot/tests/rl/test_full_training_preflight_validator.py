@@ -122,3 +122,52 @@ def test_validate_full_training_preflight_rejects_missing_eval_native_output(
 
     assert report["ok"] is False
     assert report["checks"]["post_training_eval_contract"] is False
+
+
+def test_validate_full_training_preflight_rejects_eval_skip_bypass(
+    tmp_path: Path,
+) -> None:
+    bundle = _bundle(tmp_path)
+    script = bundle / "scripts" / "50_post_train_validation.sh"
+    script.write_text(
+        script.read_text()
+        + "\nPOST_TRAIN_SKIP_EVAL=\"${POST_TRAIN_SKIP_EVAL:-0}\"\n",
+        encoding="utf-8",
+    )
+
+    report = validate_bundle(bundle)
+
+    assert report["ok"] is False
+    assert report["checks"]["post_training_eval_contract"] is False
+
+
+def test_validate_full_training_preflight_rejects_stale_alberta_training_script(
+    tmp_path: Path,
+) -> None:
+    bundle = _bundle(tmp_path)
+    script = bundle / "scripts" / "10_nebius_train_alberta.sh"
+    text = script.read_text()
+    text = text.replace(" --require-phase-success", "")
+    text = text.replace(" --min-phase-success-rate 1.0", "")
+    script.write_text(text, encoding="utf-8")
+
+    report = validate_bundle(bundle)
+
+    assert report["ok"] is False
+    assert report["checks"]["alberta_training_script"] is False
+
+
+def test_validate_full_training_preflight_rejects_missing_phase_promotion_validation(
+    tmp_path: Path,
+) -> None:
+    bundle = _bundle(tmp_path)
+    script = bundle / "scripts" / "50_post_train_validation.sh"
+    script.write_text(
+        script.read_text().replace(" --require-phase-promotion", ""),
+        encoding="utf-8",
+    )
+
+    report = validate_bundle(bundle)
+
+    assert report["ok"] is False
+    assert report["checks"]["post_training_script"] is False

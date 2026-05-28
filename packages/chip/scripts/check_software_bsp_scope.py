@@ -25,7 +25,8 @@ NNAPI_PROOF_TEMPLATE = ROOT / "docs/benchmarks/capabilities/e1_npu_nnapi.proof.t
 SCaffold_CHECKER = ROOT / "sw/check_bsp_scaffolds.py"
 SOFTWARE_BSP_CHECKER = ROOT / "scripts/check_software_bsp.py"
 
-REQUIRED_TARGETS = {"buildroot", "linux", "opensbi", "u-boot", "aosp"}
+REQUIRED_TARGETS = {"buildroot", "linux", "opensbi", "aosp"}
+ALTERNATE_TARGETS = {"u-boot"}
 REQUIRED_AOSP_EVIDENCE = {
     "docs/evidence/android/eliza_ai_soc_lunch.log",
     "docs/evidence/android/eliza_ai_soc_vendorimage.log",
@@ -362,8 +363,8 @@ def build_report() -> dict[str, Any]:
         "claim_boundary": (
             "Software BSP scope audit only; not external Buildroot evidence, not external "
             "Linux kernel evidence, not OpenSBI handoff evidence, not Android boot evidence, "
-            "not U-Boot boot-chain evidence, not Android compatibility evidence, not CTS/VTS "
-            "evidence, not NNAPI acceleration evidence, and not a product BSP release claim."
+            "not alternate U-Boot boot-chain evidence, not Android compatibility evidence, "
+            "not CTS/VTS evidence, not NNAPI acceleration evidence, and not a product BSP release claim."
         ),
         "current_scaffolds": {
             "software_bsp_checker": rel(SOFTWARE_BSP_CHECKER),
@@ -383,7 +384,7 @@ def build_report() -> dict[str, Any]:
             "external Linux kernel build and dtbs_check transcripts for Eliza E1 drivers/devicetree",
             "Linux target runtime MMIO smoke transcript showing /dev/e1-npu and DMA/display contract markers",
             "external OpenSBI build transcript and fw_dynamic handoff UART/simulator transcript",
-            "external U-Boot build transcript and OpenSBI-to-U-Boot boot-chain UART/simulator transcript",
+            "alternate U-Boot build and OpenSBI-to-U-Boot boot-chain transcripts if U-Boot is selected for production boot",
             "AOSP lunch, vendorimage, VINTF, SELinux build, and neverallow transcripts from an external AOSP tree",
             "Cuttlefish, QEMU, and Renode virtual-device smoke transcripts with explicit no-compatibility claim boundary",
             "Android CTS/VTS smoke intake record with result directory, excluded modules, and no full compatibility claim",
@@ -414,7 +415,7 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         "not external Buildroot evidence",
         "not external Linux kernel evidence",
         "not OpenSBI handoff evidence",
-        "not U-Boot boot-chain evidence",
+        "not alternate U-Boot boot-chain evidence",
         "not Android boot evidence",
         "not Android compatibility evidence",
         "not CTS/VTS evidence",
@@ -449,7 +450,7 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         or {str(item.get("target")) for item in targets if isinstance(item, dict)}
         != REQUIRED_TARGETS
     ):
-        errors.append("targets must cover buildroot, linux, opensbi, u-boot, and aosp")
+        errors.append("targets must cover selected buildroot, linux, opensbi, and aosp targets")
     elif all(isinstance(item, dict) and item.get("evidence_status") == "PASS" for item in targets):
         errors.append(
             "software BSP target evidence must not all pass while release_claim_allowed is false"

@@ -8,26 +8,26 @@
   "app": {
     "foreground_activity": "",
     "home_resolve_activity": "adb: no devices/emulators found",
-    "package_name": "ai.milady.milady",
+    "package_name": "ai.elizaos.app",
     "permission_file_probes": {
-      "/system/etc/default-permissions/default-permissions-ai.milady.milady.xml": "adb: no devices/emulators found",
-      "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml": "adb: no devices/emulators found",
-      "/system/etc/permissions/privapp-permissions-ai.milady.milady.xml": "adb: no devices/emulators found"
+      "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml": "adb: no devices/emulators found",
+      "/system/etc/permissions/privapp-permissions-ai.elizaos.app.xml": "adb: no devices/emulators found",
+      "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml": "adb: no devices/emulators found"
     },
     "permission_file_symlink_targets": {
-      "/system/etc/default-permissions/default-permissions-ai.milady.milady.xml": {
+      "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml": {
+        "readlink": "",
+        "readlink_f": "",
+        "readlink_f_ok": "false",
+        "readlink_ok": "false"
+      },
+      "/system/etc/permissions/privapp-permissions-ai.elizaos.app.xml": {
         "readlink": "",
         "readlink_f": "",
         "readlink_f_ok": "false",
         "readlink_ok": "false"
       },
       "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml": {
-        "readlink": "",
-        "readlink_f": "",
-        "readlink_f_ok": "false",
-        "readlink_ok": "false"
-      },
-      "/system/etc/permissions/privapp-permissions-ai.milady.milady.xml": {
         "readlink": "",
         "readlink_f": "",
         "readlink_f_ok": "false",
@@ -53,9 +53,9 @@
         "adb: no devices/emulators found"
       ]
     },
-    "service_component": "ai.milady.milady/.ElizaAgentService",
+    "service_component": "ai.elizaos.app/.ElizaAgentService",
     "service_pid": 0,
-    "system_apk_path": "/system/priv-app/Milady/Milady.apk",
+    "system_apk_path": "/system/priv-app/Eliza/Eliza.apk",
     "system_apk_present": "missing",
     "system_apk_probe": "adb: no devices/emulators found"
   },
@@ -71,7 +71,7 @@
     "sys_boot_completed": "adb: no devices/emulators found",
     "uname_m": "adb: no devices/emulators found"
   },
-  "ended_utc": "2026-05-23T06:05:52Z",
+  "ended_utc": "2026-05-27T23:22:49Z",
   "logs": {
     "avc_denial_count": 0,
     "fatal_crash_count": 0,
@@ -87,33 +87,35 @@
       "adb_ready_target_count": 0,
       "adb_targets": [],
       "aosp_build_only": {
-        "active_processes": "1741737 1364407       08:46 Ss   python3 packages/chip/scripts/run_with_timeout.py --timeout-seconds 600 --label aosp-sepolicy-evidence-refresh -- packages/chip/sw/aosp-device/capture-aosp-evidence.sh /home/shaw/aosp sepolicy-build\n1741743 1741737       08:45 Ss   sh packages/chip/sw/aosp-device/capture-aosp-evidence.sh /home/shaw/aosp sepolicy-build\n1741754 1741743       08:45 S    sh packages/chip/sw/aosp-device/capture-aosp-evidence.sh /home/shaw/aosp sepolicy-build\n1742602 1742595       08:43 Sl   /home/shaw/aosp/out/soong_ui --build-mode --all-modules --dir=/home/shaw/aosp vendor_sepolicy.cil selinux_policy sepolicy_neverallows\n1743756 1742602       08:40 S    -x prebuilts/build-tools/linux-x86/bin/ninja -H android-build --cwd /home/shaw/aosp -t 0 -e --proc_rw -u nobody -g nogroup --rlimit_as soft --rlimit_core soft --rlimit_cpu soft --rlimit_fsize soft --rlimit_nofile soft -R / -B /tmp -B /home/shaw/aosp -B /home/shaw/aosp/out --disable_clone_newcgroup -q -- -d keepdepfile -d stats -o usesphonyoutputs=yes -o preremoveoutputs=yes -w dupbuild=err -w outputdir=err -w missingoutfile=err -j 26 --frontend_file out/.ninja_fifo -f out/soong/bootstrap.ninja out/soong/build.eliza_openagent_ai_soc_phone.ninja\n1743757 1743756       08:40 SNs  prebuilts/build-tools/linux-x86/bin/ninja -d keepdepfile -d stats -o usesphonyoutputs=yes -o preremoveoutputs=yes -w dupbuild=err -w outputdir=err -w missingoutfile=err -j 26 --frontend_file out/.ninja_fifo -f out/soong/bootstrap.ninja out/soong/build.eliza_openagent_ai_soc_phone.ninja",
+        "active_processes": "",
         "artifact_inventory": {
           "blocker_dependency": "repo_artifact_generation",
           "missing": [
-            "system.img",
             "product.img",
             "system_ext.img"
           ],
           "next_step": "Finish the eliza_ai_soc AOSP build and produce every required image before staging a release archive.",
           "present": [
-            "vendor.img"
+            "vendor.img",
+            "system.img"
           ],
           "product_out": "/home/shaw/aosp/out/target/product/eliza_ai_soc",
           "records": [
             {
               "exists": true,
-              "mtime_utc": "2026-05-21T13:17:07Z",
+              "mtime_utc": "2026-05-27T23:11:34Z",
               "name": "vendor.img",
               "path": "/home/shaw/aosp/out/target/product/eliza_ai_soc/vendor.img",
               "required_for_bootable_chip_archive": true,
-              "size_bytes": 138154156
+              "size_bytes": 137453740
             },
             {
-              "exists": false,
+              "exists": true,
+              "mtime_utc": "2026-05-27T23:12:22Z",
               "name": "system.img",
               "path": "/home/shaw/aosp/out/target/product/eliza_ai_soc/system.img",
-              "required_for_bootable_chip_archive": true
+              "required_for_bootable_chip_archive": true,
+              "size_bytes": 951541760
             },
             {
               "exists": false,
@@ -134,7 +136,7 @@
         "expected_evidence_logs": [
           {
             "exists": true,
-            "mtime_utc": "2026-05-23T05:26:02Z",
+            "mtime_utc": "2026-05-27T23:06:39Z",
             "path": "docs/evidence/android/eliza_ai_soc_lunch.log",
             "size_bytes": 946,
             "tail": [
@@ -154,127 +156,130 @@
               "OUT_DIR=out",
               "SOONG_ONLY=false",
               "============================================",
-              "eliza-evidence: ended_utc=2026-05-23T05:26:02Z",
+              "eliza-evidence: ended_utc=2026-05-27T23:06:39Z",
               "eliza-evidence: status=PASS",
-              "END_UTC=2026-05-23T05:26:02Z",
+              "END_UTC=2026-05-27T23:06:39Z",
               "RESULT=0"
             ]
           },
           {
             "exists": true,
-            "mtime_utc": "2026-05-23T05:52:59Z",
+            "mtime_utc": "2026-05-27T23:11:35Z",
             "path": "docs/evidence/android/eliza_ai_soc_vendorimage.log",
-            "size_bytes": 117186,
+            "size_bytes": 415511,
             "tail": [
-              "[ 25% 893/3541 16m10s remaining] //external/apache-http:org.apache.http.legacy.impl raw repackaging.txt",
-              "[ 25% 894/3538 16m10s remaining] //external/mesa3d/src/vulkan/wsi:wsi_common_entrypoints_header raw genrule.sbox.textproto",
-              "[ 25% 895/3535 16m10s remaining] //external/mesa3d/src/util:driconf_static_header raw genrule.sbox.textproto",
-              "[ 25% 896/3498 16m10s remaining] //external/mesa3d/src/vulkan/wsi:wsi_common_entrypoints_impl raw genrule.sbox.textproto",
-              "[ 25% 897/3495 16m10s remaining] //external/mesa3d/src/vulkan/util:vk_extensions_impl raw genrule.sbox.textproto",
-              "[ 25% 898/3492 16m10s remaining] //external/mesa3d/src/compiler:builtin_types_impl raw genrule.sbox.textproto",
-              "[ 25% 899/3489 16m10s remaining] //external/mesa3d/src/compiler:ir_expression_operation_header raw genrule.sbox.textproto",
-              "[ 25% 900/3488 16m10s remaining] //hardware/interfaces/audio/aidl/default/config/audioPolicy:audio_policy_configuration_aidl_default raw cpp.sbox.textproto",
-              "[ 25% 901/3484 16m10s remaining] //system/sepolicy:plat_mapping_file Versioning mapping file plat_mapping_file",
-              "[ 25% 902/3484 16m10s remaining] //system/sepolicy:plat_pub_versioned.cil Versioning mapping file plat_pub_versioned.cil",
-              "[ 25% 903/3484 15m44s remaining] //system/sepolicy:plat_sepolicy.cil Building cil for plat_sepolicy.cil",
-              "ninja: build stopped: subcommand failed.",
-              "22:52:59 ninja failed with: exit status 1",
+              "[ 99% 2920/2923 16m18s remaining] build out/target/product/eliza_ai_soc/vendor/etc/NOTICE.xml.gz",
+              "[ 99% 2921/2923 16m17s remaining] Creating linker config: out/target/product/eliza_ai_soc/vendor/etc/linker.config.pb",
+              "[ 99% 2922/2923 16m17s remaining] Installed file list: out/target/product/eliza_ai_soc/installed-files-vendor.txt",
+              "[100% 2923/2923 16m15s remaining] Target vendor fs image: out/target/product/eliza_ai_soc/vendor.img",
               "",
-              "\u001b[0;31m#### failed to build some targets (26:50 (mm:ss)) ####\u001b[00m",
+              "#### build completed successfully (04:54 (mm:ss)) ####",
               "",
-              "eliza-evidence: ended_utc=2026-05-23T05:52:59Z",
-              "eliza-evidence: status=FAIL",
-              "END_UTC=2026-05-23T05:52:59Z",
-              "RESULT=1"
+              "out/target/product/eliza_ai_soc/vendor.img",
+              "out/target/product/eliza_ai_soc/installed-files-vendor.txt",
+              "device/eliza/cuttlefish_e1/eliza_e1_cuttlefish.mk:30:# The shared eliza_e1.xml is the single VINTF declaration for",
+              "device/eliza/eliza_ai_soc/README.md:29:out/target/product/eliza_ai_soc/vendor/etc/vintf/manifest/eliza_e1.xml",
+              "device/eliza/eliza_ai_soc/README.md:78:| `manifest.xml` / `eliza_e1.xml` | Legacy device-manifest fragments. The e1_npu and composer HALs are now declared solely by the per-service `vintf_fragments` in their `hal/*/Android.bp`; these files are no longer wired into `DEVICE_MANIFEST_FILE` (doing so makes libvintf reject the merged manifest with a conflicting-FqInstance error). |",
+              "device/eliza/eliza_ai_soc/device.mk:34:    vendor.e1_npu.ready=0",
+              "device/eliza/eliza_ai_soc/hal/e1_npu/vendor.eliza.e1_npu@1.0-service.rc:10:on property:vendor.e1_npu.ready=0",
+              "out/target/product/eliza_ai_soc/vendor/build.prop:133:vendor.e1_npu.ready=0",
+              "out/target/product/eliza_ai_soc/vendor/etc/init/vendor.eliza.e1_npu@1.0-service.rc:10:on property:vendor.e1_npu.ready=0",
+              "eliza-evidence: ended_utc=2026-05-27T23:11:35Z",
+              "eliza-evidence: status=PASS",
+              "END_UTC=2026-05-27T23:11:35Z",
+              "RESULT=0"
             ]
           },
           {
             "exists": true,
-            "mtime_utc": "2026-05-23T05:53:24Z",
+            "mtime_utc": "2026-05-27T23:12:23Z",
             "path": "docs/evidence/android/eliza_ai_soc_checkvintf.log",
-            "size_bytes": 1365,
+            "size_bytes": 10704,
             "tail": [
-              "EXTERNAL_TREE=/home/shaw/aosp",
-              "COMMAND=checkvintf --check-compat",
-              "START_UTC=2026-05-23T05:53:00Z",
-              "COMPATIBILITY_CLAIM=none",
-              "eliza-evidence: started_utc=2026-05-23T05:53:00Z",
-              "TARGET_PRODUCT=eliza_ai_soc",
-              "eliza_e1.xml=out/target/product/eliza_ai_soc/vendor/etc/vintf/manifest.xml",
-              "--- checkvintf --check-one ---",
-              "[INFO] Checking vendor manifest.",
+              "[INFO] Fetch 'out/target/product/eliza_ai_soc/system/etc/vintf/compatibility_matrix.202404.xml': OK",
+              "[INFO] Fetch 'out/target/product/eliza_ai_soc/system/etc/vintf/compatibility_matrix.5.xml': OK",
+              "[INFO] Fetch 'out/target/product/eliza_ai_soc/system/etc/vintf/compatibility_matrix.8.xml': OK",
+              "[INFO] Fetch 'out/target/product/eliza_ai_soc/system/etc/vintf/compatibility_matrix.device.xml': OK",
+              "[INFO] Fetch 'out/target/product/eliza_ai_soc/system/etc/vintf/compatibility_matrix.202504.xml': OK",
+              "[INFO] Fetch 'out/target/product/eliza_ai_soc/system/etc/vintf/compatibility_matrix.6.xml': OK",
+              "[INFO] List 'out/target/product/eliza_ai_soc/system_ext/etc/vintf/': NAME_NOT_FOUND",
+              "[INFO] List 'out/target/product/eliza_ai_soc/product/etc/vintf/': NAME_NOT_FOUND",
               "[INFO] Sysprop apex.all.ready is missing, default to ''",
-              "[INFO] getDeviceHalManifest: Reading VINTF information.",
-              "[INFO] Sysprop ro.boot.product.vendor.sku is missing, default to ''",
-              "[INFO] Fetch 'out/target/product/eliza_ai_soc/vendor/etc/vintf/manifest.xml': OK",
-              "\u001b[31mgetDeviceHalManifest: status from fetching VINTF information: -22\u001b[0m",
-              "\u001b[31mgetDeviceHalManifest: -22 VINTF parse error: Illformed file: /vendor/etc/vintf/manifest.xml: Duplicated manifest.hal entry vendor.eliza.e1_npu: Conflicting FqInstance: @1.0::IE1Npu/default (from /vendor/etc/vintf/manifest.xml) vs. @1.0::IE1Npu/default (from /vendor/etc/vintf/manifest.xml). Check whether or not multiple modules providing the same HAL are installed.\u001b[0m",
-              "\u001b[31mERROR: Cannot fetch vendor manifest.\u001b[0m",
-              "eliza-evidence: ended_utc=2026-05-23T05:53:24Z",
-              "eliza-evidence: status=FAIL",
-              "END_UTC=2026-05-23T05:53:24Z",
-              "RESULT=70"
+              "[INFO] Get modified time 'out/target/product/eliza_ai_soc/apex/apex-info-list.xml': NAME_NOT_FOUND",
+              "[INFO] Sysprop apex.all.ready is missing, default to ''",
+              "[INFO] Get modified time 'out/target/product/eliza_ai_soc/apex/apex-info-list.xml': NAME_NOT_FOUND",
+              "[INFO] Sysprop apex.all.ready is missing, default to ''",
+              "[INFO] Get modified time 'out/target/product/eliza_ai_soc/apex/apex-info-list.xml': NAME_NOT_FOUND",
+              "COMPATIBLE",
+              "VINTF_COMPAT=ok",
+              "eliza-evidence: ended_utc=2026-05-27T23:12:23Z",
+              "eliza-evidence: status=PASS",
+              "END_UTC=2026-05-27T23:12:23Z",
+              "RESULT=0"
             ]
           },
           {
             "exists": true,
-            "mtime_utc": "2026-05-23T05:57:10Z",
+            "mtime_utc": "2026-05-27T23:12:34Z",
             "path": "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
-            "size_bytes": 920,
+            "size_bytes": 85753,
             "tail": [
-              "COMPATIBILITY_CLAIM=none",
-              "eliza-evidence: started_utc=2026-05-23T05:57:05Z",
-              "Running product configuration...",
-              "============================================",
-              "PLATFORM_VERSION_CODENAME=Baklava",
-              "PLATFORM_VERSION=Baklava",
-              "TARGET_PRODUCT=eliza_openagent_ai_soc_phone",
-              "TARGET_BUILD_VARIANT=userdebug",
-              "TARGET_ARCH=riscv64",
-              "TARGET_ARCH_VARIANT=riscv64",
-              "TARGET_CPU_VARIANT=generic",
-              "HOST_OS=linux",
-              "HOST_OS_EXTRA=Linux-6.17.0-29-generic-x86_64-Ubuntu-24.04.4-LTS",
-              "HOST_CROSS_OS=linux_musl",
-              "BUILD_ID=MAIN",
-              "OUT_DIR=out",
-              "SOONG_ONLY=false",
-              "============================================",
-              "[100% 1/1] bootstrap blueprint",
-              "Running globs..."
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:758:(type hal_e1_npu_default)",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:759:(roletype object_r hal_e1_npu_default)",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:760:(type hal_e1_npu_default_exec)",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:761:(roletype object_r hal_e1_npu_default_exec)",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2082:(allow init_202604 hal_e1_npu_default_exec (file (read getattr map execute open)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2083:(allow init_202604 hal_e1_npu_default (process (transition)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2084:(allow hal_e1_npu_default hal_e1_npu_default_exec (file (read getattr map execute open entrypoint)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2085:(dontaudit init_202604 hal_e1_npu_default (process (noatsecure)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2086:(allow init_202604 hal_e1_npu_default (process (siginh rlimitinh)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2087:(typetransition init_202604 hal_e1_npu_default_exec process hal_e1_npu_default)",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2088:(allow hal_e1_npu_default e1_npu_device (chr_file (ioctl read write getattr open)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2091:(allow hal_e1_npu_default vendor_e1_npu_prop (file (read getattr map open)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2092:(allow hal_e1_npu_default hal_e1_npu_hwservice (hwservice_manager (add find)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2093:(allow hal_e1_npu_default hidl_base_hwservice_202604 (hwservice_manager (add)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2098:(typeattributeset base_typeattr_250_202604 (and (domain) (not (hal_e1_npu_default))))",
+              "SEPOLICY_BUILD=ok",
+              "eliza-evidence: ended_utc=2026-05-27T23:12:34Z",
+              "eliza-evidence: status=PASS",
+              "END_UTC=2026-05-27T23:12:34Z",
+              "RESULT=0"
             ]
           },
           {
             "exists": true,
-            "mtime_utc": "2026-05-23T05:57:19Z",
+            "mtime_utc": "2026-05-27T23:12:42Z",
             "path": "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
-            "size_bytes": 747,
+            "size_bytes": 106969,
             "tail": [
-              "eliza-evidence: target=aosp artifact=eliza_ai_soc_selinux_neverallow",
-              "eliza-evidence: external_tree=/home/shaw/aosp",
-              "eliza-evidence: command=m sepolicy_neverallows",
-              "EXTERNAL_TREE=/home/shaw/aosp",
-              "COMMAND=m sepolicy_neverallows",
-              "START_UTC=2026-05-23T05:57:05Z",
-              "COMPATIBILITY_CLAIM=none",
-              "eliza-evidence: started_utc=2026-05-23T05:57:05Z",
-              "22:57:09 Waiting up to 10s to lock out/.lock to ensure no other Soong process is running in the same output directory",
-              "22:57:19 Tried to lock out/.lock, but timed out polling every 1s until 10s . Make sure no other Soong process is using it",
-              "",
-              "\u001b[0;31m#### failed to build some targets (11 seconds) ####\u001b[00m",
-              "",
-              "eliza-evidence: ended_utc=2026-05-23T05:57:19Z",
-              "eliza-evidence: status=FAIL",
-              "END_UTC=2026-05-23T05:57:19Z",
-              "RESULT=1"
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2081:(neverallow base_typeattr_234_202604 vendor_e1_npu_prop (file (ioctl read write create setattr lock relabelfrom append unlink link rename open watch watch_mount watch_sb watch_with_perm watch_reads)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2082:(allow init_202604 hal_e1_npu_default_exec (file (read getattr map execute open)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2083:(allow init_202604 hal_e1_npu_default (process (transition)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2084:(allow hal_e1_npu_default hal_e1_npu_default_exec (file (read getattr map execute open entrypoint)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2085:(dontaudit init_202604 hal_e1_npu_default (process (noatsecure)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2086:(allow init_202604 hal_e1_npu_default (process (siginh rlimitinh)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2087:(typetransition init_202604 hal_e1_npu_default_exec process hal_e1_npu_default)",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2088:(allow hal_e1_npu_default e1_npu_device (chr_file (ioctl read write getattr open)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2089:(allow vendor_init_202604 vendor_e1_npu_prop (property_service (set)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2090:(allow vendor_init_202604 vendor_e1_npu_prop (file (read getattr map open)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2091:(allow hal_e1_npu_default vendor_e1_npu_prop (file (read getattr map open)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2092:(allow hal_e1_npu_default hal_e1_npu_hwservice (hwservice_manager (add find)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2093:(allow hal_e1_npu_default hidl_base_hwservice_202604 (hwservice_manager (add)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2094:(neverallow base_typeattr_250_202604 hal_e1_npu_hwservice (hwservice_manager (add)))",
+              "out/target/product/eliza_ai_soc/obj/ETC/vendor_sepolicy.cil_intermediates/vendor_sepolicy.cil:2098:(typeattributeset base_typeattr_250_202604 (and (domain) (not (hal_e1_npu_default))))",
+              "SEPOLICY_NEVERALLOW=ok",
+              "eliza-evidence: ended_utc=2026-05-27T23:12:42Z",
+              "eliza-evidence: status=PASS",
+              "END_UTC=2026-05-27T23:12:42Z",
+              "RESULT=0"
             ]
           }
         ],
         "expected_report": {
           "exists": true,
-          "mtime_utc": "2026-05-21T23:13:04Z",
+          "mtime_utc": "2026-05-27T23:12:42Z",
           "path": "build/reports/android_sim_boot.json",
-          "size_bytes": 4277
+          "size_bytes": 3309
         },
         "full_runtime_command_after_build_only": "AOSP_DIR=/home/shaw/aosp packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
         "purpose": "fail_closed_context_for_concurrent_android_build_only_attempt",
@@ -288,8 +293,8 @@
         ]
       },
       "cuttlefish_runtime": "latest_instance=",
-      "runtime_processes": "1680       1    04:32:17 /usr/lib/cuttlefish-common/bin/operator --log_file=/run/cuttlefish/operator.log --https_port=1443 --tls_cert_dir=/etc/cuttlefish-common/operator/cert --socket_path=/run/cuttlefish/operator --listen_addr=0.0.0.0\n   1772       1    04:32:17 dnsmasq --port=0 --strict-order --except-interface=lo --interface=cvd-ebr --listen-address=192.168.98.1 --bind-interfaces --dhcp-range=192.168.98.2,192.168.98.255 --dhcp-option=option:dns-server,8.8.8.8,8.8.4.4 --dhcp-option=option6:dns-server,2001:4860:4860::8888,2001:4860:4860::8844 --conf-file= --pid-file=/var/run/cuttlefish-dnsmasq-cvd-ebr.pid --dhcp-leasefile=/var/run/cuttlefish-dnsmasq-cvd-ebr.leases --dhcp-no-override\n   1935       1    04:32:16 dnsmasq --port=0 --strict-order --except-interface=lo --interface=cvd-wbr --listen-address=192.168.96.1 --bind-interfaces --dhcp-range=192.168.96.2,192.168.96.255 --dhcp-option=option:dns-server,8.8.8.8,8.8.4.4 --dhcp-option=option6:dns-server,2001:4860:4860::8888,2001:4860:4860::8844 --conf-file= --pid-file=/var/run/cuttlefish-dnsmasq-cvd-wbr.pid --dhcp-leasefile=/var/run/cuttlefish-dnsmasq-cvd-wbr.leases --dhcp-no-override\n1381255    3399       59:12 adb -L tcp:5037 fork-server server --reply-fd 4\n1650304 1588468       37:09 ninja -C /work/src/bun/build/release -j24\n1720724 1720653       15:02 qemu-system-riscv64 -machine virt -nographic -m 4096 -smp 4 -drive if=pflash,format=raw,unit=0,readonly=on,file=/usr/share/qemu-efi-riscv64/RISCV_VIRT_CODE.fd -drive if=pflash,format=raw,unit=1,file=/tmp/tmp.vUYnLbhAp5 -drive file=out/elizaos-linux-riscv64-default-20260523T045958Z.iso,if=virtio,format=raw,media=cdrom,readonly=on -monitor none -serial mon:stdio -no-reboot -netdev user,id=net0 -device virtio-net-device,netdev=net0\n1742602 1742595       08:43 /home/shaw/aosp/out/soong_ui --build-mode --all-modules --dir=/home/shaw/aosp vendor_sepolicy.cil selinux_policy sepolicy_neverallows\n1743756 1742602       08:40 -x prebuilts/build-tools/linux-x86/bin/ninja -H android-build --cwd /home/shaw/aosp -t 0 -e --proc_rw -u nobody -g nogroup --rlimit_as soft --rlimit_core soft --rlimit_cpu soft --rlimit_fsize soft --rlimit_nofile soft -R / -B /tmp -B /home/shaw/aosp -B /home/shaw/aosp/out --disable_clone_newcgroup -q -- -d keepdepfile -d stats -o usesphonyoutputs=yes -o preremoveoutputs=yes -w dupbuild=err -w outputdir=err -w missingoutfile=err -j 26 --frontend_file out/.ninja_fifo -f out/soong/bootstrap.ninja out/soong/build.eliza_openagent_ai_soc_phone.ninja\n1743757 1743756       08:40 prebuilts/build-tools/linux-x86/bin/ninja -d keepdepfile -d stats -o usesphonyoutputs=yes -o preremoveoutputs=yes -w dupbuild=err -w outputdir=err -w missingoutfile=err -j 26 --frontend_file out/.ninja_fifo -f out/soong/bootstrap.ninja out/soong/build.eliza_openagent_ai_soc_phone.ninja\n1743854 1743757       08:39 /bin/sh -c cd \"$(dirname \"out/host/linux-x86/bin/soong_build\")\" && BUILDER=\"$PWD/$(basename \"out/host/linux-x86/bin/soong_build\")\" && cd / && env -i  \"$BUILDER\"     --top \"$TOP\"     --soong_out \"out/soong\"     --out \"out\"     --soong_variables out/soong/soong.eliza_openagent_ai_soc_phone.variables -o out/soong/build.eliza_openagent_ai_soc_phone.ninja --kati_suffix -eliza_openagent_ai_soc_phone -l out/.module_paths/Android.bp.list --available_env out/soong/soong.environment.available --used_env out/soong/soong.environment.used.eliza_openagent_ai_soc_phone.build Android.bp\n1743857 1743854       08:39 /home/shaw/aosp/out/host/linux-x86/bin/soong_build --top /home/shaw/aosp --soong_out out/soong --out out --soong_variables out/soong/soong.eliza_openagent_ai_soc_phone.variables -o out/soong/build.eliza_openagent_ai_soc_phone.ninja --kati_suffix -eliza_openagent_ai_soc_phone -l out/.module_paths/Android.bp.list --available_env out/soong/soong.environment.available --used_env out/soong/soong.environment.used.eliza_openagent_ai_soc_phone.build Android.bp",
-      "tcp_listeners": "LISTEN 0      128             127.0.0.1:5037       0.0.0.0:*    users:((\"adb\",pid=1381255,fd=12))\nLISTEN 0      4096                    *:1443             *:*"
+      "runtime_processes": "1680       1  4-21:49:14 /usr/lib/cuttlefish-common/bin/operator --log_file=/run/cuttlefish/operator.log --https_port=1443 --tls_cert_dir=/etc/cuttlefish-common/operator/cert --socket_path=/run/cuttlefish/operator --listen_addr=0.0.0.0\n   1772       1  4-21:49:14 dnsmasq --port=0 --strict-order --except-interface=lo --interface=cvd-ebr --listen-address=192.168.98.1 --bind-interfaces --dhcp-range=192.168.98.2,192.168.98.255 --dhcp-option=option:dns-server,8.8.8.8,8.8.4.4 --dhcp-option=option6:dns-server,2001:4860:4860::8888,2001:4860:4860::8844 --conf-file= --pid-file=/var/run/cuttlefish-dnsmasq-cvd-ebr.pid --dhcp-leasefile=/var/run/cuttlefish-dnsmasq-cvd-ebr.leases --dhcp-no-override\n   1935       1  4-21:49:14 dnsmasq --port=0 --strict-order --except-interface=lo --interface=cvd-wbr --listen-address=192.168.96.1 --bind-interfaces --dhcp-range=192.168.96.2,192.168.96.255 --dhcp-option=option:dns-server,8.8.8.8,8.8.4.4 --dhcp-option=option6:dns-server,2001:4860:4860::8888,2001:4860:4860::8844 --conf-file= --pid-file=/var/run/cuttlefish-dnsmasq-cvd-wbr.pid --dhcp-leasefile=/var/run/cuttlefish-dnsmasq-cvd-wbr.leases --dhcp-no-override\n3779127    3399    05:55:16 adb -L tcp:5037 fork-server server --reply-fd 4",
+      "tcp_listeners": "LISTEN 0      128        127.0.0.1:5037       0.0.0.0:*    users:((\"adb\",pid=3779127,fd=11))  \nLISTEN 0      4096               *:1443             *:*"
     },
     "missing_or_false": [
       "adb_forward_ready",
@@ -329,6 +334,7 @@
   },
   "result": 2,
   "schema": "eliza.android_launcher_runtime_evidence.v1",
-  "started_utc": "2026-05-23T06:05:51Z",
-  "status": "BLOCKED"
+  "started_utc": "2026-05-27T23:22:49Z",
+  "status": "BLOCKED",
+  "target_label": "chip-riscv64"
 }

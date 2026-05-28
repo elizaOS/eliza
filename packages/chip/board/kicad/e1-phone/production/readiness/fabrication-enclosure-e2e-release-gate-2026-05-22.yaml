@@ -33,12 +33,12 @@ local_non_release_progress:
   development_segment_count: 306
   development_via_count: 24
   development_required_shared_net_category_count: 7
-  development_required_shared_net_count: 166
-  development_routed_shared_net_count: 166
+  development_required_shared_net_count: 177
+  development_routed_shared_net_count: 177
   development_missing_required_shared_net_count: 0
   development_route_domain_count: 7
-  development_route_domain_required_net_count_total: 166
-  development_route_domain_routed_or_aliased_net_count_total: 181
+  development_route_domain_required_net_count_total: 177
+  development_route_domain_routed_or_aliased_net_count_total: 192
   development_missing_route_domain_net_count: 0
   development_all_route_domains_complete: true
   real_footprint_development_refs: 89
@@ -46,7 +46,7 @@ local_non_release_progress:
   routed_step_candidate_present: true
   routed_step_candidate_path: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
   routed_step_candidate_release_credit: false
-  routed_step_candidate_sha256: 9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58
+  routed_step_candidate_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
   routed_step_candidate_matches_development_source: true
   routed_step_candidate_footprint_envelope_count: 0
   routed_step_candidate_pad_contact_visual_count: 0
@@ -63,25 +63,25 @@ local_non_release_progress:
   pattern_explicit_support_pattern_count: 11
   pattern_all_support_patterns_have_explicit_provenance: true
   pattern_all_electrical_pad_counts_match_manifest: true
-  cad_connection_passing_count: 24
-  cad_connection_terminal_marker_count: 48
-  cad_connection_terminal_pair_count: 24
-  cad_connection_solid_step_part_count: 72
-  cad_connection_solid_step_part_set_count: 24
-  cad_connection_solid_step_part_bytes_total: 1125435
-  cad_connection_assembly_manifest_part_count: 234
-  cad_connection_assembly_manifest_terminal_marker_count: 48
-  cad_connection_assembly_manifest_solid_step_part_count: 72
+  cad_connection_passing_count: 32
+  cad_connection_terminal_marker_count: 64
+  cad_connection_terminal_pair_count: 32
+  cad_connection_solid_step_part_count: 96
+  cad_connection_solid_step_part_set_count: 32
+  cad_connection_solid_step_part_bytes_total: 1501919
+  cad_connection_assembly_manifest_part_count: 258
+  cad_connection_assembly_manifest_terminal_marker_count: 64
+  cad_connection_assembly_manifest_solid_step_part_count: 96
   cad_connection_assembly_manifest_missing_solid_step_part_count: 0
-  cad_connection_represented_net_count_total: 112
-  cad_connection_record_count: 24
-  cad_connection_represented_net_list_total: 112
+  cad_connection_represented_net_count_total: 150
+  cad_connection_record_count: 32
+  cad_connection_represented_net_list_total: 150
   cad_connection_all_records_have_represented_nets: true
   cad_connection_all_represented_nets_match_routed_nets: true
-  cad_connection_controlled_impedance_count: 14
-  cad_connection_controlled_impedance_requirement_defined_count: 24
-  cad_connection_bend_radius_requirement_defined_count: 24
-  cad_connection_supplier_release_required_count: 24
+  cad_connection_controlled_impedance_count: 16
+  cad_connection_controlled_impedance_requirement_defined_count: 32
+  cad_connection_bend_radius_requirement_defined_count: 32
+  cad_connection_supplier_release_required_count: 32
   cad_connection_release_credit: false
   component_model_count: 89
   component_model_supplier_approved_count: 0
@@ -89,12 +89,16 @@ local_non_release_progress:
   component_model_pinout_bound_model_count: 22
   component_model_support_pattern_model_count: 67
   component_model_terminal_contract_or_no_pad_model_count: 89
+  component_model_total_pad_contract_visual_count: 1452
+  component_model_uncovered_pad_visual_count: 0
   component_model_non_signal_pad_contract_count: 7
   component_model_npth_mechanical_feature_contract_count: 4
   component_model_all_terminal_contract_flags_pass: true
   component_model_directory_record_count: 89
   component_model_directory_terminal_contract_model_record_count: 85
   component_model_directory_terminal_contract_total_count: 1441
+  component_model_directory_total_pad_contract_visual_count: 1452
+  component_model_directory_uncovered_pad_visual_count: 0
   component_model_directory_non_signal_pad_contract_total_count: 7
   component_model_directory_npth_mechanical_feature_contract_total_count: 4
   component_model_directory_source_routed_step_bound: true
@@ -103,7 +107,7 @@ local_non_release_progress:
   component_model_directory_local_discrete_step_file_count: 89
   component_model_directory_local_discrete_step_imported_solid_count: 89
   component_model_directory_local_discrete_step_bbox_match_count: 89
-  component_model_directory_local_discrete_step_bytes_total: 1385932
+  component_model_directory_local_discrete_step_bytes_total: 1387362
   component_model_directory_supplier_step_intake_placeholder_count: 0
   component_model_directory_supplier_step_intake_local_surrogate_count: 47
   component_model_directory_supplier_step_intake_missing_count: 0
@@ -166,7 +170,7 @@ release_gates:
     reason: routed board, ERC/DRC, SI/PI/RF, fab, assembly, and STEP outputs exist only as blocked candidates
   - source: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
     metric: candidate_step_size_bytes
-    current_value: 32970696
+    current_value: 33644081
     required_value: 0
     reason: local routed STEP candidate exists but is not release evidence
   - source: board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml
@@ -233,12 +237,12 @@ release_gates:
     reason: routed-board STEP, supplier geometry, clearance, physical fit, and process evidence are missing
   - source: mechanical/e1-phone/review/board-step-readiness.json
     metric: status
-    current_value: blocked_concept_pcb_no_routed_step
+    current_value: blocked_local_routed_step_candidate_not_release
     required_value: pass
     reason: mechanical review has no routed-board STEP intake
   - source: mechanical/e1-phone/review/routed-board-clearance.json
     metric: status
-    current_value: blocked_waiting_for_routed_board_step
+    current_value: blocked_waiting_for_physical_routed_board_clearance_result
     required_value: pass
     reason: mechanical review has no routed-board clearance rerun
   - source: board/kicad/e1-phone/end-to-end-readiness.yaml

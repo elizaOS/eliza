@@ -20,42 +20,41 @@
       "first_pc": null,
       "last_cycle": null,
       "last_pc": null,
-      "last_progress_marker": "",
+      "last_progress_marker": "[    0.118036] Kernel panic - not syncing: Attempted to kill init! exitcode=0x00007f00",
       "last_symbol": null,
       "last_symbol_address": null,
       "last_symbol_objdump": "",
       "last_symbol_offset": null,
-      "mtime": 1779505017.4682992,
-      "path": "build/chipyard/eliza_rocket/verilator-linux-smoke.kpiFLE.raw.tmp",
-      "payload": null,
-      "reached_simulator_runtime": false,
+      "mtime": 1779910988.7989588,
+      "path": "build/chipyard/eliza_rocket/verilator-linux-smoke.0CZMBO.raw.tmp",
+      "payload": "/home/shaw/milady/eliza/packages/chip/external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk",
+      "reached_simulator_runtime": true,
       "retired_instruction_count": 0,
-      "size_bytes": 0,
-      "stage": "wrapper_waiting_for_output"
+      "size_bytes": 7906,
+      "stage": "simulator_runtime_in_progress"
     },
-    "blockers": [
-      "build/chipyard/eliza_rocket/verilator-linux-smoke.log records simulator wrapper exit_code=143 after timeout_after_seconds=180",
-      "last simulator progress before wrapper exit: - /home/shaw/milady/eliza/packages/chip/external/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.ElizaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish",
-      "last simulator progress before missing boot markers: - /home/shaw/milady/eliza/packages/chip/external/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.ElizaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish",
-      "instruction trace proves CPU forward progress through boot ROM to payload: first_pc=0x0000000000010000 last_pc=0x000000008000e09e last_symbol=fdt_offset_ptr retired=484986 trace=build/chipyard/eliza_rocket/verilator-linux-smoke.log",
-      "build/chipyard/eliza_rocket/verilator-linux-smoke.log lacks required marker: OpenSBI/SBI handoff",
-      "build/chipyard/eliza_rocket/verilator-linux-smoke.log has an OpenSBI banner but lacks accepted OpenSBI handoff markers: SBI specification, Domain0 Next Address, Boot HART ID",
-      "build/chipyard/eliza_rocket/verilator-linux-smoke.log lacks required marker: Linux version"
-    ],
+    "blockers": [],
     "latest_live_sim_output": {
       "exists": true,
       "has_kernel_panic": false,
-      "has_linux_banner": false,
-      "has_linux_boot_markers": false,
-      "has_opensbi_handoff": false,
+      "has_linux_banner": true,
+      "has_linux_boot_markers": true,
+      "has_opensbi_banner": true,
+      "has_opensbi_handoff": true,
       "last_progress_marker": "- /home/shaw/milady/eliza/packages/chip/external/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.ElizaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish",
-      "mtime": 1779527237.367992,
+      "linux_memory_progress": {
+        "last_marker": "",
+        "marker_counts": {},
+        "observed": false,
+        "recent_markers": []
+      },
+      "mtime": 1779914715.6802888,
       "path": "external/chipyard/sims/verilator/output/chipyard.harness.TestHarness.ElizaRocketConfig/eliza-e1-linux-smoke-bin-nodisk.log",
       "sim_failures": [],
       "sim_success_finishes": [
         "- /home/shaw/milady/eliza/packages/chip/external/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.ElizaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish"
       ],
-      "size_bytes": 642
+      "size_bytes": 6682
     },
     "log": "build/chipyard/eliza_rocket/verilator-linux-smoke.log",
     "log_metadata": {
@@ -63,15 +62,15 @@
       "last_progress_marker": "- /home/shaw/milady/eliza/packages/chip/external/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.ElizaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish",
       "raw_transcript_closed": true,
       "run_target": "run-binary-fast",
-      "timeout_after_seconds": "180"
+      "timeout_after_seconds": "14400"
     },
     "next_command": "CHIPYARD_LINUX_BINARY=/home/shaw/milady/eliza/packages/chip/external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk scripts/run_chipyard_eliza_linux_smoke.sh",
     "progress": {
-      "next_step": "treat the simulator pass marker as non-Linux evidence; rerun with cycle-accurate UART serial enabled or a Linux boot marker source before claiming generated AP Linux boot",
-      "stage": "sim_pass_no_linux_console"
+      "next_step": "use the generated AP Linux workload transcript as completion evidence; capture or refresh CPU/AP evidence archives as needed",
+      "stage": "generated_linux_workload_completed"
     },
     "report": "/home/shaw/milady/eliza/packages/chip/build/chipyard/eliza_rocket/verilator-linux-smoke.json",
-    "status": "blocked"
+    "status": "pass"
   },
   "next_commands": [
     "cd ../../../chip && python3 scripts/wire_cpu_ap_capture_commands.py --format json",

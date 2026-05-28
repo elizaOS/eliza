@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -65,6 +66,7 @@ INTEGRATED_SOURCES = [
     "rtl/display/e1_display.sv",
     "rtl/cpu/e1_cva6_wrapper.sv",
     "rtl/cpu/e1_cpu_axi_bridge.sv",
+    "rtl/cpu/e1_tiny_cpu_contract.sv",
     "rtl/cpu/e1_cpu_subsystem_stub.sv",
     "rtl/memory/e1_weight_buffer_sram.sv",
     "rtl/interrupts/e1_clint.sv",
@@ -155,31 +157,34 @@ def check_lint(verilator: str) -> dict:
 
 
 def run_cocotb(verilator: str) -> dict:
-    results = COCOTB_DIR / str(SMOKE["results"])
+    results = ROOT / "verify/cocotb/results" / f"{SMOKE['toplevel']}_{SMOKE['module']}.xml"
     if results.exists():
         results.unlink()
     env_python = _python()
+    env = dict(os.environ)
+    verilator_bin = Path(verilator).parent
+    env["PATH"] = f"{verilator_bin}:{env.get('PATH', '')}"
+    env.update(
+        {
+            "PYTHON": env_python,
+            "COCOTB_TOPLEVEL": str(SMOKE["toplevel"]),
+            "COCOTB_MODULE": str(SMOKE["module"]),
+            "COCOTB_DIR": "verify/cocotb/soc",
+        }
+    )
     rc = subprocess.run(
-        [
-            "make",
-            "-C",
-            str(COCOTB_DIR),
-            f"PYTHON={env_python}",
-            f"TOPLEVEL={SMOKE['toplevel']}",
-            f"MODULE={SMOKE['module']}",
-            f"SIM_BUILD={SMOKE['sim_build']}",
-            f"COCOTB_RESULTS_FILE={SMOKE['results']}",
-        ],
+        ["scripts/run_cocotb.sh"],
         capture_output=True,
         text=True,
         cwd=ROOT,
+        env=env,
     )
     if not results.is_file():
         last = rc.stderr.splitlines()[-1] if rc.stderr else ""
         return {
             "id": SMOKE["id"],
             "status": "blocked",
-            "detail": f"no {SMOKE['results']}; cocotb/verilator unavailable. {last}",
+            "detail": f"no {results.relative_to(ROOT)}; cocotb/verilator unavailable. {last}",
         }
     tree = ET.parse(results)
     seen, failed = set(), []

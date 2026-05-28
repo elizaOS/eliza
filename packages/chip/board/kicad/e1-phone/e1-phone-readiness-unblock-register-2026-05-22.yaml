@@ -18,7 +18,7 @@ summary:
   artifact_presence_complete_blocker_count: 4
   acceptance_artifact_count: 174
   missing_acceptance_artifact_count: 0
-  non_release_acceptance_artifact_count: 158
+  non_release_acceptance_artifact_count: 147
   production_presence_release_output_count: 0
   production_presence_blocked_candidate_output_file_count: 47
   production_presence_has_blocked_candidate_outputs: true
@@ -29,18 +29,18 @@ summary:
   local_development_segment_count: 306
   local_development_via_count: 24
   local_development_required_shared_net_category_count: 7
-  local_development_required_shared_net_count: 166
-  local_development_routed_shared_net_count: 166
+  local_development_required_shared_net_count: 177
+  local_development_routed_shared_net_count: 177
   local_development_missing_required_shared_net_count: 0
   local_development_route_domain_count: 7
-  local_development_route_domain_required_net_count_total: 166
-  local_development_route_domain_routed_or_aliased_net_count_total: 181
+  local_development_route_domain_required_net_count_total: 177
+  local_development_route_domain_routed_or_aliased_net_count_total: 192
   local_development_missing_route_domain_net_count: 0
   local_development_all_route_domains_complete: true
   local_real_footprint_development_refs: 89
   local_routed_step_candidate_present: true
   local_routed_step_candidate_release_credit: false
-  local_routed_step_candidate_sha256: 9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58
+  local_routed_step_candidate_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
   local_routed_step_candidate_matches_development_source: true
   local_routed_step_candidate_footprint_envelope_count: 89
   local_routed_step_candidate_pad_contact_visual_count: 1452
@@ -57,25 +57,25 @@ summary:
   local_pattern_explicit_support_pattern_count: 11
   local_pattern_all_support_patterns_have_explicit_provenance: true
   local_pattern_all_electrical_pad_counts_match_manifest: true
-  local_cad_connection_passing_count: 24
-  local_cad_connection_terminal_marker_count: 48
-  local_cad_connection_terminal_pair_count: 24
-  local_cad_connection_solid_step_part_count: 72
-  local_cad_connection_solid_step_part_set_count: 24
-  local_cad_connection_solid_step_part_bytes_total: 1125435
-  local_cad_connection_assembly_manifest_part_count: 234
-  local_cad_connection_assembly_manifest_terminal_marker_count: 48
-  local_cad_connection_assembly_manifest_solid_step_part_count: 72
+  local_cad_connection_passing_count: 32
+  local_cad_connection_terminal_marker_count: 64
+  local_cad_connection_terminal_pair_count: 32
+  local_cad_connection_solid_step_part_count: 96
+  local_cad_connection_solid_step_part_set_count: 32
+  local_cad_connection_solid_step_part_bytes_total: 1501919
+  local_cad_connection_assembly_manifest_part_count: 258
+  local_cad_connection_assembly_manifest_terminal_marker_count: 64
+  local_cad_connection_assembly_manifest_solid_step_part_count: 96
   local_cad_connection_assembly_manifest_missing_solid_step_part_count: 0
-  local_cad_connection_represented_net_count_total: 112
-  local_cad_connection_record_count: 24
-  local_cad_connection_represented_net_list_total: 112
+  local_cad_connection_represented_net_count_total: 150
+  local_cad_connection_record_count: 32
+  local_cad_connection_represented_net_list_total: 150
   local_cad_connection_all_records_have_represented_nets: true
   local_cad_connection_all_represented_nets_match_routed_nets: true
-  local_cad_connection_controlled_impedance_count: 14
-  local_cad_connection_controlled_impedance_requirement_defined_count: 24
-  local_cad_connection_bend_radius_requirement_defined_count: 24
-  local_cad_connection_supplier_release_required_count: 24
+  local_cad_connection_controlled_impedance_count: 16
+  local_cad_connection_controlled_impedance_requirement_defined_count: 32
+  local_cad_connection_bend_radius_requirement_defined_count: 32
+  local_cad_connection_supplier_release_required_count: 32
   local_cad_connection_release_credit: false
   local_component_model_count: 89
   local_component_model_supplier_approved_count: 0
@@ -83,12 +83,16 @@ summary:
   local_component_model_pinout_bound_model_count: 22
   local_component_model_support_pattern_model_count: 67
   local_component_model_terminal_contract_or_no_pad_model_count: 89
+  local_component_model_total_pad_contract_visual_count: 1452
+  local_component_model_uncovered_pad_visual_count: 0
   local_component_model_non_signal_pad_contract_count: 7
   local_component_model_npth_mechanical_feature_contract_count: 4
   local_component_model_all_terminal_contract_flags_pass: true
   local_component_model_directory_record_count: 89
   local_component_model_directory_terminal_contract_model_record_count: 85
   local_component_model_directory_terminal_contract_total_count: 1441
+  local_component_model_directory_total_pad_contract_visual_count: 1452
+  local_component_model_directory_uncovered_pad_visual_count: 0
   local_component_model_directory_non_signal_pad_contract_total_count: 7
   local_component_model_directory_npth_mechanical_feature_contract_total_count: 4
   local_component_model_directory_source_routed_step_bound: true
@@ -97,7 +101,7 @@ summary:
   local_component_model_directory_local_discrete_step_file_count: 89
   local_component_model_directory_local_discrete_step_imported_solid_count: 89
   local_component_model_directory_local_discrete_step_bbox_match_count: 89
-  local_component_model_directory_local_discrete_step_bytes_total: 1385932
+  local_component_model_directory_local_discrete_step_bytes_total: 1387362
   local_component_model_directory_supplier_step_intake_placeholder_count: 0
   local_component_model_directory_supplier_step_intake_local_surrogate_count: 47
   local_component_model_directory_supplier_step_intake_missing_count: 0
@@ -1121,18 +1125,6 @@ blockers:
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/camera-capture-log.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - not release evidence
-    - not_approved
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - not release evidence
-    - not_approved
-    - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
@@ -1142,12 +1134,6 @@ blockers:
     - not_measured
     - 'release_allowed: false'
     - 'release_credit: false'
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/display-touch-bringup-log.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - not release evidence
-    - not_approved
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/drc.json:
     - blocked_candidate_not_approved
@@ -1241,18 +1227,6 @@ blockers:
     - not_approved
     - not_measured
     - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - not release evidence
-    - not_approved
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - not release evidence
-    - not_approved
-    - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json:
     - blocked_candidate_not_approved
     - candidate_not_release
@@ -1305,18 +1279,6 @@ blockers:
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - not release evidence
-    - not_approved
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - not release evidence
-    - not_approved
-    - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml:
     - blocked_candidate_not_approved
     - candidate_not_release
@@ -1340,11 +1302,6 @@ blockers:
     - local candidate artifact only
     - not_approved
     - not_measured
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/zone-fill.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - not_approved
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/stackup/coupon-geometry.pdf:
     - not release evidence
@@ -1401,7 +1358,7 @@ blockers:
     board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf:
     - not release evidence
     - sentinel_small_binary_artifact
-  non_release_acceptance_artifact_count: 55
+  non_release_acceptance_artifact_count: 47
   acceptance_complete: false
   missing_acceptance_artifact_count: 0
   next_unblock_action: Generate production/factory outputs from routed board package
@@ -1484,24 +1441,6 @@ blockers:
     - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - not release evidence
-    - not_approved
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - not release evidence
-    - not_approved
-    - unreviewed_local_candidate
-    board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json:
-    - blocked_candidate_not_approved
-    - candidate_not_release
-    - not release evidence
-    - not_approved
-    - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json:
     - blocked_candidate_not_approved
     - candidate_not_release
@@ -1516,7 +1455,7 @@ blockers:
     - not_approved
     - not_measured
     - unreviewed_local_candidate
-  non_release_acceptance_artifact_count: 6
+  non_release_acceptance_artifact_count: 3
   acceptance_complete: false
   missing_acceptance_artifact_count: 0
   next_unblock_action: Run first article on routed hardware and replace templates

@@ -5,15 +5,16 @@
   "tool_available": true,
   "cadquery_unavailable_error": "ModuleNotFoundError: No module named 'cadquery'",
   "assembly_step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
-  "assembly_step_bytes": 4017567,
-  "part_count": 234,
+  "assembly_step_bytes": 5697447,
+  "part_count": 258,
   "parts": [
     {
       "name": "orange_back_shell",
       "role": "molded enclosure",
       "material": "PC+ABS orange rounded back shell",
       "step": "mechanical/e1-phone/out/orange_back_shell.step",
-      "bytes": 15561,
+      "bytes": 344345,
+      "fallback_box_count": 21,
       "bbox_mm": {
         "min": [
           -39.0,
@@ -37,7 +38,8 @@
       "role": "molded enclosure",
       "material": "PC+ABS orange rounded perimeter frame",
       "step": "mechanical/e1-phone/out/orange_side_frame.step",
-      "bytes": 15569,
+      "bytes": 754096,
+      "fallback_box_count": 45,
       "bbox_mm": {
         "min": [
           -39.0,
@@ -61,7 +63,8 @@
       "role": "screen",
       "material": "black rounded cover glass",
       "step": "mechanical/e1-phone/out/screen_cover_glass.step",
-      "bytes": 15647,
+      "bytes": 131089,
+      "fallback_box_count": 8,
       "bbox_mm": {
         "min": [
           -38.55,
@@ -86,6 +89,7 @@
       "material": "bonded LCD+CTP module (cover lens, touch, polarizers, TFT cell, BLU)",
       "step": "mechanical/e1-phone/out/display_lcm.step",
       "bytes": 15681,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -35.39,
@@ -110,6 +114,7 @@
       "material": "8L HDI FR-4 top/bottom split-island board envelope around full-width battery",
       "step": "mechanical/e1-phone/out/main_pcb.step",
       "bytes": 15531,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -32.0,
@@ -134,6 +139,7 @@
       "material": "LiPo pouch",
       "step": "mechanical/e1-phone/out/battery_pouch.step",
       "bytes": 15570,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -32.0,
@@ -158,6 +164,7 @@
       "material": "PORON-style low-compression-set polyurethane foam, low-preload battery back pad",
       "step": "mechanical/e1-phone/out/battery_back_void_foam_pad.step",
       "bytes": 15557,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -30.0,
@@ -182,6 +189,7 @@
       "material": "stainless shell",
       "step": "mechanical/e1-phone/out/usb_c_receptacle.step",
       "bytes": 15657,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -4.47,
@@ -206,6 +214,7 @@
       "material": "USB-C molded aperture visual check",
       "step": "mechanical/e1-phone/out/usb_c_external_aperture.step",
       "bytes": 15639,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -5.1,
@@ -230,6 +239,7 @@
       "material": "silicone USB-C perimeter gasket top rail",
       "step": "mechanical/e1-phone/out/usb_c_perimeter_gasket_top.step",
       "bytes": 15654,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -5.7,
@@ -254,6 +264,7 @@
       "material": "silicone USB-C perimeter gasket bottom rail",
       "step": "mechanical/e1-phone/out/usb_c_perimeter_gasket_bottom.step",
       "bytes": 15680,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -5.7,
@@ -278,6 +289,7 @@
       "material": "silicone USB-C perimeter gasket side rail",
       "step": "mechanical/e1-phone/out/usb_c_perimeter_gasket_left.step",
       "bytes": 15676,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -5.595,
@@ -302,6 +314,7 @@
       "material": "silicone USB-C perimeter gasket side rail",
       "step": "mechanical/e1-phone/out/usb_c_perimeter_gasket_right.step",
       "bytes": 15650,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           5.245,
@@ -326,6 +339,7 @@
       "material": "molded PC+ABS internal drip-break lip below USB-C aperture",
       "step": "mechanical/e1-phone/out/usb_c_molded_drip_break_lip.step",
       "bytes": 15680,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -6.6,
@@ -350,6 +364,7 @@
       "material": "molded PC+ABS internal drain shelf under USB-C receptacle",
       "step": "mechanical/e1-phone/out/usb_c_internal_drain_shelf.step",
       "bytes": 15589,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -6.4,
@@ -374,6 +389,7 @@
       "material": "speaker module",
       "step": "mechanical/e1-phone/out/bottom_speaker_module.step",
       "bytes": 15547,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           11.0,
@@ -398,6 +414,7 @@
       "material": "receiver",
       "step": "mechanical/e1-phone/out/earpiece_receiver.step",
       "bytes": 15525,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -6.0,
@@ -422,6 +439,7 @@
       "material": "MEMS mic",
       "step": "mechanical/e1-phone/out/bottom_mic.step",
       "bytes": 15677,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -19.75,
@@ -446,6 +464,7 @@
       "material": "MEMS mic",
       "step": "mechanical/e1-phone/out/top_mic.step",
       "bytes": 15625,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           16.25,
@@ -470,6 +489,7 @@
       "material": "single 13 MP simple-AF module, buried",
       "step": "mechanical/e1-phone/out/rear_camera_module.step",
       "bytes": 15512,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           16.0,
@@ -494,6 +514,7 @@
       "material": "open molded back-shell camera hole exposing the flush cover window",
       "step": "mechanical/e1-phone/out/rear_camera_shell_aperture.step",
       "bytes": 15619,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           15.7,
@@ -518,6 +539,7 @@
       "material": "integral orange camera aperture bevel/top land",
       "step": "mechanical/e1-phone/out/orange_rear_camera_bezel_top.step",
       "bytes": 15560,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           14.7,
@@ -542,6 +564,7 @@
       "material": "integral orange camera aperture bevel/bottom land",
       "step": "mechanical/e1-phone/out/orange_rear_camera_bezel_bottom.step",
       "bytes": 15560,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           14.7,
@@ -566,6 +589,7 @@
       "material": "integral orange camera aperture bevel/left land",
       "step": "mechanical/e1-phone/out/orange_rear_camera_bezel_left.step",
       "bytes": 15560,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           14.7,
@@ -590,6 +614,7 @@
       "material": "integral orange camera aperture bevel/right land",
       "step": "mechanical/e1-phone/out/orange_rear_camera_bezel_right.step",
       "bytes": 15560,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           26.3,
@@ -614,6 +639,7 @@
       "material": "open molded back-shell flash hole exposing the flush light-pipe window",
       "step": "mechanical/e1-phone/out/rear_flash_shell_aperture.step",
       "bytes": 15602,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           11.8,
@@ -638,6 +664,7 @@
       "material": "integral orange flash aperture bevel/top land",
       "step": "mechanical/e1-phone/out/orange_rear_flash_bezel_top.step",
       "bytes": 15599,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           11.35,
@@ -662,6 +689,7 @@
       "material": "integral orange flash aperture bevel/bottom land",
       "step": "mechanical/e1-phone/out/orange_rear_flash_bezel_bottom.step",
       "bytes": 15607,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           11.35,
@@ -686,6 +714,7 @@
       "material": "integral orange flash aperture bevel/left land",
       "step": "mechanical/e1-phone/out/orange_rear_flash_bezel_left.step",
       "bytes": 15581,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           11.35,
@@ -710,6 +739,7 @@
       "material": "integral orange flash aperture bevel/right land",
       "step": "mechanical/e1-phone/out/orange_rear_flash_bezel_right.step",
       "bytes": 15556,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           14.0,
@@ -734,6 +764,7 @@
       "material": "flush internal lens window, coplanar with flat back",
       "step": "mechanical/e1-phone/out/rear_camera_lens_window.step",
       "bytes": 15560,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           17.6,
@@ -758,6 +789,7 @@
       "material": "clear rear-camera sight tunnel from exterior through the back-shell aperture to the module",
       "step": "mechanical/e1-phone/out/rear_camera_optical_sight_tunnel.step",
       "bytes": 15599,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           17.45,
@@ -782,6 +814,7 @@
       "material": "single rear torch/flash LED, buried",
       "step": "mechanical/e1-phone/out/rear_flash_led.step",
       "bytes": 15565,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           12.4,
@@ -806,6 +839,7 @@
       "material": "flush internal torch light pipe window, coplanar with flat back",
       "step": "mechanical/e1-phone/out/rear_flash_led_window.step",
       "bytes": 15543,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           12.1,
@@ -830,6 +864,7 @@
       "material": "front MIPI camera",
       "step": "mechanical/e1-phone/out/front_camera_module.step",
       "bytes": 15616,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -22.25,
@@ -854,6 +889,7 @@
       "material": "under-glass aperture marker below cover glass",
       "step": "mechanical/e1-phone/out/front_camera_under_glass.step",
       "bytes": 15585,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -20.7,
@@ -878,6 +914,7 @@
       "material": "black PSA gasket above rear camera cover window",
       "step": "mechanical/e1-phone/out/rear_camera_cover_adhesive_top.step",
       "bytes": 15663,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           15.95,
@@ -902,6 +939,7 @@
       "material": "black PSA gasket below rear camera cover window",
       "step": "mechanical/e1-phone/out/rear_camera_cover_adhesive_bottom.step",
       "bytes": 15663,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           15.95,
@@ -926,6 +964,7 @@
       "material": "black PSA gasket left of rear camera cover window",
       "step": "mechanical/e1-phone/out/rear_camera_cover_adhesive_left.step",
       "bytes": 15633,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           15.895,
@@ -950,6 +989,7 @@
       "material": "black PSA gasket right of rear camera cover window",
       "step": "mechanical/e1-phone/out/rear_camera_cover_adhesive_right.step",
       "bytes": 15633,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           25.655,
@@ -974,6 +1014,7 @@
       "material": "black molded rear camera anti-dust light baffle",
       "step": "mechanical/e1-phone/out/rear_camera_light_baffle_top.step",
       "bytes": 15685,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           16.85,
@@ -998,6 +1039,7 @@
       "material": "black molded rear camera anti-dust light baffle",
       "step": "mechanical/e1-phone/out/rear_camera_light_baffle_bottom.step",
       "bytes": 15685,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           16.85,
@@ -1022,6 +1064,7 @@
       "material": "black printed mask datum around front under-glass camera",
       "step": "mechanical/e1-phone/out/front_camera_black_mask_window.step",
       "bytes": 15577,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -21.5,
@@ -1046,6 +1089,7 @@
       "material": "black PSA gasket above rear flash light-pipe window",
       "step": "mechanical/e1-phone/out/rear_flash_window_adhesive_top.step",
       "bytes": 15624,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           11.65,
@@ -1070,6 +1114,7 @@
       "material": "black PSA gasket below rear flash light-pipe window",
       "step": "mechanical/e1-phone/out/rear_flash_window_adhesive_bottom.step",
       "bytes": 15616,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           11.65,
@@ -1094,6 +1139,7 @@
       "material": "black PSA gasket left of rear flash light-pipe window",
       "step": "mechanical/e1-phone/out/rear_flash_window_adhesive_left.step",
       "bytes": 15573,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           11.6,
@@ -1118,6 +1164,7 @@
       "material": "black PSA gasket right of rear flash light-pipe window",
       "step": "mechanical/e1-phone/out/rear_flash_window_adhesive_right.step",
       "bytes": 15581,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           13.75,
@@ -1142,6 +1189,7 @@
       "material": "optically-black PSA bond ring above front under-glass camera window",
       "step": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_top.step",
       "bytes": 15611,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -21.1,
@@ -1166,6 +1214,7 @@
       "material": "optically-black PSA bond ring below front under-glass camera window",
       "step": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_bottom.step",
       "bytes": 15611,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -21.1,
@@ -1190,6 +1239,7 @@
       "material": "optically-black PSA bond ring left of front under-glass camera window",
       "step": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_left.step",
       "bytes": 15611,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -21.15,
@@ -1214,6 +1264,7 @@
       "material": "optically-black PSA bond ring right of front under-glass camera window",
       "step": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_right.step",
       "bytes": 15611,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -17.25,
@@ -1238,6 +1289,7 @@
       "material": "opaque PC stray-light septum between rear flash light-pipe and rear camera baffle column, molded to the back shell inner wall",
       "step": "mechanical/e1-phone/out/rear_flash_camera_septum.step",
       "bytes": 15599,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           14.9,
@@ -1262,6 +1314,7 @@
       "material": "orange molded cap",
       "step": "mechanical/e1-phone/out/power_button_cap.step",
       "bytes": 15560,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           38.55,
@@ -1286,6 +1339,7 @@
       "material": "orange molded cap",
       "step": "mechanical/e1-phone/out/volume_button_cap.step",
       "bytes": 15595,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -40.55,
@@ -1310,6 +1364,7 @@
       "material": "gasketed handset slot",
       "step": "mechanical/e1-phone/out/handset_acoustic_slot.step",
       "bytes": 15538,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -8.0,
@@ -1334,6 +1389,7 @@
       "material": "hydrophobic acoustic mesh behind handset slot",
       "step": "mechanical/e1-phone/out/handset_acoustic_mesh.step",
       "bytes": 15598,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -8.75,
@@ -1358,6 +1414,7 @@
       "material": "molded loudspeaker grille slot",
       "step": "mechanical/e1-phone/out/bottom_speaker_grille_slot_1.step",
       "bytes": 15642,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           10.9,
@@ -1382,6 +1439,7 @@
       "material": "molded loudspeaker grille slot",
       "step": "mechanical/e1-phone/out/bottom_speaker_grille_slot_2.step",
       "bytes": 15642,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           13.9,
@@ -1406,6 +1464,7 @@
       "material": "molded loudspeaker grille slot",
       "step": "mechanical/e1-phone/out/bottom_speaker_grille_slot_3.step",
       "bytes": 15642,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           16.9,
@@ -1430,6 +1489,7 @@
       "material": "molded loudspeaker grille slot",
       "step": "mechanical/e1-phone/out/bottom_speaker_grille_slot_4.step",
       "bytes": 15642,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           19.9,
@@ -1454,6 +1514,7 @@
       "material": "molded loudspeaker grille slot",
       "step": "mechanical/e1-phone/out/bottom_speaker_grille_slot_5.step",
       "bytes": 15642,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           22.9,
@@ -1478,6 +1539,7 @@
       "material": "hydrophobic dust mesh behind bottom speaker grille",
       "step": "mechanical/e1-phone/out/bottom_speaker_dust_mesh.step",
       "bytes": 15603,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           9.5,
@@ -1502,6 +1564,7 @@
       "material": "Hirose BM28-class 49-pin top-island board connector envelope",
       "step": "mechanical/e1-phone/out/split_interconnect_top_connector.step",
       "bytes": 15521,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           14.0,
@@ -1526,6 +1589,7 @@
       "material": "Hirose BM28-class 49-pin bottom-island board connector envelope",
       "step": "mechanical/e1-phone/out/split_interconnect_bottom_connector.step",
       "bytes": 15547,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           14.0,
@@ -1550,6 +1614,7 @@
       "material": "polyimide FPC side service loop envelope",
       "step": "mechanical/e1-phone/out/split_interconnect_side_flex.step",
       "bytes": 15594,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           33.3,
@@ -1574,6 +1639,7 @@
       "material": "polyimide FPC top connector tail envelope",
       "step": "mechanical/e1-phone/out/split_interconnect_top_flex_tail.step",
       "bytes": 15560,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           22.0,
@@ -1598,6 +1664,7 @@
       "material": "polyimide FPC bottom connector tail envelope",
       "step": "mechanical/e1-phone/out/split_interconnect_bottom_flex_tail.step",
       "bytes": 15586,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           22.0,
@@ -1622,6 +1689,7 @@
       "material": "molded microphone acoustic port",
       "step": "mechanical/e1-phone/out/bottom_microphone_port_1.step",
       "bytes": 15981,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -22.45,
@@ -1646,6 +1714,7 @@
       "material": "hydrophobic dust mesh behind bottom microphone port",
       "step": "mechanical/e1-phone/out/bottom_microphone_mesh_1.step",
       "bytes": 15655,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -22.7,
@@ -1670,6 +1739,7 @@
       "material": "molded microphone acoustic port",
       "step": "mechanical/e1-phone/out/bottom_microphone_port_2.step",
       "bytes": 15981,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -17.45,
@@ -1694,6 +1764,7 @@
       "material": "hydrophobic dust mesh behind bottom microphone port",
       "step": "mechanical/e1-phone/out/bottom_microphone_mesh_2.step",
       "bytes": 15655,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -17.7,
@@ -1718,6 +1789,7 @@
       "material": "molded top microphone acoustic port",
       "step": "mechanical/e1-phone/out/top_microphone_port.step",
       "bytes": 15929,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           17.55,
@@ -1742,6 +1814,7 @@
       "material": "hydrophobic dust mesh behind top microphone port",
       "step": "mechanical/e1-phone/out/top_microphone_mesh.step",
       "bytes": 15603,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           17.3,
@@ -1766,6 +1839,7 @@
       "material": "shore-a silicone side-key gasket behind power button",
       "step": "mechanical/e1-phone/out/power_button_elastomer_gasket.step",
       "bytes": 15594,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           38.1,
@@ -1790,6 +1864,7 @@
       "material": "molded PC+ABS side-key labyrinth rail",
       "step": "mechanical/e1-phone/out/power_button_labyrinth_upper_rail.step",
       "bytes": 15676,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           37.775,
@@ -1814,6 +1889,7 @@
       "material": "molded PC+ABS side-key labyrinth rail",
       "step": "mechanical/e1-phone/out/power_button_labyrinth_lower_rail.step",
       "bytes": 15676,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           37.775,
@@ -1838,6 +1914,7 @@
       "material": "shore-a silicone side-key gasket behind volume button",
       "step": "mechanical/e1-phone/out/volume_button_elastomer_gasket.step",
       "bytes": 15577,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -38.6,
@@ -1862,6 +1939,7 @@
       "material": "molded PC+ABS side-key labyrinth rail",
       "step": "mechanical/e1-phone/out/volume_button_labyrinth_upper_rail.step",
       "bytes": 15702,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -38.325,
@@ -1886,6 +1964,7 @@
       "material": "molded PC+ABS side-key labyrinth rail",
       "step": "mechanical/e1-phone/out/volume_button_labyrinth_lower_rail.step",
       "bytes": 15676,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -38.325,
@@ -1910,6 +1989,7 @@
       "material": "die-cut display adhesive",
       "step": "mechanical/e1-phone/out/screen_adhesive_top.step",
       "bytes": 15616,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -31.5,
@@ -1934,6 +2014,7 @@
       "material": "die-cut display adhesive",
       "step": "mechanical/e1-phone/out/screen_adhesive_bottom.step",
       "bytes": 15642,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -31.5,
@@ -1958,6 +2039,7 @@
       "material": "die-cut display adhesive",
       "step": "mechanical/e1-phone/out/screen_adhesive_left.step",
       "bytes": 15680,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -38.55,
@@ -1982,6 +2064,7 @@
       "material": "die-cut display adhesive",
       "step": "mechanical/e1-phone/out/screen_adhesive_right.step",
       "bytes": 15654,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           37.55,
@@ -2006,6 +2089,7 @@
       "material": "PC+ABS screw boss, core pin required",
       "step": "mechanical/e1-phone/out/orange_screw_boss_1.step",
       "bytes": 15573,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -37.1,
@@ -2030,6 +2114,7 @@
       "material": "PC+ABS screw boss, core pin required",
       "step": "mechanical/e1-phone/out/orange_screw_boss_2.step",
       "bytes": 15547,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           32.9,
@@ -2054,6 +2139,7 @@
       "material": "PC+ABS screw boss, core pin required",
       "step": "mechanical/e1-phone/out/orange_screw_boss_3.step",
       "bytes": 15599,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -37.1,
@@ -2078,6 +2164,7 @@
       "material": "PC+ABS screw boss, core pin required",
       "step": "mechanical/e1-phone/out/orange_screw_boss_4.step",
       "bytes": 15573,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           32.9,
@@ -2102,6 +2189,7 @@
       "material": "PC+ABS screw boss, core pin required",
       "step": "mechanical/e1-phone/out/orange_screw_boss_5.step",
       "bytes": 15573,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -37.1,
@@ -2126,6 +2214,7 @@
       "material": "PC+ABS screw boss, core pin required",
       "step": "mechanical/e1-phone/out/orange_screw_boss_6.step",
       "bytes": 15547,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           32.9,
@@ -2150,6 +2239,7 @@
       "material": "PC+ABS screw boss, core pin required",
       "step": "mechanical/e1-phone/out/orange_screw_boss_7.step",
       "bytes": 15599,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -37.1,
@@ -2174,6 +2264,7 @@
       "material": "PC+ABS screw boss, core pin required",
       "step": "mechanical/e1-phone/out/orange_screw_boss_8.step",
       "bytes": 15573,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           32.9,
@@ -2198,6 +2289,7 @@
       "material": "PC+ABS screw boss, core pin required",
       "step": "mechanical/e1-phone/out/orange_screw_boss_9.step",
       "bytes": 15573,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -37.1,
@@ -2222,6 +2314,7 @@
       "material": "PC+ABS screw boss, core pin required",
       "step": "mechanical/e1-phone/out/orange_screw_boss_10.step",
       "bytes": 15547,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           32.9,
@@ -2246,6 +2339,7 @@
       "material": "PC+ABS snap hook",
       "step": "mechanical/e1-phone/out/orange_snap_hook_1.step",
       "bytes": 15595,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -37.75,
@@ -2270,6 +2364,7 @@
       "material": "PC+ABS snap hook",
       "step": "mechanical/e1-phone/out/orange_snap_hook_2.step",
       "bytes": 15595,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -37.75,
@@ -2294,6 +2389,7 @@
       "material": "PC+ABS snap hook",
       "step": "mechanical/e1-phone/out/orange_snap_hook_3.step",
       "bytes": 15621,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -37.75,
@@ -2318,6 +2414,7 @@
       "material": "PC+ABS snap hook",
       "step": "mechanical/e1-phone/out/orange_snap_hook_4.step",
       "bytes": 15621,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -37.75,
@@ -2342,6 +2439,7 @@
       "material": "PC+ABS snap hook",
       "step": "mechanical/e1-phone/out/orange_snap_hook_5.step",
       "bytes": 15569,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           36.45,
@@ -2366,6 +2464,7 @@
       "material": "PC+ABS snap hook",
       "step": "mechanical/e1-phone/out/orange_snap_hook_6.step",
       "bytes": 15569,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           36.45,
@@ -2390,6 +2489,7 @@
       "material": "PC+ABS snap hook",
       "step": "mechanical/e1-phone/out/orange_snap_hook_7.step",
       "bytes": 15597,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           36.45,
@@ -2414,6 +2514,7 @@
       "material": "PC+ABS snap hook",
       "step": "mechanical/e1-phone/out/orange_snap_hook_8.step",
       "bytes": 15597,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           36.45,
@@ -2438,6 +2539,7 @@
       "material": "battery locating rib",
       "step": "mechanical/e1-phone/out/orange_battery_left_rib.step",
       "bytes": 15622,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -29.375,
@@ -2462,6 +2564,7 @@
       "material": "battery locating rib",
       "step": "mechanical/e1-phone/out/orange_battery_right_rib.step",
       "bytes": 15596,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           28.625,
@@ -2486,6 +2589,7 @@
       "material": "USB-C insertion load saddle",
       "step": "mechanical/e1-phone/out/orange_usb_reinforcement_saddle.step",
       "bytes": 15532,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -9.0,
@@ -2510,6 +2614,7 @@
       "material": "board-mounted display/touch FPC connector",
       "step": "mechanical/e1-phone/out/display_fpc_connector.step",
       "bytes": 15605,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           13.5,
@@ -2534,6 +2639,7 @@
       "material": "display FPC bend keepout",
       "step": "mechanical/e1-phone/out/display_fpc_bend_keepout.step",
       "bytes": 15523,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           12.0,
@@ -2558,6 +2664,7 @@
       "material": "molded loudspeaker rear chamber",
       "step": "mechanical/e1-phone/out/bottom_speaker_acoustic_chamber.step",
       "bytes": 15566,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           10.1,
@@ -2582,6 +2689,7 @@
       "material": "compressed earpiece acoustic gasket",
       "step": "mechanical/e1-phone/out/earpiece_gasket.step",
       "bytes": 15596,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -7.25,
@@ -2606,6 +2714,7 @@
       "material": "PC+ABS corner gusset tying corner boss to side frame",
       "step": "mechanical/e1-phone/out/orange_corner_rib_1.step",
       "bytes": 15536,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -35.0,
@@ -2630,6 +2739,7 @@
       "material": "PC+ABS corner gusset tying corner boss to side frame",
       "step": "mechanical/e1-phone/out/orange_corner_rib_1_leg.step",
       "bytes": 15528,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -35.0,
@@ -2654,6 +2764,7 @@
       "material": "PC+ABS corner gusset tying corner boss to side frame",
       "step": "mechanical/e1-phone/out/orange_corner_rib_2.step",
       "bytes": 15510,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           28.0,
@@ -2678,6 +2789,7 @@
       "material": "PC+ABS corner gusset tying corner boss to side frame",
       "step": "mechanical/e1-phone/out/orange_corner_rib_2_leg.step",
       "bytes": 15510,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           34.1,
@@ -2702,6 +2814,7 @@
       "material": "PC+ABS corner gusset tying corner boss to side frame",
       "step": "mechanical/e1-phone/out/orange_corner_rib_3.step",
       "bytes": 15554,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -35.0,
@@ -2726,6 +2839,7 @@
       "material": "PC+ABS corner gusset tying corner boss to side frame",
       "step": "mechanical/e1-phone/out/orange_corner_rib_3_leg.step",
       "bytes": 15554,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -35.0,
@@ -2750,6 +2864,7 @@
       "material": "PC+ABS corner gusset tying corner boss to side frame",
       "step": "mechanical/e1-phone/out/orange_corner_rib_4.step",
       "bytes": 15528,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           28.0,
@@ -2774,6 +2889,7 @@
       "material": "PC+ABS corner gusset tying corner boss to side frame",
       "step": "mechanical/e1-phone/out/orange_corner_rib_4_leg.step",
       "bytes": 15536,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           34.1,
@@ -2798,6 +2914,7 @@
       "material": "PORON-style microcellular polyurethane foam, low compression set",
       "step": "mechanical/e1-phone/out/glass_perimeter_cushion_top.step",
       "bytes": 15631,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -31.05,
@@ -2822,6 +2939,7 @@
       "material": "PORON-style microcellular polyurethane foam, low compression set",
       "step": "mechanical/e1-phone/out/glass_perimeter_cushion_bottom.step",
       "bytes": 15657,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -31.05,
@@ -2846,6 +2964,7 @@
       "material": "PORON-style microcellular polyurethane foam, low compression set",
       "step": "mechanical/e1-phone/out/glass_perimeter_cushion_left.step",
       "bytes": 15665,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -38.55,
@@ -2870,6 +2989,7 @@
       "material": "PORON-style microcellular polyurethane foam, low compression set",
       "step": "mechanical/e1-phone/out/glass_perimeter_cushion_right.step",
       "bytes": 15639,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           37.55,
@@ -2894,6 +3014,7 @@
       "material": "top plastic antenna keepout volume",
       "step": "mechanical/e1-phone/out/cellular_top_antenna_keepout.step",
       "bytes": 15532,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -31.0,
@@ -2918,6 +3039,7 @@
       "material": "bottom plastic antenna keepout volume",
       "step": "mechanical/e1-phone/out/cellular_bottom_antenna_keepout.step",
       "bytes": 15558,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -31.0,
@@ -2942,6 +3064,7 @@
       "material": "side Wi-Fi/Bluetooth antenna keepout volume",
       "step": "mechanical/e1-phone/out/wifi_bt_side_antenna_keepout.step",
       "bytes": 15498,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           4.0,
@@ -2966,6 +3089,7 @@
       "material": "Qorvo QPC1252Q antenna aperture/band-switch tuner",
       "step": "mechanical/e1-phone/out/antenna_aperture_tuner.step",
       "bytes": 15593,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -28.0,
@@ -2990,6 +3114,7 @@
       "material": "stamped RF/SoC shield can",
       "step": "mechanical/e1-phone/out/soc_shield_can.step",
       "bytes": 15505,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -16.0,
@@ -3014,6 +3139,7 @@
       "material": "stamped PMIC shield can",
       "step": "mechanical/e1-phone/out/pmic_shield_can.step",
       "bytes": 15480,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           7.0,
@@ -3038,6 +3164,7 @@
       "material": "stamped radio shield can",
       "step": "mechanical/e1-phone/out/radio_shield_can.step",
       "bytes": 15523,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -31.0,
@@ -3062,6 +3189,7 @@
       "material": "Quectel RG255C RedCap LGA module",
       "step": "mechanical/e1-phone/out/cellular_lga_module_keepout.step",
       "bytes": 15531,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -30.0,
@@ -3086,6 +3214,7 @@
       "material": "Murata Type 2EA Wi-Fi 6E + Bluetooth module",
       "step": "mechanical/e1-phone/out/wifi_bt_module_keepout.step",
       "bytes": 15579,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           13.75,
@@ -3110,6 +3239,7 @@
       "material": "260-pin 0.5 mm SODIMM compute-SoM carrier connector envelope",
       "step": "mechanical/e1-phone/out/compute_som_sodimm_connector.step",
       "bytes": 15575,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -32.5,
@@ -3134,6 +3264,7 @@
       "material": "Firefly Core-3566JD4-class SoM daughterboard swept keepout; non-release fit envelope",
       "step": "mechanical/e1-phone/out/compute_som_daughterboard_keepout.step",
       "bytes": 15505,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -34.0,
@@ -3158,6 +3289,7 @@
       "material": "visual marker for application processor package under SoC shield",
       "step": "mechanical/e1-phone/out/soc_package_marker.step",
       "bytes": 15605,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -13.5,
@@ -3182,6 +3314,7 @@
       "material": "visual marker for LPDDR memory package near SoC",
       "step": "mechanical/e1-phone/out/dram_package_marker.step",
       "bytes": 15601,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -11.75,
@@ -3206,6 +3339,7 @@
       "material": "visual marker for eMMC/UFS storage package",
       "step": "mechanical/e1-phone/out/storage_package_marker.step",
       "bytes": 15597,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           5.25,
@@ -3230,6 +3364,7 @@
       "material": "visual marker for PMIC package under power shield",
       "step": "mechanical/e1-phone/out/pmic_package_marker.step",
       "bytes": 15537,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           9.0,
@@ -3254,6 +3389,7 @@
       "material": "visual marker for TPS65987 USB-PD controller package and exposed pads",
       "step": "mechanical/e1-phone/out/usb_pd_controller_package_marker.step",
       "bytes": 15589,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           2.5,
@@ -3278,6 +3414,7 @@
       "material": "visual marker for MAX77860 charger WLP package",
       "step": "mechanical/e1-phone/out/charger_package_marker.step",
       "bytes": 15576,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -6.0,
@@ -3302,6 +3439,7 @@
       "material": "visual marker for 4-pin battery pack connector or welded FPC landing",
       "step": "mechanical/e1-phone/out/battery_connector_package_marker.step",
       "bytes": 15580,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -9.0,
@@ -3326,6 +3464,7 @@
       "material": "visual marker for 48-pin audio codec package in bottom audio region",
       "step": "mechanical/e1-phone/out/audio_codec_package_marker.step",
       "bytes": 15606,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -22.0,
@@ -3350,6 +3489,7 @@
       "material": "visual marker for RF transceiver/front-end package under radio shield",
       "step": "mechanical/e1-phone/out/rf_transceiver_package_marker.step",
       "bytes": 15666,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -25.75,
@@ -3374,6 +3514,7 @@
       "material": "visual marker for GNSS/RF low-noise amplifier placement",
       "step": "mechanical/e1-phone/out/gnss_lna_package_marker.step",
       "bytes": 15597,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -31.5,
@@ -3398,6 +3539,7 @@
       "material": "visual marker for display backlight/bias power IC package",
       "step": "mechanical/e1-phone/out/backlight_bias_package_marker.step",
       "bytes": 15554,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           22.0,
@@ -3422,6 +3564,7 @@
       "material": "visual marker for battery fuel-gauge WLCSP package",
       "step": "mechanical/e1-phone/out/fuel_gauge_package_marker.step",
       "bytes": 15692,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -12.95,
@@ -3446,6 +3589,7 @@
       "material": "visual marker for haptic driver WLCSP package",
       "step": "mechanical/e1-phone/out/haptic_driver_package_marker.step",
       "bytes": 15614,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           19.3,
@@ -3470,6 +3614,7 @@
       "material": "visual marker for USIM level-shifter/ESD package",
       "step": "mechanical/e1-phone/out/usim_levelshift_package_marker.step",
       "bytes": 15640,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           24.7,
@@ -3494,6 +3639,7 @@
       "material": "visual marker for MFF2 eSIM package",
       "step": "mechanical/e1-phone/out/esim_package_marker.step",
       "bytes": 15554,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           27.0,
@@ -3518,6 +3664,7 @@
       "material": "visual marker for NFC controller package",
       "step": "mechanical/e1-phone/out/nfc_controller_package_marker.step",
       "bytes": 15606,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -28.5,
@@ -3542,6 +3689,7 @@
       "material": "visual marker for NFC loop matching network",
       "step": "mechanical/e1-phone/out/nfc_loop_match_marker.step",
       "bytes": 15593,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -32.0,
@@ -3566,6 +3714,7 @@
       "material": "visual marker for always-on sensor hub package",
       "step": "mechanical/e1-phone/out/sensor_hub_package_marker.step",
       "bytes": 15550,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           5.5,
@@ -3590,6 +3739,7 @@
       "material": "visual marker for six-channel ESD protection arrays",
       "step": "mechanical/e1-phone/out/esd_array_6ch_marker.step",
       "bytes": 15580,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -1.0,
@@ -3614,6 +3764,7 @@
       "material": "visual marker for two-terminal TVS diodes",
       "step": "mechanical/e1-phone/out/tvs_diode_2p_marker.step",
       "bytes": 15597,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           4.4,
@@ -3638,6 +3789,7 @@
       "material": "visual marker for one-millimeter board test pads",
       "step": "mechanical/e1-phone/out/testpoint_1mm_marker.step",
       "bytes": 15606,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           9.5,
@@ -3662,6 +3814,7 @@
       "material": "visual marker for one-millimeter global fiducials",
       "step": "mechanical/e1-phone/out/fiducial_1mm_marker.step",
       "bytes": 15596,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           12.5,
@@ -3686,6 +3839,7 @@
       "material": "visual marker for 1.2 mm mounting-hole annular keepouts",
       "step": "mechanical/e1-phone/out/mounting_hole_1p2_marker.step",
       "bytes": 15631,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           15.4,
@@ -3710,6 +3864,7 @@
       "material": "visual marker for 0402 resistor packages",
       "step": "mechanical/e1-phone/out/r0402_component_marker.step",
       "bytes": 15645,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -8.5,
@@ -3734,6 +3889,7 @@
       "material": "visual marker for 0402 capacitor packages",
       "step": "mechanical/e1-phone/out/c0402_component_marker.step",
       "bytes": 15671,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -11.5,
@@ -3758,6 +3914,7 @@
       "material": "visual marker for 0402 inductor/ferrite packages",
       "step": "mechanical/e1-phone/out/l0402_component_marker.step",
       "bytes": 15632,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -14.5,
@@ -3782,6 +3939,7 @@
       "material": "visual marker for RF pi matching component triplets",
       "step": "mechanical/e1-phone/out/pi_match_0402_marker.step",
       "bytes": 15683,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -20.2,
@@ -3806,6 +3964,7 @@
       "material": "visual marker for four-channel RC conditioning arrays",
       "step": "mechanical/e1-phone/out/rc_array_4ch_marker.step",
       "bytes": 15623,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -24.0,
@@ -3830,6 +3989,7 @@
       "material": "visual marker for 1206 current-shunt packages",
       "step": "mechanical/e1-phone/out/shunt_1206_marker.step",
       "bytes": 15640,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -29.6,
@@ -3854,6 +4014,7 @@
       "material": "development coax/feed envelope from Wi-Fi/Bluetooth module toward side antenna keepout",
       "step": "mechanical/e1-phone/out/wifi_bt_rf_feed_development_envelope.step",
       "bytes": 15661,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           23.5,
@@ -3878,6 +4039,7 @@
       "material": "development coax/feed envelope from cellular module toward top antenna keepout",
       "step": "mechanical/e1-phone/out/cellular_rf_feed_development_envelope.step",
       "bytes": 15687,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -30.225,
@@ -3902,6 +4064,7 @@
       "material": "display/touch FPC tail route marker from connector into the display stack",
       "step": "mechanical/e1-phone/out/display_fpc_tail.step",
       "bytes": 15523,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           19.0,
@@ -3926,6 +4089,7 @@
       "material": "rear camera CSI FPC tail marker from top board connector to camera module",
       "step": "mechanical/e1-phone/out/rear_camera_fpc_tail.step",
       "bytes": 15536,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           2.0,
@@ -3950,6 +4114,7 @@
       "material": "front camera CSI FPC tail marker under the cover-glass camera region",
       "step": "mechanical/e1-phone/out/front_camera_fpc_tail.step",
       "bytes": 15601,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -22.5,
@@ -3974,6 +4139,7 @@
       "material": "power/volume side-key flex tail along the right side wall",
       "step": "mechanical/e1-phone/out/side_key_flex_tail.step",
       "bytes": 15549,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           30.5,
@@ -3998,6 +4164,7 @@
       "material": "battery pack positive/negative/NTC/ID lead flex landing on bottom island",
       "step": "mechanical/e1-phone/out/battery_connector_lead_flex.step",
       "bytes": 15592,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -10.0,
@@ -4022,6 +4189,7 @@
       "material": "USB-C VBUS/CC/USB2 escape tail marker on the bottom island",
       "step": "mechanical/e1-phone/out/usb_c_power_data_escape_tail.step",
       "bytes": 15566,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -9.0,
@@ -4046,6 +4214,7 @@
       "material": "board-level USB-C VBUS/CC/USB2 route marker from receptacle to TPS65987",
       "step": "mechanical/e1-phone/out/usb_pd_controller_escape_trace_marker.step",
       "bytes": 15588,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -0.7,
@@ -4070,6 +4239,7 @@
       "material": "board-level PD controller to charger VBUS/SYS/I2C/IRQ route marker",
       "step": "mechanical/e1-phone/out/pd_charger_control_trace_marker.step",
       "bytes": 15592,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -3.5,
@@ -4094,6 +4264,7 @@
       "material": "board-level charger to battery connector VBAT/SYS/NTC/ID route marker",
       "step": "mechanical/e1-phone/out/charger_battery_power_sense_trace_marker.step",
       "bytes": 15566,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -7.0,
@@ -4113,11 +4284,137 @@
       }
     },
     {
+      "name": "display_bias_power_flex_marker",
+      "role": "flex/cable",
+      "material": "display bias/backlight AVDD/AVEE flex marker from bias IC to display connector",
+      "step": "mechanical/e1-phone/out/display_bias_power_flex_marker.step",
+      "bytes": 15545,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          18.0,
+          40.5,
+          -1.41
+        ],
+        "max": [
+          24.0,
+          41.5,
+          -1.29
+        ],
+        "span": [
+          6.0,
+          1.0,
+          0.12
+        ]
+      }
+    },
+    {
+      "name": "rear_camera_power_flex_marker",
+      "role": "flex/cable",
+      "material": "rear camera AVDD/DVDD/reset power-control flex marker",
+      "step": "mechanical/e1-phone/out/rear_camera_power_flex_marker.step",
+      "bytes": 15558,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          8.0,
+          58.15,
+          -1.41
+        ],
+        "max": [
+          16.0,
+          58.85,
+          -1.29
+        ],
+        "span": [
+          8.0,
+          0.7,
+          0.12
+        ]
+      }
+    },
+    {
+      "name": "front_camera_power_flex_marker",
+      "role": "flex/cable",
+      "material": "front camera AVDD/DVDD/reset power-control flex marker",
+      "step": "mechanical/e1-phone/out/front_camera_power_flex_marker.step",
+      "bytes": 15627,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          -18.5,
+          58.15,
+          -1.41
+        ],
+        "max": [
+          -11.5,
+          58.85,
+          -1.29
+        ],
+        "span": [
+          7.0,
+          0.7,
+          0.12
+        ]
+      }
+    },
+    {
+      "name": "wifi_bt_host_control_trace_marker",
+      "role": "PCB trace marker",
+      "material": "Wi-Fi/Bluetooth PCIe/SDIO/UART/enable host-control route marker",
+      "step": "mechanical/e1-phone/out/wifi_bt_host_control_trace_marker.step",
+      "bytes": 15549,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          11.5,
+          35.0,
+          -1.41
+        ],
+        "max": [
+          24.5,
+          36.0,
+          -1.29
+        ],
+        "span": [
+          13.0,
+          1.0,
+          0.12
+        ]
+      }
+    },
+    {
+      "name": "cellular_host_control_trace_marker",
+      "role": "PCB trace marker",
+      "material": "cellular USB2/PCIe/reset/disable host-control route marker",
+      "step": "mechanical/e1-phone/out/cellular_host_control_trace_marker.step",
+      "bytes": 15549,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          -25.0,
+          38.0,
+          -1.41
+        ],
+        "max": [
+          -13.0,
+          39.0,
+          -1.29
+        ],
+        "span": [
+          12.0,
+          1.0,
+          0.12
+        ]
+      }
+    },
+    {
       "name": "bottom_speaker_lead_pair",
       "role": "flex/cable",
       "material": "bottom speaker differential lead pair marker",
       "step": "mechanical/e1-phone/out/bottom_speaker_lead_pair.step",
       "bytes": 15566,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -5.0,
@@ -4142,6 +4439,7 @@
       "material": "bottom microphone bias/data flex lead marker",
       "step": "mechanical/e1-phone/out/bottom_microphone_flex_leads.step",
       "bytes": 15597,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -22.0,
@@ -4166,6 +4464,7 @@
       "material": "top microphone PDM flex tail marker from top microphone port region to top PCB island",
       "step": "mechanical/e1-phone/out/top_microphone_flex_tail.step",
       "bytes": 15579,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -27.4,
@@ -4190,6 +4489,7 @@
       "material": "earpiece receiver lead flex marker behind the handset acoustic slot",
       "step": "mechanical/e1-phone/out/earpiece_receiver_lead_flex.step",
       "bytes": 15544,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -7.0,
@@ -4214,6 +4514,7 @@
       "material": "LRA haptic drive flex tail marker",
       "step": "mechanical/e1-phone/out/haptic_flex_tail.step",
       "bytes": 15575,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           18.0,
@@ -4233,11 +4534,37 @@
       }
     },
     {
+      "name": "sensor_hub_i2c_flex_marker",
+      "role": "flex/cable",
+      "material": "sensor hub I2C flex/trace marker",
+      "step": "mechanical/e1-phone/out/sensor_hub_i2c_flex_marker.step",
+      "bytes": 15592,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          -12.5,
+          34.1,
+          -1.41
+        ],
+        "max": [
+          -7.5,
+          34.9,
+          -1.29
+        ],
+        "span": [
+          5.0,
+          0.8,
+          0.12
+        ]
+      }
+    },
+    {
       "name": "sim_esim_signal_flex_marker",
       "role": "flex/cable",
       "material": "SIM/eSIM signal route marker to the side tray region",
       "step": "mechanical/e1-phone/out/sim_esim_signal_flex_marker.step",
       "bytes": 15597,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           28.5,
@@ -4262,6 +4589,7 @@
       "material": "NFC controller to loop-match antenna flex marker for NFC_RF_P/N",
       "step": "mechanical/e1-phone/out/nfc_loop_antenna_flex_marker.step",
       "bytes": 15571,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           15.0,
@@ -4286,6 +4614,7 @@
       "material": "development cellular diversity RF feed envelope",
       "step": "mechanical/e1-phone/out/cellular_div_rf_feed_development_envelope.step",
       "bytes": 15635,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -24.225,
@@ -4310,6 +4639,7 @@
       "material": "development GNSS RF feed envelope",
       "step": "mechanical/e1-phone/out/cellular_gnss_rf_feed_development_envelope.step",
       "bytes": 15635,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -28.225,
@@ -4334,6 +4664,7 @@
       "material": "development second Wi-Fi/Bluetooth RF feed envelope",
       "step": "mechanical/e1-phone/out/wifi_bt_rf1_feed_development_envelope.step",
       "bytes": 15609,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           22.0,
@@ -4353,11 +4684,62 @@
       }
     },
     {
+      "name": "soc_shield_ground_spring_marker",
+      "role": "ground spring",
+      "material": "SoC shield can to PCB ground spring marker",
+      "step": "mechanical/e1-phone/out/soc_shield_ground_spring_marker.step",
+      "bytes": 15605,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          -7.3,
+          24.15,
+          -1.21
+        ],
+        "max": [
+          -3.7,
+          24.85,
+          -0.99
+        ],
+        "span": [
+          3.6,
+          0.7,
+          0.22
+        ]
+      }
+    },
+    {
+      "name": "radio_shield_ground_spring_marker",
+      "role": "ground spring",
+      "material": "radio shield can to PCB/chassis ground spring marker",
+      "step": "mechanical/e1-phone/out/radio_shield_ground_spring_marker.step",
+      "bytes": 15631,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          -24.8,
+          32.65,
+          -1.21
+        ],
+        "max": [
+          -21.2,
+          33.35,
+          -0.99
+        ],
+        "span": [
+          3.6,
+          0.7,
+          0.22
+        ]
+      }
+    },
+    {
       "name": "haptic_lra",
       "role": "haptics",
       "material": "compact 0612 X-axis linear resonant actuator",
       "step": "mechanical/e1-phone/out/haptic_lra.step",
       "bytes": 15571,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           32.5,
@@ -4382,6 +4764,7 @@
       "material": "side SIM tray keepout",
       "step": "mechanical/e1-phone/out/sim_tray_keepout.step",
       "bytes": 15557,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           24.55,
@@ -4406,6 +4789,7 @@
       "material": "orange side service tray outline",
       "step": "mechanical/e1-phone/out/sim_tray_outline.step",
       "bytes": 15553,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           38.45,
@@ -4430,6 +4814,7 @@
       "material": "rear camera cover glass",
       "step": "mechanical/e1-phone/out/rear_camera_cover_glass.step",
       "bytes": 15562,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           16.4,
@@ -4454,6 +4839,7 @@
       "material": "recessed regulatory/service label pad",
       "step": "mechanical/e1-phone/out/service_label_recess.step",
       "bytes": 15583,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -16.0,
@@ -4478,6 +4864,7 @@
       "material": "from terminal marker for display_touch_fpc on display_fpc_connector; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/display_touch_fpc_from_terminal.step",
       "bytes": 15647,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           23.61,
@@ -4502,6 +4889,7 @@
       "material": "to terminal marker for display_touch_fpc on display_lcm; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/display_touch_fpc_to_terminal.step",
       "bytes": 15647,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -0.775,
@@ -4526,6 +4914,7 @@
       "material": "from terminal marker for rear_camera_csi_fpc on main_pcb; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/rear_camera_csi_fpc_from_terminal.step",
       "bytes": 15699,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -29.225,
@@ -4550,6 +4939,7 @@
       "material": "to terminal marker for rear_camera_csi_fpc on rear_camera_module; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/rear_camera_csi_fpc_to_terminal.step",
       "bytes": 15673,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           21.582,
@@ -4574,6 +4964,7 @@
       "material": "from terminal marker for front_camera_csi_fpc on main_pcb; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/front_camera_csi_fpc_from_terminal.step",
       "bytes": 15699,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -17.625,
@@ -4598,6 +4989,7 @@
       "material": "to terminal marker for front_camera_csi_fpc on front_camera_module; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/front_camera_csi_fpc_to_terminal.step",
       "bytes": 15699,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -18.925,
@@ -4622,6 +5014,7 @@
       "material": "from terminal marker for side_key_flex on main_pcb; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/side_key_flex_from_terminal.step",
       "bytes": 15673,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -6.025,
@@ -4646,6 +5039,7 @@
       "material": "to terminal marker for side_key_flex on power_button_cap; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/side_key_flex_to_terminal.step",
       "bytes": 15673,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           40.332,
@@ -4670,6 +5064,7 @@
       "material": "from terminal marker for battery_lead_flex on battery_pouch; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/battery_lead_flex_from_terminal.step",
       "bytes": 15647,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -0.775,
@@ -4694,6 +5089,7 @@
       "material": "to terminal marker for battery_lead_flex on main_pcb; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/battery_lead_flex_to_terminal.step",
       "bytes": 15647,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           5.575,
@@ -4718,6 +5114,7 @@
       "material": "from terminal marker for usb_c_escape_tail on usb_c_receptacle; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/usb_c_escape_tail_from_terminal.step",
       "bytes": 15673,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -0.775,
@@ -4742,6 +5139,7 @@
       "material": "to terminal marker for usb_c_escape_tail on main_pcb; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/usb_c_escape_tail_to_terminal.step",
       "bytes": 15673,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           17.175,
@@ -4766,6 +5164,7 @@
       "material": "from terminal marker for usb_c_to_pd_controller_escape on usb_c_receptacle; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/usb_c_to_pd_controller_escape_from_terminal.step",
       "bytes": 15664,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -0.225,
@@ -4790,6 +5189,7 @@
       "material": "to terminal marker for usb_c_to_pd_controller_escape on usb_pd_controller_package_marker; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/usb_c_to_pd_controller_escape_to_terminal.step",
       "bytes": 15673,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           6.337,
@@ -4814,6 +5214,7 @@
       "material": "from terminal marker for pd_controller_to_charger_control on usb_pd_controller_package_marker; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/pd_controller_to_charger_control_from_terminal.step",
       "bytes": 15673,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           6.883,
@@ -4838,6 +5239,7 @@
       "material": "to terminal marker for pd_controller_to_charger_control on charger_package_marker; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/pd_controller_to_charger_control_to_terminal.step",
       "bytes": 15699,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -4.835,
@@ -4862,6 +5264,7 @@
       "material": "from terminal marker for charger_to_battery_power_sense on charger_package_marker; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/charger_to_battery_power_sense_from_terminal.step",
       "bytes": 15699,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -4.287,
@@ -4886,6 +5289,7 @@
       "material": "to terminal marker for charger_to_battery_power_sense on battery_connector_package_marker; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/charger_to_battery_power_sense_to_terminal.step",
       "bytes": 15699,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -6.872,
@@ -4905,11 +5309,62 @@
       }
     },
     {
-      "name": "bottom_speaker_lead_pair_from_terminal",
+      "name": "display_bias_power_flex_from_terminal",
       "role": "connection terminal",
-      "material": "from terminal marker for bottom_speaker_lead_pair on main_pcb; local CAD connection evidence only",
-      "step": "mechanical/e1-phone/out/bottom_speaker_lead_pair_from_terminal.step",
+      "material": "from terminal marker for display_bias_power_flex on backlight_bias_package_marker; local CAD connection evidence only",
+      "step": "mechanical/e1-phone/out/display_bias_power_flex_from_terminal.step",
       "bytes": 15673,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          24.707,
+          35.786,
+          5.54
+        ],
+        "max": [
+          25.157,
+          36.006,
+          5.56
+        ],
+        "span": [
+          0.45,
+          0.22,
+          0.02
+        ]
+      }
+    },
+    {
+      "name": "display_bias_power_flex_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for display_bias_power_flex on display_fpc_connector; local CAD connection evidence only",
+      "step": "mechanical/e1-phone/out/display_bias_power_flex_to_terminal.step",
+      "bytes": 15673,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          23.103,
+          55.674,
+          5.54
+        ],
+        "max": [
+          23.553,
+          55.894,
+          5.56
+        ],
+        "span": [
+          0.45,
+          0.22,
+          0.02
+        ]
+      }
+    },
+    {
+      "name": "rear_camera_power_flex_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for rear_camera_power_flex on main_pcb; local CAD connection evidence only",
+      "step": "mechanical/e1-phone/out/rear_camera_power_flex_from_terminal.step",
+      "bytes": 15673,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           28.775,
@@ -4929,11 +5384,212 @@
       }
     },
     {
+      "name": "rear_camera_power_flex_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for rear_camera_power_flex on rear_camera_module; local CAD connection evidence only",
+      "step": "mechanical/e1-phone/out/rear_camera_power_flex_to_terminal.step",
+      "bytes": 15673,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          21.065,
+          58.489,
+          5.54
+        ],
+        "max": [
+          21.515,
+          58.709,
+          5.56
+        ],
+        "span": [
+          0.45,
+          0.22,
+          0.02
+        ]
+      }
+    },
+    {
+      "name": "front_camera_power_flex_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for front_camera_power_flex on main_pcb; local CAD connection evidence only",
+      "step": "mechanical/e1-phone/out/front_camera_power_flex_from_terminal.step",
+      "bytes": 15673,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          -29.225,
+          63.89,
+          5.54
+        ],
+        "max": [
+          -28.775,
+          64.11,
+          5.56
+        ],
+        "span": [
+          0.45,
+          0.22,
+          0.02
+        ]
+      }
+    },
+    {
+      "name": "front_camera_power_flex_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for front_camera_power_flex on front_camera_module; local CAD connection evidence only",
+      "step": "mechanical/e1-phone/out/front_camera_power_flex_to_terminal.step",
+      "bytes": 15699,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          -19.454,
+          68.508,
+          5.54
+        ],
+        "max": [
+          -19.004,
+          68.728,
+          5.56
+        ],
+        "span": [
+          0.45,
+          0.22,
+          0.02
+        ]
+      }
+    },
+    {
+      "name": "wifi_bt_host_control_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for wifi_bt_host_control on wifi_bt_module_keepout; local CAD connection evidence only",
+      "step": "mechanical/e1-phone/out/wifi_bt_host_control_from_terminal.step",
+      "bytes": 15673,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          20.637,
+          42.421,
+          5.54
+        ],
+        "max": [
+          21.087,
+          42.641,
+          5.56
+        ],
+        "span": [
+          0.45,
+          0.22,
+          0.02
+        ]
+      }
+    },
+    {
+      "name": "wifi_bt_host_control_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for wifi_bt_host_control on soc_package_marker; local CAD connection evidence only",
+      "step": "mechanical/e1-phone/out/wifi_bt_host_control_to_terminal.step",
+      "bytes": 15673,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          -6.787,
+          55.803,
+          5.54
+        ],
+        "max": [
+          -6.337,
+          56.023,
+          5.56
+        ],
+        "span": [
+          0.45,
+          0.22,
+          0.02
+        ]
+      }
+    },
+    {
+      "name": "cellular_host_control_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for cellular_host_control on cellular_lga_module_keepout; local CAD connection evidence only",
+      "step": "mechanical/e1-phone/out/cellular_host_control_from_terminal.step",
+      "bytes": 15699,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          -15.482,
+          45.873,
+          5.54
+        ],
+        "max": [
+          -15.032,
+          46.093,
+          5.56
+        ],
+        "span": [
+          0.45,
+          0.22,
+          0.02
+        ]
+      }
+    },
+    {
+      "name": "cellular_host_control_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for cellular_host_control on soc_package_marker; local CAD connection evidence only",
+      "step": "mechanical/e1-phone/out/cellular_host_control_to_terminal.step",
+      "bytes": 15673,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          -7.332,
+          55.733,
+          5.54
+        ],
+        "max": [
+          -6.882,
+          55.953,
+          5.56
+        ],
+        "span": [
+          0.45,
+          0.22,
+          0.02
+        ]
+      }
+    },
+    {
+      "name": "bottom_speaker_lead_pair_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for bottom_speaker_lead_pair on main_pcb; local CAD connection evidence only",
+      "step": "mechanical/e1-phone/out/bottom_speaker_lead_pair_from_terminal.step",
+      "bytes": 15673,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          -17.625,
+          63.89,
+          5.54
+        ],
+        "max": [
+          -17.175,
+          64.11,
+          5.56
+        ],
+        "span": [
+          0.45,
+          0.22,
+          0.02
+        ]
+      }
+    },
+    {
       "name": "bottom_speaker_lead_pair_to_terminal",
       "role": "connection terminal",
       "material": "to terminal marker for bottom_speaker_lead_pair on bottom_speaker_module; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/bottom_speaker_lead_pair_to_terminal.step",
       "bytes": 15673,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           17.983,
@@ -4957,15 +5613,16 @@
       "role": "connection terminal",
       "material": "from terminal marker for bottom_microphone_flex on main_pcb; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/bottom_microphone_flex_from_terminal.step",
-      "bytes": 15673,
+      "bytes": 15647,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
-          -29.225,
+          -6.025,
           63.89,
           5.54
         ],
         "max": [
-          -28.775,
+          -5.575,
           64.11,
           5.56
         ],
@@ -4982,6 +5639,7 @@
       "material": "to terminal marker for bottom_microphone_flex on bottom_mic; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/bottom_microphone_flex_to_terminal.step",
       "bytes": 15725,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -18.973,
@@ -5005,15 +5663,16 @@
       "role": "connection terminal",
       "material": "from terminal marker for top_microphone_flex on main_pcb; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/top_microphone_flex_from_terminal.step",
-      "bytes": 15673,
+      "bytes": 15621,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
-          -17.625,
+          5.575,
           63.89,
           5.54
         ],
         "max": [
-          -17.175,
+          6.025,
           64.11,
           5.56
         ],
@@ -5030,6 +5689,7 @@
       "material": "to terminal marker for top_microphone_flex on top_mic; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/top_microphone_flex_to_terminal.step",
       "bytes": 15673,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           18.523,
@@ -5054,14 +5714,15 @@
       "material": "from terminal marker for earpiece_receiver_lead_flex on main_pcb; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/earpiece_receiver_lead_flex_from_terminal.step",
       "bytes": 15647,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
-          -6.025,
+          17.175,
           63.89,
           5.54
         ],
         "max": [
-          -5.575,
+          17.625,
           64.11,
           5.56
         ],
@@ -5078,6 +5739,7 @@
       "material": "to terminal marker for earpiece_receiver_lead_flex on earpiece_receiver; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/earpiece_receiver_lead_flex_to_terminal.step",
       "bytes": 15621,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           0.325,
@@ -5101,15 +5763,16 @@
       "role": "connection terminal",
       "material": "from terminal marker for haptic_flex on main_pcb; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/haptic_flex_from_terminal.step",
-      "bytes": 15621,
+      "bytes": 15647,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
-          5.575,
+          28.775,
           63.89,
           5.54
         ],
         "max": [
-          6.025,
+          29.225,
           64.11,
           5.56
         ],
@@ -5126,6 +5789,7 @@
       "material": "to terminal marker for haptic_flex on haptic_lra; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/haptic_flex_to_terminal.step",
       "bytes": 15699,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           35.381,
@@ -5145,20 +5809,71 @@
       }
     },
     {
+      "name": "sensor_hub_i2c_flex_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for sensor_hub_i2c_flex on main_pcb; local CAD connection evidence only",
+      "step": "mechanical/e1-phone/out/sensor_hub_i2c_flex_from_terminal.step",
+      "bytes": 15699,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          -29.225,
+          -64.11,
+          5.54
+        ],
+        "max": [
+          -28.775,
+          -63.89,
+          5.56
+        ],
+        "span": [
+          0.45,
+          0.22,
+          0.02
+        ]
+      }
+    },
+    {
+      "name": "sensor_hub_i2c_flex_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for sensor_hub_i2c_flex on sensor_hub_package_marker; local CAD connection evidence only",
+      "step": "mechanical/e1-phone/out/sensor_hub_i2c_flex_to_terminal.step",
+      "bytes": 15647,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          7.481,
+          35.616,
+          5.54
+        ],
+        "max": [
+          7.931,
+          35.836,
+          5.56
+        ],
+        "span": [
+          0.45,
+          0.22,
+          0.02
+        ]
+      }
+    },
+    {
       "name": "sim_esim_signal_flex_from_terminal",
       "role": "connection terminal",
       "material": "from terminal marker for sim_esim_signal_flex on main_pcb; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/sim_esim_signal_flex_from_terminal.step",
-      "bytes": 15647,
+      "bytes": 15699,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
-          17.175,
-          63.89,
+          -17.625,
+          -64.11,
           5.54
         ],
         "max": [
-          17.625,
-          64.11,
+          -17.175,
+          -63.89,
           5.56
         ],
         "span": [
@@ -5174,6 +5889,7 @@
       "material": "to terminal marker for sim_esim_signal_flex on sim_tray_keepout; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/sim_esim_signal_flex_to_terminal.step",
       "bytes": 15699,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           32.044,
@@ -5198,6 +5914,7 @@
       "material": "from terminal marker for nfc_loop_antenna_flex on nfc_controller_package_marker; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/nfc_loop_antenna_flex_from_terminal.step",
       "bytes": 15699,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -26.366,
@@ -5222,6 +5939,7 @@
       "material": "to terminal marker for nfc_loop_antenna_flex on nfc_loop_match_marker; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/nfc_loop_antenna_flex_to_terminal.step",
       "bytes": 15699,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -30.127,
@@ -5245,16 +5963,17 @@
       "role": "connection terminal",
       "material": "from terminal marker for compute_som_sodimm_carrier on main_pcb; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/compute_som_sodimm_carrier_from_terminal.step",
-      "bytes": 15647,
+      "bytes": 15673,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
-          28.775,
-          63.89,
+          -6.025,
+          -64.11,
           5.54
         ],
         "max": [
-          29.225,
-          64.11,
+          -5.575,
+          -63.89,
           5.56
         ],
         "span": [
@@ -5270,6 +5989,7 @@
       "material": "to terminal marker for compute_som_sodimm_carrier on compute_som_daughterboard_keepout; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/compute_som_sodimm_carrier_to_terminal.step",
       "bytes": 15621,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           0.325,
@@ -5289,20 +6009,121 @@
       }
     },
     {
+      "name": "soc_shield_ground_spring_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for soc_shield_ground_spring on soc_shield_can; local CAD connection evidence only",
+      "step": "mechanical/e1-phone/out/soc_shield_ground_spring_from_terminal.step",
+      "bytes": 15673,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          -6.787,
+          55.803,
+          5.54
+        ],
+        "max": [
+          -6.337,
+          56.023,
+          5.56
+        ],
+        "span": [
+          0.45,
+          0.22,
+          0.02
+        ]
+      }
+    },
+    {
+      "name": "soc_shield_ground_spring_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for soc_shield_ground_spring on main_pcb; local CAD connection evidence only",
+      "step": "mechanical/e1-phone/out/soc_shield_ground_spring_to_terminal.step",
+      "bytes": 15647,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          5.575,
+          -64.11,
+          5.54
+        ],
+        "max": [
+          6.025,
+          -63.89,
+          5.56
+        ],
+        "span": [
+          0.45,
+          0.22,
+          0.02
+        ]
+      }
+    },
+    {
+      "name": "radio_shield_ground_spring_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for radio_shield_ground_spring on radio_shield_can; local CAD connection evidence only",
+      "step": "mechanical/e1-phone/out/radio_shield_ground_spring_from_terminal.step",
+      "bytes": 15673,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          -22.064,
+          50.89,
+          5.54
+        ],
+        "max": [
+          -21.614,
+          51.11,
+          5.56
+        ],
+        "span": [
+          0.45,
+          0.22,
+          0.02
+        ]
+      }
+    },
+    {
+      "name": "radio_shield_ground_spring_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for radio_shield_ground_spring on main_pcb; local CAD connection evidence only",
+      "step": "mechanical/e1-phone/out/radio_shield_ground_spring_to_terminal.step",
+      "bytes": 15673,
+      "fallback_box_count": 1,
+      "bbox_mm": {
+        "min": [
+          17.175,
+          -64.11,
+          5.54
+        ],
+        "max": [
+          17.625,
+          -63.89,
+          5.56
+        ],
+        "span": [
+          0.45,
+          0.22,
+          0.02
+        ]
+      }
+    },
+    {
       "name": "cellular_main_rf_feed_from_terminal",
       "role": "connection terminal",
       "material": "from terminal marker for cellular_main_rf_feed on cellular_lga_module_keepout; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/cellular_main_rf_feed_from_terminal.step",
       "bytes": 15699,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
-          -15.482,
-          45.873,
+          -16.002,
+          45.694,
           5.54
         ],
         "max": [
-          -15.032,
-          46.093,
+          -15.552,
+          45.914,
           5.56
         ],
         "span": [
@@ -5318,6 +6139,7 @@
       "material": "to terminal marker for cellular_main_rf_feed on cellular_top_antenna_keepout; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/cellular_main_rf_feed_to_terminal.step",
       "bytes": 15621,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           0.325,
@@ -5342,15 +6164,16 @@
       "material": "from terminal marker for cellular_diversity_rf_feed on cellular_lga_module_keepout; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/cellular_diversity_rf_feed_from_terminal.step",
       "bytes": 15699,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
-          -16.002,
-          45.694,
+          -16.522,
+          45.515,
           5.54
         ],
         "max": [
-          -15.552,
-          45.914,
+          -16.072,
+          45.735,
           5.56
         ],
         "span": [
@@ -5366,6 +6189,7 @@
       "material": "to terminal marker for cellular_diversity_rf_feed on cellular_bottom_antenna_keepout; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/cellular_diversity_rf_feed_to_terminal.step",
       "bytes": 15673,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -0.775,
@@ -5390,15 +6214,16 @@
       "material": "from terminal marker for cellular_antenna_aperture_tuner on cellular_lga_module_keepout; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/cellular_antenna_aperture_tuner_from_terminal.step",
       "bytes": 15699,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
-          -16.522,
-          45.515,
+          -15.482,
+          45.873,
           5.54
         ],
         "max": [
-          -16.072,
-          45.735,
+          -15.032,
+          46.093,
           5.56
         ],
         "span": [
@@ -5414,6 +6239,7 @@
       "material": "to terminal marker for cellular_antenna_aperture_tuner on cellular_bottom_antenna_keepout; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/cellular_antenna_aperture_tuner_to_terminal.step",
       "bytes": 15664,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -0.225,
@@ -5438,15 +6264,16 @@
       "material": "from terminal marker for cellular_gnss_rf_feed on cellular_lga_module_keepout; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/cellular_gnss_rf_feed_from_terminal.step",
       "bytes": 15699,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
-          -15.482,
-          45.873,
+          -16.002,
+          45.694,
           5.54
         ],
         "max": [
-          -15.032,
-          46.093,
+          -15.552,
+          45.914,
           5.56
         ],
         "span": [
@@ -5462,6 +6289,7 @@
       "material": "to terminal marker for cellular_gnss_rf_feed on gnss_lna_package_marker; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/cellular_gnss_rf_feed_to_terminal.step",
       "bytes": 15699,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           -30.097,
@@ -5485,16 +6313,17 @@
       "role": "connection terminal",
       "material": "from terminal marker for wifi_bt_rf0_feed on wifi_bt_module_keepout; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/wifi_bt_rf0_feed_from_terminal.step",
-      "bytes": 15673,
+      "bytes": 15647,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
-          20.637,
-          42.421,
+          20.14,
+          42.657,
           5.54
         ],
         "max": [
-          21.087,
-          42.641,
+          20.59,
+          42.877,
           5.56
         ],
         "span": [
@@ -5510,6 +6339,7 @@
       "material": "to terminal marker for wifi_bt_rf0_feed on wifi_bt_side_antenna_keepout; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/wifi_bt_rf0_feed_to_terminal.step",
       "bytes": 15673,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           21.642,
@@ -5533,16 +6363,17 @@
       "role": "connection terminal",
       "material": "from terminal marker for wifi_bt_rf1_feed on wifi_bt_module_keepout; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/wifi_bt_rf1_feed_from_terminal.step",
-      "bytes": 15647,
+      "bytes": 15673,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
-          20.14,
-          42.657,
+          19.644,
+          42.894,
           5.54
         ],
         "max": [
-          20.59,
-          42.877,
+          20.094,
+          43.114,
           5.56
         ],
         "span": [
@@ -5558,6 +6389,7 @@
       "material": "to terminal marker for wifi_bt_rf1_feed on wifi_bt_side_antenna_keepout; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/wifi_bt_rf1_feed_to_terminal.step",
       "bytes": 15673,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           21.148,
@@ -5582,6 +6414,7 @@
       "material": "from terminal marker for split_interconnect_side_flex on split_interconnect_top_connector; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/split_interconnect_side_flex_from_terminal.step",
       "bytes": 15647,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           22.68,
@@ -5606,6 +6439,7 @@
       "material": "to terminal marker for split_interconnect_side_flex on split_interconnect_bottom_connector; local CAD connection evidence only",
       "step": "mechanical/e1-phone/out/split_interconnect_side_flex_to_terminal.step",
       "bytes": 15699,
+      "fallback_box_count": 1,
       "bbox_mm": {
         "min": [
           21.596,
@@ -5632,27 +6466,28 @@
     "claim_boundary": "CAD envelope connection coverage for flex, cable, and RF-feed markers. This proves explicit local CAD markers and routed-development net names only; it is not supplier FPC drawing, RF layout, impedance, DRC/ERC, or production release evidence.",
     "routed_development_intake": "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml",
     "routed_development_net_count": 151,
-    "required_connection_count": 24,
-    "passing_connection_count": 24,
-    "required_connection_terminal_marker_count": 48,
-    "passing_connection_terminal_pair_count": 24,
-    "required_connection_solid_step_part_count": 72,
-    "passing_connection_solid_step_part_set_count": 24,
-    "connection_solid_step_part_bytes_total": 1125435,
-    "represented_net_count_total": 112,
-    "represented_route_count_total": 113,
-    "represented_route_length_total_mm": 4069.901,
-    "represented_controlled_impedance_route_count_total": 40,
+    "required_connection_count": 32,
+    "passing_connection_count": 32,
+    "required_connection_terminal_marker_count": 64,
+    "passing_connection_terminal_pair_count": 32,
+    "required_connection_solid_step_part_count": 96,
+    "passing_connection_solid_step_part_set_count": 32,
+    "connection_solid_step_part_bytes_total": 1501919,
+    "represented_net_count_total": 150,
+    "represented_route_count_total": 153,
+    "represented_route_length_total_mm": 5884.076,
+    "represented_controlled_impedance_route_count_total": 55,
     "all_represented_nets_have_route_trace": true,
-    "visual_route_span_total_mm": 397.8,
-    "endpoint_pair_distance_total_mm": 1180.692,
+    "visual_route_span_total_mm": 456.0,
+    "endpoint_pair_distance_total_mm": 1521.175,
     "physical_medium_counts": {
       "battery_power_flex": 1,
       "board_to_board_edge_connector": 1,
       "flexible_antenna_loop": 1,
-      "flexible_printed_circuit": 10,
+      "flexible_printed_circuit": 14,
+      "ground_spring_contact": 2,
       "insulated_wire_pair": 2,
-      "pcb_copper_trace_group": 3,
+      "pcb_copper_trace_group": 5,
       "rf_50ohm_feed": 5,
       "rf_tuner_interconnect": 1
     },
@@ -5662,24 +6497,30 @@
       "audio_receiver_pair": 1,
       "battery_power_sense": 1,
       "battery_power_sense_board_route": 1,
+      "camera_power_control": 2,
+      "cellular_host_interface": 1,
       "cellular_wifi_rf": 5,
       "compute_board_to_board_mixed_speed": 1,
       "digital_microphone": 2,
+      "display_bias_power": 1,
       "haptic_drive": 1,
       "low_speed_gpio": 1,
       "mipi_csi_camera_control": 2,
       "mipi_dsi_touch_control": 1,
       "nfc_loop_rf": 1,
       "pd_charger_power_control_board_route": 1,
+      "sensor_i2c": 1,
+      "shield_chassis_ground": 2,
       "sim_esim_low_speed": 1,
       "top_bottom_board_mixed_signal": 1,
       "usb2_pd_vbus": 1,
-      "usb2_pd_vbus_board_route": 1
+      "usb2_pd_vbus_board_route": 1,
+      "wifi_bt_host_interface": 1
     },
-    "controlled_impedance_connection_count": 14,
-    "controlled_impedance_requirement_defined_count": 24,
-    "bend_radius_requirement_defined_count": 24,
-    "supplier_release_required_connection_count": 24,
+    "controlled_impedance_connection_count": 16,
+    "controlled_impedance_requirement_defined_count": 32,
+    "bend_radius_requirement_defined_count": 32,
+    "supplier_release_required_connection_count": 32,
     "release_credit": false,
     "connections": [
       {
@@ -5712,7 +6553,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/display_fpc_tail.step",
-        "cad_step_bytes": 15509,
+        "cad_step_bytes": 15523,
         "cad_part_bbox_mm": {
           "min": [
             19.0,
@@ -6083,13 +6924,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "display_touch_fpc_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/display_touch_fpc_from_terminal.step",
-        "from_terminal_step_bytes": 15633,
+        "from_terminal_step_bytes": 15647,
         "to_terminal_part": "display_touch_fpc_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/display_touch_fpc_to_terminal.step",
-        "to_terminal_step_bytes": 15633,
+        "to_terminal_step_bytes": 15647,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31266,
+        "terminal_step_bytes_total": 31294,
         "solid_step_part_names": [
           "display_fpc_tail",
           "display_touch_fpc_from_terminal",
@@ -6097,7 +6938,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46775,
+        "solid_step_part_bytes_total": 46817,
         "from_endpoint_center_mm": [
           23.0,
           55.0,
@@ -6161,7 +7002,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/rear_camera_fpc_tail.step",
-        "cad_step_bytes": 15522,
+        "cad_step_bytes": 15536,
         "cad_part_bbox_mm": {
           "min": [
             2.0,
@@ -6512,13 +7353,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "rear_camera_csi_fpc_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/rear_camera_csi_fpc_from_terminal.step",
-        "from_terminal_step_bytes": 15685,
+        "from_terminal_step_bytes": 15699,
         "to_terminal_part": "rear_camera_csi_fpc_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/rear_camera_csi_fpc_to_terminal.step",
-        "to_terminal_step_bytes": 15659,
+        "to_terminal_step_bytes": 15673,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31344,
+        "terminal_step_bytes_total": 31372,
         "solid_step_part_names": [
           "rear_camera_fpc_tail",
           "rear_camera_csi_fpc_from_terminal",
@@ -6526,7 +7367,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46866,
+        "solid_step_part_bytes_total": 46908,
         "from_endpoint_center_mm": [
           0.0,
           0.0,
@@ -6585,7 +7426,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/front_camera_fpc_tail.step",
-        "cad_step_bytes": 15587,
+        "cad_step_bytes": 15601,
         "cad_part_bbox_mm": {
           "min": [
             -22.5,
@@ -6836,13 +7677,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "front_camera_csi_fpc_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/front_camera_csi_fpc_from_terminal.step",
-        "from_terminal_step_bytes": 15685,
+        "from_terminal_step_bytes": 15699,
         "to_terminal_part": "front_camera_csi_fpc_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/front_camera_csi_fpc_to_terminal.step",
-        "to_terminal_step_bytes": 15685,
+        "to_terminal_step_bytes": 15699,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31370,
+        "terminal_step_bytes_total": 31398,
         "solid_step_part_names": [
           "front_camera_fpc_tail",
           "front_camera_csi_fpc_from_terminal",
@@ -6850,7 +7691,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46957,
+        "solid_step_part_bytes_total": 46999,
         "from_endpoint_center_mm": [
           0.0,
           0.0,
@@ -6899,7 +7740,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/side_key_flex_tail.step",
-        "cad_step_bytes": 15535,
+        "cad_step_bytes": 15549,
         "cad_part_bbox_mm": {
           "min": [
             30.5,
@@ -7005,13 +7846,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "side_key_flex_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/side_key_flex_from_terminal.step",
-        "from_terminal_step_bytes": 15659,
+        "from_terminal_step_bytes": 15673,
         "to_terminal_part": "side_key_flex_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/side_key_flex_to_terminal.step",
-        "to_terminal_step_bytes": 15659,
+        "to_terminal_step_bytes": 15673,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31318,
+        "terminal_step_bytes_total": 31346,
         "solid_step_part_names": [
           "side_key_flex_tail",
           "side_key_flex_from_terminal",
@@ -7019,7 +7860,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46853,
+        "solid_step_part_bytes_total": 46895,
         "from_endpoint_center_mm": [
           0.0,
           0.0,
@@ -7063,7 +7904,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/battery_connector_lead_flex.step",
-        "cad_step_bytes": 15578,
+        "cad_step_bytes": 15592,
         "cad_part_bbox_mm": {
           "min": [
             -10.0,
@@ -7193,13 +8034,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "battery_lead_flex_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/battery_lead_flex_from_terminal.step",
-        "from_terminal_step_bytes": 15633,
+        "from_terminal_step_bytes": 15647,
         "to_terminal_part": "battery_lead_flex_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/battery_lead_flex_to_terminal.step",
-        "to_terminal_step_bytes": 15633,
+        "to_terminal_step_bytes": 15647,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31266,
+        "terminal_step_bytes_total": 31294,
         "solid_step_part_names": [
           "battery_connector_lead_flex",
           "battery_lead_flex_from_terminal",
@@ -7207,7 +8048,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46844,
+        "solid_step_part_bytes_total": 46886,
         "from_endpoint_center_mm": [
           0.0,
           -7.0,
@@ -7253,7 +8094,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/usb_c_power_data_escape_tail.step",
-        "cad_step_bytes": 15552,
+        "cad_step_bytes": 15566,
         "cad_part_bbox_mm": {
           "min": [
             -9.0,
@@ -7429,13 +8270,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "usb_c_escape_tail_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/usb_c_escape_tail_from_terminal.step",
-        "from_terminal_step_bytes": 15659,
+        "from_terminal_step_bytes": 15673,
         "to_terminal_part": "usb_c_escape_tail_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/usb_c_escape_tail_to_terminal.step",
-        "to_terminal_step_bytes": 15659,
+        "to_terminal_step_bytes": 15673,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31318,
+        "terminal_step_bytes_total": 31346,
         "solid_step_part_names": [
           "usb_c_power_data_escape_tail",
           "usb_c_escape_tail_from_terminal",
@@ -7443,7 +8284,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46870,
+        "solid_step_part_bytes_total": 46912,
         "from_endpoint_center_mm": [
           0.0,
           -72.7,
@@ -7490,7 +8331,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/usb_pd_controller_escape_trace_marker.step",
-        "cad_step_bytes": 15574,
+        "cad_step_bytes": 15588,
         "cad_part_bbox_mm": {
           "min": [
             -0.7,
@@ -7666,13 +8507,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "usb_c_to_pd_controller_escape_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/usb_c_to_pd_controller_escape_from_terminal.step",
-        "from_terminal_step_bytes": 15650,
+        "from_terminal_step_bytes": 15664,
         "to_terminal_part": "usb_c_to_pd_controller_escape_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/usb_c_to_pd_controller_escape_to_terminal.step",
-        "to_terminal_step_bytes": 15659,
+        "to_terminal_step_bytes": 15673,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31309,
+        "terminal_step_bytes_total": 31337,
         "solid_step_part_names": [
           "usb_pd_controller_escape_trace_marker",
           "usb_c_to_pd_controller_escape_from_terminal",
@@ -7680,7 +8521,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46883,
+        "solid_step_part_bytes_total": 46925,
         "from_endpoint_center_mm": [
           0.0,
           -72.7,
@@ -7731,7 +8572,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/pd_charger_control_trace_marker.step",
-        "cad_step_bytes": 15578,
+        "cad_step_bytes": 15592,
         "cad_part_bbox_mm": {
           "min": [
             -3.5,
@@ -7964,13 +8805,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "pd_controller_to_charger_control_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/pd_controller_to_charger_control_from_terminal.step",
-        "from_terminal_step_bytes": 15659,
+        "from_terminal_step_bytes": 15673,
         "to_terminal_part": "pd_controller_to_charger_control_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/pd_controller_to_charger_control_to_terminal.step",
-        "to_terminal_step_bytes": 15685,
+        "to_terminal_step_bytes": 15699,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31344,
+        "terminal_step_bytes_total": 31372,
         "solid_step_part_names": [
           "pd_charger_control_trace_marker",
           "pd_controller_to_charger_control_from_terminal",
@@ -7978,7 +8819,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46922,
+        "solid_step_part_bytes_total": 46964,
         "from_endpoint_center_mm": [
           7.0,
           -54.8,
@@ -8028,7 +8869,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/charger_battery_power_sense_trace_marker.step",
-        "cad_step_bytes": 15552,
+        "cad_step_bytes": 15566,
         "cad_part_bbox_mm": {
           "min": [
             -7.0,
@@ -8158,13 +8999,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "charger_to_battery_power_sense_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/charger_to_battery_power_sense_from_terminal.step",
-        "from_terminal_step_bytes": 15685,
+        "from_terminal_step_bytes": 15699,
         "to_terminal_part": "charger_to_battery_power_sense_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/charger_to_battery_power_sense_to_terminal.step",
-        "to_terminal_step_bytes": 15685,
+        "to_terminal_step_bytes": 15699,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31370,
+        "terminal_step_bytes_total": 31398,
         "solid_step_part_names": [
           "charger_battery_power_sense_trace_marker",
           "charger_to_battery_power_sense_from_terminal",
@@ -8172,7 +9013,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46922,
+        "solid_step_part_bytes_total": 46964,
         "from_endpoint_center_mm": [
           -4.0,
           -54.8,
@@ -8198,6 +9039,1269 @@
         "pass": true
       },
       {
+        "id": "display_bias_power_flex",
+        "cad_part": "display_bias_power_flex_marker",
+        "from": "backlight_bias_package_marker",
+        "to": "display_fpc_connector",
+        "connection_type": "display_bias_power_flex",
+        "nets": [
+          "DISP_AVDD_5V5",
+          "DISP_AVEE_N5V5"
+        ],
+        "physical_medium": "flexible_printed_circuit",
+        "electrical_class": "display_bias_power",
+        "controlled_impedance_required": false,
+        "impedance_requirement": "display_bias_voltage_and_current_capacity_required",
+        "min_bend_radius_mm": 1.0,
+        "supplier_release_required": true,
+        "cad_part_present": true,
+        "cad_step": "mechanical/e1-phone/out/display_bias_power_flex_marker.step",
+        "cad_step_bytes": 15545,
+        "cad_part_bbox_mm": {
+          "min": [
+            18.0,
+            40.5,
+            -1.41
+          ],
+          "max": [
+            24.0,
+            41.5,
+            -1.29
+          ],
+          "span": [
+            6.0,
+            1.0,
+            0.12
+          ]
+        },
+        "visual_route_span_mm": 6.0,
+        "represented_nets": [
+          "DISP_AVDD_5V5",
+          "DISP_AVEE_N5V5"
+        ],
+        "represented_net_count": 2,
+        "represented_route_ids": [
+          "DISP_AVDD",
+          "DISP_AVEE"
+        ],
+        "represented_route_count": 2,
+        "represented_route_records": [
+          {
+            "id": "DISP_AVDD",
+            "net": "DISP_AVDD_5V5",
+            "canonical_net": "DISP_AVDD_5V5",
+            "layer": "F.Cu",
+            "width_mm": 0.18,
+            "length_mm": 118.502,
+            "manhattan_length_mm": 139.1,
+            "route_classes": [
+              "display_bias_power",
+              "power"
+            ],
+            "source_domains": [
+              "display_touch_mipi_dsi",
+              "factory_test_fiducials_and_manufacturing_coupons"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "DISP_AVEE",
+            "net": "DISP_AVEE_N5V5",
+            "canonical_net": "DISP_AVEE_N5V5",
+            "layer": "F.Cu",
+            "width_mm": 0.18,
+            "length_mm": 117.477,
+            "manhattan_length_mm": 137.2,
+            "route_classes": [
+              "display_bias_power"
+            ],
+            "source_domains": [
+              "display_touch_mipi_dsi"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          }
+        ],
+        "represented_route_classes": [
+          "display_bias_power",
+          "power"
+        ],
+        "represented_source_domains": [
+          "display_touch_mipi_dsi",
+          "factory_test_fiducials_and_manufacturing_coupons"
+        ],
+        "represented_route_length_total_mm": 235.979,
+        "represented_controlled_impedance_route_count": 0,
+        "all_represented_nets_have_route_trace": true,
+        "from_terminal_part": "display_bias_power_flex_from_terminal",
+        "from_terminal_step": "mechanical/e1-phone/out/display_bias_power_flex_from_terminal.step",
+        "from_terminal_step_bytes": 15673,
+        "to_terminal_part": "display_bias_power_flex_to_terminal",
+        "to_terminal_step": "mechanical/e1-phone/out/display_bias_power_flex_to_terminal.step",
+        "to_terminal_step_bytes": 15673,
+        "terminal_marker_count": 2,
+        "terminal_markers_present": true,
+        "terminal_step_bytes_total": 31346,
+        "solid_step_part_names": [
+          "display_bias_power_flex_marker",
+          "display_bias_power_flex_from_terminal",
+          "display_bias_power_flex_to_terminal"
+        ],
+        "solid_step_parts_present": true,
+        "solid_step_part_count": 3,
+        "solid_step_part_bytes_total": 46891,
+        "from_endpoint_center_mm": [
+          24.0,
+          35.5,
+          -0.07
+        ],
+        "to_endpoint_center_mm": [
+          23.0,
+          55.0,
+          -1.0
+        ],
+        "endpoint_center_distance_mm": 19.548,
+        "endpoints_present": true,
+        "routed_net_presence": {
+          "DISP_AVDD_5V5": true,
+          "DISP_AVEE_N5V5": true
+        },
+        "all_nets_in_routed_development_board": true,
+        "controlled_impedance_requirement_defined": true,
+        "bend_radius_requirement_defined": true,
+        "release_credit": false,
+        "pass": true
+      },
+      {
+        "id": "rear_camera_power_flex",
+        "cad_part": "rear_camera_power_flex_marker",
+        "from": "main_pcb",
+        "to": "rear_camera_module",
+        "connection_type": "camera_power_flex",
+        "nets": [
+          "CAM_AVDD_2V8",
+          "CAM_DVDD_1V2",
+          "CAM0_RESET_N"
+        ],
+        "physical_medium": "flexible_printed_circuit",
+        "electrical_class": "camera_power_control",
+        "controlled_impedance_required": false,
+        "impedance_requirement": "camera_rail_current_capacity_and_sequencing_required",
+        "min_bend_radius_mm": 1.0,
+        "supplier_release_required": true,
+        "cad_part_present": true,
+        "cad_step": "mechanical/e1-phone/out/rear_camera_power_flex_marker.step",
+        "cad_step_bytes": 15558,
+        "cad_part_bbox_mm": {
+          "min": [
+            8.0,
+            58.15,
+            -1.41
+          ],
+          "max": [
+            16.0,
+            58.85,
+            -1.29
+          ],
+          "span": [
+            8.0,
+            0.7,
+            0.12
+          ]
+        },
+        "visual_route_span_mm": 8.0,
+        "represented_nets": [
+          "CAM_AVDD_2V8",
+          "CAM_DVDD_1V2",
+          "CAM0_RESET_N"
+        ],
+        "represented_net_count": 3,
+        "represented_route_ids": [
+          "CAM_AVDD",
+          "CAM_DVDD",
+          "CAM0_RESET"
+        ],
+        "represented_route_count": 3,
+        "represented_route_records": [
+          {
+            "id": "CAM_AVDD",
+            "net": "CAM_AVDD_2V8",
+            "canonical_net": "CAM_AVDD_2V8",
+            "layer": "F.Cu",
+            "width_mm": 0.18,
+            "length_mm": 195.485,
+            "manhattan_length_mm": 212.9,
+            "route_classes": [
+              "camera_power",
+              "power"
+            ],
+            "source_domains": [
+              "factory_test_fiducials_and_manufacturing_coupons",
+              "front_rear_camera_mipi_csi"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "CAM_DVDD",
+            "net": "CAM_DVDD_1V2",
+            "canonical_net": "CAM_DVDD_1V2",
+            "layer": "F.Cu",
+            "width_mm": 0.18,
+            "length_mm": 194.31,
+            "manhattan_length_mm": 209.9,
+            "route_classes": [
+              "camera_power"
+            ],
+            "source_domains": [
+              "front_rear_camera_mipi_csi"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "CAM0_RESET",
+            "net": "CAM0_RESET_N",
+            "canonical_net": "CAM0_RESET_N",
+            "layer": "F.Cu",
+            "width_mm": 0.12,
+            "length_mm": 24.418,
+            "manhattan_length_mm": 30.1,
+            "route_classes": [
+              "display_camera_control"
+            ],
+            "source_domains": [
+              "front_rear_camera_mipi_csi"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          }
+        ],
+        "represented_route_classes": [
+          "camera_power",
+          "display_camera_control",
+          "power"
+        ],
+        "represented_source_domains": [
+          "factory_test_fiducials_and_manufacturing_coupons",
+          "front_rear_camera_mipi_csi"
+        ],
+        "represented_route_length_total_mm": 414.213,
+        "represented_controlled_impedance_route_count": 0,
+        "all_represented_nets_have_route_trace": true,
+        "from_terminal_part": "rear_camera_power_flex_from_terminal",
+        "from_terminal_step": "mechanical/e1-phone/out/rear_camera_power_flex_from_terminal.step",
+        "from_terminal_step_bytes": 15673,
+        "to_terminal_part": "rear_camera_power_flex_to_terminal",
+        "to_terminal_step": "mechanical/e1-phone/out/rear_camera_power_flex_to_terminal.step",
+        "to_terminal_step_bytes": 15673,
+        "terminal_marker_count": 2,
+        "terminal_markers_present": true,
+        "terminal_step_bytes_total": 31346,
+        "solid_step_part_names": [
+          "rear_camera_power_flex_marker",
+          "rear_camera_power_flex_from_terminal",
+          "rear_camera_power_flex_to_terminal"
+        ],
+        "solid_step_parts_present": true,
+        "solid_step_part_count": 3,
+        "solid_step_part_bytes_total": 46904,
+        "from_endpoint_center_mm": [
+          0.0,
+          0.0,
+          -2.1
+        ],
+        "to_endpoint_center_mm": [
+          21.0,
+          57.8,
+          -1.75
+        ],
+        "endpoint_center_distance_mm": 61.498,
+        "endpoints_present": true,
+        "routed_net_presence": {
+          "CAM_AVDD_2V8": true,
+          "CAM_DVDD_1V2": true,
+          "CAM0_RESET_N": true
+        },
+        "all_nets_in_routed_development_board": true,
+        "controlled_impedance_requirement_defined": true,
+        "bend_radius_requirement_defined": true,
+        "release_credit": false,
+        "pass": true
+      },
+      {
+        "id": "front_camera_power_flex",
+        "cad_part": "front_camera_power_flex_marker",
+        "from": "main_pcb",
+        "to": "front_camera_module",
+        "connection_type": "camera_power_flex",
+        "nets": [
+          "CAM_AVDD_2V8",
+          "CAM_DVDD_1V2",
+          "CAM1_RESET_N"
+        ],
+        "physical_medium": "flexible_printed_circuit",
+        "electrical_class": "camera_power_control",
+        "controlled_impedance_required": false,
+        "impedance_requirement": "camera_rail_current_capacity_and_sequencing_required",
+        "min_bend_radius_mm": 1.0,
+        "supplier_release_required": true,
+        "cad_part_present": true,
+        "cad_step": "mechanical/e1-phone/out/front_camera_power_flex_marker.step",
+        "cad_step_bytes": 15627,
+        "cad_part_bbox_mm": {
+          "min": [
+            -18.5,
+            58.15,
+            -1.41
+          ],
+          "max": [
+            -11.5,
+            58.85,
+            -1.29
+          ],
+          "span": [
+            7.0,
+            0.7,
+            0.12
+          ]
+        },
+        "visual_route_span_mm": 7.0,
+        "represented_nets": [
+          "CAM_AVDD_2V8",
+          "CAM_DVDD_1V2",
+          "CAM1_RESET_N"
+        ],
+        "represented_net_count": 3,
+        "represented_route_ids": [
+          "CAM_AVDD",
+          "CAM_DVDD",
+          "CAM1_RESET"
+        ],
+        "represented_route_count": 3,
+        "represented_route_records": [
+          {
+            "id": "CAM_AVDD",
+            "net": "CAM_AVDD_2V8",
+            "canonical_net": "CAM_AVDD_2V8",
+            "layer": "F.Cu",
+            "width_mm": 0.18,
+            "length_mm": 195.485,
+            "manhattan_length_mm": 212.9,
+            "route_classes": [
+              "camera_power",
+              "power"
+            ],
+            "source_domains": [
+              "factory_test_fiducials_and_manufacturing_coupons",
+              "front_rear_camera_mipi_csi"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "CAM_DVDD",
+            "net": "CAM_DVDD_1V2",
+            "canonical_net": "CAM_DVDD_1V2",
+            "layer": "F.Cu",
+            "width_mm": 0.18,
+            "length_mm": 194.31,
+            "manhattan_length_mm": 209.9,
+            "route_classes": [
+              "camera_power"
+            ],
+            "source_domains": [
+              "front_rear_camera_mipi_csi"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "CAM1_RESET",
+            "net": "CAM1_RESET_N",
+            "canonical_net": "CAM1_RESET_N",
+            "layer": "F.Cu",
+            "width_mm": 0.12,
+            "length_mm": 24.234,
+            "manhattan_length_mm": 30.6,
+            "route_classes": [
+              "display_camera_control"
+            ],
+            "source_domains": [
+              "front_rear_camera_mipi_csi"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          }
+        ],
+        "represented_route_classes": [
+          "camera_power",
+          "display_camera_control",
+          "power"
+        ],
+        "represented_source_domains": [
+          "factory_test_fiducials_and_manufacturing_coupons",
+          "front_rear_camera_mipi_csi"
+        ],
+        "represented_route_length_total_mm": 414.029,
+        "represented_controlled_impedance_route_count": 0,
+        "all_represented_nets_have_route_trace": true,
+        "from_terminal_part": "front_camera_power_flex_from_terminal",
+        "from_terminal_step": "mechanical/e1-phone/out/front_camera_power_flex_from_terminal.step",
+        "from_terminal_step_bytes": 15673,
+        "to_terminal_part": "front_camera_power_flex_to_terminal",
+        "to_terminal_step": "mechanical/e1-phone/out/front_camera_power_flex_to_terminal.step",
+        "to_terminal_step_bytes": 15699,
+        "terminal_marker_count": 2,
+        "terminal_markers_present": true,
+        "terminal_step_bytes_total": 31372,
+        "solid_step_part_names": [
+          "front_camera_power_flex_marker",
+          "front_camera_power_flex_from_terminal",
+          "front_camera_power_flex_to_terminal"
+        ],
+        "solid_step_parts_present": true,
+        "solid_step_part_count": 3,
+        "solid_step_part_bytes_total": 46999,
+        "from_endpoint_center_mm": [
+          0.0,
+          0.0,
+          -2.1
+        ],
+        "to_endpoint_center_mm": [
+          -19.0,
+          67.8,
+          1.0
+        ],
+        "endpoint_center_distance_mm": 70.48,
+        "endpoints_present": true,
+        "routed_net_presence": {
+          "CAM_AVDD_2V8": true,
+          "CAM_DVDD_1V2": true,
+          "CAM1_RESET_N": true
+        },
+        "all_nets_in_routed_development_board": true,
+        "controlled_impedance_requirement_defined": true,
+        "bend_radius_requirement_defined": true,
+        "release_credit": false,
+        "pass": true
+      },
+      {
+        "id": "wifi_bt_host_control",
+        "cad_part": "wifi_bt_host_control_trace_marker",
+        "from": "wifi_bt_module_keepout",
+        "to": "soc_package_marker",
+        "connection_type": "wifi_bt_host_control_trace",
+        "nets": [
+          "WIFI_PCIE_TX_P",
+          "WIFI_PCIE_TX_N",
+          "WIFI_PCIE_RX_P",
+          "WIFI_PCIE_RX_N",
+          "WIFI_EN",
+          "BT_EN",
+          "WIFI_SDIO_CLK",
+          "WIFI_SDIO_CMD",
+          "WIFI_SDIO_D0",
+          "WIFI_SDIO_D1",
+          "WIFI_SDIO_D2",
+          "WIFI_SDIO_D3",
+          "BT_UART_TX",
+          "BT_UART_RX",
+          "BT_UART_CTS_N",
+          "BT_UART_RTS_N",
+          "WIFI_HOST_WAKE"
+        ],
+        "physical_medium": "pcb_copper_trace_group",
+        "electrical_class": "wifi_bt_host_interface",
+        "controlled_impedance_required": true,
+        "impedance_requirement": "PCIe differential impedance plus SDIO/UART/control routing review",
+        "min_bend_radius_mm": 0.0,
+        "supplier_release_required": true,
+        "cad_part_present": true,
+        "cad_step": "mechanical/e1-phone/out/wifi_bt_host_control_trace_marker.step",
+        "cad_step_bytes": 15549,
+        "cad_part_bbox_mm": {
+          "min": [
+            11.5,
+            35.0,
+            -1.41
+          ],
+          "max": [
+            24.5,
+            36.0,
+            -1.29
+          ],
+          "span": [
+            13.0,
+            1.0,
+            0.12
+          ]
+        },
+        "visual_route_span_mm": 13.0,
+        "represented_nets": [
+          "WIFI_PCIE_TX_P",
+          "WIFI_PCIE_TX_N",
+          "WIFI_PCIE_RX_P",
+          "WIFI_PCIE_RX_N",
+          "WIFI_EN",
+          "BT_EN",
+          "WIFI_SDIO_CLK",
+          "WIFI_SDIO_CMD",
+          "WIFI_SDIO_D0",
+          "WIFI_SDIO_D1",
+          "WIFI_SDIO_D2",
+          "WIFI_SDIO_D3",
+          "BT_UART_TX",
+          "BT_UART_RX",
+          "BT_UART_CTS_N",
+          "BT_UART_RTS_N",
+          "WIFI_HOST_WAKE"
+        ],
+        "represented_net_count": 17,
+        "represented_route_ids": [
+          "WIFI_PCIE_TX_P",
+          "WIFI_PCIE_TX_N",
+          "WIFI_PCIE_RX_P",
+          "WIFI_PCIE_RX_N",
+          "WIFI_ENABLE",
+          "BT_ENABLE",
+          "WIFI_SDIO_CLK",
+          "WIFI_SDIO_CMD",
+          "WIFI_SDIO_D0",
+          "WIFI_SDIO_D1",
+          "WIFI_SDIO_D2",
+          "WIFI_SDIO_D3",
+          "BT_UART_TX",
+          "BT_UART_RX",
+          "BT_UART_CTS",
+          "BT_UART_RTS",
+          "WIFI_HOST_WAKE"
+        ],
+        "represented_route_count": 17,
+        "represented_route_records": [
+          {
+            "id": "WIFI_PCIE_TX_P",
+            "net": "WIFI_PCIE_TX_P",
+            "canonical_net": "WIFI_PCIE_TX_P",
+            "layer": "F.Cu",
+            "width_mm": 0.1,
+            "length_mm": 17.145,
+            "manhattan_length_mm": 24.0,
+            "route_classes": [
+              "pcie_diff"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [
+              {
+                "constraint": "pcie_diff_impedance_ohm",
+                "value": 85
+              }
+            ],
+            "linked_via_ids": [
+              "WIFI_PCIE_BREAKOUT_VIA"
+            ],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "WIFI_PCIE_TX_N",
+            "net": "WIFI_PCIE_TX_N",
+            "canonical_net": "WIFI_PCIE_TX_N",
+            "layer": "F.Cu",
+            "width_mm": 0.1,
+            "length_mm": 17.145,
+            "manhattan_length_mm": 24.0,
+            "route_classes": [
+              "pcie_diff"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [
+              {
+                "constraint": "pcie_diff_impedance_ohm",
+                "value": 85
+              }
+            ],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "WIFI_PCIE_RX_P",
+            "net": "WIFI_PCIE_RX_P",
+            "canonical_net": "WIFI_PCIE_RX_P",
+            "layer": "F.Cu",
+            "width_mm": 0.1,
+            "length_mm": 17.726,
+            "manhattan_length_mm": 24.0,
+            "route_classes": [
+              "pcie_diff"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [
+              {
+                "constraint": "pcie_diff_impedance_ohm",
+                "value": 85
+              }
+            ],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "WIFI_PCIE_RX_N",
+            "net": "WIFI_PCIE_RX_N",
+            "canonical_net": "WIFI_PCIE_RX_N",
+            "layer": "F.Cu",
+            "width_mm": 0.1,
+            "length_mm": 17.726,
+            "manhattan_length_mm": 24.0,
+            "route_classes": [
+              "pcie_diff"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [
+              {
+                "constraint": "pcie_diff_impedance_ohm",
+                "value": 85
+              }
+            ],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "WIFI_ENABLE",
+            "net": "WIFI_EN",
+            "canonical_net": "WIFI_EN",
+            "layer": "F.Cu",
+            "width_mm": 0.12,
+            "length_mm": 20.346,
+            "manhattan_length_mm": 25.0,
+            "route_classes": [
+              "wireless_control_bt_uart"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "BT_ENABLE",
+            "net": "BT_EN",
+            "canonical_net": "BT_EN",
+            "layer": "F.Cu",
+            "width_mm": 0.12,
+            "length_mm": 20.32,
+            "manhattan_length_mm": 24.0,
+            "route_classes": [
+              "wireless_control_bt_uart"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "WIFI_SDIO_CLK",
+            "net": "WIFI_SDIO_CLK",
+            "canonical_net": "WIFI_SDIO_CLK",
+            "layer": "F.Cu",
+            "width_mm": 0.1,
+            "length_mm": 17.81,
+            "manhattan_length_mm": 25.0,
+            "route_classes": [
+              "rf_single"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [
+              {
+                "constraint": "rf_single_impedance_ohm",
+                "value": 50
+              }
+            ],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "WIFI_SDIO_CMD",
+            "net": "WIFI_SDIO_CMD",
+            "canonical_net": "WIFI_SDIO_CMD",
+            "layer": "F.Cu",
+            "width_mm": 0.1,
+            "length_mm": 17.81,
+            "manhattan_length_mm": 25.0,
+            "route_classes": [
+              "rf_single"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [
+              {
+                "constraint": "rf_single_impedance_ohm",
+                "value": 50
+              }
+            ],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "WIFI_SDIO_D0",
+            "net": "WIFI_SDIO_D0",
+            "canonical_net": "WIFI_SDIO_D0",
+            "layer": "F.Cu",
+            "width_mm": 0.1,
+            "length_mm": 17.81,
+            "manhattan_length_mm": 25.0,
+            "route_classes": [
+              "rf_single"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [
+              {
+                "constraint": "rf_single_impedance_ohm",
+                "value": 50
+              }
+            ],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "WIFI_SDIO_D1",
+            "net": "WIFI_SDIO_D1",
+            "canonical_net": "WIFI_SDIO_D1",
+            "layer": "F.Cu",
+            "width_mm": 0.1,
+            "length_mm": 17.81,
+            "manhattan_length_mm": 25.0,
+            "route_classes": [
+              "rf_single"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [
+              {
+                "constraint": "rf_single_impedance_ohm",
+                "value": 50
+              }
+            ],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "WIFI_SDIO_D2",
+            "net": "WIFI_SDIO_D2",
+            "canonical_net": "WIFI_SDIO_D2",
+            "layer": "F.Cu",
+            "width_mm": 0.1,
+            "length_mm": 17.81,
+            "manhattan_length_mm": 25.0,
+            "route_classes": [
+              "rf_single"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [
+              {
+                "constraint": "rf_single_impedance_ohm",
+                "value": 50
+              }
+            ],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "WIFI_SDIO_D3",
+            "net": "WIFI_SDIO_D3",
+            "canonical_net": "WIFI_SDIO_D3",
+            "layer": "F.Cu",
+            "width_mm": 0.1,
+            "length_mm": 17.81,
+            "manhattan_length_mm": 25.0,
+            "route_classes": [
+              "rf_single"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [
+              {
+                "constraint": "rf_single_impedance_ohm",
+                "value": 50
+              }
+            ],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "BT_UART_TX",
+            "net": "BT_UART_TX",
+            "canonical_net": "BT_UART_TX",
+            "layer": "F.Cu",
+            "width_mm": 0.12,
+            "length_mm": 18.056,
+            "manhattan_length_mm": 23.0,
+            "route_classes": [
+              "wireless_control_bt_uart"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "BT_UART_RX",
+            "net": "BT_UART_RX",
+            "canonical_net": "BT_UART_RX",
+            "layer": "F.Cu",
+            "width_mm": 0.12,
+            "length_mm": 17.924,
+            "manhattan_length_mm": 22.5,
+            "route_classes": [
+              "wireless_control_bt_uart"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "BT_UART_CTS",
+            "net": "BT_UART_CTS_N",
+            "canonical_net": "BT_UART_CTS_N",
+            "layer": "F.Cu",
+            "width_mm": 0.12,
+            "length_mm": 17.814,
+            "manhattan_length_mm": 22.0,
+            "route_classes": [
+              "wireless_control_bt_uart"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "BT_UART_RTS",
+            "net": "BT_UART_RTS_N",
+            "canonical_net": "BT_UART_RTS_N",
+            "layer": "F.Cu",
+            "width_mm": 0.12,
+            "length_mm": 17.728,
+            "manhattan_length_mm": 21.5,
+            "route_classes": [
+              "wireless_control_bt_uart"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "WIFI_HOST_WAKE",
+            "net": "WIFI_HOST_WAKE",
+            "canonical_net": "WIFI_HOST_WAKE",
+            "layer": "F.Cu",
+            "width_mm": 0.12,
+            "length_mm": 17.666,
+            "manhattan_length_mm": 21.0,
+            "route_classes": [
+              "wireless_control_bt_uart"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          }
+        ],
+        "represented_route_classes": [
+          "pcie_diff",
+          "rf_single",
+          "wireless_control_bt_uart"
+        ],
+        "represented_source_domains": [
+          "cellular_wifi_bt_rf_host"
+        ],
+        "represented_route_length_total_mm": 306.456,
+        "represented_controlled_impedance_route_count": 10,
+        "all_represented_nets_have_route_trace": true,
+        "from_terminal_part": "wifi_bt_host_control_from_terminal",
+        "from_terminal_step": "mechanical/e1-phone/out/wifi_bt_host_control_from_terminal.step",
+        "from_terminal_step_bytes": 15673,
+        "to_terminal_part": "wifi_bt_host_control_to_terminal",
+        "to_terminal_step": "mechanical/e1-phone/out/wifi_bt_host_control_to_terminal.step",
+        "to_terminal_step_bytes": 15673,
+        "terminal_marker_count": 2,
+        "terminal_markers_present": true,
+        "terminal_step_bytes_total": 31346,
+        "solid_step_part_names": [
+          "wifi_bt_host_control_trace_marker",
+          "wifi_bt_host_control_from_terminal",
+          "wifi_bt_host_control_to_terminal"
+        ],
+        "solid_step_parts_present": true,
+        "solid_step_part_count": 3,
+        "solid_step_part_bytes_total": 46895,
+        "from_endpoint_center_mm": [
+          20.0,
+          42.0,
+          -1.0
+        ],
+        "to_endpoint_center_mm": [
+          -7.0,
+          55.0,
+          -0.06
+        ],
+        "endpoint_center_distance_mm": 29.981,
+        "endpoints_present": true,
+        "routed_net_presence": {
+          "WIFI_PCIE_TX_P": true,
+          "WIFI_PCIE_TX_N": true,
+          "WIFI_PCIE_RX_P": true,
+          "WIFI_PCIE_RX_N": true,
+          "WIFI_EN": true,
+          "BT_EN": true,
+          "WIFI_SDIO_CLK": true,
+          "WIFI_SDIO_CMD": true,
+          "WIFI_SDIO_D0": true,
+          "WIFI_SDIO_D1": true,
+          "WIFI_SDIO_D2": true,
+          "WIFI_SDIO_D3": true,
+          "BT_UART_TX": true,
+          "BT_UART_RX": true,
+          "BT_UART_CTS_N": true,
+          "BT_UART_RTS_N": true,
+          "WIFI_HOST_WAKE": true
+        },
+        "all_nets_in_routed_development_board": true,
+        "controlled_impedance_requirement_defined": true,
+        "bend_radius_requirement_defined": true,
+        "release_credit": false,
+        "pass": true
+      },
+      {
+        "id": "cellular_host_control",
+        "cad_part": "cellular_host_control_trace_marker",
+        "from": "cellular_lga_module_keepout",
+        "to": "soc_package_marker",
+        "connection_type": "cellular_host_control_trace",
+        "nets": [
+          "CELL_USB2_DP",
+          "CELL_USB2_DN",
+          "CELL_PCIE_TX_P",
+          "CELL_PCIE_TX_N",
+          "CELL_PCIE_RX_P",
+          "CELL_PCIE_RX_N",
+          "CELL_RESET_N",
+          "CELL_W_DISABLE_N"
+        ],
+        "physical_medium": "pcb_copper_trace_group",
+        "electrical_class": "cellular_host_interface",
+        "controlled_impedance_required": true,
+        "impedance_requirement": "USB2/PCIe differential impedance plus reset/disable routing review",
+        "min_bend_radius_mm": 0.0,
+        "supplier_release_required": true,
+        "cad_part_present": true,
+        "cad_step": "mechanical/e1-phone/out/cellular_host_control_trace_marker.step",
+        "cad_step_bytes": 15549,
+        "cad_part_bbox_mm": {
+          "min": [
+            -25.0,
+            38.0,
+            -1.41
+          ],
+          "max": [
+            -13.0,
+            39.0,
+            -1.29
+          ],
+          "span": [
+            12.0,
+            1.0,
+            0.12
+          ]
+        },
+        "visual_route_span_mm": 12.0,
+        "represented_nets": [
+          "CELL_USB2_DP",
+          "CELL_USB2_DN",
+          "CELL_PCIE_TX_P",
+          "CELL_PCIE_TX_N",
+          "CELL_PCIE_RX_P",
+          "CELL_PCIE_RX_N",
+          "CELL_RESET_N",
+          "CELL_W_DISABLE_N"
+        ],
+        "represented_net_count": 8,
+        "represented_route_ids": [
+          "CELL_USB2_DP",
+          "CELL_USB2_DN",
+          "CELL_PCIE_TX_P",
+          "CELL_PCIE_TX_N",
+          "CELL_PCIE_RX_P",
+          "CELL_PCIE_RX_N",
+          "CELL_RESET",
+          "CELL_DISABLE"
+        ],
+        "represented_route_count": 8,
+        "represented_route_records": [
+          {
+            "id": "CELL_USB2_DP",
+            "net": "CELL_USB2_DP",
+            "canonical_net": "CELL_USB2_DP",
+            "layer": "F.Cu",
+            "width_mm": 0.16,
+            "length_mm": 18.452,
+            "manhattan_length_mm": 22.0,
+            "route_classes": [
+              "usb2_diff"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "CELL_USB2_DN",
+            "net": "CELL_USB2_DN",
+            "canonical_net": "CELL_USB2_DN",
+            "layer": "F.Cu",
+            "width_mm": 0.16,
+            "length_mm": 18.452,
+            "manhattan_length_mm": 22.0,
+            "route_classes": [
+              "usb2_diff"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "CELL_PCIE_TX_P",
+            "net": "CELL_PCIE_TX_P",
+            "canonical_net": "CELL_PCIE_TX_P",
+            "layer": "F.Cu",
+            "width_mm": 0.1,
+            "length_mm": 18.985,
+            "manhattan_length_mm": 24.0,
+            "route_classes": [
+              "pcie_diff"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [
+              {
+                "constraint": "pcie_diff_impedance_ohm",
+                "value": 85
+              }
+            ],
+            "linked_via_ids": [
+              "CELL_PCIE_BREAKOUT_VIA"
+            ],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "CELL_PCIE_TX_N",
+            "net": "CELL_PCIE_TX_N",
+            "canonical_net": "CELL_PCIE_TX_N",
+            "layer": "F.Cu",
+            "width_mm": 0.1,
+            "length_mm": 18.985,
+            "manhattan_length_mm": 24.0,
+            "route_classes": [
+              "pcie_diff"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [
+              {
+                "constraint": "pcie_diff_impedance_ohm",
+                "value": 85
+              }
+            ],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "CELL_PCIE_RX_P",
+            "net": "CELL_PCIE_RX_P",
+            "canonical_net": "CELL_PCIE_RX_P",
+            "layer": "F.Cu",
+            "width_mm": 0.1,
+            "length_mm": 19.724,
+            "manhattan_length_mm": 26.0,
+            "route_classes": [
+              "pcie_diff"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [
+              {
+                "constraint": "pcie_diff_impedance_ohm",
+                "value": 85
+              }
+            ],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "CELL_PCIE_RX_N",
+            "net": "CELL_PCIE_RX_N",
+            "canonical_net": "CELL_PCIE_RX_N",
+            "layer": "F.Cu",
+            "width_mm": 0.1,
+            "length_mm": 19.724,
+            "manhattan_length_mm": 26.0,
+            "route_classes": [
+              "pcie_diff"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [
+              {
+                "constraint": "pcie_diff_impedance_ohm",
+                "value": 85
+              }
+            ],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "CELL_RESET",
+            "net": "CELL_RESET_N",
+            "canonical_net": "CELL_RESET_N",
+            "layer": "F.Cu",
+            "width_mm": 0.12,
+            "length_mm": 27.306,
+            "manhattan_length_mm": 37.0,
+            "route_classes": [
+              "wireless_control_bt_uart"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "CELL_DISABLE",
+            "net": "CELL_W_DISABLE_N",
+            "canonical_net": "CELL_W_DISABLE_N",
+            "layer": "F.Cu",
+            "width_mm": 0.12,
+            "length_mm": 27.278,
+            "manhattan_length_mm": 37.0,
+            "route_classes": [
+              "wireless_control_bt_uart"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          }
+        ],
+        "represented_route_classes": [
+          "pcie_diff",
+          "usb2_diff",
+          "wireless_control_bt_uart"
+        ],
+        "represented_source_domains": [
+          "cellular_wifi_bt_rf_host"
+        ],
+        "represented_route_length_total_mm": 168.906,
+        "represented_controlled_impedance_route_count": 4,
+        "all_represented_nets_have_route_trace": true,
+        "from_terminal_part": "cellular_host_control_from_terminal",
+        "from_terminal_step": "mechanical/e1-phone/out/cellular_host_control_from_terminal.step",
+        "from_terminal_step_bytes": 15699,
+        "to_terminal_part": "cellular_host_control_to_terminal",
+        "to_terminal_step": "mechanical/e1-phone/out/cellular_host_control_to_terminal.step",
+        "to_terminal_step_bytes": 15673,
+        "terminal_marker_count": 2,
+        "terminal_markers_present": true,
+        "terminal_step_bytes_total": 31372,
+        "solid_step_part_names": [
+          "cellular_host_control_trace_marker",
+          "cellular_host_control_from_terminal",
+          "cellular_host_control_to_terminal"
+        ],
+        "solid_step_parts_present": true,
+        "solid_step_part_count": 3,
+        "solid_step_part_bytes_total": 46921,
+        "from_endpoint_center_mm": [
+          -15.5,
+          45.0,
+          -0.45
+        ],
+        "to_endpoint_center_mm": [
+          -7.0,
+          55.0,
+          -0.06
+        ],
+        "endpoint_center_distance_mm": 13.13,
+        "endpoints_present": true,
+        "routed_net_presence": {
+          "CELL_USB2_DP": true,
+          "CELL_USB2_DN": true,
+          "CELL_PCIE_TX_P": true,
+          "CELL_PCIE_TX_N": true,
+          "CELL_PCIE_RX_P": true,
+          "CELL_PCIE_RX_N": true,
+          "CELL_RESET_N": true,
+          "CELL_W_DISABLE_N": true
+        },
+        "all_nets_in_routed_development_board": true,
+        "controlled_impedance_requirement_defined": true,
+        "bend_radius_requirement_defined": true,
+        "release_credit": false,
+        "pass": true
+      },
+      {
         "id": "bottom_speaker_lead_pair",
         "cad_part": "bottom_speaker_lead_pair",
         "from": "main_pcb",
@@ -8215,7 +10319,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/bottom_speaker_lead_pair.step",
-        "cad_step_bytes": 15552,
+        "cad_step_bytes": 15566,
         "cad_part_bbox_mm": {
           "min": [
             -5.0,
@@ -8293,13 +10397,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "bottom_speaker_lead_pair_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/bottom_speaker_lead_pair_from_terminal.step",
-        "from_terminal_step_bytes": 15659,
+        "from_terminal_step_bytes": 15673,
         "to_terminal_part": "bottom_speaker_lead_pair_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/bottom_speaker_lead_pair_to_terminal.step",
-        "to_terminal_step_bytes": 15659,
+        "to_terminal_step_bytes": 15673,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31318,
+        "terminal_step_bytes_total": 31346,
         "solid_step_part_names": [
           "bottom_speaker_lead_pair",
           "bottom_speaker_lead_pair_from_terminal",
@@ -8307,7 +10411,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46870,
+        "solid_step_part_bytes_total": 46912,
         "from_endpoint_center_mm": [
           0.0,
           0.0,
@@ -8348,7 +10452,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/bottom_microphone_flex_leads.step",
-        "cad_step_bytes": 15583,
+        "cad_step_bytes": 15597,
         "cad_part_bbox_mm": {
           "min": [
             -22.0,
@@ -8426,13 +10530,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "bottom_microphone_flex_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/bottom_microphone_flex_from_terminal.step",
-        "from_terminal_step_bytes": 15659,
+        "from_terminal_step_bytes": 15647,
         "to_terminal_part": "bottom_microphone_flex_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/bottom_microphone_flex_to_terminal.step",
-        "to_terminal_step_bytes": 15711,
+        "to_terminal_step_bytes": 15725,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31370,
+        "terminal_step_bytes_total": 31372,
         "solid_step_part_names": [
           "bottom_microphone_flex_leads",
           "bottom_microphone_flex_from_terminal",
@@ -8440,7 +10544,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46953,
+        "solid_step_part_bytes_total": 46969,
         "from_endpoint_center_mm": [
           0.0,
           0.0,
@@ -8481,7 +10585,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/top_microphone_flex_tail.step",
-        "cad_step_bytes": 15565,
+        "cad_step_bytes": 15579,
         "cad_part_bbox_mm": {
           "min": [
             -27.4,
@@ -8559,13 +10663,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "top_microphone_flex_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/top_microphone_flex_from_terminal.step",
-        "from_terminal_step_bytes": 15659,
+        "from_terminal_step_bytes": 15621,
         "to_terminal_part": "top_microphone_flex_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/top_microphone_flex_to_terminal.step",
-        "to_terminal_step_bytes": 15659,
+        "to_terminal_step_bytes": 15673,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31318,
+        "terminal_step_bytes_total": 31294,
         "solid_step_part_names": [
           "top_microphone_flex_tail",
           "top_microphone_flex_from_terminal",
@@ -8573,7 +10677,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46883,
+        "solid_step_part_bytes_total": 46873,
         "from_endpoint_center_mm": [
           0.0,
           0.0,
@@ -8614,7 +10718,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/earpiece_receiver_lead_flex.step",
-        "cad_step_bytes": 15530,
+        "cad_step_bytes": 15544,
         "cad_part_bbox_mm": {
           "min": [
             -7.0,
@@ -8692,13 +10796,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "earpiece_receiver_lead_flex_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/earpiece_receiver_lead_flex_from_terminal.step",
-        "from_terminal_step_bytes": 15633,
+        "from_terminal_step_bytes": 15647,
         "to_terminal_part": "earpiece_receiver_lead_flex_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/earpiece_receiver_lead_flex_to_terminal.step",
-        "to_terminal_step_bytes": 15607,
+        "to_terminal_step_bytes": 15621,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31240,
+        "terminal_step_bytes_total": 31268,
         "solid_step_part_names": [
           "earpiece_receiver_lead_flex",
           "earpiece_receiver_lead_flex_from_terminal",
@@ -8706,7 +10810,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46770,
+        "solid_step_part_bytes_total": 46812,
         "from_endpoint_center_mm": [
           0.0,
           0.0,
@@ -8746,7 +10850,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/haptic_flex_tail.step",
-        "cad_step_bytes": 15561,
+        "cad_step_bytes": 15575,
         "cad_part_bbox_mm": {
           "min": [
             18.0,
@@ -8823,13 +10927,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "haptic_flex_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/haptic_flex_from_terminal.step",
-        "from_terminal_step_bytes": 15607,
+        "from_terminal_step_bytes": 15647,
         "to_terminal_part": "haptic_flex_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/haptic_flex_to_terminal.step",
-        "to_terminal_step_bytes": 15685,
+        "to_terminal_step_bytes": 15699,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31292,
+        "terminal_step_bytes_total": 31346,
         "solid_step_part_names": [
           "haptic_flex_tail",
           "haptic_flex_from_terminal",
@@ -8837,7 +10941,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46853,
+        "solid_step_part_bytes_total": 46921,
         "from_endpoint_center_mm": [
           0.0,
           0.0,
@@ -8852,6 +10956,139 @@
         "endpoints_present": true,
         "routed_net_presence": {
           "HAPTIC_OUT": true
+        },
+        "all_nets_in_routed_development_board": true,
+        "controlled_impedance_requirement_defined": true,
+        "bend_radius_requirement_defined": true,
+        "release_credit": false,
+        "pass": true
+      },
+      {
+        "id": "sensor_hub_i2c_flex",
+        "cad_part": "sensor_hub_i2c_flex_marker",
+        "from": "main_pcb",
+        "to": "sensor_hub_package_marker",
+        "connection_type": "sensor_hub_i2c_flex",
+        "nets": [
+          "SENSOR_I2C_SCL",
+          "SENSOR_I2C_SDA"
+        ],
+        "physical_medium": "flexible_printed_circuit",
+        "electrical_class": "sensor_i2c",
+        "controlled_impedance_required": false,
+        "impedance_requirement": "not_controlled_impedance",
+        "min_bend_radius_mm": 0.8,
+        "supplier_release_required": true,
+        "cad_part_present": true,
+        "cad_step": "mechanical/e1-phone/out/sensor_hub_i2c_flex_marker.step",
+        "cad_step_bytes": 15592,
+        "cad_part_bbox_mm": {
+          "min": [
+            -12.5,
+            34.1,
+            -1.41
+          ],
+          "max": [
+            -7.5,
+            34.9,
+            -1.29
+          ],
+          "span": [
+            5.0,
+            0.8,
+            0.12
+          ]
+        },
+        "visual_route_span_mm": 5.0,
+        "represented_nets": [
+          "SENSOR_I2C_SCL",
+          "SENSOR_I2C_SDA"
+        ],
+        "represented_net_count": 2,
+        "represented_route_ids": [
+          "SENSOR_I2C_SCL",
+          "SENSOR_I2C_SDA"
+        ],
+        "represented_route_count": 2,
+        "represented_route_records": [
+          {
+            "id": "SENSOR_I2C_SCL",
+            "net": "SENSOR_I2C_SCL",
+            "canonical_net": "SENSOR_I2C_SCL",
+            "layer": "F.Cu",
+            "width_mm": 0.12,
+            "length_mm": 29.091,
+            "manhattan_length_mm": 38.5,
+            "route_classes": [
+              "sim_nfc_sensor"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "SENSOR_I2C_SDA",
+            "net": "SENSOR_I2C_SDA",
+            "canonical_net": "SENSOR_I2C_SDA",
+            "layer": "F.Cu",
+            "width_mm": 0.12,
+            "length_mm": 29.351,
+            "manhattan_length_mm": 38.5,
+            "route_classes": [
+              "sim_nfc_sensor"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          }
+        ],
+        "represented_route_classes": [
+          "sim_nfc_sensor"
+        ],
+        "represented_source_domains": [
+          "cellular_wifi_bt_rf_host"
+        ],
+        "represented_route_length_total_mm": 58.442,
+        "represented_controlled_impedance_route_count": 0,
+        "all_represented_nets_have_route_trace": true,
+        "from_terminal_part": "sensor_hub_i2c_flex_from_terminal",
+        "from_terminal_step": "mechanical/e1-phone/out/sensor_hub_i2c_flex_from_terminal.step",
+        "from_terminal_step_bytes": 15699,
+        "to_terminal_part": "sensor_hub_i2c_flex_to_terminal",
+        "to_terminal_step": "mechanical/e1-phone/out/sensor_hub_i2c_flex_to_terminal.step",
+        "to_terminal_step_bytes": 15647,
+        "terminal_marker_count": 2,
+        "terminal_markers_present": true,
+        "terminal_step_bytes_total": 31346,
+        "solid_step_part_names": [
+          "sensor_hub_i2c_flex_marker",
+          "sensor_hub_i2c_flex_from_terminal",
+          "sensor_hub_i2c_flex_to_terminal"
+        ],
+        "solid_step_parts_present": true,
+        "solid_step_part_count": 3,
+        "solid_step_part_bytes_total": 46938,
+        "from_endpoint_center_mm": [
+          0.0,
+          0.0,
+          -2.1
+        ],
+        "to_endpoint_center_mm": [
+          7.0,
+          35.0,
+          -0.08
+        ],
+        "endpoint_center_distance_mm": 35.75,
+        "endpoints_present": true,
+        "routed_net_presence": {
+          "SENSOR_I2C_SCL": true,
+          "SENSOR_I2C_SDA": true
         },
         "all_nets_in_routed_development_board": true,
         "controlled_impedance_requirement_defined": true,
@@ -8884,7 +11121,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/sim_esim_signal_flex_marker.step",
-        "cad_step_bytes": 15583,
+        "cad_step_bytes": 15597,
         "cad_part_bbox_mm": {
           "min": [
             28.5,
@@ -9008,8 +11245,12 @@
             "width_mm": 0.12,
             "length_mm": 45.877,
             "manhattan_length_mm": 58.7,
-            "route_classes": [],
-            "source_domains": [],
+            "route_classes": [
+              "sim_nfc_sensor"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
             "controlled_impedance_targets_ohm": [],
             "linked_via_ids": [],
             "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
@@ -9098,13 +11339,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "sim_esim_signal_flex_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/sim_esim_signal_flex_from_terminal.step",
-        "from_terminal_step_bytes": 15633,
+        "from_terminal_step_bytes": 15699,
         "to_terminal_part": "sim_esim_signal_flex_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/sim_esim_signal_flex_to_terminal.step",
-        "to_terminal_step_bytes": 15685,
+        "to_terminal_step_bytes": 15699,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31318,
+        "terminal_step_bytes_total": 31398,
         "solid_step_part_names": [
           "sim_esim_signal_flex_marker",
           "sim_esim_signal_flex_from_terminal",
@@ -9112,7 +11353,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46901,
+        "solid_step_part_bytes_total": 46995,
         "from_endpoint_center_mm": [
           0.0,
           0.0,
@@ -9162,7 +11403,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/nfc_loop_antenna_flex_marker.step",
-        "cad_step_bytes": 15557,
+        "cad_step_bytes": 15571,
         "cad_part_bbox_mm": {
           "min": [
             15.0,
@@ -9204,8 +11445,12 @@
             "width_mm": 0.16,
             "length_mm": 7.654,
             "manhattan_length_mm": 8.8,
-            "route_classes": [],
-            "source_domains": [],
+            "route_classes": [
+              "sim_nfc_sensor"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
             "controlled_impedance_targets_ohm": [],
             "linked_via_ids": [],
             "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
@@ -9218,8 +11463,12 @@
             "width_mm": 0.16,
             "length_mm": 5.687,
             "manhattan_length_mm": 6.4,
-            "route_classes": [],
-            "source_domains": [],
+            "route_classes": [
+              "sim_nfc_sensor"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
             "controlled_impedance_targets_ohm": [],
             "linked_via_ids": [],
             "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
@@ -9232,8 +11481,12 @@
             "width_mm": 0.12,
             "length_mm": 13.127,
             "manhattan_length_mm": 17.4,
-            "route_classes": [],
-            "source_domains": [],
+            "route_classes": [
+              "sim_nfc_sensor"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
             "controlled_impedance_targets_ohm": [],
             "linked_via_ids": [],
             "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
@@ -9246,27 +11499,35 @@
             "width_mm": 0.12,
             "length_mm": 13.153,
             "manhattan_length_mm": 17.3,
-            "route_classes": [],
-            "source_domains": [],
+            "route_classes": [
+              "sim_nfc_sensor"
+            ],
+            "source_domains": [
+              "cellular_wifi_bt_rf_host"
+            ],
             "controlled_impedance_targets_ohm": [],
             "linked_via_ids": [],
             "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
           }
         ],
-        "represented_route_classes": [],
-        "represented_source_domains": [],
+        "represented_route_classes": [
+          "sim_nfc_sensor"
+        ],
+        "represented_source_domains": [
+          "cellular_wifi_bt_rf_host"
+        ],
         "represented_route_length_total_mm": 39.621,
         "represented_controlled_impedance_route_count": 0,
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "nfc_loop_antenna_flex_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/nfc_loop_antenna_flex_from_terminal.step",
-        "from_terminal_step_bytes": 15685,
+        "from_terminal_step_bytes": 15699,
         "to_terminal_part": "nfc_loop_antenna_flex_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/nfc_loop_antenna_flex_to_terminal.step",
-        "to_terminal_step_bytes": 15685,
+        "to_terminal_step_bytes": 15699,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31370,
+        "terminal_step_bytes_total": 31398,
         "solid_step_part_names": [
           "nfc_loop_antenna_flex_marker",
           "nfc_loop_antenna_flex_from_terminal",
@@ -9274,7 +11535,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46927,
+        "solid_step_part_bytes_total": 46969,
         "from_endpoint_center_mm": [
           -26.0,
           30.0,
@@ -9324,7 +11585,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/compute_som_sodimm_connector.step",
-        "cad_step_bytes": 15561,
+        "cad_step_bytes": 15575,
         "cad_part_bbox_mm": {
           "min": [
             -32.5,
@@ -9569,13 +11830,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "compute_som_sodimm_carrier_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/compute_som_sodimm_carrier_from_terminal.step",
-        "from_terminal_step_bytes": 15633,
+        "from_terminal_step_bytes": 15673,
         "to_terminal_part": "compute_som_sodimm_carrier_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/compute_som_sodimm_carrier_to_terminal.step",
-        "to_terminal_step_bytes": 15607,
+        "to_terminal_step_bytes": 15621,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31240,
+        "terminal_step_bytes_total": 31294,
         "solid_step_part_names": [
           "compute_som_sodimm_connector",
           "compute_som_sodimm_carrier_from_terminal",
@@ -9583,7 +11844,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46801,
+        "solid_step_part_bytes_total": 46869,
         "from_endpoint_center_mm": [
           0.0,
           0.0,
@@ -9614,6 +11875,330 @@
         "pass": true
       },
       {
+        "id": "soc_shield_ground_spring",
+        "cad_part": "soc_shield_ground_spring_marker",
+        "from": "soc_shield_can",
+        "to": "main_pcb",
+        "connection_type": "shield_ground_spring",
+        "nets": [
+          "GND"
+        ],
+        "physical_medium": "ground_spring_contact",
+        "electrical_class": "shield_chassis_ground",
+        "controlled_impedance_required": false,
+        "impedance_requirement": "low_inductance_chassis_ground_contact_required",
+        "min_bend_radius_mm": 0.0,
+        "supplier_release_required": true,
+        "cad_part_present": true,
+        "cad_step": "mechanical/e1-phone/out/soc_shield_ground_spring_marker.step",
+        "cad_step_bytes": 15605,
+        "cad_part_bbox_mm": {
+          "min": [
+            -7.3,
+            24.15,
+            -1.21
+          ],
+          "max": [
+            -3.7,
+            24.85,
+            -0.99
+          ],
+          "span": [
+            3.6,
+            0.7,
+            0.22
+          ]
+        },
+        "visual_route_span_mm": 3.6,
+        "represented_nets": [
+          "GND"
+        ],
+        "represented_net_count": 1,
+        "represented_route_ids": [
+          "GND_STITCH_TOP",
+          "GND_STITCH_BOTTOM"
+        ],
+        "represented_route_count": 2,
+        "represented_route_records": [
+          {
+            "id": "GND_STITCH_TOP",
+            "net": "GND",
+            "canonical_net": "GND",
+            "layer": "F.Cu",
+            "width_mm": 0.3,
+            "length_mm": 56.0,
+            "manhattan_length_mm": 56.0,
+            "route_classes": [
+              "high_current_power"
+            ],
+            "source_domains": [
+              "usb_c_power_sidekey_spine"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [
+              "DISPLAY_DSI_RETURN_VIA",
+              "CELL_RF_GND_STITCH_A",
+              "CELL_RF_GND_STITCH_B",
+              "WIFI_RF_GND_STITCH_A",
+              "WIFI_RF_GND_STITCH_B",
+              "NFC_LOOP_RETURN_VIA",
+              "BOTTOM_GND_STITCH_A",
+              "BOTTOM_GND_STITCH_B"
+            ],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "GND_STITCH_BOTTOM",
+            "net": "GND",
+            "canonical_net": "GND",
+            "layer": "F.Cu",
+            "width_mm": 0.3,
+            "length_mm": 48.168,
+            "manhattan_length_mm": 52.0,
+            "route_classes": [
+              "high_current_power"
+            ],
+            "source_domains": [
+              "usb_c_power_sidekey_spine"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [
+              "DISPLAY_DSI_RETURN_VIA",
+              "CELL_RF_GND_STITCH_A",
+              "CELL_RF_GND_STITCH_B",
+              "WIFI_RF_GND_STITCH_A",
+              "WIFI_RF_GND_STITCH_B",
+              "NFC_LOOP_RETURN_VIA",
+              "BOTTOM_GND_STITCH_A",
+              "BOTTOM_GND_STITCH_B"
+            ],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          }
+        ],
+        "represented_route_classes": [
+          "high_current_power"
+        ],
+        "represented_source_domains": [
+          "usb_c_power_sidekey_spine"
+        ],
+        "represented_route_length_total_mm": 104.168,
+        "represented_controlled_impedance_route_count": 0,
+        "all_represented_nets_have_route_trace": true,
+        "from_terminal_part": "soc_shield_ground_spring_from_terminal",
+        "from_terminal_step": "mechanical/e1-phone/out/soc_shield_ground_spring_from_terminal.step",
+        "from_terminal_step_bytes": 15673,
+        "to_terminal_part": "soc_shield_ground_spring_to_terminal",
+        "to_terminal_step": "mechanical/e1-phone/out/soc_shield_ground_spring_to_terminal.step",
+        "to_terminal_step_bytes": 15647,
+        "terminal_marker_count": 2,
+        "terminal_markers_present": true,
+        "terminal_step_bytes_total": 31320,
+        "solid_step_part_names": [
+          "soc_shield_ground_spring_marker",
+          "soc_shield_ground_spring_from_terminal",
+          "soc_shield_ground_spring_to_terminal"
+        ],
+        "solid_step_parts_present": true,
+        "solid_step_part_count": 3,
+        "solid_step_part_bytes_total": 46925,
+        "from_endpoint_center_mm": [
+          -7.0,
+          55.0,
+          -0.9
+        ],
+        "to_endpoint_center_mm": [
+          0.0,
+          0.0,
+          -2.1
+        ],
+        "endpoint_center_distance_mm": 55.457,
+        "endpoints_present": true,
+        "routed_net_presence": {
+          "GND": true
+        },
+        "all_nets_in_routed_development_board": true,
+        "controlled_impedance_requirement_defined": true,
+        "bend_radius_requirement_defined": true,
+        "release_credit": false,
+        "pass": true
+      },
+      {
+        "id": "radio_shield_ground_spring",
+        "cad_part": "radio_shield_ground_spring_marker",
+        "from": "radio_shield_can",
+        "to": "main_pcb",
+        "connection_type": "shield_ground_spring",
+        "nets": [
+          "GND",
+          "SHIELD_GND"
+        ],
+        "physical_medium": "ground_spring_contact",
+        "electrical_class": "shield_chassis_ground",
+        "controlled_impedance_required": false,
+        "impedance_requirement": "low_inductance_chassis_ground_contact_required",
+        "min_bend_radius_mm": 0.0,
+        "supplier_release_required": true,
+        "cad_part_present": true,
+        "cad_step": "mechanical/e1-phone/out/radio_shield_ground_spring_marker.step",
+        "cad_step_bytes": 15631,
+        "cad_part_bbox_mm": {
+          "min": [
+            -24.8,
+            32.65,
+            -1.21
+          ],
+          "max": [
+            -21.2,
+            33.35,
+            -0.99
+          ],
+          "span": [
+            3.6,
+            0.7,
+            0.22
+          ]
+        },
+        "visual_route_span_mm": 3.6,
+        "represented_nets": [
+          "GND",
+          "SHIELD_GND"
+        ],
+        "represented_net_count": 2,
+        "represented_route_ids": [
+          "GND_STITCH_TOP",
+          "GND_STITCH_BOTTOM",
+          "SHIELD_GND_USB"
+        ],
+        "represented_route_count": 3,
+        "represented_route_records": [
+          {
+            "id": "GND_STITCH_TOP",
+            "net": "GND",
+            "canonical_net": "GND",
+            "layer": "F.Cu",
+            "width_mm": 0.3,
+            "length_mm": 56.0,
+            "manhattan_length_mm": 56.0,
+            "route_classes": [
+              "high_current_power"
+            ],
+            "source_domains": [
+              "usb_c_power_sidekey_spine"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [
+              "DISPLAY_DSI_RETURN_VIA",
+              "CELL_RF_GND_STITCH_A",
+              "CELL_RF_GND_STITCH_B",
+              "WIFI_RF_GND_STITCH_A",
+              "WIFI_RF_GND_STITCH_B",
+              "NFC_LOOP_RETURN_VIA",
+              "BOTTOM_GND_STITCH_A",
+              "BOTTOM_GND_STITCH_B"
+            ],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "GND_STITCH_BOTTOM",
+            "net": "GND",
+            "canonical_net": "GND",
+            "layer": "F.Cu",
+            "width_mm": 0.3,
+            "length_mm": 48.168,
+            "manhattan_length_mm": 52.0,
+            "route_classes": [
+              "high_current_power"
+            ],
+            "source_domains": [
+              "usb_c_power_sidekey_spine"
+            ],
+            "controlled_impedance_targets_ohm": [],
+            "linked_via_ids": [
+              "DISPLAY_DSI_RETURN_VIA",
+              "CELL_RF_GND_STITCH_A",
+              "CELL_RF_GND_STITCH_B",
+              "WIFI_RF_GND_STITCH_A",
+              "WIFI_RF_GND_STITCH_B",
+              "NFC_LOOP_RETURN_VIA",
+              "BOTTOM_GND_STITCH_A",
+              "BOTTOM_GND_STITCH_B"
+            ],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          },
+          {
+            "id": "SHIELD_GND_USB",
+            "net": "SHIELD_GND",
+            "canonical_net": "SHIELD_GND",
+            "layer": "F.Cu",
+            "width_mm": 0.3,
+            "length_mm": 7.814,
+            "manhattan_length_mm": 10.2,
+            "route_classes": [
+              "usb2_diff"
+            ],
+            "source_domains": [
+              "usb_c_power_sidekey_spine"
+            ],
+            "controlled_impedance_targets_ohm": [
+              {
+                "constraint": "usb2_diff_impedance_ohm",
+                "value": 90
+              }
+            ],
+            "linked_via_ids": [],
+            "constraint_status": "development_trace_only_not_field_solved_or_drc_signed"
+          }
+        ],
+        "represented_route_classes": [
+          "high_current_power",
+          "usb2_diff"
+        ],
+        "represented_source_domains": [
+          "usb_c_power_sidekey_spine"
+        ],
+        "represented_route_length_total_mm": 111.982,
+        "represented_controlled_impedance_route_count": 1,
+        "all_represented_nets_have_route_trace": true,
+        "from_terminal_part": "radio_shield_ground_spring_from_terminal",
+        "from_terminal_step": "mechanical/e1-phone/out/radio_shield_ground_spring_from_terminal.step",
+        "from_terminal_step_bytes": 15673,
+        "to_terminal_part": "radio_shield_ground_spring_to_terminal",
+        "to_terminal_step": "mechanical/e1-phone/out/radio_shield_ground_spring_to_terminal.step",
+        "to_terminal_step_bytes": 15673,
+        "terminal_marker_count": 2,
+        "terminal_markers_present": true,
+        "terminal_step_bytes_total": 31346,
+        "solid_step_part_names": [
+          "radio_shield_ground_spring_marker",
+          "radio_shield_ground_spring_from_terminal",
+          "radio_shield_ground_spring_to_terminal"
+        ],
+        "solid_step_parts_present": true,
+        "solid_step_part_count": 3,
+        "solid_step_part_bytes_total": 46977,
+        "from_endpoint_center_mm": [
+          -22.0,
+          50.0,
+          -0.9
+        ],
+        "to_endpoint_center_mm": [
+          0.0,
+          0.0,
+          -2.1
+        ],
+        "endpoint_center_distance_mm": 54.639,
+        "endpoints_present": true,
+        "routed_net_presence": {
+          "GND": true,
+          "SHIELD_GND": true
+        },
+        "all_nets_in_routed_development_board": true,
+        "controlled_impedance_requirement_defined": true,
+        "bend_radius_requirement_defined": true,
+        "release_credit": false,
+        "pass": true
+      },
+      {
         "id": "cellular_main_rf_feed",
         "cad_part": "cellular_rf_feed_development_envelope",
         "from": "cellular_lga_module_keepout",
@@ -9630,7 +12215,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/cellular_rf_feed_development_envelope.step",
-        "cad_step_bytes": 15673,
+        "cad_step_bytes": 15687,
         "cad_part_bbox_mm": {
           "min": [
             -30.225,
@@ -9695,13 +12280,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "cellular_main_rf_feed_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/cellular_main_rf_feed_from_terminal.step",
-        "from_terminal_step_bytes": 15685,
+        "from_terminal_step_bytes": 15699,
         "to_terminal_part": "cellular_main_rf_feed_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/cellular_main_rf_feed_to_terminal.step",
-        "to_terminal_step_bytes": 15607,
+        "to_terminal_step_bytes": 15621,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31292,
+        "terminal_step_bytes_total": 31320,
         "solid_step_part_names": [
           "cellular_rf_feed_development_envelope",
           "cellular_main_rf_feed_from_terminal",
@@ -9709,7 +12294,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46965,
+        "solid_step_part_bytes_total": 47007,
         "from_endpoint_center_mm": [
           -15.5,
           45.0,
@@ -9748,7 +12333,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/cellular_div_rf_feed_development_envelope.step",
-        "cad_step_bytes": 15621,
+        "cad_step_bytes": 15635,
         "cad_part_bbox_mm": {
           "min": [
             -24.225,
@@ -9813,13 +12398,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "cellular_diversity_rf_feed_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/cellular_diversity_rf_feed_from_terminal.step",
-        "from_terminal_step_bytes": 15685,
+        "from_terminal_step_bytes": 15699,
         "to_terminal_part": "cellular_diversity_rf_feed_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/cellular_diversity_rf_feed_to_terminal.step",
-        "to_terminal_step_bytes": 15659,
+        "to_terminal_step_bytes": 15673,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31344,
+        "terminal_step_bytes_total": 31372,
         "solid_step_part_names": [
           "cellular_div_rf_feed_development_envelope",
           "cellular_diversity_rf_feed_from_terminal",
@@ -9827,7 +12412,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46965,
+        "solid_step_part_bytes_total": 47007,
         "from_endpoint_center_mm": [
           -15.5,
           45.0,
@@ -9867,7 +12452,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/antenna_aperture_tuner.step",
-        "cad_step_bytes": 15579,
+        "cad_step_bytes": 15593,
         "cad_part_bbox_mm": {
           "min": [
             -28.0,
@@ -9953,13 +12538,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "cellular_antenna_aperture_tuner_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/cellular_antenna_aperture_tuner_from_terminal.step",
-        "from_terminal_step_bytes": 15685,
+        "from_terminal_step_bytes": 15699,
         "to_terminal_part": "cellular_antenna_aperture_tuner_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/cellular_antenna_aperture_tuner_to_terminal.step",
-        "to_terminal_step_bytes": 15650,
+        "to_terminal_step_bytes": 15664,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31335,
+        "terminal_step_bytes_total": 31363,
         "solid_step_part_names": [
           "antenna_aperture_tuner",
           "cellular_antenna_aperture_tuner_from_terminal",
@@ -9967,7 +12552,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46914,
+        "solid_step_part_bytes_total": 46956,
         "from_endpoint_center_mm": [
           -15.5,
           45.0,
@@ -10007,7 +12592,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/cellular_gnss_rf_feed_development_envelope.step",
-        "cad_step_bytes": 15621,
+        "cad_step_bytes": 15635,
         "cad_part_bbox_mm": {
           "min": [
             -28.225,
@@ -10072,13 +12657,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "cellular_gnss_rf_feed_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/cellular_gnss_rf_feed_from_terminal.step",
-        "from_terminal_step_bytes": 15685,
+        "from_terminal_step_bytes": 15699,
         "to_terminal_part": "cellular_gnss_rf_feed_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/cellular_gnss_rf_feed_to_terminal.step",
-        "to_terminal_step_bytes": 15685,
+        "to_terminal_step_bytes": 15699,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31370,
+        "terminal_step_bytes_total": 31398,
         "solid_step_part_names": [
           "cellular_gnss_rf_feed_development_envelope",
           "cellular_gnss_rf_feed_from_terminal",
@@ -10086,7 +12671,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46991,
+        "solid_step_part_bytes_total": 47033,
         "from_endpoint_center_mm": [
           -15.5,
           45.0,
@@ -10125,7 +12710,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/wifi_bt_rf_feed_development_envelope.step",
-        "cad_step_bytes": 15647,
+        "cad_step_bytes": 15661,
         "cad_part_bbox_mm": {
           "min": [
             23.5,
@@ -10192,13 +12777,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "wifi_bt_rf0_feed_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/wifi_bt_rf0_feed_from_terminal.step",
-        "from_terminal_step_bytes": 15659,
+        "from_terminal_step_bytes": 15647,
         "to_terminal_part": "wifi_bt_rf0_feed_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/wifi_bt_rf0_feed_to_terminal.step",
-        "to_terminal_step_bytes": 15659,
+        "to_terminal_step_bytes": 15673,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31318,
+        "terminal_step_bytes_total": 31320,
         "solid_step_part_names": [
           "wifi_bt_rf_feed_development_envelope",
           "wifi_bt_rf0_feed_from_terminal",
@@ -10206,7 +12791,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46965,
+        "solid_step_part_bytes_total": 46981,
         "from_endpoint_center_mm": [
           20.0,
           42.0,
@@ -10245,7 +12830,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/wifi_bt_rf1_feed_development_envelope.step",
-        "cad_step_bytes": 15595,
+        "cad_step_bytes": 15609,
         "cad_part_bbox_mm": {
           "min": [
             22.0,
@@ -10312,13 +12897,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "wifi_bt_rf1_feed_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/wifi_bt_rf1_feed_from_terminal.step",
-        "from_terminal_step_bytes": 15633,
+        "from_terminal_step_bytes": 15673,
         "to_terminal_part": "wifi_bt_rf1_feed_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/wifi_bt_rf1_feed_to_terminal.step",
-        "to_terminal_step_bytes": 15659,
+        "to_terminal_step_bytes": 15673,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31292,
+        "terminal_step_bytes_total": 31346,
         "solid_step_part_names": [
           "wifi_bt_rf1_feed_development_envelope",
           "wifi_bt_rf1_feed_from_terminal",
@@ -10326,7 +12911,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46887,
+        "solid_step_part_bytes_total": 46955,
         "from_endpoint_center_mm": [
           20.0,
           42.0,
@@ -10372,7 +12957,7 @@
         "supplier_release_required": true,
         "cad_part_present": true,
         "cad_step": "mechanical/e1-phone/out/split_interconnect_side_flex.step",
-        "cad_step_bytes": 15580,
+        "cad_step_bytes": 15594,
         "cad_part_bbox_mm": {
           "min": [
             33.3,
@@ -10593,13 +13178,13 @@
         "all_represented_nets_have_route_trace": true,
         "from_terminal_part": "split_interconnect_side_flex_from_terminal",
         "from_terminal_step": "mechanical/e1-phone/out/split_interconnect_side_flex_from_terminal.step",
-        "from_terminal_step_bytes": 15633,
+        "from_terminal_step_bytes": 15647,
         "to_terminal_part": "split_interconnect_side_flex_to_terminal",
         "to_terminal_step": "mechanical/e1-phone/out/split_interconnect_side_flex_to_terminal.step",
-        "to_terminal_step_bytes": 15685,
+        "to_terminal_step_bytes": 15699,
         "terminal_marker_count": 2,
         "terminal_markers_present": true,
-        "terminal_step_bytes_total": 31318,
+        "terminal_step_bytes_total": 31346,
         "solid_step_part_names": [
           "split_interconnect_side_flex",
           "split_interconnect_side_flex_from_terminal",
@@ -10607,7 +13192,7 @@
         ],
         "solid_step_parts_present": true,
         "solid_step_part_count": 3,
-        "solid_step_part_bytes_total": 46898,
+        "solid_step_part_bytes_total": 46940,
         "from_endpoint_center_mm": [
           22.0,
           37.5,
@@ -10641,15 +13226,15 @@
   "required_solid_presence": {
     "orange_back_shell": {
       "present": true,
-      "bytes": 15561
+      "bytes": 344345
     },
     "orange_side_frame": {
       "present": true,
-      "bytes": 15569
+      "bytes": 754096
     },
     "screen_cover_glass": {
       "present": true,
-      "bytes": 15647
+      "bytes": 131089
     },
     "display_lcm": {
       "present": true,
@@ -11323,6 +13908,26 @@
       "present": true,
       "bytes": 15566
     },
+    "display_bias_power_flex_marker": {
+      "present": true,
+      "bytes": 15545
+    },
+    "rear_camera_power_flex_marker": {
+      "present": true,
+      "bytes": 15558
+    },
+    "front_camera_power_flex_marker": {
+      "present": true,
+      "bytes": 15627
+    },
+    "wifi_bt_host_control_trace_marker": {
+      "present": true,
+      "bytes": 15549
+    },
+    "cellular_host_control_trace_marker": {
+      "present": true,
+      "bytes": 15549
+    },
     "bottom_speaker_lead_pair": {
       "present": true,
       "bytes": 15566
@@ -11343,6 +13948,10 @@
       "present": true,
       "bytes": 15575
     },
+    "sensor_hub_i2c_flex_marker": {
+      "present": true,
+      "bytes": 15592
+    },
     "sim_esim_signal_flex_marker": {
       "present": true,
       "bytes": 15597
@@ -11362,6 +13971,14 @@
     "wifi_bt_rf1_feed_development_envelope": {
       "present": true,
       "bytes": 15609
+    },
+    "soc_shield_ground_spring_marker": {
+      "present": true,
+      "bytes": 15605
+    },
+    "radio_shield_ground_spring_marker": {
+      "present": true,
+      "bytes": 15631
     },
     "haptic_lra": {
       "present": true,
@@ -11455,6 +14072,46 @@
       "present": true,
       "bytes": 15699
     },
+    "display_bias_power_flex_from_terminal": {
+      "present": true,
+      "bytes": 15673
+    },
+    "display_bias_power_flex_to_terminal": {
+      "present": true,
+      "bytes": 15673
+    },
+    "rear_camera_power_flex_from_terminal": {
+      "present": true,
+      "bytes": 15673
+    },
+    "rear_camera_power_flex_to_terminal": {
+      "present": true,
+      "bytes": 15673
+    },
+    "front_camera_power_flex_from_terminal": {
+      "present": true,
+      "bytes": 15673
+    },
+    "front_camera_power_flex_to_terminal": {
+      "present": true,
+      "bytes": 15699
+    },
+    "wifi_bt_host_control_from_terminal": {
+      "present": true,
+      "bytes": 15673
+    },
+    "wifi_bt_host_control_to_terminal": {
+      "present": true,
+      "bytes": 15673
+    },
+    "cellular_host_control_from_terminal": {
+      "present": true,
+      "bytes": 15699
+    },
+    "cellular_host_control_to_terminal": {
+      "present": true,
+      "bytes": 15673
+    },
     "bottom_speaker_lead_pair_from_terminal": {
       "present": true,
       "bytes": 15673
@@ -11465,7 +14122,7 @@
     },
     "bottom_microphone_flex_from_terminal": {
       "present": true,
-      "bytes": 15673
+      "bytes": 15647
     },
     "bottom_microphone_flex_to_terminal": {
       "present": true,
@@ -11473,7 +14130,7 @@
     },
     "top_microphone_flex_from_terminal": {
       "present": true,
-      "bytes": 15673
+      "bytes": 15621
     },
     "top_microphone_flex_to_terminal": {
       "present": true,
@@ -11489,15 +14146,23 @@
     },
     "haptic_flex_from_terminal": {
       "present": true,
-      "bytes": 15621
+      "bytes": 15647
     },
     "haptic_flex_to_terminal": {
       "present": true,
       "bytes": 15699
     },
-    "sim_esim_signal_flex_from_terminal": {
+    "sensor_hub_i2c_flex_from_terminal": {
+      "present": true,
+      "bytes": 15699
+    },
+    "sensor_hub_i2c_flex_to_terminal": {
       "present": true,
       "bytes": 15647
+    },
+    "sim_esim_signal_flex_from_terminal": {
+      "present": true,
+      "bytes": 15699
     },
     "sim_esim_signal_flex_to_terminal": {
       "present": true,
@@ -11513,11 +14178,27 @@
     },
     "compute_som_sodimm_carrier_from_terminal": {
       "present": true,
-      "bytes": 15647
+      "bytes": 15673
     },
     "compute_som_sodimm_carrier_to_terminal": {
       "present": true,
       "bytes": 15621
+    },
+    "soc_shield_ground_spring_from_terminal": {
+      "present": true,
+      "bytes": 15673
+    },
+    "soc_shield_ground_spring_to_terminal": {
+      "present": true,
+      "bytes": 15647
+    },
+    "radio_shield_ground_spring_from_terminal": {
+      "present": true,
+      "bytes": 15673
+    },
+    "radio_shield_ground_spring_to_terminal": {
+      "present": true,
+      "bytes": 15673
     },
     "cellular_main_rf_feed_from_terminal": {
       "present": true,
@@ -11553,7 +14234,7 @@
     },
     "wifi_bt_rf0_feed_from_terminal": {
       "present": true,
-      "bytes": 15673
+      "bytes": 15647
     },
     "wifi_bt_rf0_feed_to_terminal": {
       "present": true,
@@ -11561,7 +14242,7 @@
     },
     "wifi_bt_rf1_feed_from_terminal": {
       "present": true,
-      "bytes": 15647
+      "bytes": 15673
     },
     "wifi_bt_rf1_feed_to_terminal": {
       "present": true,
@@ -11579,14 +14260,184 @@
   "side_frame_external_cutouts": {
     "status": "pass",
     "cutout_count": 11,
-    "cutouts": [],
-    "note": "OCP fallback preserves already modeled side-frame opening part envelopes."
+    "cutouts": [
+      {
+        "name": "usb_c_side_frame_cutout",
+        "source_aperture": "usb_c_external_aperture",
+        "size_mm": [
+          10.8,
+          4.0,
+          4.2
+        ],
+        "center_mm": [
+          0.0,
+          -76.8,
+          -1.45
+        ]
+      },
+      {
+        "name": "bottom_speaker_side_frame_cutout_1",
+        "source_aperture": "bottom_speaker_grille_slot_1",
+        "size_mm": [
+          1.35,
+          4.0,
+          4.4
+        ],
+        "center_mm": [
+          11.5,
+          -76.8,
+          -1.35
+        ]
+      },
+      {
+        "name": "bottom_speaker_side_frame_cutout_2",
+        "source_aperture": "bottom_speaker_grille_slot_2",
+        "size_mm": [
+          1.35,
+          4.0,
+          4.4
+        ],
+        "center_mm": [
+          14.5,
+          -76.8,
+          -1.35
+        ]
+      },
+      {
+        "name": "bottom_speaker_side_frame_cutout_3",
+        "source_aperture": "bottom_speaker_grille_slot_3",
+        "size_mm": [
+          1.35,
+          4.0,
+          4.4
+        ],
+        "center_mm": [
+          17.5,
+          -76.8,
+          -1.35
+        ]
+      },
+      {
+        "name": "bottom_speaker_side_frame_cutout_4",
+        "source_aperture": "bottom_speaker_grille_slot_4",
+        "size_mm": [
+          1.35,
+          4.0,
+          4.4
+        ],
+        "center_mm": [
+          20.5,
+          -76.8,
+          -1.35
+        ]
+      },
+      {
+        "name": "bottom_speaker_side_frame_cutout_5",
+        "source_aperture": "bottom_speaker_grille_slot_5",
+        "size_mm": [
+          1.35,
+          4.0,
+          4.4
+        ],
+        "center_mm": [
+          23.5,
+          -76.8,
+          -1.35
+        ]
+      },
+      {
+        "name": "bottom_microphone_side_frame_cutout_1",
+        "source_aperture": "bottom_microphone_port_1",
+        "size_mm": [
+          1.2,
+          4.0,
+          1.2
+        ],
+        "center_mm": [
+          -22.0,
+          -76.8,
+          -1.35
+        ]
+      },
+      {
+        "name": "bottom_microphone_side_frame_cutout_2",
+        "source_aperture": "bottom_microphone_port_2",
+        "size_mm": [
+          1.2,
+          4.0,
+          1.2
+        ],
+        "center_mm": [
+          -17.0,
+          -76.8,
+          -1.35
+        ]
+      },
+      {
+        "name": "top_microphone_side_frame_cutout",
+        "source_aperture": "top_microphone_port",
+        "size_mm": [
+          1.2,
+          4.0,
+          1.2
+        ],
+        "center_mm": [
+          18.0,
+          76.8,
+          -1.35
+        ]
+      },
+      {
+        "name": "power_button_side_frame_cutout",
+        "source_aperture": "power_button_cap",
+        "size_mm": [
+          4.0,
+          12.8,
+          1.7000000000000002
+        ],
+        "center_mm": [
+          39.0,
+          20.0,
+          -0.4
+        ]
+      },
+      {
+        "name": "volume_button_side_frame_cutout",
+        "source_aperture": "volume_button_cap",
+        "size_mm": [
+          4.0,
+          21.8,
+          1.7000000000000002
+        ],
+        "center_mm": [
+          -39.0,
+          14.0,
+          -0.4
+        ]
+      }
+    ],
+    "note": "OCP fallback emits the side frame as a compound perimeter with real interior, port, microphone, speaker, and button voids."
   },
   "cover_glass_external_cutouts": {
     "status": "pass",
     "cutout_count": 1,
-    "cutouts": [],
-    "note": "OCP fallback preserves the handset acoustic opening envelope."
+    "cutouts": [
+      {
+        "name": "handset_cover_glass_slot_cutout",
+        "source_aperture": "handset_acoustic_slot",
+        "size_mm": [
+          16.4,
+          1.3,
+          1.2999999999999998
+        ],
+        "center_mm": [
+          0.0,
+          69.2,
+          5.98
+        ]
+      }
+    ],
+    "note": "OCP fallback emits the cover glass as a compound plate with a real handset acoustic slot void."
   },
   "linked_fit_status": "pass",
   "remaining_blockers": [

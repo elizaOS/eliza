@@ -169,6 +169,11 @@ ENV_DEFAULT_PATHS = {
     ),
 }
 
+ENV_DEFAULT_COMMANDS = {
+    "AOSP_QEMU_SMOKE_COMMAND": ROOT / "scripts/aosp_qemu_smoke_command.sh",
+    "AOSP_RENODE_SMOKE_COMMAND": ROOT / "scripts/aosp_renode_smoke_command.sh",
+}
+
 TOOL_DEFAULT_PATHS = {
     "qemu-system-riscv64": (
         ROOT / "tools/bin/qemu-system-riscv64",
@@ -319,6 +324,9 @@ def check_tools(
 
 
 def default_env_value(name: str) -> str:
+    command = ENV_DEFAULT_COMMANDS.get(name)
+    if command and command.is_file() and os.access(command, os.X_OK):
+        return str(command)
     for candidate in ENV_DEFAULT_PATHS.get(name, ()):
         if candidate.exists():
             return str(candidate)

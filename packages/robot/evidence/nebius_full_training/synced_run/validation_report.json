@@ -26,7 +26,7 @@
     "success_marker": true,
     "failure_marker_absent": true,
     "stage_logs": true,
-    "stage_status": false,
+    "stage_status": true,
     "production_contract": false,
     "instance_launch_hygiene": true,
     "training_inputs": true,
@@ -35,7 +35,7 @@
     "asimov1_alberta_production": true,
     "backend_comparison": true,
     "joint_reach_benchmark": true,
-    "obstacle_course_benchmark": true,
+    "obstacle_course_benchmark": false,
     "brax_full_training_run": true,
     "brax_production_checkpoint": true,
     "video_review": false,
@@ -95,9 +95,9 @@
       }
     },
     "stage_status": {
-      "ok": false,
+      "ok": true,
       "checks": {
-        "runner_status": false,
+        "runner_status": true,
         "all_stage_statuses": true
       },
       "runner": {
@@ -107,9 +107,9 @@
           "valid_json_object": true,
           "state_complete": true,
           "ok_true": true,
-          "all_stages_listed": false,
-          "stage_count_exact": false,
-          "stage_order": false,
+          "all_stages_listed": true,
+          "stage_count_exact": true,
+          "stage_order": true,
           "last_stage": true,
           "started_at": true,
           "ended_at": true,
@@ -118,7 +118,20 @@
         "state": "complete",
         "ok": true,
         "last_stage": "50_post_train_validation",
-        "stage_count": 1
+        "repaired_from_stage_files": true,
+        "raw_stage_names": [
+          "50_post_train_validation"
+        ],
+        "effective_stage_names": [
+          "00_local_preflight",
+          "10_nebius_train_alberta",
+          "20_nebius_compare_backends",
+          "30_nebius_continual_benchmarks",
+          "40_nebius_brax_baseline",
+          "50_post_train_validation"
+        ],
+        "raw_stage_count": 1,
+        "stage_count": 6
       },
       "stages": {
         "00_local_preflight": true,
@@ -246,6 +259,22 @@
         "deep_validators_enabled": false,
         "min_alberta_steps": true,
         "checkpoint_manifest_present": true,
+        "checkpoint_regime": true,
+        "checkpoint_profile": true,
+        "checkpoint_domain_rand": true,
+        "checkpoint_not_non_production": true,
+        "checkpoint_not_validation": true,
+        "checkpoint_not_tiny_validation": true,
+        "checkpoint_tasks_cover_requested": true,
+        "checkpoint_steps_per_task": true,
+        "checkpoint_steps_accounting": true,
+        "checkpoint_phase_promotion_schema": false,
+        "checkpoint_phase_promotion_completed": false,
+        "checkpoint_phase_promotion_gate": false,
+        "checkpoint_phase_promotion_tasks": false,
+        "checkpoint_phase_promotion_all_passed": false,
+        "checkpoint_phase_promotion_steps": false,
+        "checkpoint_phase_promotion_physical": false,
         "checkpoint_total_steps": false,
         "checkpoint_requested_total_steps": false,
         "min_backend_compare_steps": true,
@@ -265,6 +294,26 @@
         "checkpoint_manifest": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full/manifest.json",
         "checkpoint_total_steps": 7000,
         "checkpoint_requested_total_steps": 7000,
+        "checkpoint_profile_id": "asimov-1",
+        "checkpoint_regime": "alberta_streaming",
+        "checkpoint_domain_rand": true,
+        "checkpoint_non_production": null,
+        "checkpoint_validation_checkpoint": null,
+        "checkpoint_tiny_training_validation": null,
+        "checkpoint_active_tasks": [
+          "stand_up",
+          "walk_forward",
+          "walk_backward",
+          "sidestep_left",
+          "sidestep_right",
+          "turn_left",
+          "turn_right"
+        ],
+        "checkpoint_steps_per_task": 1000,
+        "checkpoint_phase_promotion_schema": null,
+        "checkpoint_phase_promotion_status": null,
+        "checkpoint_phase_promotion_gate": null,
+        "checkpoint_phase_promotion_tasks": [],
         "min_backend_compare_steps": 30000,
         "min_benchmark_steps_per_task": 16000,
         "min_benchmark_seeds": 3
@@ -1039,10 +1088,13 @@
         "result_learners": true,
         "matrix_shapes": true,
         "motion_matrix_shapes": true,
+        "trajectory_matrix_shapes": true,
         "obstacle_motion_summary": true,
         "obstacle_forward_progress": true,
         "obstacle_passes_obstacle": true,
         "obstacle_collision_rate": true,
+        "obstacle_passive_baseline_control": true,
+        "obstacle_beats_passive_baseline": true,
         "metrics": true,
         "alberta_acc_gte_ppo": true,
         "alberta_forgetting_lte_ppo": true
@@ -1130,6 +1182,11 @@
         }
       },
       "motion": {},
+      "obstacle_baseline": {
+        "by_learner": {},
+        "baseline_is_control": false,
+        "learning_beats_baseline": false
+      },
       "seed_coverage": {
         "alberta": [
           1000,
@@ -1152,7 +1209,7 @@
       ]
     },
     "obstacle_course_benchmark": {
-      "ok": true,
+      "ok": false,
       "benchmark_dir": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/evidence/alberta_obstacle_course",
       "expected_env": "obstacle_course",
       "min_seeds": 3,
@@ -1163,7 +1220,7 @@
         "json": true,
         "markdown": true,
         "plot": true,
-        "demo_json": true,
+        "demo_json": false,
         "demo_video": true,
         "schema": true,
         "expected_env": true,
@@ -1177,12 +1234,15 @@
         "result_learners": true,
         "matrix_shapes": true,
         "motion_matrix_shapes": true,
+        "trajectory_matrix_shapes": false,
         "obstacle_motion_summary": true,
         "obstacle_forward_progress": true,
         "obstacle_passes_obstacle": true,
         "obstacle_collision_rate": true,
+        "obstacle_passive_baseline_control": true,
+        "obstacle_beats_passive_baseline": false,
         "metrics": true,
-        "alberta_acc_gte_ppo": true,
+        "alberta_acc_gte_ppo": false,
         "alberta_forgetting_lte_ppo": true
       },
       "deltas": {
@@ -1194,11 +1254,11 @@
         "alberta_forgetting_lte_ppo": true
       },
       "enforced_delta_gates": {
-        "alberta_acc_gte_ppo": true,
+        "alberta_acc_gte_ppo": false,
         "alberta_forgetting_lte_ppo": true
       },
       "required_deltas": {
-        "require_alberta_acc_gte_ppo": false,
+        "require_alberta_acc_gte_ppo": true,
         "require_alberta_forgetting_lte_ppo": true
       },
       "required_artifacts": {
@@ -1533,6 +1593,40 @@
           "final_forward_progress_m_mean": 1.4609543616573017,
           "final_min_obstacle_clearance_m_min": -0.023521630764007595
         }
+      },
+      "obstacle_baseline": {
+        "by_learner": {
+          "alberta": {
+            "baseline_success_rate": 0.0,
+            "baseline_passed_obstacle_rate": 0.0,
+            "baseline_forward_progress_m": 0.0,
+            "baseline_return": 0.4057772241829439,
+            "final_success_rate": 0.5,
+            "final_passed_obstacle_rate": 0.5,
+            "final_forward_progress_m": -0.483197855949402,
+            "final_return": 2.148470235502235,
+            "delta_success_rate": 0.5,
+            "delta_passed_obstacle_rate": 0.5,
+            "delta_forward_progress_m": -0.483197855949402,
+            "delta_return": 1.7426930113192913
+          },
+          "ppo": {
+            "baseline_success_rate": 0.0,
+            "baseline_passed_obstacle_rate": 0.0,
+            "baseline_forward_progress_m": -0.004178500175476074,
+            "baseline_return": 0.41103745511003037,
+            "final_success_rate": 0.0,
+            "final_passed_obstacle_rate": 0.5,
+            "final_forward_progress_m": 1.4216580986976624,
+            "final_return": 3.1994154318801282,
+            "delta_success_rate": 0.0,
+            "delta_passed_obstacle_rate": 0.5,
+            "delta_forward_progress_m": 1.4258365988731385,
+            "delta_return": 2.788377976770098
+          }
+        },
+        "baseline_is_control": true,
+        "learning_beats_baseline": false
       },
       "seed_coverage": {
         "alberta": [
@@ -4679,7 +4773,10 @@
             "attempted_action": true,
             "nonzero_action_steps": true,
             "torso_series": true,
-            "action_norm_series": true
+            "tracked_body_name": false,
+            "tracked_z_series": false,
+            "action_norm_series": true,
+            "torso_height_gain": false
           },
           "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
           "task_id": "stand_up",
@@ -4701,9 +4798,14 @@
             "attempted_action": true,
             "nonzero_action_steps": true,
             "torso_series": true,
+            "tracked_body_name": false,
+            "tracked_z_series": false,
             "action_norm_series": true,
             "delta_x_series": true,
-            "delta_x_forward": false
+            "delta_x_forward": false,
+            "lateral_drift_bound": true,
+            "yaw_drift_bound": true,
+            "tracked_height_present": false
           },
           "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
           "task_id": "walk_forward",
@@ -4725,9 +4827,14 @@
             "attempted_action": true,
             "nonzero_action_steps": true,
             "torso_series": true,
+            "tracked_body_name": false,
+            "tracked_z_series": false,
             "action_norm_series": true,
             "delta_x_series": true,
-            "delta_x_backward": true
+            "delta_x_backward": true,
+            "lateral_drift_bound": true,
+            "yaw_drift_bound": true,
+            "tracked_height_present": false
           },
           "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
           "task_id": "walk_backward",
@@ -4749,11 +4856,15 @@
             "attempted_action": true,
             "nonzero_action_steps": true,
             "torso_series": true,
+            "tracked_body_name": false,
+            "tracked_z_series": false,
             "action_norm_series": true,
             "delta_y_series": true,
             "delta_x_series": true,
             "delta_y_left": false,
-            "forward_drift_bound": false
+            "forward_drift_bound": false,
+            "yaw_drift_bound": true,
+            "tracked_height_present": false
           },
           "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
           "task_id": "sidestep_left",
@@ -4775,11 +4886,15 @@
             "attempted_action": true,
             "nonzero_action_steps": true,
             "torso_series": true,
+            "tracked_body_name": false,
+            "tracked_z_series": false,
             "action_norm_series": true,
             "delta_y_series": true,
             "delta_x_series": true,
             "delta_y_right": false,
-            "forward_drift_bound": false
+            "forward_drift_bound": false,
+            "yaw_drift_bound": true,
+            "tracked_height_present": false
           },
           "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
           "task_id": "sidestep_right",
@@ -4801,9 +4916,13 @@
             "attempted_action": true,
             "nonzero_action_steps": true,
             "torso_series": true,
+            "tracked_body_name": false,
+            "tracked_z_series": false,
             "action_norm_series": true,
             "delta_yaw_series": true,
-            "delta_yaw_left": false
+            "delta_yaw_left": false,
+            "translation_drift_bound": false,
+            "tracked_height_present": false
           },
           "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
           "task_id": "turn_left",
@@ -4825,9 +4944,13 @@
             "attempted_action": true,
             "nonzero_action_steps": true,
             "torso_series": true,
+            "tracked_body_name": false,
+            "tracked_z_series": false,
             "action_norm_series": true,
             "delta_yaw_series": true,
-            "delta_yaw_right": false
+            "delta_yaw_right": false,
+            "translation_drift_bound": false,
+            "tracked_height_present": false
           },
           "policy_source": "checkpoint:/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/checkpoints/asimov_1_alberta_full",
           "task_id": "turn_right",
@@ -4848,6 +4971,8 @@
             "expected_tasks": true,
             "all_goal_success": false,
             "all_attempted_action": true,
+            "all_nonzero_action_steps": true,
+            "all_command_tracked_telemetry": false,
             "all_command_motion": false,
             "any_goal_success": false
           },
@@ -4905,6 +5030,7 @@
         "n_tasks": true,
         "n_programmatic_pass": false,
         "all_requested_tasks_programmatic_success": false,
+        "all_requested_tasks_physical_success": false,
         "task_success_rates": false,
         "task_episodes": true,
         "task_errors_absent": true,

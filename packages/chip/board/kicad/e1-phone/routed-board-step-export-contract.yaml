@@ -35,15 +35,15 @@ current_state:
   routed_pcb_execution_status: blocked_requires_supplier_footprints_schematic_erc_trial_route_drc_outputs_and_routed_step
   component_height_step_status: blocked_requires_supplier_step_models_routed_board_step_and_clearance_rerun
   enclosure_fit_status: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
-  board_step_readiness_status: blocked_concept_pcb_no_routed_step
-  routed_board_clearance_status: blocked_waiting_for_routed_board_step
-  full_cad_boolean_status: blocked_boolean_interference_incomplete
+  board_step_readiness_status: blocked_local_routed_step_candidate_not_release
+  routed_board_clearance_status: blocked_waiting_for_physical_routed_board_clearance_result
+  full_cad_boolean_status: pass
   full_cad_concept_aabb_interference_scan_pass: true
   full_cad_concept_aabb_interference_count: 0
   full_cad_boolean_evidence_class: concept_envelope_brep_boolean_interference_result
-  full_cad_boolean_parts_loaded: 234
-  full_cad_boolean_pair_count_brep_evaluated: 878
-  full_cad_boolean_unintentional_clash_count: 48
+  full_cad_boolean_parts_loaded: 258
+  full_cad_boolean_pair_count_brep_evaluated: 989
+  full_cad_boolean_unintentional_clash_count: 0
   full_cad_boolean_scope_result_count: 11
   full_cad_boolean_passing_scope_result_count: 11
   concept_pcb_only: true
@@ -52,11 +52,13 @@ current_state:
   local_development_step_context:
     status: development_routed_real_footprint_step_present_not_release
     source_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
-    source_step: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    source_step: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
     candidate_production_step_copy: board/kicad/e1-phone/production/step/routed-board-with-components.step
     candidate_production_step_present_but_blocked: true
-    source_step_size_bytes: 32970696
-    candidate_step_size_bytes: 32970696
+    source_step_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+    source_step_size_bytes: 33644081
+    candidate_step_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+    candidate_step_size_bytes: 33644081
     footprint_envelope_count: 89
     pad_contact_visual_count: 1452
     route_segment_visual_count: 306

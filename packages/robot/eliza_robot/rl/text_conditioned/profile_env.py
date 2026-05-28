@@ -171,6 +171,11 @@ class TextConditionedProfileEnv(gym.Env):
         self._episode_start_y = 0.0
         self._episode_start_yaw = 0.0
         self._episode_start_torso_z = 0.0
+        self._episode_start_tracked_x = 0.0
+        self._episode_start_tracked_y = 0.0
+        self._episode_start_tracked_z = 0.0
+        self._tracked_body_id = -1
+        self._tracked_body_name = "root"
         # Per-profile fall envelope. The robot is "fallen" when the torso
         # drops below 60% of standing height OR pitches/rolls past 0.8 rad.
         # Standing height comes from the profile's gait spec — for AiNex
@@ -188,6 +193,8 @@ class TextConditionedProfileEnv(gym.Env):
         self._prev_foot_xy = np.zeros((2, 2), dtype=np.float32)
         self._gait_phase = 0.0
         self._last_foot_telemetry = np.zeros(8, dtype=np.float32)
+        self._last_single_foot_contact_state: str | None = None
+        self._foot_contact_switch_count = 0
 
     # ------------------------------------------------------------------ mujoco
 
@@ -256,6 +263,7 @@ class TextConditionedProfileEnv(gym.Env):
         self._dr_canonical_geom_friction = self._model.geom_friction.copy()
         self._dr_canonical_dof_damping = self._model.dof_damping.copy()
         self._dr_canonical_actuator_gear = self._model.actuator_gear.copy()
+        self._resolve_tracked_body()
         self._resolve_foot_contact_geoms()
 
     # ------------------------------------------------------------------ gym API
@@ -273,7 +281,9 @@ class TextConditionedProfileEnv(gym.Env):
         self._apply_task_init_state(task)
         if self.config.domain_rand:
             self._apply_domain_randomization()
+        self._place_task_init_state_on_floor(task)
         mujoco.mj_forward(self._model, self._data)
+        self._validate_task_init_state(task)
         self._previous_action.fill(0.0)
         self._prev_action.fill(0.0)
         self._step_count = 0
@@ -281,18 +291,28 @@ class TextConditionedProfileEnv(gym.Env):
         self._current_task = task
         self._current_embed = self.embeddings[task.id].reduced_embed.astype(np.float32)
         pose = self._root_pose_summary()
+        tracked = self._tracked_pose_summary(pose)
         self._episode_start_x = pose["x"]
         self._episode_start_y = pose["y"]
         self._episode_start_yaw = pose["yaw"]
         self._episode_start_torso_z = pose["z"]
+        self._episode_start_tracked_x = tracked["x"]
+        self._episode_start_tracked_y = tracked["y"]
+        self._episode_start_tracked_z = tracked["z"]
         self._prev_foot_xy = self._current_foot_xy()
         self._last_foot_telemetry = self._foot_telemetry()
+        self._last_single_foot_contact_state = self._single_foot_contact_state(
+            self._last_foot_telemetry
+        )
+        self._foot_contact_switch_count = 0
         pose = self._root_pose_summary()
         return self._build_obs(), {
             "task_id": task.id,
             "task_tier": task.tier,
             "init_state": task.init_state or "stand",
             "init_torso_z": pose["z"],
+            "init_tracked_z": tracked["z"],
+            "tracked_body_name": self._tracked_body_name,
             "init_upright_proj": pose["upright_proj"],
             "stand_height_m": self._stand_height_m,
         }
@@ -311,7 +331,7 @@ class TextConditionedProfileEnv(gym.Env):
             return
         root = self._root_qpos_idx
         if init_state in {"sit", "crouch"} and self._data.qpos.size > root + 2:
-            extra = task.model_extra or {}
+            extra = self._task_model_extra(task)
             if "init_torso_z_m" in extra:
                 target_z = float(extra["init_torso_z_m"])
             else:
@@ -319,12 +339,21 @@ class TextConditionedProfileEnv(gym.Env):
                     extra.get("init_torso_height_ratio", 0.65)
                 )
             self._data.qpos[root + 2] = target_z
-            self._set_named_joint_if_present(("hip_pitch",), -0.45)
-            self._set_named_joint_if_present(("knee",), 0.85)
-            self._set_named_joint_if_present(("ank_pitch", "ankle_pitch"), -0.35)
+            self._set_named_joint_if_present(
+                ("hip_pitch",),
+                float(extra.get("init_hip_pitch_rad", -0.45)),
+            )
+            self._set_named_joint_if_present(
+                ("knee",),
+                float(extra.get("init_knee_rad", 0.85)),
+            )
+            self._set_named_joint_if_present(
+                ("ank_pitch", "ankle_pitch"),
+                float(extra.get("init_ankle_pitch_rad", -0.35)),
+            )
             return
         if init_state == "prone" and self._data.qpos.size > root + 6:
-            extra = task.model_extra or {}
+            extra = self._task_model_extra(task)
             if "init_torso_z_m" in extra:
                 target_z = float(extra["init_torso_z_m"])
             else:
@@ -341,6 +370,69 @@ class TextConditionedProfileEnv(gym.Env):
         raise ValueError(
             f"task {task.id!r} requests unsupported init_state={init_state!r}"
         )
+
+    def _task_model_extra(self, task: TaskSpec) -> dict:
+        extra = dict(task.model_extra or {})
+        profile_init = extra.pop("profile_init", None)
+        if isinstance(profile_init, dict):
+            override = profile_init.get(self.profile.id)
+            if isinstance(override, dict):
+                extra.update(override)
+        return extra
+
+    def _place_task_init_state_on_floor(self, task: TaskSpec) -> None:
+        if (
+            task.id != "stand_up"
+            or task.init_state not in {"sit", "crouch"}
+            or self.profile.id != "hiwonder-ainex"
+        ):
+            return
+        if self._data.qpos.size <= self._root_qpos_idx + 2:
+            return
+        import mujoco
+
+        mujoco.mj_forward(self._model, self._data)
+        foot_z = self._current_foot_z()
+        finite_foot_z = foot_z[np.isfinite(foot_z)]
+        if finite_foot_z.size == 0:
+            return
+        clearance_m = float(self._task_model_extra(task).get("init_foot_clearance_m", 0.002))
+        self._data.qpos[self._root_qpos_idx + 2] += clearance_m - float(
+            np.min(finite_foot_z)
+        )
+        self._data.qvel[:] = 0.0
+
+    def _validate_task_init_state(self, task: TaskSpec) -> None:
+        if task.id != "stand_up" or task.init_state not in {"sit", "crouch"}:
+            return
+        pose = self._root_pose_summary()
+        extra = self._task_model_extra(task)
+        min_drop = max(
+            float(extra.get("min_init_stand_height_drop_m", 0.03)),
+            self._stand_height_m
+            * float(extra.get("min_init_stand_height_drop_ratio", 0.0)),
+        )
+        actual_drop = self._stand_height_m - pose["z"]
+        if actual_drop < min_drop:
+            raise ValueError(
+                f"profile {self.profile.id!r} cannot start stand_up from a "
+                f"meaningful crouch: drop={actual_drop:.3f}m < {min_drop:.3f}m"
+            )
+        contacts = self._foot_contacts()
+        if self._foot_geom_ids["left"].size and contacts[0] < 0.5:
+            raise ValueError(
+                f"profile {self.profile.id!r} stand_up crouch reset has no left "
+                "foot-floor contact"
+            )
+        if self._foot_geom_ids["right"].size and contacts[1] < 0.5:
+            raise ValueError(
+                f"profile {self.profile.id!r} stand_up crouch reset has no right "
+                "foot-floor contact"
+            )
+        if pose["upright_proj"] <= 0.0:
+            raise ValueError(
+                f"profile {self.profile.id!r} stand_up crouch reset is not upright"
+            )
 
     def _set_named_joint_if_present(
         self,
@@ -414,6 +506,7 @@ class TextConditionedProfileEnv(gym.Env):
             + 2.0 * math.pi * self.config.gait_cadence_hz * self.config.control_dt_s
         )
         self._last_foot_telemetry = self._foot_telemetry()
+        self._update_foot_contact_switch_count()
         obs = self._build_obs()
         pose = self._root_pose_summary()
         torso_z = pose["z"]
@@ -426,18 +519,26 @@ class TextConditionedProfileEnv(gym.Env):
         if self._current_task is not None:
             fall_pitch = float(self._current_task.success.get("fall_pitch_rad", fall_pitch))
             fall_roll = float(self._current_task.success.get("fall_roll_rad", fall_roll))
+        prone_tilt_exempt = (
+            self._current_task is not None
+            and self._current_task.init_state == "prone"
+            and self._current_task.id == "lie_down"
+        )
         tilt_fall = (
-            self._current_task is None
-            or self._current_task.init_state not in {"prone"}
-            and self._current_task.id != "lie_down"
-        ) and (abs(pitch) > fall_pitch or abs(roll) > fall_roll)
+            not prone_tilt_exempt
+            and (abs(pitch) > fall_pitch or abs(roll) > fall_roll)
+        )
         terminated = bool(torso_z < fall_z_threshold or upright_proj < 0.0 or tilt_fall)
-        truncated = self._step_count >= self.config.episode_steps
+        truncated = not terminated and self._step_count >= self.config.episode_steps
         reward = self._reward(clipped, pose=pose, fell=terminated)
+        tracked = self._tracked_pose_summary(pose)
         elapsed_s = max(self._step_count * self.config.control_dt_s, 1e-6)
         dx = pose["x"] - self._episode_start_x
         dy = pose["y"] - self._episode_start_y
         dyaw = _wrap_pi(pose["yaw"] - self._episode_start_yaw)
+        tracked_dx = tracked["x"] - self._episode_start_tracked_x
+        tracked_dy = tracked["y"] - self._episode_start_tracked_y
+        tracked_dz = tracked["z"] - self._episode_start_tracked_z
         success_bound_violation = self._success_bound_violation_score(dx, dy, dyaw)
         success_predicate_now = self._immediate_success_predicate_holds(pose)
         self_collision_count = self._self_collision_count()
@@ -458,11 +559,18 @@ class TextConditionedProfileEnv(gym.Env):
                 "root_x": pose["x"],
                 "root_y": pose["y"],
                 "root_yaw": pose["yaw"],
+                "tracked_body_name": self._tracked_body_name,
+                "tracked_x": tracked["x"],
+                "tracked_y": tracked["y"],
+                "tracked_z": tracked["z"],
                 "imu_roll": roll,
                 "imu_pitch": pitch,
                 "delta_x": dx,
                 "delta_y": dy,
                 "delta_yaw": dyaw,
+                "tracked_delta_x": tracked_dx,
+                "tracked_delta_y": tracked_dy,
+                "tracked_delta_z": tracked_dz,
                 "vx": dx / elapsed_s,
                 "vy": dy / elapsed_s,
                 "yaw_rate": dyaw / elapsed_s,
@@ -562,6 +670,33 @@ class TextConditionedProfileEnv(gym.Env):
             "roll": roll,
             "pitch": pitch,
             "upright_proj": upright_proj,
+        }
+
+    def _resolve_tracked_body(self) -> None:
+        import mujoco
+
+        self._tracked_body_id = -1
+        self._tracked_body_name = "root"
+        for camera in self.profile.sensors.cameras:
+            body_name = str(camera.mount_link)
+            body_id = mujoco.mj_name2id(
+                self._model,
+                mujoco.mjtObj.mjOBJ_BODY,
+                body_name,
+            )
+            if body_id >= 0:
+                self._tracked_body_id = int(body_id)
+                self._tracked_body_name = body_name
+                return
+
+    def _tracked_pose_summary(self, root_pose: dict[str, float]) -> dict[str, float]:
+        if self._tracked_body_id >= 0:
+            xpos = np.asarray(self._data.xpos[self._tracked_body_id], dtype=np.float64)
+            return {"x": float(xpos[0]), "y": float(xpos[1]), "z": float(xpos[2])}
+        return {
+            "x": float(root_pose["x"]),
+            "y": float(root_pose["y"]),
+            "z": float(root_pose["z"]),
         }
 
     def _resolve_foot_contact_geoms(self) -> None:
@@ -790,13 +925,17 @@ class TextConditionedProfileEnv(gym.Env):
         vx_target = float(r.get("target_velocity_x_m_s", 0.0))
         vy_target = float(r.get("target_velocity_y_m_s", 0.0))
         yaw_target = float(r.get("target_yaw_rate_rad_s", 0.0))
-        # Body-frame velocity. The free-joint linvel is in world frame; for
-        # this CPU smoke env we treat them as approximately torso-frame
-        # while the robot stays mostly upright. Production MJX env should
-        # project through the torso quat — see eliza_robot/sim/mujoco/joystick.py.
         root_v = self._root_qvel_idx
-        vx_actual = float(self._data.qvel[root_v]) if self._data.qvel.size > root_v else 0.0
-        vy_actual = float(self._data.qvel[root_v + 1]) if self._data.qvel.size > root_v + 1 else 0.0
+        vx_world = float(self._data.qvel[root_v]) if self._data.qvel.size > root_v else 0.0
+        vy_world = (
+            float(self._data.qvel[root_v + 1])
+            if self._data.qvel.size > root_v + 1
+            else 0.0
+        )
+        cos_yaw = math.cos(pose["yaw"])
+        sin_yaw = math.sin(pose["yaw"])
+        vx_actual = cos_yaw * vx_world + sin_yaw * vy_world
+        vy_actual = -sin_yaw * vx_world + cos_yaw * vy_world
         yaw_actual = float(self._data.qvel[root_v + 5]) if self._data.qvel.size > root_v + 5 else 0.0
         velocity_terms: list[float] = []
         if "target_velocity_x_m_s" in r:
@@ -840,18 +979,19 @@ class TextConditionedProfileEnv(gym.Env):
         upright_bonus = float(max(0.0, upright_proj))
         action_rate = float(np.mean((action - self._prev_action) ** 2))
         energy = float(np.mean(action**2))
-        dx = pose["x"] - self._episode_start_x
-        dy = pose["y"] - self._episode_start_y
         dyaw = _wrap_pi(pose["yaw"] - self._episode_start_yaw)
+        tracked = self._tracked_pose_summary(pose)
+        tracked_dx = tracked["x"] - self._episode_start_tracked_x
+        tracked_dy = tracked["y"] - self._episode_start_tracked_y
         progress = 0.0
         if "delta_x_m_min" in crit:
-            progress += _clamped_ratio(dx, float(crit["delta_x_m_min"]))
+            progress += _clamped_ratio(tracked_dx, float(crit["delta_x_m_min"]))
         if "delta_x_m_max" in crit:
-            progress += _clamped_ratio(-dx, abs(float(crit["delta_x_m_max"])))
+            progress += _clamped_ratio(-tracked_dx, abs(float(crit["delta_x_m_max"])))
         if "delta_y_m_min" in crit:
-            progress += _clamped_ratio(dy, float(crit["delta_y_m_min"]))
+            progress += _clamped_ratio(tracked_dy, float(crit["delta_y_m_min"]))
         if "delta_y_m_max" in crit:
-            progress += _clamped_ratio(-dy, abs(float(crit["delta_y_m_max"])))
+            progress += _clamped_ratio(-tracked_dy, abs(float(crit["delta_y_m_max"])))
         if "delta_yaw_rad_min" in crit:
             progress += _clamped_ratio(dyaw, float(crit["delta_yaw_rad_min"]))
         if "delta_yaw_rad_max" in crit:
@@ -867,19 +1007,22 @@ class TextConditionedProfileEnv(gym.Env):
             )
         drift_penalty = 0.0
         if "max_lateral_drift_m" in crit:
-            excess = max(0.0, abs(dy) - float(crit["max_lateral_drift_m"]))
+            excess = max(0.0, abs(tracked_dy) - float(crit["max_lateral_drift_m"]))
             drift_penalty += 40.0 * excess
         if "max_forward_drift_m" in crit:
-            excess = max(0.0, abs(dx) - float(crit["max_forward_drift_m"]))
+            excess = max(0.0, abs(tracked_dx) - float(crit["max_forward_drift_m"]))
             drift_penalty += 40.0 * excess
         if "max_abs_delta_x_m" in crit:
-            excess = max(0.0, abs(dx) - float(crit["max_abs_delta_x_m"]))
+            excess = max(0.0, abs(tracked_dx) - float(crit["max_abs_delta_x_m"]))
             drift_penalty += 40.0 * excess
         if "max_abs_delta_y_m" in crit:
-            excess = max(0.0, abs(dy) - float(crit["max_abs_delta_y_m"]))
+            excess = max(0.0, abs(tracked_dy) - float(crit["max_abs_delta_y_m"]))
             drift_penalty += 40.0 * excess
         if "max_translation_drift_m" in crit:
-            excess = max(0.0, math.hypot(dx, dy) - float(crit["max_translation_drift_m"]))
+            excess = max(
+                0.0,
+                math.hypot(tracked_dx, tracked_dy) - float(crit["max_translation_drift_m"]),
+            )
             drift_penalty += 40.0 * excess
         if "max_abs_delta_yaw_rad" in crit:
             excess = max(0.0, abs(dyaw) - float(crit["max_abs_delta_yaw_rad"]))
@@ -888,6 +1031,9 @@ class TextConditionedProfileEnv(gym.Env):
         bounds_violated = drift_penalty > 0.0
         tracking_scale = 0.15 if bounds_violated else 1.0
         alive = 1.0
+        movement_progress_weight = float(
+            r.get("movement_progress_weight", 4.0 if _is_locomotion_reward(r) else 1.0)
+        )
         reward = (
             alive
             + 1.0 * height_track
@@ -916,7 +1062,7 @@ class TextConditionedProfileEnv(gym.Env):
             )
             * float(self_collision_count)
             + float(r.get("upright_weight", 0.5)) * upright_bonus
-            + progress
+            + movement_progress_weight * progress
             + float(r.get("action_rate_weight", -0.01)) * action_rate
             + float(r.get("energy_weight", -0.001)) * energy
             - drift_penalty
@@ -928,6 +1074,22 @@ class TextConditionedProfileEnv(gym.Env):
             reward -= max(0.0, fall_z_threshold - torso_z) * 20.0
         if fell:
             reward -= abs(float(r.get("fall_penalty", 25.0)))
+            remaining_fraction = max(
+                0.0,
+                float(self.config.episode_steps - self._step_count)
+                / max(float(self.config.episode_steps), 1.0),
+            )
+            reward -= (
+                abs(
+                    float(
+                        r.get(
+                            "fall_remaining_horizon_penalty",
+                            25.0 if _is_locomotion_reward(r) else 0.0,
+                        )
+                    )
+                )
+                * remaining_fraction
+            )
         return float(reward)
 
     def _immediate_success_predicate_holds(self, pose: dict[str, float]) -> bool:
@@ -943,14 +1105,20 @@ class TextConditionedProfileEnv(gym.Env):
         crit = self._current_task.success
         matched = False
         torso_z = pose["z"]
-        dx = pose["x"] - self._episode_start_x
-        dy = pose["y"] - self._episode_start_y
+        tracked = self._tracked_pose_summary(pose)
+        dx = tracked["x"] - self._episode_start_tracked_x
+        dy = tracked["y"] - self._episode_start_tracked_y
         dyaw = _wrap_pi(pose["yaw"] - self._episode_start_yaw)
         elapsed = self._step_count * self.config.control_dt_s
 
         if bool(crit.get("no_fall", False)) and (
             torso_z < self._fall_z_threshold_for_current_task()
             or pose["upright_proj"] < 0.0
+            or abs(pose.get("pitch", 0.0)) > float(crit.get("fall_pitch_rad", 0.6))
+            or (
+                self._current_task.id != "lie_down"
+                and abs(pose.get("roll", 0.0)) > float(crit.get("fall_roll_rad", 0.6))
+            )
         ):
             return False
 
@@ -997,6 +1165,10 @@ class TextConditionedProfileEnv(gym.Env):
             matched = True
             if not inside_window or abs(dyaw) < float(crit["abs_delta_yaw_rad_min"]):
                 return False
+        if "min_alternating_foot_contacts" in crit:
+            matched = True
+            if self._foot_contact_switch_count < int(crit["min_alternating_foot_contacts"]):
+                return False
 
         for key, value in (
             ("max_abs_delta_x_m", abs(dx)),
@@ -1041,6 +1213,25 @@ class TextConditionedProfileEnv(gym.Env):
                 math.hypot(dx, dy) - float(crit["max_translation_drift_m"]),
             )
         return float(score)
+
+    @staticmethod
+    def _single_foot_contact_state(foot_telemetry: np.ndarray) -> str | None:
+        left = bool(foot_telemetry[0] > 0.5)
+        right = bool(foot_telemetry[1] > 0.5)
+        if left == right:
+            return None
+        return "left" if left else "right"
+
+    def _update_foot_contact_switch_count(self) -> None:
+        state = self._single_foot_contact_state(self._last_foot_telemetry)
+        if state is None:
+            return
+        if (
+            self._last_single_foot_contact_state is not None
+            and state != self._last_single_foot_contact_state
+        ):
+            self._foot_contact_switch_count += 1
+        self._last_single_foot_contact_state = state
 
     def _foot_spacing_penalty(self) -> float:
         foot_xy = self._current_foot_xy()

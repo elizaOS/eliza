@@ -696,7 +696,18 @@ def main() -> int:
 
     class_summary: dict[str, dict[str, object]] = {}
     domain_summary: dict[str, dict[str, object]] = {}
+    route_classification_gaps: list[dict[str, object]] = []
     for route in route_records:
+        if not route["route_classes"] or not route["source_domains"] or not route["source_net_groups"]:
+            route_classification_gaps.append(
+                {
+                    "id": route["id"],
+                    "net": route["net"],
+                    "missing_source_domains": not bool(route["source_domains"]),
+                    "missing_source_net_groups": not bool(route["source_net_groups"]),
+                    "missing_route_classes": not bool(route["route_classes"]),
+                }
+            )
         classes = route["route_classes"] or ["unclassified"]
         domains = route["source_domains"] or ["unmapped"]
         for route_class in classes:
@@ -771,6 +782,8 @@ def main() -> int:
         "controlled_impedance_route_count": sum(
             1 for item in route_records if item["controlled_impedance_targets_ohm"]
         ),
+        "route_classification_gap_count": len(route_classification_gaps),
+        "route_classification_gaps": route_classification_gaps,
         "route_traceability_summary": {
             "classes": dict(sorted(class_summary.items())),
             "domains": dict(sorted(domain_summary.items())),

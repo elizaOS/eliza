@@ -3,10 +3,10 @@
   "status": "pass",
   "validation_tool": "ocp_step_reader",
   "tolerance_mm": 0.05,
-  "validated_count": 234,
+  "validated_count": 258,
   "assembly": {
     "step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
-    "bytes": 4017567,
+    "bytes": 5697447,
     "imported": true,
     "pass": true,
     "bbox_span_mm": [
@@ -19,7 +19,7 @@
     {
       "name": "orange_back_shell",
       "step": "mechanical/e1-phone/out/orange_back_shell.step",
-      "bytes": 15561,
+      "bytes": 344345,
       "imported": true,
       "bbox_span_mm": [
         78.0,
@@ -32,7 +32,7 @@
     {
       "name": "orange_side_frame",
       "step": "mechanical/e1-phone/out/orange_side_frame.step",
-      "bytes": 15569,
+      "bytes": 754096,
       "imported": true,
       "bbox_span_mm": [
         78.0,
@@ -45,7 +45,7 @@
     {
       "name": "screen_cover_glass",
       "step": "mechanical/e1-phone/out/screen_cover_glass.step",
-      "bytes": 15647,
+      "bytes": 131089,
       "imported": true,
       "bbox_span_mm": [
         77.1,
@@ -2240,6 +2240,71 @@
       "pass": true
     },
     {
+      "name": "display_bias_power_flex_marker",
+      "step": "mechanical/e1-phone/out/display_bias_power_flex_marker.step",
+      "bytes": 15545,
+      "imported": true,
+      "bbox_span_mm": [
+        6.0,
+        1.0,
+        0.12
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "rear_camera_power_flex_marker",
+      "step": "mechanical/e1-phone/out/rear_camera_power_flex_marker.step",
+      "bytes": 15558,
+      "imported": true,
+      "bbox_span_mm": [
+        8.0,
+        0.7,
+        0.12
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "front_camera_power_flex_marker",
+      "step": "mechanical/e1-phone/out/front_camera_power_flex_marker.step",
+      "bytes": 15627,
+      "imported": true,
+      "bbox_span_mm": [
+        7.0,
+        0.7,
+        0.12
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "wifi_bt_host_control_trace_marker",
+      "step": "mechanical/e1-phone/out/wifi_bt_host_control_trace_marker.step",
+      "bytes": 15549,
+      "imported": true,
+      "bbox_span_mm": [
+        13.0,
+        1.0,
+        0.12
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "cellular_host_control_trace_marker",
+      "step": "mechanical/e1-phone/out/cellular_host_control_trace_marker.step",
+      "bytes": 15549,
+      "imported": true,
+      "bbox_span_mm": [
+        12.0,
+        1.0,
+        0.12
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
       "name": "bottom_speaker_lead_pair",
       "step": "mechanical/e1-phone/out/bottom_speaker_lead_pair.step",
       "bytes": 15566,
@@ -2299,6 +2364,19 @@
       "bbox_span_mm": [
         12.0,
         1.0,
+        0.12
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "sensor_hub_i2c_flex_marker",
+      "step": "mechanical/e1-phone/out/sensor_hub_i2c_flex_marker.step",
+      "bytes": 15592,
+      "imported": true,
+      "bbox_span_mm": [
+        5.0,
+        0.8,
         0.12
       ],
       "max_span_error_mm": 0.0,
@@ -2365,6 +2443,32 @@
         10.0,
         0.45,
         0.28
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "soc_shield_ground_spring_marker",
+      "step": "mechanical/e1-phone/out/soc_shield_ground_spring_marker.step",
+      "bytes": 15605,
+      "imported": true,
+      "bbox_span_mm": [
+        3.6,
+        0.7,
+        0.22
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "radio_shield_ground_spring_marker",
+      "step": "mechanical/e1-phone/out/radio_shield_ground_spring_marker.step",
+      "bytes": 15631,
+      "imported": true,
+      "bbox_span_mm": [
+        3.6,
+        0.7,
+        0.22
       ],
       "max_span_error_mm": 0.0,
       "pass": true
@@ -2669,6 +2773,136 @@
       "pass": true
     },
     {
+      "name": "display_bias_power_flex_from_terminal",
+      "step": "mechanical/e1-phone/out/display_bias_power_flex_from_terminal.step",
+      "bytes": 15673,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "display_bias_power_flex_to_terminal",
+      "step": "mechanical/e1-phone/out/display_bias_power_flex_to_terminal.step",
+      "bytes": 15673,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "rear_camera_power_flex_from_terminal",
+      "step": "mechanical/e1-phone/out/rear_camera_power_flex_from_terminal.step",
+      "bytes": 15673,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "rear_camera_power_flex_to_terminal",
+      "step": "mechanical/e1-phone/out/rear_camera_power_flex_to_terminal.step",
+      "bytes": 15673,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "front_camera_power_flex_from_terminal",
+      "step": "mechanical/e1-phone/out/front_camera_power_flex_from_terminal.step",
+      "bytes": 15673,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "front_camera_power_flex_to_terminal",
+      "step": "mechanical/e1-phone/out/front_camera_power_flex_to_terminal.step",
+      "bytes": 15699,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "wifi_bt_host_control_from_terminal",
+      "step": "mechanical/e1-phone/out/wifi_bt_host_control_from_terminal.step",
+      "bytes": 15673,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "wifi_bt_host_control_to_terminal",
+      "step": "mechanical/e1-phone/out/wifi_bt_host_control_to_terminal.step",
+      "bytes": 15673,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "cellular_host_control_from_terminal",
+      "step": "mechanical/e1-phone/out/cellular_host_control_from_terminal.step",
+      "bytes": 15699,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "cellular_host_control_to_terminal",
+      "step": "mechanical/e1-phone/out/cellular_host_control_to_terminal.step",
+      "bytes": 15673,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
       "name": "bottom_speaker_lead_pair_from_terminal",
       "step": "mechanical/e1-phone/out/bottom_speaker_lead_pair_from_terminal.step",
       "bytes": 15673,
@@ -2697,7 +2931,7 @@
     {
       "name": "bottom_microphone_flex_from_terminal",
       "step": "mechanical/e1-phone/out/bottom_microphone_flex_from_terminal.step",
-      "bytes": 15673,
+      "bytes": 15647,
       "imported": true,
       "bbox_span_mm": [
         0.45,
@@ -2723,7 +2957,7 @@
     {
       "name": "top_microphone_flex_from_terminal",
       "step": "mechanical/e1-phone/out/top_microphone_flex_from_terminal.step",
-      "bytes": 15673,
+      "bytes": 15621,
       "imported": true,
       "bbox_span_mm": [
         0.45,
@@ -2775,7 +3009,7 @@
     {
       "name": "haptic_flex_from_terminal",
       "step": "mechanical/e1-phone/out/haptic_flex_from_terminal.step",
-      "bytes": 15621,
+      "bytes": 15647,
       "imported": true,
       "bbox_span_mm": [
         0.45,
@@ -2799,9 +3033,35 @@
       "pass": true
     },
     {
+      "name": "sensor_hub_i2c_flex_from_terminal",
+      "step": "mechanical/e1-phone/out/sensor_hub_i2c_flex_from_terminal.step",
+      "bytes": 15699,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "sensor_hub_i2c_flex_to_terminal",
+      "step": "mechanical/e1-phone/out/sensor_hub_i2c_flex_to_terminal.step",
+      "bytes": 15647,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
       "name": "sim_esim_signal_flex_from_terminal",
       "step": "mechanical/e1-phone/out/sim_esim_signal_flex_from_terminal.step",
-      "bytes": 15647,
+      "bytes": 15699,
       "imported": true,
       "bbox_span_mm": [
         0.45,
@@ -2853,7 +3113,7 @@
     {
       "name": "compute_som_sodimm_carrier_from_terminal",
       "step": "mechanical/e1-phone/out/compute_som_sodimm_carrier_from_terminal.step",
-      "bytes": 15647,
+      "bytes": 15673,
       "imported": true,
       "bbox_span_mm": [
         0.45,
@@ -2867,6 +3127,58 @@
       "name": "compute_som_sodimm_carrier_to_terminal",
       "step": "mechanical/e1-phone/out/compute_som_sodimm_carrier_to_terminal.step",
       "bytes": 15621,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "soc_shield_ground_spring_from_terminal",
+      "step": "mechanical/e1-phone/out/soc_shield_ground_spring_from_terminal.step",
+      "bytes": 15673,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "soc_shield_ground_spring_to_terminal",
+      "step": "mechanical/e1-phone/out/soc_shield_ground_spring_to_terminal.step",
+      "bytes": 15647,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "radio_shield_ground_spring_from_terminal",
+      "step": "mechanical/e1-phone/out/radio_shield_ground_spring_from_terminal.step",
+      "bytes": 15673,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "radio_shield_ground_spring_to_terminal",
+      "step": "mechanical/e1-phone/out/radio_shield_ground_spring_to_terminal.step",
+      "bytes": 15673,
       "imported": true,
       "bbox_span_mm": [
         0.45,
@@ -2983,7 +3295,7 @@
     {
       "name": "wifi_bt_rf0_feed_from_terminal",
       "step": "mechanical/e1-phone/out/wifi_bt_rf0_feed_from_terminal.step",
-      "bytes": 15673,
+      "bytes": 15647,
       "imported": true,
       "bbox_span_mm": [
         0.45,
@@ -3009,7 +3321,7 @@
     {
       "name": "wifi_bt_rf1_feed_from_terminal",
       "step": "mechanical/e1-phone/out/wifi_bt_rf1_feed_from_terminal.step",
-      "bytes": 15647,
+      "bytes": 15673,
       "imported": true,
       "bbox_span_mm": [
         0.45,

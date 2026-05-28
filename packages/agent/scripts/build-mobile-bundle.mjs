@@ -1749,8 +1749,12 @@ for (const asset of ["vector.tar.gz", "fuzzystrmatch.tar.gz"]) {
   console.log(`[build-mobile] copied ${asset} (${(sz / 1024).toFixed(1)} KB)`);
 }
 
+const generatedUtc = new Date().toISOString();
 const manifest = {
-  generatedAt: new Date().toISOString(),
+  generatedAt: generatedUtc,
+  generated_utc: generatedUtc,
+  claim_boundary:
+    "mobile_agent_bundle_manifest_only_not_android_boot_or_runtime_execution_evidence",
   bundle: bundleFilename,
   bunTarget: bunBuildTarget,
   platform: TARGET,
@@ -1787,6 +1791,11 @@ const manifest = {
   unsupportedAndroidRuntimeStubs: [
     "@elizaos/plugin-agent-orchestrator",
     "@elizaos/plugin-shell",
+    "@node-llama-cpp/linux-arm64",
+    "@node-llama-cpp/linux-x64",
+    "@node-llama-cpp/mac-arm64",
+    "@node-llama-cpp/mac-x64",
+    "@node-llama-cpp/win-x64",
     "@node-llama-cpp",
     "canvas",
     "llama-cpp-capacitor",

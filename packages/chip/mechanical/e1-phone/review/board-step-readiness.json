@@ -1,6 +1,6 @@
 {
   "claim_boundary": "Mechanical intake gate for routed KiCad board STEP; concept PCB envelope does not count as routed-board evidence.",
-  "status": "blocked_concept_pcb_no_routed_step",
+  "status": "blocked_local_routed_step_candidate_not_release",
   "pcb_source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
   "manufacturing_closure": "board/kicad/e1-phone/manufacturing-closure.yaml",
   "layout_utilization": "board/kicad/e1-phone/layout-utilization.yaml",
@@ -33,7 +33,7 @@
     "step_intake_status": "development_step_generated_not_release",
     "step_output": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step",
     "step_exists": true,
-    "step_size_bytes": 32970696,
+    "step_size_bytes": 33644081,
     "step_footprint_envelope_count": 89,
     "release_credit": false
   },
@@ -44,24 +44,24 @@
       "path": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step",
       "kind": "real_footprint_development_step",
       "present": true,
-      "size_bytes": 32970696,
-      "sha256": "9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58",
+      "size_bytes": 33644081,
+      "sha256": "fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3",
       "release_credit": false
     },
     {
       "path": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step",
       "kind": "routed_development_step",
       "present": true,
-      "size_bytes": 32970696,
-      "sha256": "9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58",
+      "size_bytes": 33644081,
+      "sha256": "fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3",
       "release_credit": false
     },
     {
       "path": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
       "kind": "blocked_routed_output_candidate_step",
       "present": true,
-      "size_bytes": 32970696,
-      "sha256": "9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58",
+      "size_bytes": 33644081,
+      "sha256": "fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3",
       "release_credit": false
     }
   ],
@@ -71,11 +71,11 @@
     "blocked_metadata": true,
     "release_credit": false,
     "reason_not_release": "local routed-output candidate copied from non-release development STEP; lacks physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models, and measured enclosure clearance",
-    "size_bytes": 32970696,
-    "sha256": "9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58",
+    "size_bytes": 33644081,
+    "sha256": "fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3",
     "source_step": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step",
-    "source_step_sha256": "9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58",
-    "source_step_size_bytes": 32970696,
+    "source_step_sha256": "fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3",
+    "source_step_size_bytes": 33644081,
     "route_count": 153,
     "segment_count": 306,
     "footprint_envelope_count": 89,

@@ -14,6 +14,11 @@ register-programmed mode timing -- and not an MMIO-poked pixel stub:
        * scanout_rgb888_packed                   (packed 24bpp byte-assembly)
        * timing_matches_programmed_mode          (hsync/vsync/de == mode regs)
        * forced_underflow_sets_status_and_recovers (fail-closed underflow + W1C)
+       * disabled_state_blocks_axi_and_pixels    (disabled state is quiet)
+       * unsupported_format_write_is_ignored      (invalid fourcc rejected)
+       * framebuffer_ar_addresses_are_monotonic_and_stride_aligned
+       * axi_error_sets_underflow_status          (SLVERR/DECERR visible)
+       * dcs_and_irq_vsync_cadence_matches_mode   (DCS/IRQ vsync cadence)
 
 Writes build/reports/display_scanout.json (schema eliza.gate_status.v1).
 PASS only when lint is clean and every required test passes; otherwise the
@@ -47,6 +52,11 @@ REQUIRED_TESTS = (
     "scanout_rgb888_packed",
     "timing_matches_programmed_mode",
     "forced_underflow_sets_status_and_recovers",
+    "disabled_state_blocks_axi_and_pixels",
+    "unsupported_format_write_is_ignored",
+    "framebuffer_ar_addresses_are_monotonic_and_stride_aligned",
+    "axi_error_sets_underflow_status",
+    "dcs_and_irq_vsync_cadence_matches_mode",
 )
 
 # A real scanout datapath must not regress to MMIO-poked pixels: these tokens
@@ -72,6 +82,13 @@ REQUIRED_RTL_TOKENS = (
 LINT_WAIVERS = [
     "-Wno-UNUSEDPARAM",  # shared AXI4 package exposes the full constant table
 ]
+
+
+def tool_path(name: str) -> str:
+    local = ROOT / "external/oss-cad-suite/bin" / name
+    if local.exists():
+        return str(local)
+    return name
 
 
 def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
@@ -117,7 +134,7 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
 
 def verilator_lint() -> tuple[bool, str]:
     cmd = [
-        "verilator",
+        tool_path("verilator"),
         "--lint-only",
         "-Wall",
         *LINT_WAIVERS,

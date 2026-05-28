@@ -29,8 +29,8 @@ def test_valid_report_passes() -> None:
     if errors:
         raise AssertionError(errors)
     targets = {target.get("target") for target in report["targets"]}
-    if "u-boot" not in targets:
-        raise AssertionError(f"software BSP scope must include U-Boot target: {targets}")
+    if "u-boot" in targets:
+        raise AssertionError(f"selected software BSP scope must not require alternate U-Boot target: {targets}")
     print("PASS valid software BSP scope report")
 
 
@@ -75,7 +75,7 @@ def test_uboot_capture_plan_is_release_scoped() -> None:
     if check["status"] != "pass":
         raise AssertionError(check)
     blockers = "\n".join(report["blocked_until_real_evidence"])
-    if "OpenSBI-to-U-Boot boot-chain" not in blockers:
+    if "if U-Boot is selected for production boot" not in blockers:
         raise AssertionError(blockers)
     print("PASS U-Boot capture plan and blockers covered")
 

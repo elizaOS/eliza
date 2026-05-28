@@ -219,6 +219,15 @@ TARGETS: dict[str, dict[str, Any]] = {
     },
 }
 
+ALTERNATE_BSP_TARGETS = {"u-boot"}
+
+
+def selected_bsp_targets() -> list[str]:
+    names = [name for name in TARGETS if name not in ALTERNATE_BSP_TARGETS]
+    if os.environ.get("ELIZA_INCLUDE_ALTERNATE_UBOOT") == "1":
+        names.append("u-boot")
+    return names
+
 FORBIDDEN_TRANSCRIPT_MARKERS = [
     "placeholder transcript",
     "synthetic placeholder",
@@ -1058,7 +1067,7 @@ def capture_plan_commands(
 
 
 def print_capture_plan(args: argparse.Namespace) -> None:
-    names = TARGETS.keys() if args.target == "all" else [args.target]
+    names = selected_bsp_targets() if args.target == "all" else [args.target]
     for name in names:
         print(f"{name}: capture/import plan")
         for command in capture_plan_commands(
@@ -1399,7 +1408,7 @@ def opensbi_preflight(tree: Path | None, handoff_cmd: str | None) -> dict[str, A
 
 
 def external_preflight_report(args: argparse.Namespace) -> dict[str, Any]:
-    names = TARGETS.keys() if args.target == "all" else [args.target]
+    names = selected_bsp_targets() if args.target == "all" else [args.target]
     targets: list[dict[str, Any]] = []
     for name in names:
         if name == "linux":
@@ -1501,7 +1510,7 @@ def main() -> int:
         parser.add_argument("target", choices=[*TARGETS.keys(), "all"])
         parser.add_argument("--json", action="store_true")
         args = parser.parse_args()
-        names = TARGETS.keys() if args.target == "all" else [args.target]
+        names = selected_bsp_targets() if args.target == "all" else [args.target]
         if args.json:
             reports = [target_report(name) for name in names]
             print(
@@ -1561,7 +1570,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    names = TARGETS.keys() if args.target == "all" else [args.target]
+    names = selected_bsp_targets() if args.target == "all" else [args.target]
     if args.json:
         reports = [target_report(name) for name in names]
         print(

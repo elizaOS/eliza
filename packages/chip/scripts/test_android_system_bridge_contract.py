@@ -395,16 +395,16 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
     def test_runtime_permission_paths_block_stale_launcher_identity(self) -> None:
         stale = gate.stale_runtime_permission_paths(
             [
-                "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml",
-                "/system/etc/permissions/privapp-permissions-ai.elizaos.app.xml",
+                "/system/etc/default-permissions/default-permissions-app.eliza.xml",
+                "/system/etc/permissions/privapp-permissions-app.eliza.xml",
                 "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml",
             ]
         )
         self.assertEqual(
             stale,
             [
-                "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml",
-                "/system/etc/permissions/privapp-permissions-ai.elizaos.app.xml",
+                "/system/etc/default-permissions/default-permissions-app.eliza.xml",
+                "/system/etc/permissions/privapp-permissions-app.eliza.xml",
             ],
         )
 

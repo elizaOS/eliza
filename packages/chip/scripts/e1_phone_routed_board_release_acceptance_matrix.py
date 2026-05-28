@@ -322,6 +322,15 @@ def candidate_end_to_end_context(
                 terminal_binding.get("models_with_terminal_contract_or_no_electrical_pads_count", 0)
                 or 0
             ),
+            "total_pad_contract_visual_count": int(
+                terminal_binding.get("total_pad_contract_visual_count", 0) or 0
+            ),
+            "uncovered_pad_visual_count": int(
+                terminal_binding.get("uncovered_pad_visual_count", 0) or 0
+            ),
+            "all_model_pad_visuals_have_contract": bool(
+                terminal_binding.get("all_model_pad_visuals_have_contract", False)
+            ),
             "non_signal_pad_contract_count": int(
                 terminal_binding.get("non_signal_pad_contract_count", 0) or 0
             ),
@@ -398,6 +407,15 @@ def candidate_end_to_end_context(
             ),
             "terminal_contract_total_count": int(
                 component_dir_manifest.get("terminal_contract_total_count", 0) or 0
+            ),
+            "total_pad_contract_visual_count": int(
+                component_dir_manifest.get("total_pad_contract_visual_count", 0) or 0
+            ),
+            "uncovered_pad_visual_count": int(
+                component_dir_manifest.get("uncovered_pad_visual_count", 0) or 0
+            ),
+            "all_model_pad_visuals_have_contract": bool(
+                component_dir_manifest.get("all_model_pad_visuals_have_contract", False)
             ),
             "non_signal_pad_contract_total_count": int(
                 component_dir_manifest.get("non_signal_pad_contract_total_count", 0) or 0
@@ -790,6 +808,16 @@ def build_report(
         "board_file": development_snapshot.get("board_file"),
         "route_count": development_snapshot.get("route_count", 0),
         "segment_count": development_snapshot.get("segment_count", 0),
+        "via_count": development_snapshot.get("via_count", 0),
+        "controlled_impedance_route_count": development_snapshot.get(
+            "controlled_impedance_route_count", 0
+        ),
+        "route_classification_gap_count": development_snapshot.get(
+            "route_classification_gap_count", 0
+        ),
+        "route_segment_trace_bound_count": development_snapshot.get(
+            "route_segment_trace_bound_count", 0
+        ),
         "missing_nets": development_snapshot.get("missing_nets", []),
         "release_credit": False,
         "reason_not_release": development_snapshot.get(
@@ -847,6 +875,13 @@ def build_report(
             ]["passing_connection_terminal_pair_count"],
             "validation_evidence_category_count": len(validation_evidence),
             "missing_validation_evidence_category_count": len(missing_evidence),
+            "development_route_count": development_route_context["route_count"],
+            "development_segment_count": development_route_context["segment_count"],
+            "development_via_count": development_route_context["via_count"],
+            "development_route_classification_gap_count": development_route_context[
+                "route_classification_gap_count"
+            ],
+            "development_missing_net_count": len(development_route_context["missing_nets"]),
             "release_state": "blocked_fail_closed",
             "acceptance_allowed": False,
         },

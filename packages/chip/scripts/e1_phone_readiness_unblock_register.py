@@ -450,6 +450,12 @@ def main() -> int:
             "local_component_model_terminal_contract_or_no_pad_model_count": local_progress.get(
                 "component_model_terminal_contract_or_no_pad_model_count", 0
             ),
+            "local_component_model_total_pad_contract_visual_count": local_progress.get(
+                "component_model_total_pad_contract_visual_count", 0
+            ),
+            "local_component_model_uncovered_pad_visual_count": local_progress.get(
+                "component_model_uncovered_pad_visual_count", 0
+            ),
             "local_component_model_non_signal_pad_contract_count": local_progress.get(
                 "component_model_non_signal_pad_contract_count", 0
             ),
@@ -469,6 +475,16 @@ def main() -> int:
             ),
             "local_component_model_directory_terminal_contract_total_count": local_progress.get(
                 "component_model_directory_terminal_contract_total_count", 0
+            ),
+            "local_component_model_directory_total_pad_contract_visual_count": (
+                local_progress.get(
+                    "component_model_directory_total_pad_contract_visual_count", 0
+                )
+            ),
+            "local_component_model_directory_uncovered_pad_visual_count": (
+                local_progress.get(
+                    "component_model_directory_uncovered_pad_visual_count", 0
+                )
             ),
             "local_component_model_directory_non_signal_pad_contract_total_count": (
                 local_progress.get(

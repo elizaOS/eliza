@@ -1,11 +1,11 @@
 # E1 Phone Full CAD Boolean Interference Acceptance
 
-Status: BLOCKED.
+Status: PASS.
 
 Engine: `OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape`.
 Date: 2026-05-20. Reviewer: `automated_boolean_check`.
-Parts loaded: 234/234. Pair count: 27261 (BRep-evaluated: 878).
-Unintentional clash pairs: 48.
+Parts loaded: 258/258. Pair count: 33153 (BRep-evaluated: 989).
+Unintentional clash pairs: 0.
 
 ## Scope Cases
 
@@ -16,8 +16,8 @@ Unintentional clash pairs: 48.
 | `usb_c_port_saddle_aperture_and_gaskets` | 9/9 | 0.0 | 0.0 | PASS |
 | `side_buttons_switches_gaskets_labyrinth` | 9/9 | 77.1 | 0.0 | PASS |
 | `front_camera_earpiece_under_glass_stack` | 7/7 | 2.48 | 0.0 | PASS |
-| `rear_camera_window_baffle_adhesive_stack` | 8/8 | 0.4 | 0.0 | PASS |
-| `rear_flash_torch_window_back_wall` | 6/6 | 0.4 | 0.0 | PASS |
+| `rear_camera_window_baffle_adhesive_stack` | 8/8 | 0.5 | 0.0 | PASS |
+| `rear_flash_torch_window_back_wall` | 6/6 | 0.5 | 0.0 | PASS |
 | `battery_pouch_pcb_flex_haptic` | 4/4 | 0.01 | 0.0 | PASS |
 | `bottom_audio_microphone_speaker_meshes` | 9/9 | 6.53 | 0.0 | PASS |
 | `rf_shields_antennas_plastic_windows` | 6/6 | 0.0 | 0.0 | PASS |
@@ -30,32 +30,32 @@ Back outer plane Z = -5.9 mm. Flush-back `flush_back_no_rear_protrusion`: max so
 
 ## Rear Camera Back-Shell Hole
 
-Status: FAIL. Aperture clears cover glass XY: True.
-- `orange_back_shell` vs `rear_camera_cover_glass`: intersection 46.552 mm3, min gap 0.0 mm (FAIL)
-- `orange_back_shell` vs `rear_camera_lens_window`: intersection 25.432 mm3, min gap 0.0 mm (FAIL)
-- `orange_back_shell` vs `rear_camera_module`: intersection 0.0 mm3, min gap 0.4 mm (PASS)
+Status: PASS. Aperture clears cover glass XY: True.
+- `orange_back_shell` vs `rear_camera_cover_glass`: intersection 0.0 mm3, min gap 0.7 mm (PASS)
+- `orange_back_shell` vs `rear_camera_lens_window`: intersection 0.0 mm3, min gap 1.9 mm (PASS)
+- `orange_back_shell` vs `rear_camera_module`: intersection 0.0 mm3, min gap 0.5 mm (PASS)
 
 ## Rear Camera Optical Sightline
 
-Status: FAIL. Orange-shell intersection: 60.492 mm3. Aperture contains tunnel XY: True.
+Status: PASS. Orange-shell intersection: 0.0 mm3. Aperture contains tunnel XY: True.
 - `rear_camera_optical_sight_tunnel` overlaps `rear_camera_lens_window` by 25.432 mm3 (PASS)
 - `rear_camera_optical_sight_tunnel` overlaps `rear_camera_cover_glass` by 27.7255 mm3 (PASS)
 
 ## Rear Flash Back-Shell Hole
 
-Status: FAIL. Aperture clears flash window XY: True.
-- `orange_back_shell` vs `rear_flash_led_window`: intersection 1.408 mm3, min gap 0.0 mm (FAIL)
-- `orange_back_shell` vs `rear_flash_led`: intersection 0.0 mm3, min gap 0.15 mm (PASS)
+Status: PASS. Aperture clears flash window XY: True.
+- `orange_back_shell` vs `rear_flash_led_window`: intersection 0.0 mm3, min gap 0.3 mm (PASS)
+- `orange_back_shell` vs `rear_flash_led`: intersection 0.0 mm3, min gap 0.618466 mm (PASS)
 
 ## Handset Cover-Glass Slot
 
-Status: FAIL.
-- `screen_cover_glass` vs `handset_acoustic_slot`: intersection 0.72 mm3, min gap 0.0 mm (FAIL)
+Status: PASS.
+- `screen_cover_glass` vs `handset_acoustic_slot`: intersection 0.0 mm3, min gap 0.15 mm (PASS)
 - `screen_cover_glass` vs `handset_acoustic_mesh`: intersection 0.0 mm3, min gap 0.05 mm (PASS)
 
 ## Screen Cover-Glass Collision Check
 
-Status: FAIL.
+Status: PASS.
 - `screen_cover_glass` vs `orange_side_frame`: intersection 0.0 mm3, min gap 0.05 mm (PASS)
 - `screen_cover_glass` vs `display_lcm`: intersection 0.0 mm3, min gap 0.18 mm (PASS)
 - `screen_cover_glass` vs `screen_adhesive_top`: intersection 0.0 mm3, min gap 0.06 mm (PASS)
@@ -63,21 +63,21 @@ Status: FAIL.
 - `screen_cover_glass` vs `front_camera_under_glass`: intersection 0.0 mm3, min gap 0.04 mm (PASS)
 - `screen_cover_glass` vs `front_camera_black_mask_window`: intersection 0.0 mm3, min gap 0.04 mm (PASS)
 - `screen_cover_glass` vs `earpiece_receiver`: intersection 0.0 mm3, min gap 2.95 mm (PASS)
-- `screen_cover_glass` vs `handset_acoustic_slot`: intersection 0.72 mm3, min gap 0.0 mm (FAIL)
+- `screen_cover_glass` vs `handset_acoustic_slot`: intersection 0.0 mm3, min gap 0.15 mm (PASS)
 - `screen_cover_glass` vs `handset_acoustic_mesh`: intersection 0.0 mm3, min gap 0.05 mm (PASS)
 
 ## Side-Frame External Cutouts
 
-Status: FAIL.
-- `orange_side_frame` vs `usb_c_external_aperture`: intersection 3.4884 mm3, min gap 0.0 mm (FAIL)
-- `orange_side_frame` vs `bottom_speaker_grille_slot_1`: intersection 0.408 mm3, min gap 0.0 mm (FAIL)
-- `orange_side_frame` vs `bottom_speaker_grille_slot_2`: intersection 0.408 mm3, min gap 0.0 mm (FAIL)
-- `orange_side_frame` vs `bottom_speaker_grille_slot_3`: intersection 0.408 mm3, min gap 0.0 mm (FAIL)
-- `orange_side_frame` vs `bottom_speaker_grille_slot_4`: intersection 0.408 mm3, min gap 0.0 mm (FAIL)
-- `orange_side_frame` vs `bottom_speaker_grille_slot_5`: intersection 0.408 mm3, min gap 0.0 mm (FAIL)
-- `orange_side_frame` vs `bottom_microphone_port_1`: intersection 0.063816 mm3, min gap 0.0 mm (FAIL)
-- `orange_side_frame` vs `bottom_microphone_port_2`: intersection 0.063816 mm3, min gap 0.0 mm (FAIL)
-- `orange_side_frame` vs `top_microphone_port`: intersection 0.063816 mm3, min gap 0.0 mm (FAIL)
+Status: PASS.
+- `orange_side_frame` vs `usb_c_external_aperture`: intersection 0.0 mm3, min gap 0.3 mm (PASS)
+- `orange_side_frame` vs `bottom_speaker_grille_slot_1`: intersection 0.0 mm3, min gap 0.075 mm (PASS)
+- `orange_side_frame` vs `bottom_speaker_grille_slot_2`: intersection 0.0 mm3, min gap 0.075 mm (PASS)
+- `orange_side_frame` vs `bottom_speaker_grille_slot_3`: intersection 0.0 mm3, min gap 0.075 mm (PASS)
+- `orange_side_frame` vs `bottom_speaker_grille_slot_4`: intersection 0.0 mm3, min gap 0.075 mm (PASS)
+- `orange_side_frame` vs `bottom_speaker_grille_slot_5`: intersection 0.0 mm3, min gap 0.075 mm (PASS)
+- `orange_side_frame` vs `bottom_microphone_port_1`: intersection 0.0 mm3, min gap 0.15 mm (PASS)
+- `orange_side_frame` vs `bottom_microphone_port_2`: intersection 0.0 mm3, min gap 0.15 mm (PASS)
+- `orange_side_frame` vs `top_microphone_port`: intersection 0.0 mm3, min gap 0.15 mm (PASS)
 - Captured mesh insert contacts reported as intentional seal envelopes.
 
 Burial vs back inner wall (Z = -4.7 mm); clearance >= 0 means back face at or inside the wall:
@@ -86,7 +86,7 @@ Burial vs back inner wall (Z = -4.7 mm); clearance >= 0 means back face at or in
 
 ## Missing Or Incomplete Boolean Results
 
-
+_(none — every scope has measured B-rep boolean results)_
 
 ## Release Rule
 

@@ -263,6 +263,40 @@
       "timeout_seconds": 60
     },
     {
+      "name": "e1x_scaled_8gb_model_load_sim",
+      "suite": "Eliza E1X scaled SRAM and model-load simulator",
+      "version": "local/e1x-scaled-8gb-model-load-v1",
+      "command": [
+        "python3",
+        "scripts/generate_e1x_scaled_model_evidence.py"
+      ],
+      "requires": ["python3"],
+      "input_dataset": "13B 4-bit static graph over normal and high-failure deterministic wafer defect maps",
+      "primary_metric": "resident quantized model execution under high-failure repair",
+      "units": "pass",
+      "parser": "simulator_metrics_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "target_cycles",
+        "simulated_frequency_hz",
+        "ipc",
+        "local_sram_mib",
+        "model_total_required_mib",
+        "model_loaded_under_normal_defects",
+        "model_loaded_under_high_failure",
+        "high_failure_repaired_logical_mesh",
+        "model_run_successful",
+        "high_failure_prefill_ms",
+        "high_failure_decode_tokens_per_second",
+        "high_failure_output_checksum",
+        "high_failure_repair_manifest_remaps",
+        "high_failure_repair_manifest_sampled_routes",
+        "high_failure_repair_rom_words",
+        "benchmark_success_allowed"
+      ],
+      "timeout_seconds": 120
+    },
+    {
       "name": "tflite_cpu",
       "suite": "TensorFlow Lite benchmark_model",
       "version": "upstream/local",

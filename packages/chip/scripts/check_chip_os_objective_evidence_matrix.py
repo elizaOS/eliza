@@ -59,9 +59,9 @@ REQUIREMENTS: tuple[Requirement, ...] = (
     Requirement(
         "cpu_ap_completion_scope",
         "chip",
-        "CPU/AP completion scope allows a real Linux/AOSP-capable AP claim instead of a scaffold or incomplete transcript claim.",
+        "CPU/AP completion scope allows the generated Rocket AP Linux/NPU/AP-benchmark bring-up claim instead of a scaffold or incomplete transcript claim.",
         "cpu_ap_scope.json",
-        closure_evidence="CPU/AP scope report must reach status=pass with release_claim_allowed=true, completion claimed, required generated AP transcripts present, and no missing Linux/RV64GC/AP benchmark/power/process-corner evidence.",
+        closure_evidence="CPU/AP scope report must reach status=pass with generated_ap_scope_claim_allowed=true, release_claim_allowed=false, completion claimed, required generated AP transcripts present, and no missing Linux/RV64GC/AP benchmark evidence; phone-class, Android, power, thermal, process-corner, silicon, and release claims remain blocked separately.",
     ),
     Requirement(
         "cpu_ap_boot_readiness",

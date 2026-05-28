@@ -2,7 +2,7 @@
 
 Status: rough CAD estimate, not measured hardware mass.
 
-Total estimated mass: 182.19 g
+Total estimated mass: 182.2 g
 
 ## By Role
 
@@ -37,6 +37,7 @@ Total estimated mass: 182.19 g
 - `connection terminal`: 0.0 g
 - `connector`: 0.21 g
 - `flex/cable`: 0.01 g
+- `ground spring`: 0.01 g
 - `haptics`: 0.22 g
 - `molded enclosure`: 23.96 g
 - `screen`: 57.57 g

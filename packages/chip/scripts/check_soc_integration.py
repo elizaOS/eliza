@@ -48,6 +48,7 @@ EXPECTED_CROSS_TESTS = (
     "bpu_vector_redirect_lanes_are_soc_visible",
     "bpu_fetch_stream_backpressures_soc_ftq_pop",
     "bpu_fetch_stream_drives_soc_l1i_demand_lanes",
+    "bpu_fetch_stream_fills_integrated_l1i_l2_slc_dram_path",
     "cluster_lite_tieoff_drives_axi_to_quiet",
     "iommu_fault_count_initially_zero",
     "pmc_mailbox_roundtrips_telemetry",
@@ -56,6 +57,7 @@ EXPECTED_CROSS_TESTS = (
     "test_iommu_programmed_fault",
     "test_slc_passthrough",
     "test_dram_ctrl_dfi_traffic",
+    "display_scanout_reads_fabric_dram",
     "test_cva6_executes_from_bootrom",
 )
 
@@ -120,6 +122,9 @@ def verilator_lint() -> int:
         "rtl/cpu/bpu/fetch_stream_to_l1i_demand.sv",
         "rtl/cpu/bpu/ftq_to_l1i_shim.sv",
         "rtl/cpu/csr/bpu_to_zihpm_remap.sv",
+        "rtl/cache/l1i/e1_l1i_cache.sv",
+        "rtl/cache/l1i/e1_l1i_dual_miss_to_l2.sv",
+        "rtl/cache/l2/e1_l2_cache.sv",
         "rtl/cpu/cluster/e1_cluster_top.sv",
         "rtl/interconnect/axi4/e1_axi4_interconnect.sv",
         "rtl/interconnect/chi_bridge/e1_chi_to_axi4_bridge.sv",
@@ -134,6 +139,7 @@ def verilator_lint() -> int:
         "rtl/dma/e1_dma.sv",
         "rtl/npu/e1_npu.sv",
         "rtl/display/e1_display.sv",
+        "rtl/display/e1_display_scanout.sv",
         "rtl/top/adapters/e1_slc_to_chi_line_shim.sv",
         "rtl/top/adapters/e1_axi4_width_converter.sv",
         "rtl/peripherals/e1_mmio_decode.sv",

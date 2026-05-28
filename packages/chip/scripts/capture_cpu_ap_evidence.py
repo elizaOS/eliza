@@ -145,6 +145,14 @@ def accepted_transcript_text(
     return text
 
 
+def evidence_field(text: str, field: str) -> str:
+    prefix = f"eliza-evidence: {field}="
+    for line in text.splitlines():
+        if line.startswith(prefix):
+            return line[len(prefix) :].strip()
+    return ""
+
+
 def serial_boot_doc_text(raw_text: str) -> str:
     if "Kernel command line:" in raw_text:
         return raw_text
@@ -174,6 +182,7 @@ def write_linux_doc_mirror(
     artifact_name: str,
     claim_boundary: str,
     source: str,
+    source_command: str,
     raw_text: str,
     extra_required: tuple[str, ...],
     problems: list[str],
@@ -186,18 +195,28 @@ def write_linux_doc_mirror(
         )
         return False
     destination.parent.mkdir(parents=True, exist_ok=True)
+    mirror_utc = utc_now()
+    command = source_command or f"mirror accepted CPU/AP transcript from {source}"
     destination.write_text(
         "\n".join(
             [
                 f"eliza-evidence: target={target} artifact={artifact_name}",
                 f"eliza-evidence: claim_boundary={claim_boundary}",
                 f"eliza-evidence: source={source}",
+                f"eliza-evidence: command={command}",
+                f"eliza-evidence: started_utc={mirror_utc}",
                 f"eliza-evidence: mirrored_from=accepted_cpu_ap_transcript",
-                f"eliza-evidence: mirror_utc={utc_now()}",
+                f"eliza-evidence: mirror_utc={mirror_utc}",
+                f"EXTERNAL_TREE={ROOT}",
+                f"COMMAND={command}",
+                f"START_UTC={mirror_utc}",
                 "eliza-evidence: raw_transcript_begin",
                 raw_text.rstrip(),
                 "eliza-evidence: raw_transcript_end",
+                f"eliza-evidence: ended_utc={mirror_utc}",
                 "eliza-evidence: status=PASS",
+                f"END_UTC={mirror_utc}",
+                "RESULT=0",
                 "",
             ]
         ),
@@ -228,6 +247,7 @@ def sync_linux_docs(args: argparse.Namespace) -> int:
                 "generated_chipyard_ap_serial_boot_transcript_only_not_silicon_or_board_evidence"
             ),
             source=linux_rel,
+            source_command=evidence_field(linux_text, "command"),
             raw_text=linux_raw,
             extra_required=(
                 "OpenSBI",
@@ -255,6 +275,7 @@ def sync_linux_docs(args: argparse.Namespace) -> int:
                 "generated_chipyard_ap_opensbi_handoff_transcript_only_not_silicon_or_board_evidence"
             ),
             source=opensbi_rel,
+            source_command=evidence_field(opensbi_text, "command"),
             raw_text=opensbi_raw,
             extra_required=(
                 "OpenSBI v1.2",

@@ -11,6 +11,7 @@ runtime readiness from build artifacts.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import re
 import sys
@@ -34,6 +35,7 @@ ANDROID_TARGET_PREFIXES = (
     "/apex/",
     "/data/",
 )
+HOST_LOCAL_PATH = re.compile(r"^/(?:home|Users|tmp|var/folders)/")
 
 
 @dataclass(frozen=True)
@@ -63,6 +65,10 @@ def load_json_or_empty(path: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         return {}
     return value if isinstance(value, dict) else {}
+
+
+def utc_now() -> str:
+    return dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def expected_android_payload_package() -> str:
@@ -96,6 +102,20 @@ def contains_host_local_symlink(value: object) -> bool:
         if not target.startswith(ANDROID_TARGET_PREFIXES):
             return True
     return any(marker in text for marker in (" -> /home/", " -> /tmp/", " -> /Users/"))
+
+
+def provenance_safe_value(value: object) -> object:
+    if isinstance(value, dict):
+        sanitized: dict[str, object] = {}
+        for key, item in value.items():
+            if key in {"path", "product_out"} and isinstance(item, str) and HOST_LOCAL_PATH.match(item):
+                sanitized[key] = Path(item).name
+            else:
+                sanitized[key] = provenance_safe_value(item)
+        return sanitized
+    if isinstance(value, list):
+        return [provenance_safe_value(item) for item in value]
+    return value
 
 
 def add_if(
@@ -435,7 +455,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "runtime_adb_blocker": (
             host_runtime.get("adb_blocker") if isinstance(host_runtime, dict) else None
         ),
-        "aosp_build_artifact_inventory": aosp_artifact_inventory,
+        "aosp_build_artifact_inventory": provenance_safe_value(aosp_artifact_inventory),
     }
     return payload(findings, evidence)
 
@@ -444,6 +464,7 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
     blockers = [finding for finding in findings if finding.severity == "blocker"]
     return {
         "schema": SCHEMA,
+        "generated_utc": utc_now(),
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
         "summary": {"blockers": len(blockers), "findings": len(findings)},

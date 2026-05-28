@@ -273,10 +273,19 @@ def generate_nebius_training_report(run_root: Path) -> dict[str, Any]:
         else []
     )
     missing_gates = list(
-        dict.fromkeys([*finalization_missing_gates, *current_failed_validation_gates])
+        dict.fromkeys(
+            current_failed_validation_gates
+            if validation_checks
+            else finalization_missing_gates
+        )
     )
+    stale_finalization_missing_gates = [
+        gate for gate in finalization_missing_gates if gate not in missing_gates
+    ]
     finalization_report_ok = finalization.get("ok") is True
     validation_report_ok = validation.get("ok") is True
+    finalization_missing_gate_set = set(finalization_missing_gates)
+    current_failed_validation_gate_set = set(current_failed_validation_gates)
     finalization_matches_current_validation = (
         finalization_report_ok
         and validation_report_ok
@@ -284,7 +293,7 @@ def generate_nebius_training_report(run_root: Path) -> dict[str, Any]:
     ) or (
         not finalization_report_ok
         and not validation_report_ok
-        and all(gate in finalization_missing_gates for gate in current_failed_validation_gates)
+        and finalization_missing_gate_set == current_failed_validation_gate_set
     )
     effective_finalization_ok = (
         finalization_report_ok
@@ -303,6 +312,7 @@ def generate_nebius_training_report(run_root: Path) -> dict[str, Any]:
         "finalization_matches_current_validation": finalization_matches_current_validation,
         "validation_ok": validation.get("ok"),
         "missing_gates": missing_gates,
+        "stale_finalization_missing_gates": stale_finalization_missing_gates,
         "backend_comparison": {
             "present": bool(comparison),
             "profile_id": comparison.get("profile_id"),

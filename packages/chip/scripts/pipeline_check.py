@@ -36,6 +36,8 @@ REQUIRED_SOURCE = [
     "scripts/check_prototype_status_dashboard.py",
     "scripts/check_sota_parity_audit.py",
     "scripts/test_sota_parity_audit.py",
+    "scripts/test_pipeline_formal_manifest.py",
+    "scripts/test_release_archive_simulator_evidence.py",
     "scripts/check_software_bsp_scope.py",
     "scripts/check_cpu_ap_scope.py",
     "scripts/check_npu_scope.py",

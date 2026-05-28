@@ -178,16 +178,24 @@ Status: generated part index and contact sheet for every assembly part.
 - `usb_pd_controller_escape_trace_marker`: role `PCB trace marker`, span [9.0, 1.0, 0.12] mm, material board-level USB-C VBUS/CC/USB2 route marker from receptacle to TPS65987
 - `pd_charger_control_trace_marker`: role `PCB trace marker`, span [10.0, 1.0, 0.12] mm, material board-level PD controller to charger VBUS/SYS/I2C/IRQ route marker
 - `charger_battery_power_sense_trace_marker`: role `PCB trace marker`, span [4.0, 4.8, 0.12] mm, material board-level charger to battery connector VBAT/SYS/NTC/ID route marker
+- `display_bias_power_flex_marker`: role `flex/cable`, span [6.0, 1.0, 0.12] mm, material display bias/backlight AVDD/AVEE flex marker from bias IC to display connector
+- `rear_camera_power_flex_marker`: role `flex/cable`, span [8.0, 0.7, 0.12] mm, material rear camera AVDD/DVDD/reset power-control flex marker
+- `front_camera_power_flex_marker`: role `flex/cable`, span [7.0, 0.7, 0.12] mm, material front camera AVDD/DVDD/reset power-control flex marker
+- `wifi_bt_host_control_trace_marker`: role `PCB trace marker`, span [13.0, 1.0, 0.12] mm, material Wi-Fi/Bluetooth PCIe/SDIO/UART/enable host-control route marker
+- `cellular_host_control_trace_marker`: role `PCB trace marker`, span [12.0, 1.0, 0.12] mm, material cellular USB2/PCIe/reset/disable host-control route marker
 - `bottom_speaker_lead_pair`: role `flex/cable`, span [10.0, 1.0, 0.12] mm, material bottom speaker differential lead pair marker
 - `bottom_microphone_flex_leads`: role `flex/cable`, span [8.0, 1.0, 0.12] mm, material bottom microphone bias/data flex lead marker
 - `top_microphone_flex_tail`: role `flex/cable`, span [0.8, 18.0, 0.12] mm, material top microphone PDM flex tail marker from top microphone port region to top PCB island
 - `earpiece_receiver_lead_flex`: role `flex/cable`, span [14.0, 0.8, 0.12] mm, material earpiece receiver lead flex marker behind the handset acoustic slot
 - `haptic_flex_tail`: role `flex/cable`, span [12.0, 1.0, 0.12] mm, material LRA haptic drive flex tail marker
+- `sensor_hub_i2c_flex_marker`: role `flex/cable`, span [5.0, 0.8, 0.12] mm, material sensor hub I2C flex/trace marker
 - `sim_esim_signal_flex_marker`: role `flex/cable`, span [1.0, 9.0, 0.12] mm, material SIM/eSIM signal route marker to the side tray region
 - `nfc_loop_antenna_flex_marker`: role `flex/cable`, span [6.0, 1.0, 0.12] mm, material NFC controller to loop-match antenna flex marker for NFC_RF_P/N
 - `cellular_div_rf_feed_development_envelope`: role `RF feed`, span [0.45, 12.0, 0.28] mm, material development cellular diversity RF feed envelope
 - `cellular_gnss_rf_feed_development_envelope`: role `RF feed`, span [0.45, 10.0, 0.28] mm, material development GNSS RF feed envelope
 - `wifi_bt_rf1_feed_development_envelope`: role `RF feed`, span [10.0, 0.45, 0.28] mm, material development second Wi-Fi/Bluetooth RF feed envelope
+- `soc_shield_ground_spring_marker`: role `ground spring`, span [3.6, 0.7, 0.22] mm, material SoC shield can to PCB ground spring marker
+- `radio_shield_ground_spring_marker`: role `ground spring`, span [3.6, 0.7, 0.22] mm, material radio shield can to PCB/chassis ground spring marker
 - `haptic_lra`: role `haptics`, span [6.0, 12.0, 2.5] mm, material compact 0612 X-axis linear resonant actuator
 - `sim_tray_keepout`: role `service`, span [14.5, 22.0, 2.0] mm, material side SIM tray keepout
 - `sim_tray_outline`: role `service`, span [0.8, 18.0, 4.0] mm, material orange side service tray outline
@@ -211,6 +219,16 @@ Status: generated part index and contact sheet for every assembly part.
 - `pd_controller_to_charger_control_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for pd_controller_to_charger_control on charger_package_marker; local CAD connection evidence only
 - `charger_to_battery_power_sense_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for charger_to_battery_power_sense on charger_package_marker; local CAD connection evidence only
 - `charger_to_battery_power_sense_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for charger_to_battery_power_sense on battery_connector_package_marker; local CAD connection evidence only
+- `display_bias_power_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for display_bias_power_flex on backlight_bias_package_marker; local CAD connection evidence only
+- `display_bias_power_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for display_bias_power_flex on display_fpc_connector; local CAD connection evidence only
+- `rear_camera_power_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for rear_camera_power_flex on main_pcb; local CAD connection evidence only
+- `rear_camera_power_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for rear_camera_power_flex on rear_camera_module; local CAD connection evidence only
+- `front_camera_power_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for front_camera_power_flex on main_pcb; local CAD connection evidence only
+- `front_camera_power_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for front_camera_power_flex on front_camera_module; local CAD connection evidence only
+- `wifi_bt_host_control_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for wifi_bt_host_control on wifi_bt_module_keepout; local CAD connection evidence only
+- `wifi_bt_host_control_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for wifi_bt_host_control on soc_package_marker; local CAD connection evidence only
+- `cellular_host_control_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for cellular_host_control on cellular_lga_module_keepout; local CAD connection evidence only
+- `cellular_host_control_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for cellular_host_control on soc_package_marker; local CAD connection evidence only
 - `bottom_speaker_lead_pair_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for bottom_speaker_lead_pair on main_pcb; local CAD connection evidence only
 - `bottom_speaker_lead_pair_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for bottom_speaker_lead_pair on bottom_speaker_module; local CAD connection evidence only
 - `bottom_microphone_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for bottom_microphone_flex on main_pcb; local CAD connection evidence only
@@ -221,12 +239,18 @@ Status: generated part index and contact sheet for every assembly part.
 - `earpiece_receiver_lead_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for earpiece_receiver_lead_flex on earpiece_receiver; local CAD connection evidence only
 - `haptic_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for haptic_flex on main_pcb; local CAD connection evidence only
 - `haptic_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for haptic_flex on haptic_lra; local CAD connection evidence only
+- `sensor_hub_i2c_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for sensor_hub_i2c_flex on main_pcb; local CAD connection evidence only
+- `sensor_hub_i2c_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for sensor_hub_i2c_flex on sensor_hub_package_marker; local CAD connection evidence only
 - `sim_esim_signal_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for sim_esim_signal_flex on main_pcb; local CAD connection evidence only
 - `sim_esim_signal_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for sim_esim_signal_flex on sim_tray_keepout; local CAD connection evidence only
 - `nfc_loop_antenna_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for nfc_loop_antenna_flex on nfc_controller_package_marker; local CAD connection evidence only
 - `nfc_loop_antenna_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for nfc_loop_antenna_flex on nfc_loop_match_marker; local CAD connection evidence only
 - `compute_som_sodimm_carrier_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for compute_som_sodimm_carrier on main_pcb; local CAD connection evidence only
 - `compute_som_sodimm_carrier_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for compute_som_sodimm_carrier on compute_som_daughterboard_keepout; local CAD connection evidence only
+- `soc_shield_ground_spring_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for soc_shield_ground_spring on soc_shield_can; local CAD connection evidence only
+- `soc_shield_ground_spring_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for soc_shield_ground_spring on main_pcb; local CAD connection evidence only
+- `radio_shield_ground_spring_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for radio_shield_ground_spring on radio_shield_can; local CAD connection evidence only
+- `radio_shield_ground_spring_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for radio_shield_ground_spring on main_pcb; local CAD connection evidence only
 - `cellular_main_rf_feed_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for cellular_main_rf_feed on cellular_lga_module_keepout; local CAD connection evidence only
 - `cellular_main_rf_feed_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for cellular_main_rf_feed on cellular_top_antenna_keepout; local CAD connection evidence only
 - `cellular_diversity_rf_feed_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for cellular_diversity_rf_feed on cellular_lga_module_keepout; local CAD connection evidence only

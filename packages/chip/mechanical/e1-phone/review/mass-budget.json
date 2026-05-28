@@ -1,6 +1,6 @@
 {
   "claim_boundary": "Rough CAD mass estimate using nominal densities; not measured mass.",
-  "total_estimated_mass_g": 182.19,
+  "total_estimated_mass_g": 182.2,
   "mass_by_role_g": {
     "EMI shield": 7.01,
     "I/O": 1.77,
@@ -33,6 +33,7 @@
     "connection terminal": 0.0,
     "connector": 0.21,
     "flex/cable": 0.01,
+    "ground spring": 0.01,
     "haptics": 0.22,
     "molded enclosure": 23.96,
     "screen": 57.57,
@@ -1752,6 +1753,56 @@
       "excluded_from_mass_estimate": false
     },
     {
+      "name": "display_bias_power_flex_marker",
+      "role": "flex/cable",
+      "volume_mm3": 0.72,
+      "density_g_per_cm3": 3.0,
+      "mass_g": 0.002,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
+    },
+    {
+      "name": "rear_camera_power_flex_marker",
+      "role": "flex/cable",
+      "volume_mm3": 0.672,
+      "density_g_per_cm3": 2.2,
+      "mass_g": 0.001,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
+    },
+    {
+      "name": "front_camera_power_flex_marker",
+      "role": "flex/cable",
+      "volume_mm3": 0.588,
+      "density_g_per_cm3": 2.2,
+      "mass_g": 0.001,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
+    },
+    {
+      "name": "wifi_bt_host_control_trace_marker",
+      "role": "PCB trace marker",
+      "volume_mm3": 1.56,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.002,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
+    },
+    {
+      "name": "cellular_host_control_trace_marker",
+      "role": "PCB trace marker",
+      "volume_mm3": 1.44,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.002,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
+    },
+    {
       "name": "bottom_speaker_lead_pair",
       "role": "flex/cable",
       "volume_mm3": 1.2,
@@ -1802,6 +1853,16 @@
       "excluded_from_mass_estimate": false
     },
     {
+      "name": "sensor_hub_i2c_flex_marker",
+      "role": "flex/cable",
+      "volume_mm3": 0.48,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.001,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
+    },
+    {
       "name": "sim_esim_signal_flex_marker",
       "role": "flex/cable",
       "volume_mm3": 1.08,
@@ -1847,6 +1908,26 @@
       "volume_mm3": 1.26,
       "density_g_per_cm3": 1.2,
       "mass_g": 0.002,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
+    },
+    {
+      "name": "soc_shield_ground_spring_marker",
+      "role": "ground spring",
+      "volume_mm3": 0.554,
+      "density_g_per_cm3": 7.8,
+      "mass_g": 0.004,
+      "mass_estimate_class": "physical_part_estimate",
+      "mass_estimate_included": true,
+      "excluded_from_mass_estimate": false
+    },
+    {
+      "name": "radio_shield_ground_spring_marker",
+      "role": "ground spring",
+      "volume_mm3": 0.554,
+      "density_g_per_cm3": 7.8,
+      "mass_g": 0.004,
       "mass_estimate_class": "physical_part_estimate",
       "mass_estimate_included": true,
       "excluded_from_mass_estimate": false
@@ -2082,6 +2163,106 @@
       "excluded_from_mass_estimate": true
     },
     {
+      "name": "display_bias_power_flex_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "display_bias_power_flex_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "rear_camera_power_flex_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "rear_camera_power_flex_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "front_camera_power_flex_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "front_camera_power_flex_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "wifi_bt_host_control_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "wifi_bt_host_control_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "cellular_host_control_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "cellular_host_control_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
       "name": "bottom_speaker_lead_pair_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
@@ -2182,6 +2363,26 @@
       "excluded_from_mass_estimate": true
     },
     {
+      "name": "sensor_hub_i2c_flex_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "sensor_hub_i2c_flex_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
       "name": "sim_esim_signal_flex_from_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
@@ -2233,6 +2434,46 @@
     },
     {
       "name": "compute_som_sodimm_carrier_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "soc_shield_ground_spring_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "soc_shield_ground_spring_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "radio_shield_ground_spring_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "mass_estimate_class": "non_material_reference_geometry",
+      "mass_estimate_included": false,
+      "excluded_from_mass_estimate": true
+    },
+    {
+      "name": "radio_shield_ground_spring_to_terminal",
       "role": "connection terminal",
       "volume_mm3": 0.002,
       "density_g_per_cm3": 0.0,

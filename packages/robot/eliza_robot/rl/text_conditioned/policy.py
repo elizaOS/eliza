@@ -46,6 +46,7 @@ class CheckpointManifest:
     policy_hidden_layer_sizes: tuple[int, ...] = (512, 256, 128)
     value_hidden_layer_sizes: tuple[int, ...] = (512, 256, 128)
     normalize_observations: bool = True
+    action_scale: float | None = None
 
 
 def _load_manifest(ckpt_dir: Path, *, strict: bool = False) -> CheckpointManifest:
@@ -88,6 +89,9 @@ def _load_manifest(ckpt_dir: Path, *, strict: bool = False) -> CheckpointManifes
             raw.get("value_hidden_layer_sizes", (512, 256, 128))
         ),
         normalize_observations=bool(raw.get("normalize_observations", True)),
+        action_scale=(
+            float(raw["action_scale"]) if raw.get("action_scale") is not None else None
+        ),
     )
 
 

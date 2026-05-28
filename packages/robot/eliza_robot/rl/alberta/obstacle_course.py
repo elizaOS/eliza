@@ -119,7 +119,27 @@ class ObstacleCourseEnv(gym.Env):
         self._vel = np.zeros(2, dtype=np.float32)
         self._step = 0
         self._prev_goal_dist = self._goal_dist()
-        return self._obs(), {"task_id": self._task, "lane_y": self.target_lane_y}
+        obstacle_dist = self._obstacle_dist()
+        lane_err_signed = float(self._pos[1] - self.target_lane_y)
+        return self._obs(), {
+            "task_id": self._task,
+            "lane_y": self.target_lane_y,
+            "x": float(self._pos[0]),
+            "y": float(self._pos[1]),
+            "vx": float(self._vel[0]),
+            "vy": float(self._vel[1]),
+            "start_x": float(self._start_pos[0]),
+            "start_y": float(self._start_pos[1]),
+            "forward_progress_m": 0.0,
+            "lane_error_m": abs(lane_err_signed),
+            "lane_error_signed_m": lane_err_signed,
+            "goal_dist": self._prev_goal_dist,
+            "obstacle_dist": obstacle_dist,
+            "obstacle_clearance_m": obstacle_dist - self.config.obstacle_radius_m,
+            "collision": False,
+            "goal_reached": False,
+            "passed_obstacle": False,
+        }
 
     def step(self, action: np.ndarray):
         cfg = self.config

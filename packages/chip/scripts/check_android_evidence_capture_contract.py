@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTER_WORKSPACE = ROOT.parents[2] if len(ROOT.parents) > 2 else ROOT.parent
 MANIFEST = ROOT / "sw/aosp-device/evidence_manifest.json"
 CAPTURE_SCRIPT = ROOT / "sw/aosp-device/capture-aosp-evidence.sh"
 BOOT_GATE = ROOT / "sw/aosp-device/cuttlefish-boot-gate.sh"
@@ -34,21 +33,7 @@ CLAIM_BOUNDARY = "static_android_evidence_capture_contract_only_not_runtime_evid
 LAUNCHER_EVIDENCE = "docs/evidence/android/eliza_launcher_runtime_evidence.json"
 
 
-def read_outer_app_config() -> dict[str, str] | None:
-    config_path = OUTER_WORKSPACE / "apps/app/app.config.ts"
-    if not config_path.is_file():
-        return None
-    config = config_path.read_text(encoding="utf-8")
-    values: dict[str, str] = {}
-    for key in ("appId",):
-        match = re.search(rf"\b{key}\s*:\s*[\"']([^\"']+)[\"']", config)
-        if match:
-            values[key] = match.group(1)
-    return values if "appId" in values else None
-
-
-BRAND_CONFIG = read_outer_app_config()
-EXPECTED_AGENT_PACKAGE = BRAND_CONFIG["appId"] if BRAND_CONFIG else "ai.elizaos.app"
+EXPECTED_AGENT_PACKAGE = "ai.elizaos.app"
 EXPECTED_AGENT_SERVICE = f"{EXPECTED_AGENT_PACKAGE}/.ElizaAgentService"
 EXPECTED_LAUNCHER_SCHEMA = "eliza.android_launcher_runtime_evidence.v1"
 EXPECTED_LAUNCHER_CLAIM_BOUNDARY = "booted_android_launcher_agent_runtime_evidence_only"

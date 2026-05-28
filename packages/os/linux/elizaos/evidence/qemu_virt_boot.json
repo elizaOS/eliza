@@ -2,7 +2,7 @@
   "boot_completed": true,
   "claim_boundary": "qemu_virt_boot_transcript_evidence_only_no_silicon_or_physical_board_claim",
   "cpus": 4,
-  "duration_s": 305,
+  "duration_s": 431,
   "forbidden_markers_present": [],
   "iso_boot_artifacts": {
     "found": {
@@ -27,9 +27,9 @@
   "provenance": "qemu_virt",
   "qemu_exit_code": 0,
   "schema": "eliza.os.linux.qemu_virt_boot.v1",
-  "start_utc": "2026-05-27T20:56:26Z",
-  "timeout_s": 600,
+  "start_utc": "2026-05-27T22:47:23Z",
+  "timeout_s": 900,
   "transcript_path": "evidence/qemu_virt_boot.transcript.log",
-  "transcript_sha256": "524fb8feec968cdcf6195a020cf7b5d9dc6041dd5dd1b265dd075a1ff2c0a69c",
+  "transcript_sha256": "840abfe4bb3acfcde3d072a56d532c5206ab6db8e8e6ba1c3d99dc7f0fce646b",
   "u_boot_path": null
 }

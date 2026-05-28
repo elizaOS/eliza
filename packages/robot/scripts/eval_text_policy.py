@@ -131,7 +131,17 @@ def _telemetry_sample_from_info(t_s: float, info: dict) -> TelemetrySample:
         yaw_rad=_optional_float(info.get("root_yaw")),
         imu_roll_rad=float(info.get("imu_roll", 0.0) or 0.0),
         imu_pitch_rad=float(info.get("imu_pitch", 0.0) or 0.0),
-        extra={"stand_height_m": info.get("stand_height_m")},
+        extra={
+            "stand_height_m": info.get("stand_height_m"),
+            "left_foot_contact": info.get("left_foot_contact"),
+            "right_foot_contact": info.get("right_foot_contact"),
+            "root_x_m": info.get("root_x"),
+            "root_y_m": info.get("root_y"),
+            "torso_z_m": info.get("torso_z"),
+            "tracked_x_m": info.get("tracked_x"),
+            "tracked_y_m": info.get("tracked_y"),
+            "tracked_z_m": info.get("tracked_z"),
+        },
     )
 
 
@@ -148,10 +158,14 @@ def _roll_one(env, policy, task_id: str, *, max_steps: int) -> dict:
     env._current_embed = env.embeddings[task_id].reduced_embed.astype(np.float32)  # noqa: SLF001
     if hasattr(env, "_root_pose_summary"):
         pose = env._root_pose_summary()  # noqa: SLF001
+        tracked = env._tracked_pose_summary(pose)  # noqa: SLF001
         env._episode_start_x = pose["x"]  # noqa: SLF001
         env._episode_start_y = pose["y"]  # noqa: SLF001
         env._episode_start_yaw = pose["yaw"]  # noqa: SLF001
         env._episode_start_torso_z = pose["z"]  # noqa: SLF001
+        env._episode_start_tracked_x = tracked["x"]  # noqa: SLF001
+        env._episode_start_tracked_y = tracked["y"]  # noqa: SLF001
+        env._episode_start_tracked_z = tracked["z"]  # noqa: SLF001
     obs = env._build_obs()  # noqa: SLF001
     checker = GoalChecker(task, episode_start_t_s=0.0)
     last_info = {
@@ -169,6 +183,10 @@ def _roll_one(env, policy, task_id: str, *, max_steps: int) -> dict:
     traces = {
         "delta_x": [],
         "torso_z": [],
+        "tracked_delta_x": [],
+        "tracked_delta_y": [],
+        "tracked_delta_z": [],
+        "tracked_z": [],
         "delta_y": [],
         "delta_yaw": [],
     }
@@ -212,6 +230,20 @@ def _roll_one(env, policy, task_id: str, *, max_steps: int) -> dict:
         "final_delta_y": float(_optional_float(last_info.get("delta_y")) or 0.0),
         "final_delta_yaw": float(_optional_float(last_info.get("delta_yaw")) or 0.0),
         "final_torso_z": float(_optional_float(last_info.get("torso_z")) or 0.0),
+        "final_torso_z_delta": float(
+            (_optional_float(last_info.get("torso_z")) or 0.0)
+            - float(getattr(env, "_episode_start_torso_z", 0.0) or 0.0)
+        ),
+        "final_tracked_delta_x": float(
+            _optional_float(last_info.get("tracked_delta_x")) or 0.0
+        ),
+        "final_tracked_delta_y": float(
+            _optional_float(last_info.get("tracked_delta_y")) or 0.0
+        ),
+        "final_tracked_delta_z": float(
+            _optional_float(last_info.get("tracked_delta_z")) or 0.0
+        ),
+        "final_tracked_z": float(_optional_float(last_info.get("tracked_z")) or 0.0),
         "min_torso_z": min(traces["torso_z"]) if traces["torso_z"] else None,
         "max_abs_lateral_drift": (
             max(abs(v) for v in traces["delta_y"]) if traces["delta_y"] else None
@@ -221,6 +253,10 @@ def _roll_one(env, policy, task_id: str, *, max_steps: int) -> dict:
             "delta_y_m": _float_stats(traces["delta_y"]),
             "delta_yaw_rad": _float_stats(traces["delta_yaw"]),
             "torso_z_m": _float_stats(traces["torso_z"]),
+            "tracked_delta_x_m": _float_stats(traces["tracked_delta_x"]),
+            "tracked_delta_y_m": _float_stats(traces["tracked_delta_y"]),
+            "tracked_delta_z_m": _float_stats(traces["tracked_delta_z"]),
+            "tracked_z_m": _float_stats(traces["tracked_z"]),
         },
     }
 
@@ -347,6 +383,19 @@ def _roll_one_asimov_mjx(
         "final_delta_y": float((last_sample.torso_y_m or 0.0) - (start_sample.torso_y_m or 0.0)),
         "final_delta_yaw": float((last_sample.yaw_rad or 0.0) - (start_sample.yaw_rad or 0.0)),
         "final_torso_z": float(last_sample.torso_z_m or 0.0),
+        "final_torso_z_delta": float(
+            (last_sample.torso_z_m or 0.0) - (start_sample.torso_z_m or 0.0)
+        ),
+        "final_tracked_delta_x": float(
+            (last_sample.torso_x_m or 0.0) - (start_sample.torso_x_m or 0.0)
+        ),
+        "final_tracked_delta_y": float(
+            (last_sample.torso_y_m or 0.0) - (start_sample.torso_y_m or 0.0)
+        ),
+        "final_tracked_delta_z": float(
+            (last_sample.torso_z_m or 0.0) - (start_sample.torso_z_m or 0.0)
+        ),
+        "final_tracked_z": float(last_sample.torso_z_m or 0.0),
         "min_torso_z": float(np.min(torso_z_trace)) if torso_z_trace else None,
         "max_abs_lateral_drift": (
             float(np.max(np.abs(delta_y_trace))) if delta_y_trace else None
@@ -376,6 +425,11 @@ def _normalize_mjx_rollout(rollout) -> dict:
         "final_delta_y": 0.0,
         "final_delta_yaw": 0.0,
         "final_torso_z": 0.0,
+        "final_torso_z_delta": 0.0,
+        "final_tracked_delta_x": 0.0,
+        "final_tracked_delta_y": 0.0,
+        "final_tracked_delta_z": 0.0,
+        "final_tracked_z": 0.0,
         "min_torso_z": None,
         "max_abs_lateral_drift": None,
         "telemetry": {},
@@ -391,14 +445,257 @@ def _movement_summary(rollouts: list[dict]) -> dict[str, Any]:
                 out.append(value)
         return out
 
+    translation_drift = []
+    for rollout in rollouts:
+        dx = _optional_float(rollout.get("final_delta_x"))
+        dy = _optional_float(rollout.get("final_delta_y"))
+        if dx is not None and dy is not None:
+            translation_drift.append(float(np.hypot(dx, dy)))
+
     return {
         "final_delta_x_m": _float_stats(values("final_delta_x")),
         "final_delta_y_m": _float_stats(values("final_delta_y")),
         "final_delta_yaw_rad": _float_stats(values("final_delta_yaw")),
         "final_torso_z_m": _float_stats(values("final_torso_z")),
+        "final_torso_z_delta_m": _float_stats(values("final_torso_z_delta")),
+        "final_tracked_delta_x_m": _float_stats(values("final_tracked_delta_x")),
+        "final_tracked_delta_y_m": _float_stats(values("final_tracked_delta_y")),
+        "final_tracked_delta_z_m": _float_stats(values("final_tracked_delta_z")),
+        "final_tracked_z_m": _float_stats(values("final_tracked_z")),
         "min_torso_z_m": _float_stats(values("min_torso_z")),
         "max_abs_lateral_drift_m": _float_stats(values("max_abs_lateral_drift")),
+        "final_translation_drift_m": _float_stats(translation_drift),
     }
+
+
+def _finite_metric(metrics: dict[str, Any], key: str) -> float | None:
+    value = metrics.get(key)
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if np.isfinite(number) else None
+
+
+def _summary_stat(metrics: dict[str, Any], series: str, stat: str) -> float | None:
+    summary = metrics.get("movement_summary")
+    if not isinstance(summary, dict):
+        return None
+    values = summary.get(series)
+    if not isinstance(values, dict):
+        return None
+    value = values.get(stat)
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if np.isfinite(number) else None
+
+
+def _metric_or_summary(
+    metrics: dict[str, Any],
+    metric_key: str,
+    series: str,
+    stat: str,
+) -> float | None:
+    value = _summary_stat(metrics, series, stat)
+    if value is not None:
+        return value
+    return _finite_metric(metrics, metric_key)
+
+
+def _max_abs_summary(metrics: dict[str, Any], series: str) -> float | None:
+    lo = _summary_stat(metrics, series, "min")
+    hi = _summary_stat(metrics, series, "max")
+    if lo is None and hi is None:
+        return None
+    return max(abs(v) for v in (lo, hi) if v is not None)
+
+
+def task_physical_checks(task_id: str, metrics: dict[str, Any]) -> dict[str, bool]:
+    """Command-specific physical motion gates for learned-policy eval reports."""
+    success_rate = _finite_metric(metrics, "success_rate")
+    failure_rate = _finite_metric(metrics, "failure_rate")
+    checks: dict[str, bool] = {
+        "episodes": int(metrics.get("episodes", 0) or 0) > 0,
+        "success_rate_full": success_rate is not None and success_rate >= 1.0,
+        "failure_rate_zero": failure_rate is not None and failure_rate <= 0.0,
+    }
+    dx = _finite_metric(metrics, "mean_final_delta_x_m")
+    dy = _finite_metric(metrics, "mean_final_delta_y_m")
+    dyaw = _finite_metric(metrics, "mean_final_delta_yaw_rad")
+    torso_z = _finite_metric(metrics, "mean_final_torso_z_m")
+    tracked_dx = _finite_metric(metrics, "mean_final_tracked_delta_x_m")
+    tracked_dy = _finite_metric(metrics, "mean_final_tracked_delta_y_m")
+    tracked_z = _finite_metric(metrics, "mean_final_tracked_z_m")
+    min_dx = _metric_or_summary(
+        metrics,
+        "mean_final_delta_x_m",
+        "final_delta_x_m",
+        "min",
+    )
+    max_dx = _metric_or_summary(
+        metrics,
+        "mean_final_delta_x_m",
+        "final_delta_x_m",
+        "max",
+    )
+    min_dy = _metric_or_summary(
+        metrics,
+        "mean_final_delta_y_m",
+        "final_delta_y_m",
+        "min",
+    )
+    max_dy = _metric_or_summary(
+        metrics,
+        "mean_final_delta_y_m",
+        "final_delta_y_m",
+        "max",
+    )
+    min_tracked_dx = _metric_or_summary(
+        metrics,
+        "mean_final_tracked_delta_x_m",
+        "final_tracked_delta_x_m",
+        "min",
+    )
+    max_tracked_dx = _metric_or_summary(
+        metrics,
+        "mean_final_tracked_delta_x_m",
+        "final_tracked_delta_x_m",
+        "max",
+    )
+    min_tracked_dy = _metric_or_summary(
+        metrics,
+        "mean_final_tracked_delta_y_m",
+        "final_tracked_delta_y_m",
+        "min",
+    )
+    max_tracked_dy = _metric_or_summary(
+        metrics,
+        "mean_final_tracked_delta_y_m",
+        "final_tracked_delta_y_m",
+        "max",
+    )
+    min_dyaw = _metric_or_summary(
+        metrics,
+        "mean_final_delta_yaw_rad",
+        "final_delta_yaw_rad",
+        "min",
+    )
+    max_dyaw = _metric_or_summary(
+        metrics,
+        "mean_final_delta_yaw_rad",
+        "final_delta_yaw_rad",
+        "max",
+    )
+    max_abs_dyaw = _max_abs_summary(metrics, "final_delta_yaw_rad")
+    if max_abs_dyaw is None and dyaw is not None:
+        max_abs_dyaw = abs(dyaw)
+    max_lateral_drift = _summary_stat(metrics, "max_abs_lateral_drift_m", "max")
+    if max_lateral_drift is None and dy is not None:
+        max_lateral_drift = abs(dy)
+    max_translation_drift = _summary_stat(metrics, "final_translation_drift_m", "max")
+    if max_translation_drift is None and dx is not None and dy is not None:
+        max_translation_drift = float(np.hypot(dx, dy))
+    torso_z_delta = _metric_or_summary(
+        metrics,
+        "mean_final_torso_z_delta_m",
+        "final_torso_z_delta_m",
+        "min",
+    )
+    tracked_z_delta = _metric_or_summary(
+        metrics,
+        "mean_final_tracked_delta_z_m",
+        "final_tracked_delta_z_m",
+        "min",
+    )
+    min_torso_z = _summary_stat(metrics, "min_torso_z_m", "min")
+    if min_torso_z is None:
+        min_torso_z = torso_z
+    min_tracked_z = _summary_stat(metrics, "final_tracked_z_m", "min")
+    if min_tracked_z is None:
+        min_tracked_z = tracked_z
+    max_abs_tracked_y = (
+        max(abs(v) for v in (min_tracked_dy, max_tracked_dy) if v is not None)
+        if min_tracked_dy is not None or max_tracked_dy is not None
+        else None
+    )
+    max_abs_tracked_x = (
+        max(abs(v) for v in (min_tracked_dx, max_tracked_dx) if v is not None)
+        if min_tracked_dx is not None or max_tracked_dx is not None
+        else None
+    )
+    tracked_translation_drift = (
+        float(np.hypot(tracked_dx, tracked_dy))
+        if tracked_dx is not None and tracked_dy is not None
+        else None
+    )
+
+    if task_id == "stand_up":
+        checks["torso_height_finite_positive"] = torso_z is not None and torso_z > 0.0
+        checks["torso_height_gain"] = torso_z_delta is not None and torso_z_delta >= 0.02
+        checks["tracked_height_finite_positive"] = (
+            min_tracked_z is not None and min_tracked_z > 0.0
+        )
+        checks["tracked_height_gain"] = (
+            tracked_z_delta is not None and tracked_z_delta >= 0.02
+        )
+    elif task_id == "sit_down":
+        checks["torso_height_seated"] = torso_z is not None and 0.13 <= torso_z <= 0.20
+        checks["forward_drift_bound"] = max_dx is not None and min_dx is not None and max(abs(max_dx), abs(min_dx)) <= 0.10
+        checks["lateral_drift_bound"] = max_dy is not None and min_dy is not None and max(abs(max_dy), abs(min_dy)) <= 0.10
+        checks["yaw_drift_bound"] = max_abs_dyaw is not None and max_abs_dyaw <= 0.35
+    elif task_id == "walk_forward":
+        checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
+        checks["tracked_delta_x_forward"] = min_tracked_dx is not None and min_tracked_dx >= 0.30
+        checks["tracked_lateral_drift_bound"] = (
+            max_abs_tracked_y is not None and max_abs_tracked_y <= 0.20
+        )
+        checks["yaw_drift_bound"] = max_abs_dyaw is not None and max_abs_dyaw <= 0.40
+    elif task_id == "walk_backward":
+        checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
+        checks["tracked_delta_x_backward"] = max_tracked_dx is not None and max_tracked_dx <= -0.20
+        checks["tracked_lateral_drift_bound"] = (
+            max_abs_tracked_y is not None and max_abs_tracked_y <= 0.20
+        )
+        checks["yaw_drift_bound"] = max_abs_dyaw is not None and max_abs_dyaw <= 0.40
+    elif task_id == "sidestep_left":
+        checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
+        checks["tracked_delta_y_left"] = min_tracked_dy is not None and min_tracked_dy >= 0.20
+        checks["tracked_forward_drift_bound"] = (
+            max_abs_tracked_x is not None and max_abs_tracked_x <= 0.20
+        )
+        checks["yaw_drift_bound"] = max_abs_dyaw is not None and max_abs_dyaw <= 0.40
+    elif task_id == "sidestep_right":
+        checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
+        checks["tracked_delta_y_right"] = max_tracked_dy is not None and max_tracked_dy <= -0.20
+        checks["tracked_forward_drift_bound"] = (
+            max_abs_tracked_x is not None and max_abs_tracked_x <= 0.20
+        )
+        checks["yaw_drift_bound"] = max_abs_dyaw is not None and max_abs_dyaw <= 0.40
+    elif task_id == "turn_left":
+        checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
+        checks["delta_yaw_left"] = min_dyaw is not None and min_dyaw >= 0.70
+        checks["tracked_translation_drift_bound"] = (
+            tracked_translation_drift is not None and tracked_translation_drift <= 0.25
+        )
+    elif task_id == "turn_right":
+        checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
+        checks["delta_yaw_right"] = max_dyaw is not None and max_dyaw <= -0.70
+        checks["tracked_translation_drift_bound"] = (
+            tracked_translation_drift is not None and tracked_translation_drift <= 0.25
+        )
+    elif task_id == "turn_around":
+        checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
+        checks["delta_yaw_turn_around"] = max_abs_dyaw is not None and max_abs_dyaw >= 2.60
+        checks["tracked_translation_drift_bound"] = (
+            tracked_translation_drift is not None and tracked_translation_drift <= 0.35
+        )
+    return checks
 
 
 def _evaluate_asimov_mjx(
@@ -440,6 +737,11 @@ def _evaluate_asimov_mjx(
         delta_y = []
         delta_yaw = []
         torso_z = []
+        torso_z_delta = []
+        tracked_delta_x = []
+        tracked_delta_y = []
+        tracked_delta_z = []
+        tracked_z = []
         rollouts = []
         for _ in range(episodes):
             seed = int(rng.integers(2**31 - 1))
@@ -461,6 +763,11 @@ def _evaluate_asimov_mjx(
             delta_y.append(float(rollout["final_delta_y"]))
             delta_yaw.append(float(rollout["final_delta_yaw"]))
             torso_z.append(float(rollout["final_torso_z"]))
+            torso_z_delta.append(float(rollout["final_torso_z_delta"]))
+            tracked_delta_x.append(float(rollout["final_tracked_delta_x"]))
+            tracked_delta_y.append(float(rollout["final_tracked_delta_y"]))
+            tracked_delta_z.append(float(rollout["final_tracked_delta_z"]))
+            tracked_z.append(float(rollout["final_tracked_z"]))
             rollouts.append(rollout)
         per_task[task_id] = {
             "mean_reward": float(np.mean(rewards)),
@@ -474,6 +781,11 @@ def _evaluate_asimov_mjx(
             "mean_final_delta_y_m": float(np.mean(delta_y)),
             "mean_final_delta_yaw_rad": float(np.mean(delta_yaw)),
             "mean_final_torso_z_m": float(np.mean(torso_z)),
+            "mean_final_torso_z_delta_m": float(np.mean(torso_z_delta)),
+            "mean_final_tracked_delta_x_m": float(np.mean(tracked_delta_x)),
+            "mean_final_tracked_delta_y_m": float(np.mean(tracked_delta_y)),
+            "mean_final_tracked_delta_z_m": float(np.mean(tracked_delta_z)),
+            "mean_final_tracked_z_m": float(np.mean(tracked_z)),
             "movement_summary": _movement_summary(rollouts),
             "rollouts": rollouts,
             "episodes": episodes,
@@ -540,6 +852,9 @@ def evaluate(
             exclude_tasks=(),
             episode_steps=max_steps,
             pca_dim=pca_dim,
+            action_scale=float(policy.manifest.action_scale or 0.3)
+            if policy is not None
+            else 0.3,
         ),
     )
     per_task: dict[str, dict] = {}
@@ -552,6 +867,11 @@ def evaluate(
         delta_y = []
         delta_yaw = []
         torso_z = []
+        torso_z_delta = []
+        tracked_delta_x = []
+        tracked_delta_y = []
+        tracked_delta_z = []
+        tracked_z = []
         rollouts = []
         for _ in range(episodes):
             rollout = _roll_one(env, policy, task_id, max_steps=max_steps)
@@ -563,6 +883,11 @@ def evaluate(
             delta_y.append(float(rollout["final_delta_y"]))
             delta_yaw.append(float(rollout["final_delta_yaw"]))
             torso_z.append(float(rollout["final_torso_z"]))
+            torso_z_delta.append(float(rollout["final_torso_z_delta"]))
+            tracked_delta_x.append(float(rollout["final_tracked_delta_x"]))
+            tracked_delta_y.append(float(rollout["final_tracked_delta_y"]))
+            tracked_delta_z.append(float(rollout["final_tracked_delta_z"]))
+            tracked_z.append(float(rollout["final_tracked_z"]))
             rollouts.append(rollout)
         per_task[task_id] = {
             "mean_reward": float(np.mean(rewards)),
@@ -576,6 +901,11 @@ def evaluate(
             "mean_final_delta_y_m": float(np.mean(delta_y)),
             "mean_final_delta_yaw_rad": float(np.mean(delta_yaw)),
             "mean_final_torso_z_m": float(np.mean(torso_z)),
+            "mean_final_torso_z_delta_m": float(np.mean(torso_z_delta)),
+            "mean_final_tracked_delta_x_m": float(np.mean(tracked_delta_x)),
+            "mean_final_tracked_delta_y_m": float(np.mean(tracked_delta_y)),
+            "mean_final_tracked_delta_z_m": float(np.mean(tracked_delta_z)),
+            "mean_final_tracked_z_m": float(np.mean(tracked_z)),
             "movement_summary": _movement_summary(rollouts),
             "rollouts": rollouts,
             "episodes": episodes,
@@ -607,10 +937,14 @@ def curriculum_report_from_eval(report: dict) -> dict:
         metrics = metrics if isinstance(metrics, dict) else {}
         success_rate = float(metrics.get("success_rate", 0.0) or 0.0)
         failure_rate = float(metrics.get("failure_rate", 0.0) or 0.0)
+        physical_checks = task_physical_checks(task_id, metrics)
+        physical_success = bool(physical_checks) and all(physical_checks.values())
         rows.append(
             {
                 "task_id": task_id,
-                "success_programmatic": bool(success_rate >= 1.0),
+                "success_programmatic": bool(success_rate >= 1.0 and physical_success),
+                "physical_success": physical_success,
+                "physical_checks": physical_checks,
                 "success_rate": success_rate,
                 "failure_rate": failure_rate,
                 "episodes": int(metrics.get("episodes", 0) or 0),
@@ -629,6 +963,21 @@ def curriculum_report_from_eval(report: dict) -> dict:
                 ),
                 "mean_final_torso_z_m": float(
                     metrics.get("mean_final_torso_z_m", 0.0) or 0.0
+                ),
+                "mean_final_torso_z_delta_m": float(
+                    metrics.get("mean_final_torso_z_delta_m", 0.0) or 0.0
+                ),
+                "mean_final_tracked_delta_x_m": float(
+                    metrics.get("mean_final_tracked_delta_x_m", 0.0) or 0.0
+                ),
+                "mean_final_tracked_delta_y_m": float(
+                    metrics.get("mean_final_tracked_delta_y_m", 0.0) or 0.0
+                ),
+                "mean_final_tracked_delta_z_m": float(
+                    metrics.get("mean_final_tracked_delta_z_m", 0.0) or 0.0
+                ),
+                "mean_final_tracked_z_m": float(
+                    metrics.get("mean_final_tracked_z_m", 0.0) or 0.0
                 ),
                 "movement_summary": metrics.get("movement_summary", {}),
                 "error": None,

@@ -1,21 +1,22 @@
 {
   "schema": "robot-nebius-training-comparison-report-v1",
   "ok": false,
-  "generated_at": "2026-05-27T22:04:52.526039Z",
+  "generated_at": "2026-05-27T23:06:11.828543Z",
   "run_id": "robot-full-clean-1779556360",
   "run_root": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
   "monitor_state": "invalid",
   "finalization_ok": false,
   "finalization_report_ok": false,
-  "finalization_matches_current_validation": true,
+  "finalization_matches_current_validation": false,
   "validation_ok": false,
   "missing_gates": [
-    "stage_status",
     "production_contract",
+    "obstacle_course_benchmark",
     "video_review",
     "production_policy_videos",
-    "curriculum_eval",
-    "status_consistency",
+    "curriculum_eval"
+  ],
+  "stale_finalization_missing_gates": [
     "training_comparison_report"
   ],
   "backend_comparison": {
@@ -205,7 +206,7 @@
     "rl_from_sim_ready": true,
     "imitation_training_ready": false,
     "offline_datasets_block_current_plan": false,
-    "curriculum_sha256": "78dbf843eb6554d695ea07c810b92a66f402e7cf097d310802d56562b06c349e"
+    "curriculum_sha256": "0bee85e46dc27ad0ee0d04bc72c898827bdf29ac21fc422f39ad1bcea5824068"
   },
   "validation_gates": {
     "training_inputs": {
@@ -225,9 +226,9 @@
       ]
     },
     "stage_status": {
-      "ok": false,
+      "ok": true,
       "checks": {
-        "runner_status": false,
+        "runner_status": true,
         "all_stage_statuses": true
       },
       "runner": {
@@ -237,9 +238,9 @@
           "valid_json_object": true,
           "state_complete": true,
           "ok_true": true,
-          "all_stages_listed": false,
-          "stage_count_exact": false,
-          "stage_order": false,
+          "all_stages_listed": true,
+          "stage_count_exact": true,
+          "stage_order": true,
           "last_stage": true,
           "started_at": true,
           "ended_at": true,
@@ -248,7 +249,20 @@
         "state": "complete",
         "ok": true,
         "last_stage": "50_post_train_validation",
-        "stage_count": 1
+        "repaired_from_stage_files": true,
+        "raw_stage_names": [
+          "50_post_train_validation"
+        ],
+        "effective_stage_names": [
+          "00_local_preflight",
+          "10_nebius_train_alberta",
+          "20_nebius_compare_backends",
+          "30_nebius_continual_benchmarks",
+          "40_nebius_brax_baseline",
+          "50_post_train_validation"
+        ],
+        "raw_stage_count": 1,
+        "stage_count": 6
       },
       "stages": {
         "00_local_preflight": true,
@@ -940,10 +954,13 @@
         "result_learners": true,
         "matrix_shapes": true,
         "motion_matrix_shapes": true,
+        "trajectory_matrix_shapes": true,
         "obstacle_motion_summary": true,
         "obstacle_forward_progress": true,
         "obstacle_passes_obstacle": true,
         "obstacle_collision_rate": true,
+        "obstacle_passive_baseline_control": true,
+        "obstacle_beats_passive_baseline": true,
         "metrics": true,
         "alberta_acc_gte_ppo": true,
         "alberta_forgetting_lte_ppo": true
@@ -966,13 +983,13 @@
       }
     },
     "obstacle_course_benchmark": {
-      "ok": true,
+      "ok": false,
       "checks": {
         "benchmark_dir": true,
         "json": true,
         "markdown": true,
         "plot": true,
-        "demo_json": true,
+        "demo_json": false,
         "demo_video": true,
         "schema": true,
         "expected_env": true,
@@ -986,12 +1003,15 @@
         "result_learners": true,
         "matrix_shapes": true,
         "motion_matrix_shapes": true,
+        "trajectory_matrix_shapes": false,
         "obstacle_motion_summary": true,
         "obstacle_forward_progress": true,
         "obstacle_passes_obstacle": true,
         "obstacle_collision_rate": true,
+        "obstacle_passive_baseline_control": true,
+        "obstacle_beats_passive_baseline": false,
         "metrics": true,
-        "alberta_acc_gte_ppo": true,
+        "alberta_acc_gte_ppo": false,
         "alberta_forgetting_lte_ppo": true
       },
       "deltas": {
@@ -999,7 +1019,7 @@
         "alberta_forgetting_minus_ppo": -2.4182195337659897
       },
       "required_deltas": {
-        "require_alberta_acc_gte_ppo": false,
+        "require_alberta_acc_gte_ppo": true,
         "require_alberta_forgetting_lte_ppo": true
       },
       "observed_comparisons": {
@@ -1007,7 +1027,7 @@
         "alberta_forgetting_lte_ppo": true
       },
       "enforced_delta_gates": {
-        "alberta_acc_gte_ppo": true,
+        "alberta_acc_gte_ppo": false,
         "alberta_forgetting_lte_ppo": true
       }
     },
@@ -1078,6 +1098,7 @@
         "n_tasks": true,
         "n_programmatic_pass": false,
         "all_requested_tasks_programmatic_success": false,
+        "all_requested_tasks_physical_success": false,
         "task_success_rates": false,
         "task_episodes": true,
         "task_errors_absent": true,
@@ -1186,21 +1207,21 @@
         "alberta_forgetting_lte_ppo": true
       },
       "enforced_delta_gates": {
-        "alberta_acc_gte_ppo": true,
+        "alberta_acc_gte_ppo": false,
         "alberta_forgetting_lte_ppo": true
       },
       "required_deltas": {
-        "require_alberta_acc_gte_ppo": false,
+        "require_alberta_acc_gte_ppo": true,
         "require_alberta_forgetting_lte_ppo": true
       }
     }
   },
   "completion_requirements": {
     "finalization_ok": false,
-    "finalization_report_matches_current_validation": true,
+    "finalization_report_matches_current_validation": false,
     "validation_ok": false,
-    "stage_status_ok": false,
-    "runner_status_complete": false,
+    "stage_status_ok": true,
+    "runner_status_complete": true,
     "stage_status_all_complete": true,
     "backend_comparison_present": true,
     "backend_alberta_vs_ppo_delta_ok": true,
@@ -1216,9 +1237,9 @@
     "joint_reach_exact_learner_seed_grid": true,
     "obstacle_course_benchmark_present": true,
     "obstacle_course_observed_alberta_acc_gte_ppo": false,
-    "obstacle_course_alberta_acc_gte_ppo_gate_passed": true,
+    "obstacle_course_alberta_acc_gte_ppo_gate_passed": false,
     "obstacle_course_alberta_forgetting_lte_ppo": true,
-    "obstacle_course_required_delta_gates_ok": true,
+    "obstacle_course_required_delta_gates_ok": false,
     "obstacle_course_task_matrix_ok": true,
     "obstacle_course_exact_learner_seed_grid": true,
     "alberta_checkpoint_ok": true,

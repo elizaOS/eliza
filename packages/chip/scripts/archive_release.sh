@@ -10,6 +10,9 @@ mkdir -p "$archive_dir"
 if [ -d "$repo_dir/build/reports" ]; then
     cp -R "$repo_dir/build/reports" "$archive_dir/reports"
 fi
+if [ -d "$repo_dir/build/renode" ]; then
+    cp -R "$repo_dir/build/renode" "$archive_dir/renode"
+fi
 if [ -d "$repo_dir/build/netlist" ]; then
     cp -R "$repo_dir/build/netlist" "$archive_dir/netlist"
 fi

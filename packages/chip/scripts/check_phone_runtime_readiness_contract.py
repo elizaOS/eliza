@@ -12,6 +12,7 @@ BLOCKED in the aggregate readiness view.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import sys
 from collections.abc import Callable, Iterable
@@ -91,6 +92,10 @@ class Finding:
     evidence: str
     next_step: str
     blocker_dependency: str = "live_device_validation"
+
+
+def utc_now() -> str:
+    return dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 SCOPES: tuple[ScopeSpec, ...] = (
@@ -434,8 +439,14 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
                 adb_prefix,
                 (
                     "mkdir -p docs/evidence/android/security && "
-                    'adb -s "$CHIP_ANDROID_ADB_HOSTPORT" shell getprop ro.boot.verifiedbootstate '
-                    "| tee docs/evidence/android/security/verified_boot_acceptance.log"
+                    "state=$(adb -s \"$CHIP_ANDROID_ADB_HOSTPORT\" shell getprop "
+                    "ro.boot.verifiedbootstate | tr -d '\\r') && "
+                    "if [ \"$state\" = green ]; then result=0; verdict=pass; "
+                    "else result=1; verdict=fail; fi; "
+                    "printf 'VERIFIED_BOOT=%s\\nSTATE=%s\\nRESULT=%s\\n' "
+                    "\"$verdict\" \"$state\" \"$result\" | tee "
+                    "docs/evidence/android/security/verified_boot_acceptance.log; "
+                    "test \"$result\" = 0"
                 ),
             ],
         },
@@ -1049,6 +1060,7 @@ def payload(findings: list[Finding], evidence: dict[str, Any]) -> dict[str, Any]
     highest_priority_capture_area = capture_plan[0]["capture_area"] if capture_plan else None
     return {
         "schema": SCHEMA,
+        "generated_utc": utc_now(),
         "status": status,
         "claim_boundary": CLAIM_BOUNDARY,
         "summary": {

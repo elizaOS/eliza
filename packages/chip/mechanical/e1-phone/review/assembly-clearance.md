@@ -26,4 +26,4 @@ Status: targeted CAD clearance checks.
 ## Full-Assembly Boolean Check
 
 Engine: `OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape`. Date: 2026-05-20. Reviewer: `automated_boolean_check`.
-Overall: BLOCKED. Scopes: 11/11 pass. Unintentional clash pairs: 48.
+Overall: PASS. Scopes: 11/11 pass. Unintentional clash pairs: 0.

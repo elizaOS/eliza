@@ -646,8 +646,8 @@ enclosure_placement_release_package_gate:
   complete_clearance_result_count: 0
   current_enclosure_state:
     ready_for_enclosure_allowed: false
-    board_step_readiness_status: blocked_concept_pcb_no_routed_step
-    routed_board_clearance_status: blocked_waiting_for_routed_board_step
+    board_step_readiness_status: blocked_local_routed_step_candidate_not_release
+    routed_board_clearance_status: blocked_waiting_for_physical_routed_board_clearance_result
     component_height_step_status: blocked_requires_supplier_step_models_routed_board_step_and_clearance_rerun
     production_step_present: false
     routed_kicad_board_required: true

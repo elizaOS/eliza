@@ -3,7 +3,7 @@
 Run: `robot-full-clean-1779556360`
 State: `invalid`
 Closeout ok: `False`
-Observed: `2026-05-27T22:04:52.536950Z`
+Observed: `2026-05-27T22:10:57.947057Z`
 
 ## Chain Results
 
@@ -16,6 +16,7 @@ Observed: `2026-05-27T22:04:52.536950Z`
 
 - `stage_status`
 - `production_contract`
+- `obstacle_course_benchmark`
 - `video_review`
 - `production_policy_videos`
 - `curriculum_eval`
@@ -24,9 +25,9 @@ Observed: `2026-05-27T22:04:52.536950Z`
 
 ## Artifacts
 
-- monitor: `evidence/nebius_full_training/synced_run/monitor_status.json`
-- validation: `evidence/nebius_full_training/synced_run/validation_report.json`
-- finalization: `evidence/nebius_full_training/synced_run/finalization_report.json`
-- training report: `evidence/nebius_full_training/synced_run/training_comparison_report.json`
+- monitor: `/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/monitor_status.json`
+- validation: `/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/validation_report.json`
+- finalization: `/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/finalization_report.json`
+- training report: `/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/training_comparison_report.json`
 - artifact inventory: `{'ok': False, 'present_count': 164, 'required_count': 164, 'missing': []}`
-- objective audit: `evidence/nebius_full_training/synced_run/objective_completion_audit.json`
+- objective audit: `/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/objective_completion_audit.json`

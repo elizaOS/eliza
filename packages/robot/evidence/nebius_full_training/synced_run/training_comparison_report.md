@@ -96,7 +96,7 @@ Profiles with complete video evidence: `5.0000` / `5.0000`
 Training-input report present: `True`
 Training-input report ok: `True`
 Launch tasks: `stand_up, walk_forward, walk_backward, sidestep_left, sidestep_right, turn_left, turn_right`
-Curriculum SHA256: `78dbf843eb6554d695ea07c810b92a66f402e7cf097d310802d56562b06c349e`
+Curriculum SHA256: `0bee85e46dc27ad0ee0d04bc72c898827bdf29ac21fc422f39ad1bcea5824068`
 Offline datasets present: `False`
 RL-from-sim ready: `True`
 Imitation training ready: `False`
@@ -108,11 +108,11 @@ Warnings: `unsupported_future_curriculum_tasks, no_offline_policy_datasets`
 | gate | ok | key checks |
 |---|---:|---|
 | `training_inputs` | `True` | present, launch_tasks_cover_requested, no_blockers |
-| `stage_status` | `False` | runner_status complete, every stage status complete |
+| `stage_status` | `True` | runner_status complete, every stage status complete |
 | `multi_robot_readiness` | `True` | profiles, per-action videos, combined videos |
 | `backend_comparison` | `True` | alberta_vs_ppo_delta, winner_consistent |
 | `joint_reach_benchmark` | `True` | observed ACC/forgetting deltas, enforced delta gates, learner_seed_pairs |
-| `obstacle_course_benchmark` | `True` | observed ACC/forgetting deltas, required delta gates, learner_seed_pairs |
+| `obstacle_course_benchmark` | `False` | observed ACC/forgetting deltas, required delta gates, learner_seed_pairs |
 | `alberta_checkpoint` | `True` | regime, profile, tasks, domain_rand, inference |
 | `asimov1_alberta_production` | `None` | production_regime, required_tasks, provenance, inference_check |
 | `brax_full_training_run` | `True` | training run contract |
@@ -127,10 +127,10 @@ Warnings: `unsupported_future_curriculum_tasks, no_offline_policy_datasets`
 | requirement | result |
 |---|---:|
 | `finalization_ok` | `False` |
-| `finalization_report_matches_current_validation` | `True` |
+| `finalization_report_matches_current_validation` | `False` |
 | `validation_ok` | `False` |
-| `stage_status_ok` | `False` |
-| `runner_status_complete` | `False` |
+| `stage_status_ok` | `True` |
+| `runner_status_complete` | `True` |
 | `stage_status_all_complete` | `True` |
 | `backend_comparison_present` | `True` |
 | `backend_alberta_vs_ppo_delta_ok` | `True` |
@@ -146,9 +146,9 @@ Warnings: `unsupported_future_curriculum_tasks, no_offline_policy_datasets`
 | `joint_reach_exact_learner_seed_grid` | `True` |
 | `obstacle_course_benchmark_present` | `True` |
 | `obstacle_course_observed_alberta_acc_gte_ppo` | `False` |
-| `obstacle_course_alberta_acc_gte_ppo_gate_passed` | `True` |
+| `obstacle_course_alberta_acc_gte_ppo_gate_passed` | `False` |
 | `obstacle_course_alberta_forgetting_lte_ppo` | `True` |
-| `obstacle_course_required_delta_gates_ok` | `True` |
+| `obstacle_course_required_delta_gates_ok` | `False` |
 | `obstacle_course_task_matrix_ok` | `True` |
 | `obstacle_course_exact_learner_seed_grid` | `True` |
 | `alberta_checkpoint_ok` | `True` |
@@ -211,10 +211,8 @@ Warnings: `unsupported_future_curriculum_tasks, no_offline_policy_datasets`
 
 ## Missing Production Gates
 
-- `stage_status`
 - `production_contract`
+- `obstacle_course_benchmark`
 - `video_review`
 - `production_policy_videos`
 - `curriculum_eval`
-- `status_consistency`
-- `training_comparison_report`

@@ -4,14 +4,14 @@ Evidence class: `cad_assemblability_check_for_evt_planning` | Revision: `evt0-me
 
 Engine: OCP.BRepExtrema_DistShapeShape + BRepAlgoAPI_Common (swept insertion). Each part is swept from a 8.0 mm back-off along its insertion axis through 8 steps into final pose; B-rep min-gap / intersection vs already-placed parts at every step. Intentional final-seat mating contacts are excluded.
 
-## Verdict: DEVICE NOT PROVEN ASSEMBLABLE
+## Verdict: DEVICE IS ASSEMBLABLE
 
-- Parts in manifest: 234
-- Parts loaded (B-rep): 234
+- Parts in manifest: 258
+- Parts loaded (B-rep): 258
 - Parts placed across 20 assembly steps: 99
-- Trapped parts (no collision-free path): 1 ['orange_side_frame']
+- Trapped parts (no collision-free path): 0 
 - Fastener access (10 bosses + 8 snaps): PASS
-- FPC routing (no pinch): FAIL
+- FPC routing (no pinch): PASS
 
 ## Assembly Sequence
 
@@ -34,15 +34,9 @@ Engine: OCP.BRepExtrema_DistShapeShape + BRepAlgoAPI_Common (swept insertion). E
 | 15 | Front camera module placed under top island | +Z | vacuum pick, front_camera_alignment_pin | 1.000 | PASS |
 | 16 | Display module + perimeter adhesive bonded | +Z | S1 screen_bond_clamp_frame, 90 s cure | 1.000 | PASS |
 | 17 | Cover glass bonded over display | +Z | screen bond clamp, OCA roller | 1.000 | PASS |
-| 18 | Side-frame closure: snap onto perimeter + drive 10 screws | +Z | S5 snap platen 25 N (8 snaps), Wera 7440 torque map (10 screws) | -31.475 | FAIL |
+| 18 | Side-frame closure: snap onto perimeter + drive 10 screws | +Z | S5 snap platen 25 N (8 snaps), Wera 7440 torque map (10 screws) | 0.750 | PASS |
 | 19 | Power button cap + gasket inserted through side frame (-X) | -X | side-key insertion tool | 0.585 | PASS |
 | 20 | Volume button cap + gasket inserted through side frame (+X) | +X | side-key insertion tool | 1.000 | PASS |
-
-## Trapped / Blocked Parts
-
-| Step | Part | Axis | Min clearance (mm) | Blocking parts |
-|---|---|---|---|---|
-| 18 | orange_side_frame | +Z | -31.4748 | battery_back_void_foam_pad, battery_pouch, bottom_mic, bottom_speaker_module, display_fpc_connector, orange_battery_left_rib, orange_battery_right_rib, orange_screw_boss_1, orange_screw_boss_10, orange_screw_boss_2, orange_screw_boss_3, orange_screw_boss_4, orange_screw_boss_5, orange_screw_boss_6, orange_screw_boss_7, orange_screw_boss_8, orange_screw_boss_9, orange_usb_reinforcement_saddle, pmic_shield_can, radio_shield_can, rear_camera_cover_adhesive_bottom, rear_camera_cover_adhesive_left, rear_camera_cover_adhesive_right, rear_camera_cover_adhesive_top, rear_camera_cover_glass, rear_camera_module, rear_flash_led, soc_shield_can, split_interconnect_bottom_connector, split_interconnect_bottom_flex_tail, split_interconnect_side_flex, split_interconnect_top_connector, split_interconnect_top_flex_tail, top_mic |
 
 ## Fastener Access
 
@@ -75,7 +69,7 @@ Driver / snap-platen approach column (toward -Z, from the up-facing back) checke
 |---|---|---|---|---|---|
 | display FPC | display_fpc_bend_keepout | display_fpc_connector | yes | 0.11 | - |
 | battery/PMIC interconnect (side service loop) | split_interconnect_side_flex | split_interconnect_top_connector | yes | 0.0 | - |
-| split top flex tail | split_interconnect_top_flex_tail | split_interconnect_top_connector | NO | -1.651 | orange_side_frame |
-| split bottom flex tail | split_interconnect_bottom_flex_tail | split_interconnect_bottom_connector | NO | -1.651 | orange_side_frame |
+| split top flex tail | split_interconnect_top_flex_tail | split_interconnect_top_connector | yes | 0.0 | - |
+| split bottom flex tail | split_interconnect_bottom_flex_tail | split_interconnect_bottom_connector | yes | 0.0 | - |
 
-Assembly is NOT proven: see trapped/blocked parts above. Re-order the offending part earlier (before its blocker is placed), or relieve the blocking feature, then re-run this checker.
+All parts have a collision-free insertion path in the stated back-shell-up order; all fasteners are tool-accessible and all modeled FPC bend keepouts are unpinched. No trapped parts. The redesigned flush-back e1-phone is assemblable as sequenced.

@@ -29,12 +29,12 @@ DEFAULT_TRANSCRIPT = ROOT / "docs/evidence/android/eliza_launcher_runtime_transc
 ANDROID_SIM_BOOT_REPORT = ROOT / "build/reports/android_sim_boot.json"
 SCHEMA = "eliza.android_launcher_runtime_evidence.v1"
 CLAIM_BOUNDARY = "booted_android_launcher_agent_runtime_evidence_only"
-DEFAULT_PACKAGE = "ai.milady.milady"
-DEFAULT_SERVICE = "ai.milady.milady/.ElizaAgentService"
-DEFAULT_SYSTEM_APK = "/system/priv-app/Milady/Milady.apk"
+DEFAULT_PACKAGE = "ai.elizaos.app"
+DEFAULT_SERVICE = "ai.elizaos.app/.ElizaAgentService"
+DEFAULT_SYSTEM_APK = "/system/priv-app/Eliza/Eliza.apk"
 PERMISSION_FILE_PATHS = (
-    "/system/etc/default-permissions/default-permissions-ai.milady.milady.xml",
-    "/system/etc/permissions/privapp-permissions-ai.milady.milady.xml",
+    "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml",
+    "/system/etc/permissions/privapp-permissions-ai.elizaos.app.xml",
     "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml",
 )
 AOSP_BUILD_ONLY_COMMAND = (

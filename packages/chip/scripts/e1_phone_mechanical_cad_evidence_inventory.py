@@ -50,8 +50,10 @@ REVIEW_GATES = {
 BLOCKED_STATUSES = {
     "blocked",
     "blocked_concept_pcb_no_routed_step",
+    "blocked_local_routed_step_candidate_not_release",
     "blocked_no_physical_process_validation_results",
     "blocked_no_supplier_evidence",
+    "blocked_waiting_for_physical_routed_board_clearance_result",
     "blocked_waiting_for_routed_board_step",
 }
 
@@ -380,6 +382,20 @@ def build_report() -> dict[str, Any]:
     ocp_terminal_step_fallback_count = int(
         solid_handoff.get("ocp_terminal_step_fallback_count") or 0
     )
+    solid_handoff_generated = solid_handoff.get("status") == "generated"
+    expected_terminal_marker_count = int(
+        connection_coverage.get("required_connection_terminal_marker_count") or 0
+    )
+    ocp_terminal_step_fallback_required = not solid_handoff_generated
+    ocp_terminal_step_fallback_complete = (
+        ocp_terminal_step_fallback_required
+        and ocp_terminal_step_fallback_count == expected_terminal_marker_count
+        and not solid_handoff.get("ocp_terminal_step_fallback_error")
+    )
+    terminal_step_coverage_complete = (
+        solid_handoff_generated
+        or ocp_terminal_step_fallback_complete
+    )
     step_validation_validated_count = int(step_validation.get("validated_count") or 0)
     required_connection_count = int(connection_coverage.get("required_connection_count") or 0)
     passing_connection_count = int(connection_coverage.get("passing_connection_count") or 0)
@@ -448,6 +464,11 @@ def build_report() -> dict[str, Any]:
             "solid_handoff_part_count": solid_handoff.get("part_count"),
             "solid_assembly_step": solid_handoff.get("assembly_step"),
             "solid_assembly_step_bytes": assembly_step_bytes,
+            "solid_handoff_native_terminal_step_export": solid_handoff_generated,
+            "solid_handoff_terminal_step_coverage_complete": terminal_step_coverage_complete,
+            "solid_handoff_ocp_terminal_step_fallback_required": (
+                ocp_terminal_step_fallback_required
+            ),
             "solid_handoff_ocp_terminal_step_fallback_count": (ocp_terminal_step_fallback_count),
             "solid_handoff_ocp_terminal_step_fallback_error": solid_handoff.get(
                 "ocp_terminal_step_fallback_error"
@@ -649,12 +670,15 @@ def build_report() -> dict[str, Any]:
         "local_enclosure_cad_ready": {
             "ready": local_cad_ready,
             "scope": "generated_evt0_concept_cad_only",
-            "solid_handoff_generated": solid_handoff.get("status") == "generated",
+            "solid_handoff_generated": solid_handoff_generated,
+            "solid_handoff_native_terminal_step_export": solid_handoff_generated,
+            "solid_handoff_terminal_step_coverage_complete": terminal_step_coverage_complete,
+            "solid_handoff_ocp_terminal_step_fallback_required": (
+                ocp_terminal_step_fallback_required
+            ),
             "solid_handoff_ocp_terminal_step_fallback_count": (ocp_terminal_step_fallback_count),
             "solid_handoff_ocp_terminal_step_fallback_complete": (
-                ocp_terminal_step_fallback_count
-                == int(connection_coverage.get("required_connection_terminal_marker_count") or 0)
-                and not solid_handoff.get("ocp_terminal_step_fallback_error")
+                ocp_terminal_step_fallback_complete
             ),
             "cad_connection_coverage_complete": cad_connection_coverage_complete,
             "assembly_step_present": bool(solid_handoff.get("assembly_step")),

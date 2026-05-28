@@ -1,9 +1,0 @@
-<testsuites name="results">
-  <testsuite name="all" package="all">
-    <property name="random_seed" value="1779519607" />
-    <testcase name="dram_rw" classname="test_e1_soc_integrated_smoke" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/soc/test_e1_soc_integrated_smoke.py" lineno="108" time="0.01855611801147461" sim_time_ns="3700.001" ratio_time="199395.2074303482" />
-    <testcase name="clint_timer_irq" classname="test_e1_soc_integrated_smoke" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/soc/test_e1_soc_integrated_smoke.py" lineno="135" time="0.004358530044555664" sim_time_ns="930.0010000000002" ratio_time="213374.92009758772" />
-    <testcase name="plic_claim_complete" classname="test_e1_soc_integrated_smoke" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/soc/test_e1_soc_integrated_smoke.py" lineno="167" time="0.002955913543701172" sim_time_ns="600.0009999999993" ratio_time="202983.2710359733" />
-    <testcase name="rot_gated_boot" classname="test_e1_soc_integrated_smoke" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/soc/test_e1_soc_integrated_smoke.py" lineno="217" time="0.0008876323699951172" sim_time_ns="170.0010000000002" ratio_time="191521.85718614043" />
-  </testsuite>
-</testsuites>

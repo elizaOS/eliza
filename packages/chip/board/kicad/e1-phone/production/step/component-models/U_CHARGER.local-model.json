@@ -1,4 +1,5 @@
 {
+  "all_pad_visuals_have_contract": true,
   "at_mm": {
     "rotation": 0.0,
     "x": 20.25,
@@ -23,11 +24,11 @@
   "layer": "F.Cu",
   "local_discrete_step_bbox_matches_envelope": true,
   "local_discrete_step_bbox_mm": {
-    "depth": 4.0,
-    "height": 0.65,
-    "width": 3.9
+    "depth": 4.0000002,
+    "height": 0.6500002,
+    "width": 3.9000002
   },
-  "local_discrete_step_bytes": 15556,
+  "local_discrete_step_bytes": 15572,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 4.0,
     "height": 0.65,
@@ -35,7 +36,7 @@
   },
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_CHARGER.local-envelope.step",
   "local_discrete_step_import_status": "pass",
-  "local_discrete_step_sha256": "97f25b1df37654d28e01747a3132fc00cd25a7c39205621efa9847c4639b8c9d",
+  "local_discrete_step_sha256": "d9e4ad8c844260c7bfa2f06bcdddcb00896bddc2c043b7c64c4715c0d030e3d4",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
@@ -135,6 +136,495 @@
   "npth_mechanical_feature_contract_source": "",
   "npth_mechanical_feature_count": 0,
   "npth_mechanical_features": [],
+  "pad_contract_covered_count": 81,
+  "pad_contract_records": [
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "A1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "A2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "A3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "A4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "A5"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "A6"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "A7"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "A8"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "A9"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "B1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "B2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "B3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "B4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "B5"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "B6"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "B7"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "B8"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "B9"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "C1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "C2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "C3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "C4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "C5"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "C6"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "C7"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "C8"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "C9"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "D1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "D2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "D3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "D4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "D5"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "D6"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "D7"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "D8"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "D9"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "E1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "E2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "E3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "E4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "E5"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "E6"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "E7"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "E8"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "E9"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "F1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "F2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "F3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "F4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "F5"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "F6"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "F7"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "F8"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "F9"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "G1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "G2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "G3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "G4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "G5"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "G6"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "G7"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "G8"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "G9"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "H1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "H2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "H3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "H4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "H5"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "H6"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "H7"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "H8"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "H9"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "J1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "J2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "J3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "J4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "J5"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "J6"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "J7"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "J8"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/max77860-pinout.yaml",
+      "covered": true,
+      "pad": "J9"
+    }
+  ],
   "pad_count": 81,
   "pad_names": [
     "A1",
@@ -233,13 +723,14 @@
   "status": "blocked_local_development_envelope_not_supplier_step",
   "supplier_approved": false,
   "supplier_sourcing_lane": "charger_power_path",
-  "supplier_step_intake_bytes": 15586,
+  "supplier_step_intake_bytes": 15600,
   "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/charger_power_path/supplier-model.step",
   "supplier_step_intake_release_credit": false,
-  "supplier_step_intake_sha256": "fa1e128e5bb6194d05d1149191b98906776d358d2919475e5ca3f36efefd4c2d",
+  "supplier_step_intake_sha256": "1d933be6a1e8b8cbd86f1126cb6470abd3507c1a922e2f60f81a3c58d7a902e2",
   "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
   "support_pattern_has_explicit_provenance": false,
   "terminal_contract_count": 81,
   "terminal_contract_matches_pad_visuals": true,
+  "uncovered_pad_visuals": [],
   "visual_package_class": "pinout_bound_package_or_connector"
 }

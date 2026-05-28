@@ -30,7 +30,10 @@ class NpuCoverageSummaryTests(unittest.TestCase):
         self.assertEqual(summary["schema"], "eliza.npu_local_coverage_summary.v1")
         self.assertEqual(summary["status"], "pass")
         self.assertEqual(summary["validation_errors"], [])
-        self.assertEqual(summary["artifacts"]["runtime"]["sha256"], self.gate.artifact(self.gate.RUNTIME)["sha256"])
+        self.assertEqual(
+            summary["artifacts"]["runtime"]["sha256"],
+            self.gate.artifact(self.gate.RUNTIME)["sha256"],
+        )
         self.assertEqual(
             summary["artifacts"]["runtime_contract"]["sha256"],
             self.gate.artifact(self.gate.CONTRACT)["sha256"],
@@ -38,6 +41,16 @@ class NpuCoverageSummaryTests(unittest.TestCase):
         self.assertEqual(
             summary["artifacts"]["cocotb_coverage"]["path"],
             "build/reports/npu_cocotb_coverage.json",
+        )
+        self.assertTrue(summary["artifacts"]["cocotb_results"]["exists"])
+        self.assertTrue(
+            all(result["all_passed"] for result in summary["directed_tests"].values())
+        )
+        self.assertTrue(summary["saturation_cases"]["relu4_negative_lanes_zeroed"])
+        self.assertTrue(summary["invalid_programming_cases"]["descriptor_timeout"])
+        self.assertTrue(summary["irq_paths"]["error_irq_clear_deasserts"])
+        self.assertTrue(
+            all(summary["software_fallback_cases"]["source_tests"].values())
         )
 
     def test_invalid_coverage_records_fail_status(self) -> None:
@@ -61,6 +74,22 @@ class NpuCoverageSummaryTests(unittest.TestCase):
             summary = self.gate.build_summary(coverage)
         self.assertEqual(summary["status"], "fail")
         self.assertIn("not all runtime contract opcodes are covered", summary["validation_errors"])
+        self.assertIn("GEMM_S4 shape coverage is missing", summary["validation_errors"])
+
+    def test_missing_results_xml_fails_directed_test_bins(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            missing_results = Path(tmpdir) / "missing.xml"
+            summary = self.gate.build_summary(
+                self.gate.DEFAULT_COCOTB_COVERAGE,
+                missing_results,
+            )
+        self.assertEqual(summary["status"], "fail")
+        self.assertTrue(
+            any(
+                error.startswith("directed cocotb tests missing for irq_paths")
+                for error in summary["validation_errors"]
+            )
+        )
 
 
 if __name__ == "__main__":

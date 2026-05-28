@@ -579,6 +579,12 @@ def build_report(
             "component_model_terminal_contract_or_no_pad_model_count": objective_local_progress[
                 "component_model_terminal_contract_or_no_pad_model_count"
             ],
+            "component_model_total_pad_contract_visual_count": objective_local_progress[
+                "component_model_total_pad_contract_visual_count"
+            ],
+            "component_model_uncovered_pad_visual_count": objective_local_progress[
+                "component_model_uncovered_pad_visual_count"
+            ],
             "component_model_non_signal_pad_contract_count": objective_local_progress[
                 "component_model_non_signal_pad_contract_count"
             ],
@@ -599,6 +605,16 @@ def build_report(
             "component_model_directory_terminal_contract_total_count": objective_local_progress[
                 "component_model_directory_terminal_contract_total_count"
             ],
+            "component_model_directory_total_pad_contract_visual_count": (
+                objective_local_progress[
+                    "component_model_directory_total_pad_contract_visual_count"
+                ]
+            ),
+            "component_model_directory_uncovered_pad_visual_count": (
+                objective_local_progress[
+                    "component_model_directory_uncovered_pad_visual_count"
+                ]
+            ),
             "component_model_directory_non_signal_pad_contract_total_count": (
                 objective_local_progress[
                     "component_model_directory_non_signal_pad_contract_total_count"

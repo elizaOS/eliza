@@ -444,6 +444,10 @@ def run(
         delta_x: list[float] = []
         delta_y: list[float] = []
         delta_yaw: list[float] = []
+        tracked_z: list[float] = []
+        tracked_delta_x: list[float] = []
+        tracked_delta_y: list[float] = []
+        tracked_delta_z: list[float] = []
         action_norms: list[float] = []
         nonzero_action_steps = 0
         terminated = False
@@ -490,6 +494,18 @@ def run(
             dyaw_value = _finite_float(info.get("delta_yaw"))
             if dyaw_value is not None:
                 delta_yaw.append(dyaw_value)
+            tracked_z_value = _finite_float(info.get("tracked_z"))
+            if tracked_z_value is not None:
+                tracked_z.append(tracked_z_value)
+            tracked_dx_value = _finite_float(info.get("tracked_delta_x"))
+            if tracked_dx_value is not None:
+                tracked_delta_x.append(tracked_dx_value)
+            tracked_dy_value = _finite_float(info.get("tracked_delta_y"))
+            if tracked_dy_value is not None:
+                tracked_delta_y.append(tracked_dy_value)
+            tracked_dz_value = _finite_float(info.get("tracked_delta_z"))
+            if tracked_dz_value is not None:
+                tracked_delta_z.append(tracked_dz_value)
             final_result = checker.update(_sample((step_idx + 1) * env.config.control_dt_s, info))
             # Sync qpos/qvel from the training MJCF into the scene MJCF so the
             # renderer shows the live policy state on top of the ground plane.
@@ -525,12 +541,7 @@ def run(
             and (fall_threshold is None or min_torso is None or min_torso >= fall_threshold)
         )
         upright_ok = min_upright is None or min_upright > 0.0
-        policy_driven_attempt = (
-            policy_source == "scripted_smoke"
-            or policy_source == "sb3_smoke"
-            or policy_source.startswith("checkpoint:")
-        )
-        attempted_action = bool(nonzero_action_steps > 0 or policy_driven_attempt)
+        attempted_action = bool(nonzero_action_steps > 0)
         return {
             "profile": profile_id,
             "label": label,
@@ -549,6 +560,11 @@ def run(
             "delta_x_m": _series_summary(delta_x),
             "delta_y_m": _series_summary(delta_y),
             "delta_yaw_rad": _series_summary(delta_yaw),
+            "tracked_body_name": getattr(env, "_tracked_body_name", "root"),
+            "tracked_z_m": _series_summary(tracked_z),
+            "tracked_delta_x_m": _series_summary(tracked_delta_x),
+            "tracked_delta_y_m": _series_summary(tracked_delta_y),
+            "tracked_delta_z_m": _series_summary(tracked_delta_z),
             "action_norm": _series_summary(action_norms),
             "nonzero_action_steps": nonzero_action_steps,
             "attempted_action": attempted_action,

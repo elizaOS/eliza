@@ -161,7 +161,7 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
     assert "POST_TRAIN_EVAL_EPISODES" in post_script
     assert "POST_TRAIN_EVAL_MAX_STEPS" in post_script
     assert "POST_TRAIN_VIDEO_MAX_STEPS" in post_script
-    assert "POST_TRAIN_SKIP_EVAL" in post_script
+    assert "POST_TRAIN_SKIP_EVAL" not in post_script
     assert "export JAX_PLATFORMS=cpu" in post_script
     assert "export JAX_PLATFORM_NAME=cpu" in post_script
     assert "unset CUDA_VISIBLE_DEVICES" in post_script
@@ -173,6 +173,7 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
     assert '--min-steps "$ALBERTA_STREAMING_STEPS"' in post_script
     assert "--require-domain-rand" in post_script
     assert "--require-inference" in post_script
+    assert "--require-phase-promotion" in post_script
     assert "uv run eliza-robot-validate-asimov1-production-checkpoint" in post_script
     assert "--require-inference-check" in post_script
     assert "validate_asimov1_real_agent_readiness.py" in post_script
@@ -183,7 +184,6 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
     assert "--curriculum-report-out evidence/curriculum_eval/report.json" in post_script
     assert '--episodes "$POST_TRAIN_EVAL_EPISODES"' in post_script
     assert '--max-steps "$POST_TRAIN_EVAL_MAX_STEPS"' in post_script
-    assert 'if [[ "$POST_TRAIN_SKIP_EVAL" != "1" ]]' in post_script
     assert "record_agent_videos.py --profiles hiwonder-ainex asimov-1 unitree-g1 unitree-h1 unitree-r1" in post_script
     assert "--out evidence/multi_robot_smoke_videos" in post_script
     assert "--scripted-smoke" in post_script

@@ -477,16 +477,31 @@ if [ "$run_cts" -eq 1 ] || [ "$run_vts" -eq 1 ]; then
 	capture_aosp_shell \
 		eliza_ai_soc_cts_vts_plan \
 		"$evidence_dir/eliza_ai_soc_cts_vts_plan.log" \
-		"m cts vts && cts-tradefed list modules && vts-tradefed list modules" \
+		"bounded CTS/VTS smoke-scope intake and optional Tradefed module listing" \
 		'source build/envsetup.sh &&
 			lunch "$AOSP_PRODUCT" >/dev/null &&
-			m cts vts &&
 			echo "CTS_SCOPE=smoke_only" &&
 			echo "VTS_SCOPE=vintf_selinux_hal_manager_only" &&
 			echo "EXCLUDED_MODULES=full_cts,full_vts,device_specific" &&
 			echo "RESULT_DIR=${ANDROID_HOST_OUT:-out/host/linux-x86}/cts-vts-plan" &&
-			(cts-tradefed list modules 2>/dev/null | sed -n "1,40p" || true) &&
-			(vts-tradefed list modules 2>/dev/null | sed -n "1,40p" || true)' \
+			echo "CTS_PLAN=bounded_smoke_scope_recorded" &&
+			echo "VTS_PLAN=vintf_selinux_hal_manager_scope_recorded" &&
+			echo "cts-tradefed list modules" &&
+			if command -v cts-tradefed >/dev/null 2>&1; then
+				cts-tradefed list modules | sed -n "1,40p"
+			elif [ -x out/host/linux-x86/cts/android-cts/tools/cts-tradefed ]; then
+				out/host/linux-x86/cts/android-cts/tools/cts-tradefed list modules | sed -n "1,40p"
+			else
+				echo "CTS_TRADEFED_STATUS=absent_for_bounded_plan"
+			fi &&
+			echo "vts-tradefed list modules" &&
+			if command -v vts-tradefed >/dev/null 2>&1; then
+				vts-tradefed list modules | sed -n "1,40p"
+			elif [ -x out/host/linux-x86/vts/android-vts/tools/vts-tradefed ]; then
+				out/host/linux-x86/vts/android-vts/tools/vts-tradefed list modules | sed -n "1,40p"
+			else
+				echo "VTS_TRADEFED_STATUS=absent_for_bounded_plan"
+			fi' \
 		build || true
 fi
 
@@ -527,10 +542,31 @@ if [ "$run_cuttlefish" -eq 1 ]; then
 				cvd_host_arg= &&
 				cvd_product_arg= &&
 				if [ -d /usr/lib/cuttlefish-common/bin ]; then
-					cvd_host_arg="--host_path=/usr/lib/cuttlefish-common/bin"
+					cvd_host_root="out/eliza-cvd-host"
+					rm -rf "$cvd_host_root"
+					mkdir -p "$cvd_host_root/bin"
+					for cvd_tool in /usr/lib/cuttlefish-common/bin/*; do
+						ln -s "$cvd_tool" "$cvd_host_root/bin/$(basename "$cvd_tool")"
+					done
+					for cvd_dir in etc lib64 usr; do
+						[ -e "/usr/lib/cuttlefish-common/$cvd_dir" ] &&
+							ln -s "/usr/lib/cuttlefish-common/$cvd_dir" "$cvd_host_root/$cvd_dir"
+					done
+					cvd_host_arg="--host_path=$cvd_host_root"
 				fi &&
 				if [ -n "${ANDROID_PRODUCT_OUT:-}" ] && [ -d "$ANDROID_PRODUCT_OUT" ]; then
 					cvd_product_arg="--product_path=$ANDROID_PRODUCT_OUT"
+				fi &&
+				if [ -n "${ANDROID_PRODUCT_OUT:-}" ]; then
+					echo "ANDROID_PRODUCT_OUT=$ANDROID_PRODUCT_OUT"
+					for cvd_image in fetcher_config.json system.img vendor.img boot.img; do
+						if [ ! -s "$ANDROID_PRODUCT_OUT/$cvd_image" ]; then
+							echo "CVD_IMAGE_SET=missing"
+							echo "MISSING_CVD_IMAGE=$ANDROID_PRODUCT_OUT/$cvd_image"
+							echo "NEXT_STEP=build the cuttlefish product image set before launching cvd"
+							exit 1
+						fi
+					done
 				fi &&
 				cvd create ${cvd_host_arg:-} ${cvd_product_arg:-} $AOSP_CUTTLEFISH_ARGS --daemon
 			else

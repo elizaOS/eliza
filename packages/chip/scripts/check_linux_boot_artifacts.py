@@ -34,6 +34,17 @@ SERIAL_EVIDENCE_MARKERS = [
     "eliza-evidence: claim_boundary=generated_chipyard_ap_serial_boot_transcript_only_not_silicon_or_board_evidence",
     "eliza-evidence: status=PASS",
 ]
+DEFAULT_EXTERNAL_PATHS = {
+    "ELIZA_LINUX_TREE": (
+        ROOT / "external/chipyard/software/firemarshal/boards/firechip/linux",
+    ),
+    "ELIZA_BUILDROOT_TREE": (
+        ROOT / "external/chipyard/software/firemarshal/boards/firechip/distros/br/buildroot",
+    ),
+    "ELIZA_OPENSBI_TREE": (
+        ROOT / "external/chipyard/software/firemarshal/boards/firechip/firmware/opensbi",
+    ),
+}
 
 
 def rel(path: Path) -> str:
@@ -49,7 +60,12 @@ def load_manifest() -> dict[str, Any]:
 
 def env_path(name: str) -> Path | None:
     value = os.environ.get(name, "").strip()
-    return Path(value).expanduser() if value else None
+    if value:
+        return Path(value).expanduser()
+    for candidate in DEFAULT_EXTERNAL_PATHS.get(name, ()):
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def preflight_status(spec: dict[str, Any]) -> dict[str, Any]:
@@ -268,6 +284,24 @@ def preflight_next_command(ident: str) -> str:
     return commands.get(ident, "make linux-boot-artifacts-check")
 
 
+def preflight_is_release_blocking(
+    preflight: list[dict[str, Any]], artifacts: list[dict[str, Any]]
+) -> bool:
+    del artifacts
+    return any(item.get("state") == "blocked" for item in preflight)
+
+
+def payload_locator_is_release_blocking(
+    payload_locator: dict[str, Any], artifacts: list[dict[str, Any]]
+) -> bool:
+    if payload_locator.get("state") != "blocked":
+        return False
+    return any(
+        item.get("id") == SERIAL_ARTIFACT_ID and item.get("state") != "pass"
+        for item in artifacts
+    )
+
+
 def structured_findings(
     preflight: list[dict[str, Any]],
     payload_locator: dict[str, Any],
@@ -282,23 +316,24 @@ def structured_findings(
         if selected_payload
         else ""
     )
-    for item in preflight:
-        if item.get("state") == "pass":
-            continue
-        for problem in item.get("problems", []):
-            text = str(problem)
-            ident = str(item.get("id", "preflight"))
-            findings.append(
-                {
-                    "code": f"linux_boot_preflight_{code_from_text(ident + '_' + text, 'blocked')}",
-                    "severity": "blocker",
-                    "message": text,
-                    "evidence": ident,
-                    "next_step": "Install the required tool or set the required external checkout path before collecting Linux boot artifacts.",
-                    "next_command": preflight_next_command(ident),
-                }
-            )
-    if payload_locator.get("state") != "pass":
+    if preflight_is_release_blocking(preflight, artifacts):
+        for item in preflight:
+            if item.get("state") == "pass":
+                continue
+            for problem in item.get("problems", []):
+                text = str(problem)
+                ident = str(item.get("id", "preflight"))
+                findings.append(
+                    {
+                        "code": f"linux_boot_preflight_{code_from_text(ident + '_' + text, 'blocked')}",
+                        "severity": "blocker",
+                        "message": text,
+                        "evidence": ident,
+                        "next_step": "Install the required tool or set the required external checkout path before collecting Linux boot artifacts.",
+                        "next_command": preflight_next_command(ident),
+                    }
+                )
+    if payload_locator_is_release_blocking(payload_locator, artifacts):
         for problem in payload_locator.get("problems", []):
             text = str(problem)
             findings.append(
@@ -374,8 +409,8 @@ def build_report() -> dict[str, Any]:
         state = "FAIL"
     elif (
         any(item["state"] == "missing" for item in artifacts)
-        or any(item["state"] == "blocked" for item in preflight)
-        or payload_locator["state"] == "blocked"
+        or preflight_is_release_blocking(preflight, artifacts)
+        or payload_locator_is_release_blocking(payload_locator, artifacts)
     ):
         state = "BLOCKED"
     else:

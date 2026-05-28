@@ -551,10 +551,18 @@ def paths_from_text(text: object) -> list[str]:
 def repo_generation_bucket_counts(findings: list[dict]) -> dict[str, int]:
     counts = {bucket: 0 for bucket in REPO_GENERATION_BUCKETS}
     for finding in findings:
-        if finding.get("blocker_dependency") != "repo_artifact_generation":
+        if original_blocker_dependency(finding) != "repo_artifact_generation":
             continue
         counts[repo_generation_bucket_for_finding(finding)] += 1
     return counts
+
+
+def original_blocker_dependency(finding: dict) -> str:
+    return str(
+        finding.get("original_blocker_dependency")
+        or finding.get("blocker_dependency")
+        or "repo_artifact_generation"
+    )
 
 
 def repo_generation_bucket_for_finding(finding: dict) -> str:
@@ -1042,7 +1050,11 @@ def structured_findings(release_blockers: list[str], detail_checks: dict) -> lis
 
 def annotate_effective_blocker_dependencies(findings: list[dict]) -> list[dict]:
     for finding in findings:
-        finding["effective_blocker_dependency"] = effective_blocker_dependency(finding)
+        original_dependency = original_blocker_dependency(finding)
+        finding["original_blocker_dependency"] = original_dependency
+        effective_dependency = effective_blocker_dependency(finding)
+        finding["effective_blocker_dependency"] = effective_dependency
+        finding["blocker_dependency"] = effective_dependency
     return findings
 
 

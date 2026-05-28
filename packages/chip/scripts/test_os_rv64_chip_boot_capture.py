@@ -112,6 +112,54 @@ def test_capture_helper_rejects_qemu_reference_transcript_without_outputs() -> N
             raise AssertionError("blocked qemu reference capture must not write evidence JSON")
 
 
+def test_capture_helper_can_write_blocked_diagnostic_evidence() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        transcript = tmp / "generated-ap-incomplete.log"
+        transcript.write_text(
+            "OpenSBI v1.4\nLinux version 6.12.0-eliza\ninitramfs start\n",
+            encoding="utf-8",
+        )
+        boot_json = tmp / "boot.json"
+        agent_json = tmp / "agent.json"
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(CAPTURE),
+                "--boot-transcript",
+                str(transcript),
+                "--agent-transcript",
+                str(transcript),
+                "--boot-output",
+                str(boot_json),
+                "--agent-output",
+                str(agent_json),
+                "--write-blocked",
+            ],
+            cwd=VARIANT,
+            text=True,
+            capture_output=True,
+        )
+        if result.returncode != 2:
+            raise AssertionError(result.stdout + result.stderr)
+        assert_contains(result.stdout, "STATUS: BLOCKED os_rv64.chip_boot_evidence")
+        assert_contains(result.stdout, "STATUS: BLOCKED os_rv64.agent_live_evidence")
+        boot = json.loads(boot_json.read_text(encoding="utf-8"))
+        agent = json.loads(agent_json.read_text(encoding="utf-8"))
+        if boot["boot_completed"] is not False or boot["status"] != "blocked":
+            raise AssertionError(boot)
+        assert_contains(
+            "\n".join(boot["validation"]["problems"]),
+            "elizaos-firstboot-ready",
+        )
+        if agent["full_agent_bundle"] is not False or agent["status"] != "blocked":
+            raise AssertionError(agent)
+        assert_contains(
+            "\n".join(agent["validation"]["problems"]),
+            "fallback_payload_used=false",
+        )
+
+
 def test_generated_ap_wrapper_preflight_blocks_without_boot_command() -> None:
     env = {key: value for key, value in os.environ.items() if not key.startswith("ELIZA_")}
     blocked_report = VARIANT / "evidence/generated_eliza_ap_capture_blocked.json"
@@ -169,6 +217,7 @@ def test_chip_boot_manifest_declares_firstboot_marker() -> None:
 def main() -> int:
     test_capture_helper_writes_structured_generated_ap_evidence()
     test_capture_helper_rejects_qemu_reference_transcript_without_outputs()
+    test_capture_helper_can_write_blocked_diagnostic_evidence()
     test_generated_ap_wrapper_preflight_blocks_without_boot_command()
     test_generated_ap_wrapper_plan_contains_required_markers_and_checker()
     test_chip_boot_manifest_declares_firstboot_marker()

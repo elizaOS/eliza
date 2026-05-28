@@ -4,8 +4,8 @@
   "state": "invalid",
   "run_id": "robot-full-clean-1779556360",
   "bucket": "robot-rl-results-1779358330",
-  "dest": "evidence/nebius_full_training/synced_run",
-  "observed_at": "2026-05-27T22:04:52.536950Z",
+  "dest": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
+  "observed_at": "2026-05-27T22:10:57.947057Z",
   "monitor": {
     "ok": false,
     "state": "invalid",
@@ -33,7 +33,6 @@
         "asimov1_alberta_production",
         "backend_comparison",
         "joint_reach_benchmark",
-        "obstacle_course_benchmark",
         "brax_full_training_run",
         "brax_production_checkpoint",
         "curriculum_eval_native"
@@ -41,6 +40,7 @@
       "missing_gates": [
         "stage_status",
         "production_contract",
+        "obstacle_course_benchmark",
         "video_review",
         "production_policy_videos",
         "curriculum_eval",
@@ -54,6 +54,7 @@
     "missing_gates": [
       "stage_status",
       "production_contract",
+      "obstacle_course_benchmark",
       "video_review",
       "production_policy_videos",
       "curriculum_eval",
@@ -66,6 +67,7 @@
     "missing_gates": [
       "stage_status",
       "production_contract",
+      "obstacle_course_benchmark",
       "video_review",
       "production_policy_videos",
       "curriculum_eval",
@@ -139,16 +141,17 @@
   "missing_gates": [
     "stage_status",
     "production_contract",
+    "obstacle_course_benchmark",
     "video_review",
     "production_policy_videos",
     "curriculum_eval",
     "status_consistency",
     "training_comparison_report"
   ],
-  "monitor_status": "evidence/nebius_full_training/synced_run/monitor_status.json",
-  "validation_report": "evidence/nebius_full_training/synced_run/validation_report.json",
-  "finalization_report": "evidence/nebius_full_training/synced_run/finalization_report.json",
-  "training_comparison_report": "evidence/nebius_full_training/synced_run/training_comparison_report.json",
-  "artifact_inventory_report": "evidence/nebius_full_training/synced_run/artifact_inventory.json",
-  "objective_completion_audit": "evidence/nebius_full_training/synced_run/objective_completion_audit.json"
+  "monitor_status": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/monitor_status.json",
+  "validation_report": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/validation_report.json",
+  "finalization_report": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/finalization_report.json",
+  "training_comparison_report": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/training_comparison_report.json",
+  "artifact_inventory_report": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/artifact_inventory.json",
+  "objective_completion_audit": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/objective_completion_audit.json"
 }

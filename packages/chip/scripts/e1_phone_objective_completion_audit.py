@@ -226,6 +226,12 @@ def main() -> int:
         "component_model_terminal_contract_or_no_pad_model_count": int(
             component_model.get("models_with_terminal_contract_or_no_electrical_pads_count") or 0
         ),
+        "component_model_total_pad_contract_visual_count": int(
+            component_model.get("total_pad_contract_visual_count") or 0
+        ),
+        "component_model_uncovered_pad_visual_count": int(
+            component_model.get("uncovered_pad_visual_count") or 0
+        ),
         "component_model_non_signal_pad_contract_count": int(component_model.get("non_signal_pad_contract_count") or 0),
         "component_model_npth_mechanical_feature_contract_count": int(
             component_model.get("npth_mechanical_feature_contract_count") or 0
@@ -248,6 +254,7 @@ def main() -> int:
                 "all_pinout_bound_models_have_terminal_contract",
                 "all_pinout_bound_model_contracts_match_pad_visuals",
                 "all_support_pattern_models_have_explicit_provenance",
+                "all_model_pad_visuals_have_contract",
                 "all_non_signal_pad_contracts_match_pad_visuals",
                 "all_npth_mechanical_features_have_contract",
             )
@@ -269,6 +276,12 @@ def main() -> int:
         "component_model_directory_terminal_contract_total_count": int(
             component_dir.get("terminal_contract_total_count") or 0
         ),
+        "component_model_directory_total_pad_contract_visual_count": int(
+            component_dir.get("total_pad_contract_visual_count") or 0
+        ),
+        "component_model_directory_uncovered_pad_visual_count": int(
+            component_dir.get("uncovered_pad_visual_count") or 0
+        ),
         "component_model_directory_non_signal_pad_contract_total_count": int(
             component_dir.get("non_signal_pad_contract_total_count") or 0
         ),
@@ -287,6 +300,7 @@ def main() -> int:
                 "all_pinout_bound_records_have_terminal_contract",
                 "all_support_pattern_records_have_explicit_provenance",
                 "all_terminal_contracts_match_pad_visuals",
+                "all_model_pad_visuals_have_contract",
                 "all_non_signal_pad_contracts_match_pad_visuals",
                 "all_npth_mechanical_features_have_contract",
                 "all_model_records_have_local_discrete_step_file",

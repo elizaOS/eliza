@@ -14,7 +14,7 @@ simulation and synthesis checks:
 
 The package-level e1 chip still uses the package debug nibble bridge as its board-smoke bus master. The machine-readable software contract is `sw/platform/e1_platform_contract.json`; generated software constants live in `sw/platform/generated/e1_platform_contract.h`.
 
-The CPU subsystem boundary now has a tiny executable RISC-V path for simulation proof. In the focused CPU/contract wrapper, a loader writes a program into the DRAM aperture at `0x8000_0000`, then releases `e1_cpu_subsystem_stub` with `RESET_PC=0x8000_0000`. The CPU fetches from DRAM, executes the minimal integer subset documented in `docs/arch/cpu-subsystem.md`, and halts on `ECALL`.
+The CPU subsystem boundary now has a tiny executable RISC-V path for simulation proof. In the focused CPU/contract wrapper, a loader writes a program into the DRAM aperture at `0x8000_0000`, then releases `e1_tiny_cpu_contract` with `RESET_PC=0x8000_0000`. The CPU fetches from DRAM, executes the minimal integer subset documented in `docs/arch/cpu-subsystem.md`, and halts on `ECALL`.
 
 `fw/boot-rom` contains a minimal executable RV64 reset scaffold. It starts at
 `0x0000_0000`, sets `mtvec` to a local WFI trap loop, disables machine

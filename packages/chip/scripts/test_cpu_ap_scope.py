@@ -47,29 +47,25 @@ def test_release_claim_flip_fails() -> None:
 
 def test_completion_claim_flip_fails() -> None:
     report = check_cpu_ap_scope.build_report()
-    report["summary"]["completion_claimed"] = True
+    report["summary"]["completion_claimed"] = False
     expect_error(report, "completion_claimed")
-    print("PASS completion-claim flip rejected")
+    print("PASS generated AP completion-claim removal rejected")
 
 
 def test_missing_transcript_blocker_removal_fails() -> None:
     report = check_cpu_ap_scope.build_report()
     mutated = copy.deepcopy(report)
-    mutated["summary"]["missing_transcript_count"] = 0
+    mutated["summary"]["missing_transcript_count"] = 1
     expect_error(mutated, "missing_transcript_count")
-    print("PASS missing-transcript blocker removal rejected")
+    print("PASS missing-transcript regression rejected")
 
 
-def test_structured_findings_cover_missing_transcripts() -> None:
+def test_pass_report_has_no_structured_findings() -> None:
     report = check_cpu_ap_scope.build_report()
     findings = report.get("findings", [])
-    if not findings:
-        raise AssertionError("CPU/AP scope report must expose structured findings")
-    if not any(
-        str(item.get("code", "")).startswith("cpu_ap_missing_transcript_") for item in findings
-    ):
-        raise AssertionError(f"CPU/AP scope findings must include missing transcripts: {findings}")
-    print("PASS structured CPU/AP findings cover missing transcripts")
+    if findings:
+        raise AssertionError(f"passing CPU/AP scope report should not expose blockers: {findings}")
+    print("PASS passing CPU/AP scope report has no structured blockers")
 
 
 def test_failed_structural_check_fails() -> None:
@@ -94,7 +90,7 @@ def main() -> None:
     test_release_claim_flip_fails()
     test_completion_claim_flip_fails()
     test_missing_transcript_blocker_removal_fails()
-    test_structured_findings_cover_missing_transcripts()
+    test_pass_report_has_no_structured_findings()
     test_failed_structural_check_fails()
     test_scaffold_removal_fails()
 

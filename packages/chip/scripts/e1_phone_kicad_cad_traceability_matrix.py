@@ -335,6 +335,7 @@ def build_report() -> dict[str, Any]:
         if not row["pass"]:
             incomplete_pinout_details.append(file_name)
         captured_pinout_rows.append(row)
+    expected_connection_count = int(connections.get("required_connection_count") or 0)
     status = (
         "local_traceability_complete_not_release"
         if not incomplete_footprints
@@ -345,7 +346,7 @@ def build_report() -> dict[str, Any]:
         and len(pad_records) == 32
         and len(binding_records) == 89
         and len(step_records) == 89
-        and len(connection_records) == 24
+        and len(connection_records) == expected_connection_count
         else "blocked_traceability_gap"
     )
     return {

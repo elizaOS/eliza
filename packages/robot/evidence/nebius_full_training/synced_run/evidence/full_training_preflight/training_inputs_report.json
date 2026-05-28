@@ -1,7 +1,7 @@
 {
   "blockers": [],
   "curriculum": {
-    "content_sha256": "78dbf843eb6554d695ea07c810b92a66f402e7cf097d310802d56562b06c349e",
+    "content_sha256": "0bee85e46dc27ad0ee0d04bc72c898827bdf29ac21fc422f39ad1bcea5824068",
     "duplicate_ids": [],
     "task_count": 22,
     "text_variant_collisions": [],
@@ -202,8 +202,8 @@
         },
         {
           "biped_support": false,
-          "done_reason": null,
-          "first_step_terminated": false,
+          "done_reason": "fall",
+          "first_step_terminated": true,
           "first_step_truncated": false,
           "in_launch_tasks": false,
           "init_state": "prone",
@@ -584,8 +584,8 @@
         },
         {
           "biped_support": false,
-          "done_reason": null,
-          "first_step_terminated": false,
+          "done_reason": "fall",
+          "first_step_terminated": true,
           "first_step_truncated": false,
           "in_launch_tasks": false,
           "init_state": "prone",
@@ -775,8 +775,8 @@
         },
         {
           "biped_support": false,
-          "done_reason": null,
-          "first_step_terminated": false,
+          "done_reason": "fall",
+          "first_step_terminated": true,
           "first_step_truncated": false,
           "in_launch_tasks": false,
           "init_state": "prone",
@@ -966,8 +966,8 @@
         },
         {
           "biped_support": false,
-          "done_reason": null,
-          "first_step_terminated": false,
+          "done_reason": "fall",
+          "first_step_terminated": true,
           "first_step_truncated": false,
           "in_launch_tasks": false,
           "init_state": "prone",

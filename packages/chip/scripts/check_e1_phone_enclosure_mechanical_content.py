@@ -77,13 +77,17 @@ CLEARANCE_NEXT_COMMANDS = [
     "python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report",
     (
         "python3 scripts/aggregate_tapeout_readiness.py --scope phone "
-        "--report build/reports/phone-release-readiness-current.json"
+        "--report build/reports/phone-release-readiness.json"
     ),
 ]
 
 
 def rel(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
+
+
+def present_unique(items: list[Any]) -> list[Any]:
+    return list(dict.fromkeys(item for item in items if item))
 
 
 def repo_path(path_text: str) -> Path:
@@ -430,7 +434,7 @@ def routed_step_release_generation_plan(
             "python3 scripts/check_e1_phone_enclosure_mechanical_content.py",
             (
                 "python3 scripts/aggregate_tapeout_readiness.py --scope phone "
-                "--report build/reports/phone-release-readiness-current.json"
+                "--report build/reports/phone-release-readiness.json"
             ),
         ],
         "next_external_inputs": [
@@ -722,14 +726,16 @@ def clearance_case_diagnostics(
                 "required_release_report": release_case.get("required_release_report"),
                 "required_inputs": routed_inputs,
                 "supplier_geometry_families": supplier_families_for_case(case_id, supplier_index),
-                "next_artifacts": [
-                    release_case.get("required_release_report"),
-                    routed_inputs.get("required_production_routed_step"),
-                    routed_inputs.get("required_routed_kicad_pcb"),
-                    routed_inputs.get("required_drc_report"),
-                    routed_inputs.get("required_erc_report"),
-                    *routed_inputs.get("next_artifacts", []),
-                ],
+                "next_artifacts": present_unique(
+                    [
+                        release_case.get("required_release_report"),
+                        routed_inputs.get("required_production_routed_step"),
+                        routed_inputs.get("required_routed_kicad_pcb"),
+                        routed_inputs.get("required_drc_report"),
+                        routed_inputs.get("required_erc_report"),
+                        *routed_inputs.get("next_artifacts", []),
+                    ]
+                ),
                 "next_commands": CLEARANCE_NEXT_COMMANDS,
                 "required_min_gap_mm": row.get("required_min_gap_mm"),
                 "measured_min_gap_mm": row.get("measured_min_gap_mm"),
@@ -911,7 +917,7 @@ def first_article_physical_fit_action_inventory(paths: list[str]) -> list[dict[s
         "python3 scripts/check_e1_phone_first_article_content.py",
         (
             "python3 scripts/aggregate_tapeout_readiness.py --scope phone "
-            "--report build/reports/phone-release-readiness-current.json"
+            "--report build/reports/phone-release-readiness.json"
         ),
     ]
     required_inputs = {
@@ -1026,6 +1032,15 @@ def main() -> int:
         expected_terminal_marker_count = int(
             connection_coverage.get("required_connection_terminal_marker_count") or 0
         )
+        expected_fallback_required = not solid_handoff_generated
+        expected_fallback_complete = (
+            expected_fallback_required
+            and expected_fallback_count == expected_terminal_marker_count
+            and expected_fallback_error in ("", None)
+        )
+        expected_terminal_step_coverage_complete = (
+            solid_handoff_generated or expected_fallback_complete
+        )
         if solid_handoff_generated:
             if not solid_handoff_gate.get("assembly_step"):
                 raise ValueError("generated solid CAD handoff missing assembly STEP")
@@ -1040,6 +1055,11 @@ def main() -> int:
             if expected_fallback_error not in ("", None):
                 raise ValueError("mechanical inventory OCP terminal STEP fallback has error")
         expected_connection_asset_fields = {
+            "solid_handoff_native_terminal_step_export": solid_handoff_generated,
+            "solid_handoff_terminal_step_coverage_complete": (
+                expected_terminal_step_coverage_complete
+            ),
+            "solid_handoff_ocp_terminal_step_fallback_required": expected_fallback_required,
             "solid_handoff_ocp_terminal_step_fallback_count": expected_fallback_count,
             "solid_handoff_ocp_terminal_step_fallback_error": expected_fallback_error,
             "cad_connection_coverage_status": connection_coverage.get("status"),
@@ -1145,11 +1165,16 @@ def main() -> int:
             expected_fallback_count
         ):
             raise ValueError("local enclosure CAD ready lost terminal STEP fallback count")
-        expected_fallback_complete = (
-            (not solid_handoff_generated)
-            and expected_fallback_count == expected_terminal_marker_count
-            and expected_fallback_error in ("", None)
-        )
+        local_ready_terminal_step_fields = {
+            "solid_handoff_native_terminal_step_export": solid_handoff_generated,
+            "solid_handoff_terminal_step_coverage_complete": (
+                expected_terminal_step_coverage_complete
+            ),
+            "solid_handoff_ocp_terminal_step_fallback_required": expected_fallback_required,
+        }
+        for key, value in local_ready_terminal_step_fields.items():
+            if local_ready.get(key) is not value:
+                raise ValueError(f"local enclosure CAD ready terminal STEP field stale: {key}")
         if (
             local_ready.get("solid_handoff_ocp_terminal_step_fallback_complete")
             is not expected_fallback_complete
@@ -1508,11 +1533,11 @@ def main() -> int:
         connections = connection_coverage.get("connections")
         if not isinstance(connections, list):
             raise ValueError("CAD connection coverage connections must be a list")
-        if connection_coverage.get("required_connection_count") != 24:
+        if connection_coverage.get("required_connection_count") != 32:
             raise ValueError("CAD connection coverage required count stale")
-        if connection_coverage.get("passing_connection_count") != 24:
+        if connection_coverage.get("passing_connection_count") != 32:
             raise ValueError("CAD connection coverage passing count stale")
-        if connection_coverage.get("represented_route_count_total") != 113:
+        if connection_coverage.get("represented_route_count_total") != 153:
             raise ValueError("CAD connection coverage represented route count stale")
         if connection_coverage.get("all_represented_nets_have_route_trace") is not True:
             raise ValueError("CAD connection coverage lost routed-trace binding")
@@ -1526,14 +1551,22 @@ def main() -> int:
             "usb_c_to_pd_controller_escape",
             "pd_controller_to_charger_control",
             "charger_to_battery_power_sense",
+            "display_bias_power_flex",
+            "rear_camera_power_flex",
+            "front_camera_power_flex",
+            "wifi_bt_host_control",
+            "cellular_host_control",
             "bottom_speaker_lead_pair",
             "bottom_microphone_flex",
             "top_microphone_flex",
             "earpiece_receiver_lead_flex",
             "haptic_flex",
+            "sensor_hub_i2c_flex",
             "sim_esim_signal_flex",
             "nfc_loop_antenna_flex",
             "compute_som_sodimm_carrier",
+            "soc_shield_ground_spring",
+            "radio_shield_ground_spring",
             "cellular_main_rf_feed",
             "cellular_diversity_rf_feed",
             "cellular_antenna_aperture_tuner",
@@ -1718,6 +1751,7 @@ def main() -> int:
             "missing_first_article_output_paths": missing_first_article_paths,
             "missing_handoff_output_paths": missing_handoff_paths,
             "missing_handoff_output_items": missing_handoff_items,
+            "handoff_deliverables_unexecuted": handoff_external_items,
             "missing_handoff_repo_paths": missing_handoff_paths,
             "missing_handoff_external_items": handoff_external_items,
             "handoff_packet_count": len(handoff_packet_maps),
@@ -1736,6 +1770,28 @@ def main() -> int:
             "routed_clearance_release_action_count": len(clearance_release_actions),
             "first_article_physical_fit_action_count": len(first_article_physical_fit_actions),
         }
+        blocking_summary_keys = {
+            "missing_release_evidence",
+            "supplier_families_blocked",
+            "supplier_required_geometry_input_count",
+            "supplier_required_release_input_count",
+            "physical_interfaces_blocked",
+            "physical_interface_required_check_count",
+            "physical_interface_required_evidence_count",
+            "routed_step_files",
+            "repo_generatable_release_step_count",
+            "repo_generatable_missing_release_evidence_count",
+            "blocked_missing_release_evidence_generation_count",
+            "clearance_results_complete",
+            "clearance_results_expected",
+            "cad_connection_release_credit",
+            "step_validation_release_blocked",
+            "full_cad_boolean_release_ready",
+            "full_cad_boolean_release_blocked",
+            "failed_clearance_cases",
+            "handoff_external_deliverables_missing",
+            "release_blockers",
+        }
         findings = [
             {
                 "code": "enclosure_mechanical_release_blocked",
@@ -1744,27 +1800,7 @@ def main() -> int:
                 "evidence": rel(BURNDOWN),
             }
             for key, value in summary.items()
-            if key
-            not in {
-                "release_ready",
-                "candidate_routed_step_files",
-                "candidate_clearance_cases_mapped",
-                "candidate_release_credit",
-                "candidate_routed_step_paths",
-                "missing_first_article_output_paths",
-                "missing_handoff_output_paths",
-                "missing_handoff_repo_paths",
-                "missing_handoff_external_items",
-                "missing_handoff_packet_ids",
-                "handoff_packet_actions",
-                "invalid_handoff_packet_evidence",
-                "failed_clearance_case_ids",
-                "missing_release_evidence_categories",
-                "supplier_family_blocker_categories",
-                "physical_interface_blocker_categories",
-                "clearance_result_blocker_categories",
-            }
-            and value
+            if key in blocking_summary_keys and value
         ]
         diagnostic_findings = []
         if present_candidate_step_paths:
@@ -1889,6 +1925,13 @@ def main() -> int:
                     "blocked_rows": blocker_dependency_counts[
                         "actionable_external_dependency"
                     ],
+                    "actionable_external_dependency_rows": blocker_dependency_counts[
+                        "actionable_external_dependency"
+                    ],
+                    "repo_artifact_generation_rows": blocker_dependency_counts[
+                        "repo_artifact_generation"
+                    ],
+                    "total_blocked_rows": sum(blocker_dependency_counts.values()),
                     "required_action": (
                         "Collect supplier geometry, measured routed-board clearance, "
                         "first-article physical-fit evidence, and approved enclosure "
@@ -1926,8 +1969,8 @@ def main() -> int:
                         "status": full_cad_boolean.get("overall_status"),
                         "evidence_class": full_cad_boolean.get("evidence_class"),
                         "local_concept_passed": full_cad_boolean_passed,
-                        "release_blocked": True,
-                        "release_blocker_category": summary[
+                        "release_credit": False,
+                        "release_gap": summary[
                             "full_cad_boolean_release_blocker_category"
                         ],
                         "required_release_evidence_class": (
@@ -1941,7 +1984,6 @@ def main() -> int:
                         "unintentional_clash_count": len(
                             full_cad_boolean.get("unintentional_clashes") or []
                         ),
-                        "release_credit": False,
                     },
                 },
                 "missing_release_evidence_blockers": release_evidence_blockers,
@@ -1974,6 +2016,7 @@ def main() -> int:
                 "missing_production_enclosure_handoff_outputs": {
                     "repo_paths": missing_handoff_paths,
                     "external_items": handoff_external_items,
+                    "deliverables_unexecuted": handoff_external_items,
                     "all_items": missing_handoff_items,
                 },
             },

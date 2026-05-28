@@ -1,0 +1,160 @@
+{
+  "all_pad_visuals_have_contract": true,
+  "at_mm": {
+    "rotation": 0.0,
+    "x": 58.0,
+    "y": 127.2
+  },
+  "claim_boundary": "Per-reference local model metadata only. This is not a discrete supplier-approved STEP/B-rep model and cannot satisfy routed-board release or enclosure clearance.",
+  "combined_step_assembly_name": "40_U_HAPTIC_HAPTIC_DRIVER_WLCSP_DEV",
+  "combined_step_locator_status": "development_envelope_named_subshape_in_combined_routed_step",
+  "coverage": "exact_public_haptic_signal_contract_pending_selected_driver_pinout",
+  "discrete_supplier_step_file": "",
+  "discrete_supplier_step_status": "missing_supplier_approved_component_step",
+  "electrical_pad_count": 9,
+  "envelope_mm": {
+    "depth": 1.6,
+    "height": 0.55,
+    "width": 1.6
+  },
+  "expected_supplier_brep_or_step_status": "missing_supplier_approved_discrete_component_model",
+  "expected_supplier_step_file": "U_HAPTIC.step",
+  "footprint": "HAPTIC_DRIVER_WLCSP_DEV",
+  "land_pattern_basis": "",
+  "layer": "F.Cu",
+  "local_discrete_step_bbox_matches_envelope": true,
+  "local_discrete_step_bbox_mm": {
+    "depth": 1.6000002,
+    "height": 0.5500002,
+    "width": 1.6000002
+  },
+  "local_discrete_step_bytes": 15576,
+  "local_discrete_step_expected_bbox_mm": {
+    "depth": 1.6,
+    "height": 0.55,
+    "width": 1.6
+  },
+  "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_HAPTIC.local-envelope.step",
+  "local_discrete_step_import_status": "pass",
+  "local_discrete_step_sha256": "eb283c1669c627e690eb0e8bb08984abad0d14c7cf8465456aab1ce77a2b0c48",
+  "local_discrete_step_solid_type": "Solid",
+  "local_discrete_step_status": "local_development_envelope_not_supplier_model",
+  "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
+  "local_terminal_contract": [
+    "A1",
+    "A2",
+    "A3",
+    "B1",
+    "B2",
+    "B3",
+    "C1",
+    "C2",
+    "C3"
+  ],
+  "local_terminal_contract_source": "captured_public_pinout_expected_pins",
+  "mechanical_pad_count": 0,
+  "mechanical_pads": [],
+  "model_binding_status": "blocked_pending_supplier_step_or_verified_package_drawing",
+  "model_source": "local_development_envelope",
+  "non_signal_pad_contract": [],
+  "non_signal_pad_contract_matches_pad_visuals": true,
+  "non_signal_pad_contract_source": "",
+  "npth_mechanical_feature_contract": [],
+  "npth_mechanical_feature_contract_matches_footprint": true,
+  "npth_mechanical_feature_contract_source": "",
+  "npth_mechanical_feature_count": 0,
+  "npth_mechanical_features": [],
+  "pad_contract_covered_count": 9,
+  "pad_contract_records": [
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/haptic-driver-wlcsp9-pinout.yaml",
+      "covered": true,
+      "pad": "A1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/haptic-driver-wlcsp9-pinout.yaml",
+      "covered": true,
+      "pad": "A2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/haptic-driver-wlcsp9-pinout.yaml",
+      "covered": true,
+      "pad": "A3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/haptic-driver-wlcsp9-pinout.yaml",
+      "covered": true,
+      "pad": "B1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/haptic-driver-wlcsp9-pinout.yaml",
+      "covered": true,
+      "pad": "B2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/haptic-driver-wlcsp9-pinout.yaml",
+      "covered": true,
+      "pad": "B3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/haptic-driver-wlcsp9-pinout.yaml",
+      "covered": true,
+      "pad": "C1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/haptic-driver-wlcsp9-pinout.yaml",
+      "covered": true,
+      "pad": "C2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/haptic-driver-wlcsp9-pinout.yaml",
+      "covered": true,
+      "pad": "C3"
+    }
+  ],
+  "pad_count": 9,
+  "pad_names": [
+    "A1",
+    "A2",
+    "A3",
+    "B1",
+    "B2",
+    "B3",
+    "C1",
+    "C2",
+    "C3"
+  ],
+  "pad_visual_count": 9,
+  "pinout_file": "board/kicad/e1-phone/supplier-pinouts/haptic-driver-wlcsp9-pinout.yaml",
+  "reference": "U_HAPTIC",
+  "release_allowed": false,
+  "release_credit": false,
+  "schema": "eliza.e1_phone_local_component_model_record.v1",
+  "source_assembly_item": "U_HAPTIC",
+  "source_routed_step": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
+  "source_routed_step_bytes": 33644081,
+  "source_routed_step_sha256": "fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3",
+  "source_step_intake": "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml",
+  "status": "blocked_local_development_envelope_not_supplier_step",
+  "supplier_approved": false,
+  "supplier_sourcing_lane": "side_buttons",
+  "supplier_step_intake_bytes": 15716,
+  "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/side_buttons/supplier-model.step",
+  "supplier_step_intake_release_credit": false,
+  "supplier_step_intake_sha256": "3557be9e0090249303b18531325ae4b266d0bcbeacb1837765363da0336a6563",
+  "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
+  "support_pattern_has_explicit_provenance": false,
+  "terminal_contract_count": 9,
+  "terminal_contract_matches_pad_visuals": true,
+  "uncovered_pad_visuals": [],
+  "visual_package_class": "pinout_bound_package_or_connector"
+}

@@ -730,6 +730,7 @@ def build_contract_rows(
                 "demo",
                 "blocked_no_supplier_evidence",
                 "blocked_waiting_for_routed_board_step",
+                "blocked_waiting_for_physical_routed_board_clearance_result",
             ],
             "release_allowed_by_presence_only": False,
         },

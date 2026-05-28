@@ -13,7 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 GATE = ROOT / "docs/evidence/linux-hardware-contract-gate.yaml"
 LINUX_DOC = ROOT / "docs/arch/linux-capable-cpu-contract.md"
 CPU_DOC = ROOT / "docs/arch/cpu-subsystem.md"
-CPU_RTL = ROOT / "rtl/cpu/e1_cpu_subsystem_stub.sv"
+CPU_RTL = ROOT / "rtl/cpu/e1_tiny_cpu_contract.sv"
+CPU_ALIAS_RTL = ROOT / "rtl/cpu/e1_cpu_subsystem_stub.sv"
 CONTRACT_RTL = ROOT / "rtl/interconnect/e1_linux_soc_contract.sv"
 INTC_RTL = ROOT / "rtl/interrupts/e1_interrupt_controller.sv"
 DRAM_RTL = ROOT / "rtl/memory/e1_axi_lite_dram.sv"
@@ -371,7 +372,7 @@ def contains_word(text: str, token: str) -> bool:
 
 
 def check_rtl_scaffold(errors: list[str]) -> None:
-    for path in (CPU_RTL, CONTRACT_RTL, INTC_RTL, DRAM_RTL):
+    for path in (CPU_RTL, CPU_ALIAS_RTL, CONTRACT_RTL, INTC_RTL, DRAM_RTL):
         require(path.is_file(), f"missing RTL artifact {path.relative_to(ROOT)}", errors)
     if errors:
         return
@@ -382,8 +383,14 @@ def check_rtl_scaffold(errors: list[str]) -> None:
     dram = read(DRAM_RTL)
 
     require(
-        "module e1_cpu_subsystem_stub" in cpu,
-        "CPU scaffold module name changed; update gate",
+        "module e1_tiny_cpu_contract" in cpu,
+        "tiny CPU contract module name changed; update gate",
+        errors,
+    )
+    alias = read(CPU_ALIAS_RTL)
+    require(
+        "module e1_cpu_subsystem_stub" in alias and "e1_tiny_cpu_contract" in alias,
+        "legacy CPU stub alias must wrap e1_tiny_cpu_contract",
         errors,
     )
     for token in CPU_LINUX_FEATURE_TOKENS:

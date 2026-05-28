@@ -12,7 +12,7 @@ Overall result: `not-ready`
 | `success_marker` | `True` |
 | `failure_marker_absent` | `True` |
 | `stage_logs` | `True` |
-| `stage_status` | `False` |
+| `stage_status` | `True` |
 | `production_contract` | `False` |
 | `instance_launch_hygiene` | `True` |
 | `training_inputs` | `True` |
@@ -21,7 +21,7 @@ Overall result: `not-ready`
 | `asimov1_alberta_production` | `True` |
 | `backend_comparison` | `True` |
 | `joint_reach_benchmark` | `True` |
-| `obstacle_course_benchmark` | `True` |
+| `obstacle_course_benchmark` | `False` |
 | `brax_full_training_run` | `True` |
 | `brax_production_checkpoint` | `True` |
 | `video_review` | `False` |
@@ -32,8 +32,8 @@ Overall result: `not-ready`
 
 ## Failed Gates
 
-- `stage_status`
 - `production_contract`
+- `obstacle_course_benchmark`
 - `video_review`
 - `production_policy_videos`
 - `curriculum_eval`

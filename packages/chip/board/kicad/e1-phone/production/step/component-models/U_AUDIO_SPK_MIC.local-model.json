@@ -1,4 +1,5 @@
 {
+  "all_pad_visuals_have_contract": true,
   "at_mm": {
     "rotation": 0.0,
     "x": 14.0,
@@ -23,11 +24,11 @@
   "layer": "F.Cu",
   "local_discrete_step_bbox_matches_envelope": true,
   "local_discrete_step_bbox_mm": {
-    "depth": 7.0,
-    "height": 0.9,
-    "width": 7.0
+    "depth": 7.0000002,
+    "height": 0.9000002,
+    "width": 7.0000002
   },
-  "local_discrete_step_bytes": 15522,
+  "local_discrete_step_bytes": 15538,
   "local_discrete_step_expected_bbox_mm": {
     "depth": 7.0,
     "height": 0.9,
@@ -35,7 +36,7 @@
   },
   "local_discrete_step_file": "board/kicad/e1-phone/production/step/component-models/U_AUDIO_SPK_MIC.local-envelope.step",
   "local_discrete_step_import_status": "pass",
-  "local_discrete_step_sha256": "62ca03bf523e54ce97f60103f617aa51ec2d074a6bec4294e713d92460af2365",
+  "local_discrete_step_sha256": "010bb2bc1df8dccc483ac8b9b0aa57b65430c6757d6d1b3f8a23640db6f06f84",
   "local_discrete_step_solid_type": "Solid",
   "local_discrete_step_status": "local_development_envelope_not_supplier_model",
   "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
@@ -106,6 +107,303 @@
   "npth_mechanical_feature_contract_source": "",
   "npth_mechanical_feature_count": 0,
   "npth_mechanical_features": [],
+  "pad_contract_covered_count": 49,
+  "pad_contract_records": [
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "1"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "2"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "3"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "4"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "5"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "6"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "7"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "8"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "9"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "10"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "11"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "12"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "13"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "14"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "15"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "16"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "17"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "18"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "19"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "20"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "21"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "22"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "23"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "24"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "25"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "26"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "27"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "28"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "29"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "30"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "31"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "32"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "33"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "34"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "35"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "36"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "37"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "38"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "39"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "40"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "41"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "42"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "43"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "44"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "45"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "46"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "47"
+    },
+    {
+      "contract_kind": "electrical_terminal",
+      "contract_source": "board/kicad/e1-phone/supplier-pinouts/audio-codec-qfn48-pinout.yaml",
+      "covered": true,
+      "pad": "48"
+    },
+    {
+      "contract_kind": "non_signal_mechanical_pad",
+      "contract_source": "derived_from_non_electrical_footprint_pads",
+      "covered": true,
+      "pad": "EP"
+    }
+  ],
   "pad_count": 49,
   "pad_names": [
     "1",
@@ -172,13 +470,14 @@
   "status": "blocked_local_development_envelope_not_supplier_step",
   "supplier_approved": false,
   "supplier_sourcing_lane": "audio_speaker_microphone_flexes",
-  "supplier_step_intake_bytes": 15702,
+  "supplier_step_intake_bytes": 15716,
   "supplier_step_intake_file": "board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/supplier-model.step",
   "supplier_step_intake_release_credit": false,
-  "supplier_step_intake_sha256": "256b642ae973966bb875832b1d54242bf9d93b5323c4d4203b3525d8e27e9d74",
+  "supplier_step_intake_sha256": "fa057e88a067559b217d2b024b0839a65ef073ba2e34ca4c34aed4778d7078de",
   "supplier_step_intake_status": "present_local_surrogate_step_not_supplier_approved",
   "support_pattern_has_explicit_provenance": false,
   "terminal_contract_count": 48,
   "terminal_contract_matches_pad_visuals": true,
+  "uncovered_pad_visuals": [],
   "visual_package_class": "pinout_bound_package_or_connector"
 }

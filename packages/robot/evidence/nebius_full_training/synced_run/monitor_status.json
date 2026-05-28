@@ -4,15 +4,15 @@
   "state": "invalid",
   "run_id": "robot-full-clean-1779556360",
   "bucket": "robot-rl-results-1779358330",
-  "dest": "evidence/nebius_full_training/synced_run",
-  "observed_at": "2026-05-27T22:04:52.513287Z",
+  "dest": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
+  "observed_at": "2026-05-27T22:10:57.922857Z",
   "sync": {
     "ok": true,
     "skipped": true,
-    "dest": "evidence/nebius_full_training/synced_run"
+    "dest": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run"
   },
-  "validation_report": "evidence/nebius_full_training/synced_run/validation_report.json",
-  "validation_summary": "evidence/nebius_full_training/synced_run/validation_summary.md",
+  "validation_report": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/validation_report.json",
+  "validation_summary": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/validation_summary.md",
   "checks": {
     "run_root": true,
     "success_marker": true,
@@ -27,7 +27,7 @@
     "asimov1_alberta_production": true,
     "backend_comparison": true,
     "joint_reach_benchmark": true,
-    "obstacle_course_benchmark": true,
+    "obstacle_course_benchmark": false,
     "brax_full_training_run": true,
     "brax_production_checkpoint": true,
     "video_review": false,
@@ -68,7 +68,6 @@
       "asimov1_alberta_production",
       "backend_comparison",
       "joint_reach_benchmark",
-      "obstacle_course_benchmark",
       "brax_full_training_run",
       "brax_production_checkpoint",
       "curriculum_eval_native"
@@ -76,6 +75,7 @@
     "missing_gates": [
       "stage_status",
       "production_contract",
+      "obstacle_course_benchmark",
       "video_review",
       "production_policy_videos",
       "curriculum_eval",
@@ -83,5 +83,5 @@
     ],
     "next_action": "inspect_failed_validation_gates"
   },
-  "monitor_summary": "evidence/nebius_full_training/synced_run/monitor_summary.md"
+  "monitor_summary": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run/monitor_summary.md"
 }

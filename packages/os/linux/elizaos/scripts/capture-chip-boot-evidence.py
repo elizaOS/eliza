@@ -221,6 +221,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="mark generated AP evidence rows collected after validated JSONs are written",
     )
+    parser.add_argument(
+        "--write-blocked",
+        action="store_true",
+        help=(
+            "write diagnostic blocked evidence JSONs from the supplied real transcripts even "
+            "when required markers are missing; does not update the manifest"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -245,42 +253,139 @@ def update_manifest_rows(*, wrote_boot: bool, wrote_agent: bool) -> None:
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def blocked_boot_payload(
+    *,
+    transcript: Path,
+    provenance: str,
+    problems: list[str],
+) -> dict[str, Any]:
+    payload = evidence_payload(
+        schema="eliza.os.linux.chip_boot.v1",
+        provenance=provenance,
+        claim_boundary=f"{provenance}_chip_emulator_boot_evidence_blocked",
+        transcript=transcript,
+        boot_completed=False,
+    )
+    payload.update(
+        {
+            "status": "blocked",
+            "validation": {
+                "required_marker_groups": [" one of ".join(group) for group in BOOT_MARKER_GROUPS],
+                "problems": problems,
+            },
+        }
+    )
+    return payload
+
+
+def blocked_agent_payload(
+    *,
+    transcript: Path,
+    provenance: str,
+    problems: list[str],
+) -> dict[str, Any]:
+    payload = evidence_payload(
+        schema="eliza.os.linux.agent_live.v1",
+        provenance=provenance,
+        claim_boundary=f"{provenance}_chip_emulator_agent_live_evidence_blocked",
+        transcript=transcript,
+    )
+    payload.update(
+        {
+            "status": "blocked",
+            "fallback_payload_used": None,
+            "full_agent_bundle": False,
+            "service": {
+                "name": "elizaos-agent.service",
+                "active": False,
+                "systemctl_is_active": "unknown",
+            },
+            "process": {
+                "pid": parse_agent_pid(read(transcript)) if transcript.is_file() else 0,
+                "command": "",
+                "executable": "",
+            },
+            "health": {
+                "url": "http://127.0.0.1:31337/api/health",
+                "http_status": 0,
+                "ready": False,
+                "status": "blocked",
+                "response": {},
+            },
+            "validation": {
+                "required_marker_groups": [
+                    " one of ".join(group) for group in AGENT_MARKER_GROUPS
+                ],
+                "problems": problems,
+            },
+        }
+    )
+    return payload
+
+
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     boot_transcript = args.boot_transcript.expanduser().resolve()
     agent_transcript = (args.agent_transcript or args.boot_transcript).expanduser().resolve()
     problems: list[str] = []
+    boot_problems: list[str] = []
+    agent_problems: list[str] = []
 
     if not boot_transcript.is_file():
-        problems.append(f"missing boot transcript: {boot_transcript}")
+        boot_problems.append(f"missing boot transcript: {boot_transcript}")
         boot_text = ""
     else:
         boot_text = read(boot_transcript)
-        problems.extend(
+        boot_problems.extend(
             f"boot transcript missing marker group: {group}"
             for group in missing_marker_groups(boot_text, BOOT_MARKER_GROUPS)
         )
-        problems.extend(
+        boot_problems.extend(
             f"boot transcript is qemu-virt reference evidence: {marker}"
             for marker in reject_qemu_reference(boot_text)
         )
+    problems.extend(boot_problems)
 
     agent_text = ""
     if not args.skip_agent:
         if not agent_transcript.is_file():
-            problems.append(f"missing agent transcript: {agent_transcript}")
+            agent_problems.append(f"missing agent transcript: {agent_transcript}")
         else:
             agent_text = read(agent_transcript)
-            problems.extend(
+            agent_problems.extend(
                 f"agent transcript missing marker group: {group}"
                 for group in missing_marker_groups(agent_text, AGENT_MARKER_GROUPS)
             )
-            problems.extend(
+            agent_problems.extend(
                 f"agent transcript is qemu-virt reference evidence: {marker}"
                 for marker in reject_qemu_reference(agent_text)
             )
+    problems.extend(agent_problems)
 
     if problems:
+        if args.write_blocked:
+            boot_output = args.boot_output.expanduser()
+            agent_output = args.agent_output.expanduser()
+            if boot_transcript.is_file():
+                write_json(
+                    boot_output,
+                    blocked_boot_payload(
+                        transcript=boot_transcript,
+                        provenance=args.provenance,
+                        problems=boot_problems,
+                    ),
+                )
+                print(f"STATUS: BLOCKED os_rv64.chip_boot_evidence {rel(boot_output)}")
+            if not args.skip_agent and agent_transcript.is_file():
+                write_json(
+                    agent_output,
+                    blocked_agent_payload(
+                        transcript=agent_transcript,
+                        provenance=args.provenance,
+                        problems=agent_problems,
+                    ),
+                )
+                print(f"STATUS: BLOCKED os_rv64.agent_live_evidence {rel(agent_output)}")
         print("STATUS: BLOCKED os_rv64.chip_boot_evidence_capture", file=sys.stderr)
         for problem in problems:
             print(f"  - {problem}", file=sys.stderr)

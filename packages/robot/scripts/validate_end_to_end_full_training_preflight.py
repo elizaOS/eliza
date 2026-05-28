@@ -88,7 +88,7 @@ def _post_training_eval_contract_ok(path: Path) -> bool:
     if not path.is_file():
         return False
     text = path.read_text(encoding="utf-8")
-    return all(
+    return "POST_TRAIN_SKIP_EVAL" not in text and all(
         needle in text
         for needle in (
             "eval_text_policy.py",
@@ -159,10 +159,14 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
             script_paths["train_alberta"],
             (
                 "eliza-robot-train",
+                "ALBERTA_STREAMING_STEPS",
                 "--profile",
                 "--steps",
+                '--steps "$ALBERTA_STREAMING_STEPS"',
                 "--episode-steps",
                 "--eval-episodes",
+                "--require-phase-success",
+                "--min-phase-success-rate 1.0",
             ),
         ),
         "backend_compare_script": _script_contains(
@@ -187,6 +191,7 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
             script_paths["post_training_validation"],
             (
                 "eliza-robot-validate-alberta-checkpoint",
+                "--require-phase-promotion",
                 "eliza-robot-validate-asimov1-production-checkpoint",
                 "--require-inference-check",
                 "validate_asimov1_real_agent_readiness.py",

@@ -65,6 +65,18 @@ def _baseline(result: dict[str, Any], n_tasks: int) -> np.ndarray:
     return baseline
 
 
+def _trajectory_matrix(result: dict[str, Any], n_tasks: int) -> list[list[dict[str, Any]]]:
+    matrix = result.get("trajectory_matrix")
+    if not isinstance(matrix, list) or len(matrix) != n_tasks:
+        return [[{} for _ in range(n_tasks)] for _ in range(n_tasks)]
+    normalized: list[list[dict[str, Any]]] = []
+    for row in matrix:
+        if not isinstance(row, list) or len(row) != n_tasks:
+            return [[{} for _ in range(n_tasks)] for _ in range(n_tasks)]
+        normalized.append([item if isinstance(item, dict) else {} for item in row])
+    return normalized
+
+
 def _frame_rgb(fig) -> np.ndarray:
     fig.canvas.draw()
     width, height = fig.canvas.get_width_height()
@@ -92,6 +104,10 @@ def render_demo(
     n_tasks = int(first_shape[0])
     baselines = {
         str(result["name"]): _baseline(result, n_tasks) for result in learner_results
+    }
+    trajectories = {
+        str(result["name"]): _trajectory_matrix(result, n_tasks)
+        for result in learner_results
     }
     out_video = out_video or benchmark_dir / "obstacle_course_demo.mp4"
     out_json = out_json or benchmark_dir / "obstacle_course_demo.json"
@@ -133,8 +149,8 @@ def render_demo(
         ncols = max(2, n_learners)
         for phase in range(n_tasks):
             for _ in range(max(1, hold_frames)):
-                fig, axes = plt.subplots(2, ncols, figsize=(5.2 * ncols, 7), dpi=120)
-                axes = np.asarray(axes).reshape(2, ncols)
+                fig, axes = plt.subplots(3, ncols, figsize=(5.2 * ncols, 10), dpi=120)
+                axes = np.asarray(axes).reshape(3, ncols)
                 for ax, result in zip(axes[0], learner_results, strict=False):
                     name = str(result["name"])
                     matrix = matrices[name]
@@ -205,6 +221,74 @@ def render_demo(
                 for ax in axes[1, 2:]:
                     ax.axis("off")
 
+                for ax, result in zip(axes[2], learner_results, strict=False):
+                    name = str(result["name"])
+                    trace = trajectories[name][phase][phase]
+                    steps = trace.get("steps") if isinstance(trace, dict) else None
+                    ax.set_title(f"{name.upper()}: physical rollout on task {phase}")
+                    ax.set_xlabel("x position (m)")
+                    ax.set_ylabel("y position (m)")
+                    ax.grid(alpha=0.25)
+                    obstacle = trace.get("obstacle") if isinstance(trace, dict) else None
+                    if isinstance(obstacle, dict):
+                        circle = plt.Circle(
+                            (
+                                float(obstacle.get("x", 0.0)),
+                                float(obstacle.get("y", 0.0)),
+                            ),
+                            float(obstacle.get("radius", 0.0)),
+                            color="#a83232",
+                            alpha=0.35,
+                            label="obstacle",
+                        )
+                        ax.add_patch(circle)
+                    goal = trace.get("goal") if isinstance(trace, dict) else None
+                    if isinstance(goal, list) and len(goal) == 2:
+                        ax.scatter(
+                            [float(goal[0])],
+                            [float(goal[1])],
+                            marker="*",
+                            s=100,
+                            color="#1f7a3a",
+                            label="goal",
+                            zorder=4,
+                        )
+                    if isinstance(steps, list) and len(steps) >= 2:
+                        xs = [float(step.get("x", np.nan)) for step in steps if isinstance(step, dict)]
+                        ys = [float(step.get("y", np.nan)) for step in steps if isinstance(step, dict)]
+                        ax.plot(xs, ys, color="#2457a6", linewidth=2.0, label="path")
+                        ax.scatter(xs[:1], ys[:1], color="#222222", s=35, label="start", zorder=5)
+                        ax.scatter(xs[-1:], ys[-1:], color="#2457a6", s=35, label="final", zorder=5)
+                        summary = trace.get("summary") if isinstance(trace.get("summary"), dict) else {}
+                        ax.text(
+                            0.02,
+                            0.98,
+                            "progress="
+                            f"{float(summary.get('mean_forward_progress_m', np.nan)):.2f}m\n"
+                            f"pass={float(summary.get('passed_obstacle_rate', np.nan)):.0%} "
+                            f"collision={float(summary.get('collision_rate', np.nan)):.0%}",
+                            transform=ax.transAxes,
+                            va="top",
+                            ha="left",
+                            fontsize=8,
+                            bbox={"facecolor": "white", "alpha": 0.8, "edgecolor": "none"},
+                        )
+                    else:
+                        ax.text(
+                            0.5,
+                            0.5,
+                            "no trajectory trace",
+                            ha="center",
+                            va="center",
+                            transform=ax.transAxes,
+                        )
+                    ax.set_xlim(-1.35, 1.35)
+                    ax.set_ylim(-1.25, 1.25)
+                    ax.set_aspect("equal", adjustable="box")
+                    ax.legend(loc="lower right", fontsize=7)
+                for ax in axes[2, n_learners:]:
+                    ax.axis("off")
+
                 cfg = bundle.get("config", {})
                 fig.suptitle(
                     "Obstacle-course continual learning: new route adaptation and no-forgetting check\n"
@@ -224,12 +308,24 @@ def render_demo(
             "metrics": result.get("metrics"),
             "baseline": baselines[str(result["name"])].tolist(),
             "matrix": matrices[str(result["name"])].tolist(),
+            "has_trajectory_traces": any(
+                bool(cell.get("steps"))
+                for row in trajectories[str(result["name"])]
+                for cell in row
+                if isinstance(cell, dict)
+            ),
         }
         for result in learner_results
     }
+    required_trace_coverage = all(
+        isinstance(item, dict) and item.get("has_trajectory_traces") is True
+        for item in learners_summary.values()
+    )
     summary = {
         "schema": "robot-alberta-obstacle-demo-v1",
-        "ok": out_video.is_file() and out_video.stat().st_size > 0,
+        "ok": out_video.is_file()
+        and out_video.stat().st_size > 0
+        and required_trace_coverage,
         "benchmark_dir": str(benchmark_dir),
         "video": str(out_video),
         "video_bytes": out_video.stat().st_size if out_video.is_file() else 0,
@@ -237,6 +333,7 @@ def render_demo(
         "frames": int(n_tasks * max(1, hold_frames)),
         "n_tasks": n_tasks,
         "learners": list(learners_summary),
+        "required_trace_coverage": required_trace_coverage,
         "adaptation": bundle.get("adaptation") if isinstance(bundle.get("adaptation"), dict) else {},
         "learner_results": learners_summary,
     }

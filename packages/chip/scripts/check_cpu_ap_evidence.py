@@ -124,7 +124,8 @@ def check_scaffold(errors: list[str]) -> None:
         errors,
     )
 
-    cpu = read("rtl/cpu/e1_cpu_subsystem_stub.sv")
+    cpu = read("rtl/cpu/e1_tiny_cpu_contract.sv")
+    cpu_alias = read("rtl/cpu/e1_cpu_subsystem_stub.sv")
     test = read("verify/cocotb/test_tiny_cpu_execution.py")
     tb = read("verify/cocotb/e1_tiny_cpu_contract_tb.sv")
     linux_contract = read("docs/arch/linux-capable-cpu-contract.md")
@@ -140,6 +141,11 @@ def check_scaffold(errors: list[str]) -> None:
     require(
         "FETCH_REQ" in cpu and "EXECUTE" in cpu,
         "tiny CPU no longer has fetch/execute states",
+        errors,
+    )
+    require(
+        "module e1_cpu_subsystem_stub" in cpu_alias and "e1_tiny_cpu_contract" in cpu_alias,
+        "legacy CPU stub alias no longer wraps the tiny CPU contract",
         errors,
     )
     require("7'b0010011" in cpu and "7'b0000011" in cpu, "tiny CPU opcode subset drifted", errors)
@@ -381,6 +387,7 @@ def stale_manifest_bindings(evidence_manifest: dict) -> list[dict[str, object]]:
 
 
 def write_stale_evidence_report(stale: list[dict[str, object]], absent: list[str]) -> None:
+    blocked = bool(stale or absent)
     findings = [
         {
             "code": "cpu_ap_stale_transcript",
@@ -400,14 +407,19 @@ def write_stale_evidence_report(stale: list[dict[str, object]], absent: list[str
     ]
     report = {
         "schema": "eliza.cpu_ap_stale_evidence.v1",
-        "status": "blocked",
+        "status": "blocked" if blocked else "pass",
         "claim_boundary": (
             "blocked_report_only_no_hash_rewrite_no_regenerated_evidence_created_by_this_check"
+            if blocked
+            else "clear_report_only_no_hash_rewrite_no_regenerated_evidence_created_by_this_check"
         ),
         "generated_utc": utc_now(),
         "generated_manifest": rel(GENERATED_MANIFEST),
+        "current_generated_manifest_sha256": sha256_path(GENERATED_MANIFEST)
+        if GENERATED_MANIFEST.is_file()
+        else None,
         "summary": {
-            "release_ready": False,
+            "release_ready": not blocked,
             "stale_transcript_count": len(stale),
             "missing_transcript_count": len(absent),
         },
@@ -418,6 +430,8 @@ def write_stale_evidence_report(stale: list[dict[str, object]], absent: list[str
             "Regenerate each stale transcript from a real generated-AP command, then archive it "
             "with scripts/capture_cpu_ap_evidence.py intake so the transcript records the current "
             "ElizaRocketConfig.manifest.json sha256."
+            if blocked
+            else "CPU/AP transcripts are current for the selected generated manifest."
         ),
     }
     STALE_EVIDENCE_REPORT.parent.mkdir(parents=True, exist_ok=True)
@@ -503,6 +517,7 @@ def main() -> int:
         )
         return 1 if args.require_evidence else 0
 
+    write_stale_evidence_report([], [])
     print("STATUS: PASS cpu_ap.linux_evidence")
     return 0
 

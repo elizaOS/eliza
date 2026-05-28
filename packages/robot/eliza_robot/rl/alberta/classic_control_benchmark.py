@@ -20,11 +20,13 @@ from pathlib import Path
 from typing import Any
 
 import gymnasium as gym
+import jax
+import jax.numpy as jnp
 import numpy as np
+from alberta_framework import ObGDBounding, SARSAAgent, SARSAConfig
 from gymnasium import spaces
 
-from eliza_robot.rl.alberta.agent import AlbertaContinualController, AlbertaControllerConfig
-from eliza_robot.rl.alberta.features import FeatureConfig
+from eliza_robot.rl.alberta.features import FeatureConfig, FeatureMap
 from eliza_robot.rl.alberta.metrics import compute_continual_metrics
 
 
@@ -43,9 +45,8 @@ class ClassicControlBenchmarkConfig:
     eval_episodes: int = 10
     seeds: int = 1
     learners: tuple[str, ...] = ("alberta", "ppo", "dqn", "a2c")
-    embed_dim: int = 8
-    n_prototypes: int = 128
-    proprio_random_dim: int = 32
+    n_prototypes: int = 64
+    proprio_random_dim: int = 16
 
 
 TASKS: dict[str, ClassicControlTask] = {
@@ -125,54 +126,86 @@ class AlbertaDiscreteLearner:
     def __init__(self, env: SharedClassicControlEnv, seed: int, cfg: ClassicControlBenchmarkConfig):
         self.env = env
         self._eval_seed = 50_000 + seed
-        self.controller = AlbertaContinualController(
-            AlbertaControllerConfig(
-                obs_dim=int(env.observation_space.shape[0]),
-                action_dim=1,
-                action_low=-1.0,
-                action_high=1.0,
-                gamma=0.99,
-                actor_step_size=3e-3,
-                critic_step_size=1e-2,
-                actor_lamda=0.8,
-                critic_lamda=0.8,
-                normalize=True,
-                decouple_global_bias=True,
-                features=FeatureConfig(
-                    mode="sparse_gated",
-                    embed_dim=len(env.task_ids),
-                    n_prototypes=cfg.n_prototypes,
-                    gate_hard=True,
-                    gate_temperature=0.1,
-                    proprio_random_dim=cfg.proprio_random_dim,
-                    seed=seed,
-                ),
+        self._feature_map = FeatureMap(
+            FeatureConfig(
+                mode="sparse_gated",
+                embed_dim=len(env.task_ids),
+                n_prototypes=cfg.n_prototypes,
+                gate_hard=True,
+                gate_temperature=0.1,
+                proprio_random_dim=cfg.proprio_random_dim,
                 seed=seed,
-            )
+            ),
+            input_dim=int(env.observation_space.shape[0]),
         )
+        total_steps = max(1, cfg.steps_first_task + cfg.steps_second_task)
+        self._agent = SARSAAgent(
+            SARSAConfig(
+                n_actions=env.action_space.n,
+                gamma=0.99,
+                epsilon_start=0.2,
+                epsilon_end=0.02,
+                epsilon_decay_steps=total_steps,
+            ),
+            hidden_sizes=(64,),
+            step_size=0.03,
+            bounder=ObGDBounding(kappa=2.0),
+            sparsity=0.75,
+            use_layer_norm=True,
+            lamda=0.8,
+        )
+        self._state = self._agent.init(self._feature_map.feature_dim, jax.random.key(seed))
 
-    def _continuous_to_discrete(self, action: np.ndarray) -> int:
-        value = float(np.asarray(action).reshape(-1)[0])
-        n = self.env.action_space.n
-        scaled = (np.clip(value, -1.0, 1.0) + 1.0) * 0.5 * n
-        return int(np.clip(np.floor(scaled), 0, n - 1))
+    def _features(self, obs: np.ndarray) -> jax.Array:
+        return self._feature_map(jnp.asarray(obs, dtype=jnp.float32))
+
+    def _select_action(self, obs_features: jax.Array, task_index: int) -> tuple[jax.Array, jax.Array]:
+        key, explore_key, noise_key, random_key = jax.random.split(self._state.rng_key, 4)
+        q_values = self._agent.horde.predict(self._state.learner_state, obs_features)
+        valid_actions = self.env._action_sizes[task_index]
+        masked_q = q_values[:valid_actions]
+        gumbel_noise = jax.random.gumbel(noise_key, shape=masked_q.shape) * 1e-6
+        greedy_action = jnp.argmax(masked_q + gumbel_noise).astype(jnp.int32)
+        random_action = jax.random.randint(random_key, (), 0, valid_actions).astype(jnp.int32)
+        action = jax.lax.select(
+            jax.random.uniform(explore_key) < self._state.epsilon,
+            random_action,
+            greedy_action,
+        )
+        return action, key
 
     def train_phase(self, task_index: int, steps: int, seed: int) -> None:
         self.env.set_task(task_index)
         obs, _ = self.env.reset(seed=seed + task_index)
-        action = self._continuous_to_discrete(self.controller.start(obs))
+        feat = self._features(obs)
+        action, rng_key = self._select_action(feat, task_index)
+        self._state = self._state.replace(
+            last_action=action,
+            last_observation=feat,
+            rng_key=rng_key,
+        )
         for _ in range(steps):
-            obs, reward, terminated, truncated, _ = self.env.step(action)
-            next_action = self.controller.observe(
-                reward,
-                obs,
-                terminated=terminated,
-                truncated=truncated,
-            )
-            action = self._continuous_to_discrete(next_action)
-            if terminated or truncated:
+            obs, reward, terminated, truncated, _ = self.env.step(int(action))
+            boundary = bool(terminated or truncated)
+            if boundary:
                 obs, _ = self.env.reset()
-                action = self._continuous_to_discrete(self.controller.start(obs))
+            feat = self._features(obs)
+            next_action, rng_key = self._select_action(feat, task_index)
+            update_state = self._state.replace(rng_key=rng_key)
+            result = self._agent.update(
+                update_state,
+                jnp.asarray(reward, dtype=jnp.float32),
+                feat,
+                jnp.asarray(boundary, dtype=jnp.bool_),
+                next_action,
+            )
+            self._state = result.state
+            action = next_action
+
+    def _greedy_action(self, obs: np.ndarray, task_index: int) -> int:
+        q_values = self._agent.horde.predict(self._state.learner_state, self._features(obs))
+        valid_actions = self.env._action_sizes[task_index]
+        return int(jnp.argmax(q_values[:valid_actions]))
 
     def eval_task(self, task_index: int, episodes: int) -> dict[str, Any]:
         self.env.set_task(task_index)
@@ -184,7 +217,7 @@ class AlbertaDiscreteLearner:
             total = 0.0
             length = 0
             while not done:
-                action = self._continuous_to_discrete(self.controller.act_greedy(obs))
+                action = self._greedy_action(obs, task_index)
                 obs, reward, terminated, truncated, _ = self.env.step(action)
                 total += float(reward)
                 length += 1
@@ -353,7 +386,8 @@ def run_benchmark(cfg: ClassicControlBenchmarkConfig, out_dir: Path) -> dict[str
             print(
                 f"[seed {seed}] {name:7s} CartPole {cartpole_after_first:.1f} -> "
                 f"{cartpole_after_second:.1f}; second task {matrix[1, 1]:.1f}; "
-                f"forgetting={metrics.forgetting:.1f}"
+                f"forgetting={metrics.forgetting:.1f}",
+                flush=True,
             )
 
     aggregate = _aggregate(summaries)
@@ -362,6 +396,8 @@ def run_benchmark(cfg: ClassicControlBenchmarkConfig, out_dir: Path) -> dict[str
             **asdict(cfg),
             "learners": list(cfg.learners),
             "note": (
+                "Alberta uses the vendored discrete SARSAAgent with sparse-gated "
+                "task-local features and task-valid action masking. "
                 "PPO, DQN, and A2C are strong standard Stable-Baselines3 classic-control "
                 "baselines here, not a leaderboard claim for all possible CartPole solvers."
             ),
@@ -410,6 +446,9 @@ def _write_report(bundle: dict[str, Any], out_dir: Path) -> None:
         f"Steps: first task `{cfg['steps_first_task']}`, second task "
         f"`{cfg['steps_second_task']}`; eval episodes `{cfg['eval_episodes']}`; "
         f"seeds `{cfg['seeds']}`.",
+        "",
+        "Alberta is run through the vendored discrete `SARSAAgent` with sparse-gated "
+        "task-local features and task-valid action masking.",
         "",
         "PPO, DQN, and A2C are used as strong standard Stable-Baselines3 baselines "
         "for classic-control comparison. This is a reproducible local SOTA-style "

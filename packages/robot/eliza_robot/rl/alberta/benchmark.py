@@ -114,8 +114,10 @@ def _alberta_controller_config(cfg: BenchmarkConfig, env: JointReachEnv, seed: i
     )
 
 
-def run_learner(learner, cfg: BenchmarkConfig) -> tuple[np.ndarray, np.ndarray, list[dict], list[list[dict]]]:
-    """Train ``learner`` task-by-task, returning ``(R, baseline)``.
+def run_learner(
+    learner, cfg: BenchmarkConfig
+) -> tuple[np.ndarray, np.ndarray, list[dict], list[list[dict]], list[list[dict]]]:
+    """Train ``learner`` task-by-task, returning return and motion evidence.
 
     ``R[i, j]`` = mean eval return on task ``j`` after training phase ``i``.
     ``baseline[j]`` = mean eval return on task ``j`` before any training.
@@ -130,9 +132,11 @@ def run_learner(learner, cfg: BenchmarkConfig) -> tuple[np.ndarray, np.ndarray, 
     ]
     R = np.zeros((T, T), dtype=np.float64)
     motion_matrix: list[list[dict]] = []
+    trajectory_matrix: list[list[dict]] = []
     for i in range(T):
         learner.train_phase(i, cfg.steps_per_task)
         motion_row: list[dict] = []
+        trajectory_row: list[dict] = []
         for j in range(T):
             R[i, j] = learner.eval_task(j, cfg.eval_episodes)
             motion_row.append(
@@ -140,8 +144,14 @@ def run_learner(learner, cfg: BenchmarkConfig) -> tuple[np.ndarray, np.ndarray, 
                 if cfg.env_kind == "obstacle_course" and hasattr(learner, "eval_task_motion")
                 else {}
             )
+            trajectory_row.append(
+                learner.eval_task_trace(j)
+                if cfg.env_kind == "obstacle_course" and hasattr(learner, "eval_task_trace")
+                else {}
+            )
         motion_matrix.append(motion_row)
-    return R, baseline, baseline_motion, motion_matrix
+        trajectory_matrix.append(trajectory_row)
+    return R, baseline, baseline_motion, motion_matrix, trajectory_matrix
 
 
 @dataclass
@@ -153,6 +163,7 @@ class LearnerResult:
     seed: int
     motion_baseline: list[dict] | None = None
     motion_matrix: list[list[dict]] | None = None
+    trajectory_matrix: list[list[dict]] | None = None
 
 
 def run_benchmark(cfg: BenchmarkConfig, out_dir: Path) -> dict:
@@ -179,7 +190,9 @@ def run_benchmark(cfg: BenchmarkConfig, out_dir: Path) -> dict:
                 learner = SACSequentialLearner(env, seed=seed)
             else:  # guarded above
                 raise AssertionError(name)
-            R, baseline, motion_baseline, motion_matrix = run_learner(learner, cfg)
+            R, baseline, motion_baseline, motion_matrix, trajectory_matrix = run_learner(
+                learner, cfg
+            )
             metrics = compute_continual_metrics(R, baseline)
             per_seed[name].append(metrics)
             metrics_for_seed[name] = metrics
@@ -192,6 +205,9 @@ def run_benchmark(cfg: BenchmarkConfig, out_dir: Path) -> dict:
                     seed,
                     motion_baseline=motion_baseline if cfg.env_kind == "obstacle_course" else None,
                     motion_matrix=motion_matrix if cfg.env_kind == "obstacle_course" else None,
+                    trajectory_matrix=trajectory_matrix
+                    if cfg.env_kind == "obstacle_course"
+                    else None,
                 )
             )
 

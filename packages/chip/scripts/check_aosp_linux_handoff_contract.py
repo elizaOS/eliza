@@ -96,6 +96,18 @@ def all_track_blockers(report: dict[str, Any]) -> list[str]:
     return out
 
 
+def smoke_command(report: dict[str, Any], name: str) -> str:
+    explicit = os.environ.get(name, "")
+    if explicit:
+        return explicit
+    smoke_commands = report.get("smoke_commands", {})
+    if isinstance(smoke_commands, dict):
+        value = smoke_commands.get(name)
+        if isinstance(value, str):
+            return value
+    return ""
+
+
 def run_check(args: argparse.Namespace) -> dict[str, Any]:
     findings: list[Finding] = []
     inputs = (BOOT_SCRIPT, HANDOFF_SCRIPT, ANDROID_SIM_CHECK)
@@ -140,9 +152,12 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
             "; ".join(track_blockers(report, track)),
             "Clear this preflight track with a real AOSP checkout, host tools, and target-specific evidence commands.",
         )
+    qemu_smoke_command = smoke_command(report, "AOSP_QEMU_SMOKE_COMMAND")
+    renode_smoke_command = smoke_command(report, "AOSP_RENODE_SMOKE_COMMAND")
+
     add_if(
         findings,
-        not os.environ.get("AOSP_QEMU_SMOKE_COMMAND"),
+        not qemu_smoke_command,
         "aosp_qemu_smoke_command_unset",
         "AOSP QEMU smoke command is unset",
         "AOSP_QEMU_SMOKE_COMMAND",
@@ -150,7 +165,7 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
     )
     add_if(
         findings,
-        not os.environ.get("AOSP_RENODE_SMOKE_COMMAND"),
+        not renode_smoke_command,
         "aosp_renode_smoke_command_unset",
         "AOSP Renode smoke command is unset",
         "AOSP_RENODE_SMOKE_COMMAND",
@@ -212,6 +227,10 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
         if isinstance(tracks, dict)
         else {},
         "handoff_commands": handoff_commands,
+        "smoke_commands": {
+            "AOSP_QEMU_SMOKE_COMMAND": qemu_smoke_command,
+            "AOSP_RENODE_SMOKE_COMMAND": renode_smoke_command,
+        },
         "aosp_dir": report.get("aosp_dir"),
         "aosp_dir_source": report.get("aosp_dir_source"),
     }

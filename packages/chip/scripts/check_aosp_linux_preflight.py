@@ -15,6 +15,13 @@ REPORT = Path(
 )
 CLAIM_BOUNDARY = "host_preflight_only_not_aosp_build_boot_cuttlefish_or_e1_chip_hardware_evidence"
 DEFAULT_AOSP_DIRS = (Path("/home/shaw/aosp"),)
+TOOL_DEFAULT_PATHS = {
+    "renode": (ROOT / "tools/bin/renode", ROOT / "external/renode_1.16.1-dotnet_portable/renode"),
+}
+SMOKE_COMMAND_DEFAULTS = {
+    "AOSP_QEMU_SMOKE_COMMAND": ROOT / "scripts/aosp_qemu_smoke_command.sh",
+    "AOSP_RENODE_SMOKE_COMMAND": ROOT / "scripts/aosp_renode_smoke_command.sh",
+}
 
 LINUX_REQUIREMENTS = [
     "Linux host with hardware virtualization enabled",
@@ -78,7 +85,7 @@ def display_path(path: Path) -> str:
 
 
 def command_version(command: str) -> str | None:
-    path = shutil.which(command)
+    path = tool_path(command)
     if path is None:
         return None
     try:
@@ -97,7 +104,7 @@ def command_version(command: str) -> str | None:
 
 
 def command_blocker(command: str) -> str | None:
-    path = shutil.which(command)
+    path = tool_path(command)
     if path is None:
         return f"{command} not found on PATH"
     if command == "repo":
@@ -118,6 +125,26 @@ def command_blocker(command: str) -> str | None:
         if "<repo not installed>" in output:
             return f"{command} launcher found at {path}, but repo is not installed"
     return None
+
+
+def tool_path(command: str) -> str | None:
+    found = shutil.which(command)
+    if found:
+        return found
+    for candidate in TOOL_DEFAULT_PATHS.get(command, ()):
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
+def smoke_command_value(name: str) -> str:
+    explicit = os.environ.get(name, "")
+    if explicit:
+        return explicit
+    default = SMOKE_COMMAND_DEFAULTS.get(name)
+    if default and default.is_file() and os.access(default, os.X_OK):
+        return str(default)
+    return ""
 
 
 def aosp_tool(aosp_dir: Path | None, *names: str) -> str | None:
@@ -270,11 +297,11 @@ def build_report(args: argparse.Namespace) -> tuple[int, dict]:
         blockers.append(message)
         track_blockers["cuttlefish"].append(message)
 
-    if shutil.which("renode") is None:
+    if tool_path("renode") is None:
         track_blockers["renode"].append("renode not found on PATH")
-    if not os.environ.get("AOSP_QEMU_SMOKE_COMMAND"):
+    if not smoke_command_value("AOSP_QEMU_SMOKE_COMMAND"):
         track_blockers["qemu"].append("AOSP_QEMU_SMOKE_COMMAND is not set")
-    if not os.environ.get("AOSP_RENODE_SMOKE_COMMAND"):
+    if not smoke_command_value("AOSP_RENODE_SMOKE_COMMAND"):
         track_blockers["renode"].append("AOSP_RENODE_SMOKE_COMMAND is not set")
     if repo_inputs["missing"]:
         blockers.append("repo-local AOSP device inputs are incomplete")
@@ -318,6 +345,10 @@ def build_report(args: argparse.Namespace) -> tuple[int, dict]:
             "qemu-system-riscv64": command_version("qemu-system-riscv64"),
             "renode": command_version("renode"),
             "cuttlefish_launcher": cuttlefish_launcher,
+        },
+        "smoke_commands": {
+            "AOSP_QEMU_SMOKE_COMMAND": smoke_command_value("AOSP_QEMU_SMOKE_COMMAND"),
+            "AOSP_RENODE_SMOKE_COMMAND": smoke_command_value("AOSP_RENODE_SMOKE_COMMAND"),
         },
         "import_status": import_status,
         "execution_tracks": tracks,

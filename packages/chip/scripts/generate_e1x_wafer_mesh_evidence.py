@@ -15,7 +15,7 @@ DEFAULT_OUT = ROOT / "benchmarks/results/e1x-wafer-mesh-model.json"
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--logical-rows", type=int, default=32)
     parser.add_argument("--logical-cols", type=int, default=32)
@@ -26,13 +26,14 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    config = E1XConfig(
-        logical_rows=args.logical_rows,
-        logical_cols=args.logical_cols,
-        spare_rows=args.spare_rows,
-        spare_cols=args.spare_cols,
+    report = build_e1x_report(
+        E1XConfig(
+            logical_rows=args.logical_rows,
+            logical_cols=args.logical_cols,
+            spare_rows=args.spare_rows,
+            spare_cols=args.spare_cols,
+        )
     )
-    report = build_e1x_report(config)
     out = args.out if args.out.is_absolute() else ROOT / args.out
     out.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(report, indent=2, sort_keys=True) + "\n"

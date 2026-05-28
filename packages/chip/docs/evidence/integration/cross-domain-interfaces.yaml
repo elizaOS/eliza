@@ -19,12 +19,14 @@ contract:
     - bpu_vector_redirect_lanes_are_soc_visible
     - bpu_fetch_stream_backpressures_soc_ftq_pop
     - bpu_fetch_stream_drives_soc_l1i_demand_lanes
+    - bpu_fetch_stream_fills_integrated_l1i_l2_slc_dram_path
     - ftq_l1i_shim_flushes_on_misprediction
     - test_iommu_programmed_fault
     - test_slc_passthrough
     - test_dram_ctrl_dfi_traffic
+    - display_scanout_reads_fabric_dram
     - test_cva6_executes_from_bootrom
-  expected_pass_count: 14
+  expected_pass_count: 16
   expected_fail_count: 0
 
 edges:
@@ -47,16 +49,21 @@ edges:
   - name: bpu_to_l1i_demand
     description: >
       BPU ordered fetch stream → fetch_stream_to_l1i_demand → SoC lane-0/lane-1
-      L1I IFU demand ports with FTQ, segment, and branch-kind provenance
+      L1I IFU demand ports and integrated L1I/L2/SLC/CHI/DRAM cache-memory
+      path with FTQ, segment, and branch-kind provenance
     wired_at: rtl/top/e1_soc_integrated.sv
     tested_by:
       - bpu_vector_redirect_lanes_are_soc_visible
       - bpu_fetch_stream_backpressures_soc_ftq_pop
       - bpu_fetch_stream_drives_soc_l1i_demand_lanes
+      - bpu_fetch_stream_fills_integrated_l1i_l2_slc_dram_path
     status: WIRED
 
   - name: cluster_to_fabric
-    description: e1_cluster_top 8 AXI4 masters → e1_axi4_interconnect
+    description: >
+      e1_cluster_top 8 AXI4 masters → e1_axi4_interconnect fabric
+      masters[3..10], with CVA6 slot-0 proof traffic routed separately
+      through fabric master[2]
     wired_at: rtl/top/e1_soc_integrated.sv
     tested_by:
       - cluster_lite_tieoff_drives_axi_to_quiet
@@ -79,8 +86,7 @@ edges:
     in_band_soc_verified: true
     in_band_soc_verified_by:
       adapter: rtl/top/adapters/e1_axi4_width_converter.sv
-      memory_model: rtl/top/e1_soc_integrated.sv (slot0_rom / slot0_dram
-        under `+define+E1_CLUSTER_SLOT0_CVA6`)
+      memory_model: rtl/memory/dram_ctrl/e1_dram_ctrl.sv via fabric slave[0]
       cocotb_module: verify/cocotb/integration/test_cva6_boots_in_soc.py
       cocotb_makefile: verify/cocotb/integration/Makefile.cva6-soc
       cocotb_target: cocotb-cva6-soc
@@ -89,13 +95,16 @@ edges:
       proof: |
         Under `+define+E1_HAVE_CVA6 +define+E1_CLUSTER_SLOT0_CVA6` the
         `u_soc.u_cva6_slot0` instance drives a 64-bit AXI4 master through
-        `e1_axi4_width_converter` into a 128-bit slot-0 memory model that
-        serves ROM @ 0x1_0000 and DRAM @ 0x8000_0000 (the same contract
-        as the standalone `e1_cva6_unit_tb`).  Two cocotb tests assert:
+        `e1_axi4_width_converter` into 128-bit, 8-bit-ID fabric master[2],
+        through `e1_axi4_interconnect`, and into fabric slave[0] /
+        `e1_dram_ctrl`.
+        The test preloads the shared DRAM controller at 0x8000_0000 via
+        `+E1_DRAM_PRELOAD_HEX=boot_rom.hex`.  Two cocotb tests assert:
           - CVA6 issues an AR + receives an R beat at the downstream
             (128-bit) side after reset, proving the wrapper→adapter→
-            converter→memory chain propagates a fetch end-to-end.
-          - CVA6 retires the 6-instruction store/load program: ≥1 AW,
+            converter→fabric→DRAM-controller chain propagates a fetch
+            end-to-end.
+          - CVA6 retires the 8-instruction store/load program: ≥1 AW,
             ≥1 W, ≥1 B handshake (the SD instruction) and ≥2 AR + ≥2 R
             beats (initial fetch line + the LD instruction).
     width_converter:
@@ -162,17 +171,21 @@ edges:
       `test_cva6_dram_store`, `test_cva6_dram_load` — all four PASS.
       Structural proof: CVA6 issues an AR handshake against the
       boot-ROM region, the icache mem path returns the line, the
-      6-instruction store/load program executes, fires an AW + W + B
+      8-instruction store/load program executes, fires an AW + W + B
       sequence against the DRAM region, and a follow-on AR + R for
       the load.
 
       SoC integration: at the SoC top
       (`rtl/top/e1_soc_integrated.sv`) under
       `+define+E1_CLUSTER_SLOT0_CVA6` the CVA6 wrapper's 64-bit AXI4
-      master flows through `e1_axi4_width_converter` into a
-      128-bit slot-0 net of the correct shape for the cluster
-      per-core port.  The converter is exercised by eight cocotb
-      tests under `verify/cocotb/axi4/test_width_converter.py` (all
+      master flows through `e1_axi4_width_converter` into 128-bit fabric
+      master[2], then through `e1_axi4_interconnect` to `e1_dram_ctrl`.
+      The default `e1_cluster_top` instance's eight production-shape AXI4
+      master ports use the full 8-bit cluster ID width and are attached
+      to fabric masters[3..10]; the cross-domain quiet test elaborates
+      and samples those lite-mode ports through the widened fabric.
+      The converter is exercised by eight cocotb tests under
+      `verify/cocotb/axi4/test_width_converter.py` (all
       passing) covering both single-beat and multi-beat write/read
       bursts, partial-WSTRB, lane mux on both low and high address
       lanes, AxLEN/AxSIZE pass-through, single-inflight FSM, and
@@ -188,10 +201,10 @@ edges:
            `[0, 0x1000)`, `[0x1_0000, 0x2_0000)`, and the DRAM range).
            CVA6 raised `INSTR_ACCESS_FAULT` during the cv64a6 PMP /
            PMA check at the very first speculative fetch before the
-           icache could issue any AR.  Fixed by moving `BOOT_ADDR` /
-           `ROM_BASE` to `0x1_0000` in both
-           `rtl/cpu/e1_cva6_wrapper.sv` and
-           `verify/cocotb/integration/e1_cva6_unit_tb.sv`.
+           icache could issue any AR.  The standalone unit TB still uses
+           the 0x1_0000 executable ROM window; the in-band SoC proof now
+           boots at 0x8000_0000 so the fetch is served by the shared
+           DRAM-controller path instead of a private slot-0 ROM model.
 
         2. The boot-ROM preload via `dut.boot_rom[i].value = ...`
            silently no-op'd: Verilator does not register a writable
@@ -209,6 +222,14 @@ edges:
            correct LUI, x1 never held a meaningful payload and the
            store never reached the AXI4 master.  Fixed in
            `verify/cocotb/integration/test_cva6_dram_read_write.py`.
+    cluster_fabric_geometry:
+      fabric_masters: 11
+      fabric_id_width: 8
+      cluster_master_range: fabric masters[3..10]
+      cluster_axi_id_width: 8
+      cva6_slot0_fabric_master: fabric master[2]
+      cva6_id_adapter: zero-pad 4-bit CVA6 IDs to the 8-bit fabric ID contract
+      verification: make cocotb-cross-domain
 
   - name: chi_to_axi4_bridge
     description: TL-C → CHI → AXI4 cache south-side bridge
@@ -240,6 +261,10 @@ edges:
       (zero).  `test_dram_ctrl_dfi_traffic` proves back-to-back line
       reads at distinct addresses interleave correctly with the DRAM
       controller's refresh / ZQ scheduler.
+    id_adapter:
+      bridge_id_width: 6
+      fabric_id_width: 8
+      policy: zero-pad bridge request IDs to 8 bits and slice responses back to 6 bits
 
   - name: iommu_translation
     description: IOMMU upstream masters → translation → fabric master[1]
@@ -271,6 +296,10 @@ edges:
       and a `CAUSE_DDT_ENTRY_NOT_VALID` fault record is pushed.  The
       SoC boundary surfaces `fault_irq` + `fault_count`; the FQT
       register also advances and is observable via the MMIO bridge.
+    id_adapter:
+      downstream_id_width: 6
+      fabric_id_width: 8
+      policy: zero-pad downstream request IDs to 8 bits and slice responses back to 6 bits
 
   - name: pmc_mailbox
     description: PMC AON Ibex mailbox ↔ main-rail MMIO bridge
@@ -285,6 +314,7 @@ edges:
     tested_by:
       - test_slc_passthrough
       - test_dram_ctrl_dfi_traffic
+      - display_scanout_reads_fabric_dram
     status: WIRED
     notes: |
       AXI4 traffic from the SLC fixture (MMIO-controlled) flows
@@ -299,8 +329,26 @@ edges:
       with all four `e1_cva6_unit_tb` cocotb tests passing — CVA6
       issues AR/AW/W/B handshakes through the wrapper-to-AXI4 adapter
       end-to-end.  The evidence here proves the DRAM north port for the
-      exercised SLC fixture and CVA6 adapter paths that reach `fab_s[0]`;
-      it is not a universal SoC-top or phone integration proof.
+      exercised SLC fixture, CVA6 adapter, and production display-scanout
+      paths that reach `fab_s[0]`; it is not a universal SoC-top or phone
+      integration proof.
+
+  - name: display_scanout_to_fabric
+    description: e1_display_scanout AXI4 read master → width converter → fabric master[11] → DRAM
+    wired_at: rtl/top/e1_soc_integrated.sv
+    tested_by:
+      - display_scanout_reads_fabric_dram
+    status: WIRED
+    notes: |
+      The integrated display aperture at 0x1003_0000 now instantiates
+      `e1_display_scanout`, a production-shape framebuffer scanout engine
+      with a real AXI4 read master.  The scanout engine emits 32-bit read
+      beats, `e1_axi4_width_converter` upsizes the read channel to the
+      128-bit SoC fabric, and fabric master[11] routes the traffic into
+      `e1_dram_ctrl` at the main DRAM aperture.  The remaining display
+      production dependencies are the DSI host/PHY boundary, panel DCS init,
+      async pixel-clock CDC, DTS/software binding, and HIL or bandwidth trace
+      evidence.
 
   - name: dfi_phy_south
     description: DRAM controller DFI 5.0 → licensed PHY
@@ -330,8 +378,8 @@ gate:
     still requires a separate upstream blocker to clear.
 
 last_known_pass:
-  date: 2026-05-19
+  date: 2026-05-27
   verilator_version: "5.049 devel rev v5.048-46-g7c5069c7d (mod)"
   cocotb_version: "1.9.2"
-  pass_count: 11
+  pass_count: 16
   fail_count: 0

@@ -104,17 +104,17 @@ local_fixes_closed:
       the top microphone tail, earpiece receiver lead flex, compute SoM SODIMM
       connector/keepout, antenna aperture tuner marker, USB-PD/charger/battery
       board-route markers, and the remaining RF feed markers are now explicit
-      STEP solids in the CAD. The CAD connection coverage gate maps 24 required
+      STEP solids in the CAD. The CAD connection coverage gate maps 32 required
       cables, flexes, board-route groups, RF feeds, and compute carrier
-      interfaces to visible STEP solids and routed-development nets, with 48
-      endpoint terminal STEP markers and 24 passing terminal pairs proving each
+      interfaces to visible STEP solids and routed-development nets, with 64
+      endpoint terminal STEP markers and 32 passing terminal pairs proving each
       represented connection has explicit local from/to contact evidence. The
       routed-output candidate
       metadata now carries the full connection record for each marker: CAD part,
       from/to endpoints, terminal STEP paths and byte counts, connection type,
       STEP path and byte count, net list, pass flag, and release-credit=false
       state. Concept AABB/clearance scans report zero unintentional
-      local-review clashes with 234 parts, including 48 explicit connection
+      local-review clashes with 258 parts, including 64 explicit connection
       terminal markers in the assembly manifest; the full supplier B-rep
       boolean gate remains fail-closed until routed-board STEP and supplier
       models are accepted.
@@ -229,7 +229,7 @@ local_fixes_closed:
       - mechanical/e1-phone/review/board-step-readiness.json
       - mechanical/e1-phone/review/routed-board-clearance.json
     result: >
-      The routed-board STEP intake now distinguishes the 32,970,696 byte
+      The routed-board STEP intake now distinguishes the 33,644,081 byte
       detailed routed-output candidate from approved production STEP evidence.
       The candidate hash matches the non-release routed-development STEP source,
       carries blocked metadata, records 153 route records, 306 copper segments,
@@ -248,7 +248,7 @@ local_fixes_closed:
       blocked. The routed-output candidate manifest and component-model manifest
       now also bind the KiCad/CAD traceability matrix summary, covering 32
       development footprint patterns, 89 board-bound instances, 89 STEP
-      footprint instances, 21 captured public pinout files, and 24 visible CAD
+      footprint instances, 21 captured public pinout files, and 32 visible CAD
       connection records with zero local traceability gaps and release_credit=false.
       It still grants no release credit and does not satisfy
       production_board_step_present or routed_board_release_intake_complete.
@@ -267,7 +267,7 @@ kicad_package_state:
   development_footprint_step_bound_count: 32
   non_release_text_markers: 104
   placeholder_text_markers: 186
-  board_step_readiness_status: blocked_concept_pcb_no_routed_step
+  board_step_readiness_status: blocked_local_routed_step_candidate_not_release
   routed_development_snapshot_status: development_routed_tracks_present_not_release
   routed_development_segment_count: 306
   real_footprint_development_bound_count: 89
@@ -292,17 +292,17 @@ kicad_package_state:
   development_routed_tracks_present_for_local_review: true
   development_footprints_replaced_for_local_review: true
   detailed_routed_step_candidate_path: board/kicad/e1-phone/production/step/routed-board-with-components.step
-  detailed_routed_step_candidate_bytes: 32970696
+  detailed_routed_step_candidate_bytes: 33644081
   detailed_routed_step_candidate_release_credit: false
   detailed_routed_step_candidate_component_model_manifest: board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
   detailed_routed_step_candidate_component_envelope_count: 89
-  full_cad_boolean_status: blocked_boolean_interference_incomplete
-  full_cad_boolean_evidence_class: physical_supplier_brep_boolean_interference_result_required
-  full_cad_boolean_parts_loaded: 0
-  full_cad_boolean_pair_count_brep_evaluated: 0
+  full_cad_boolean_status: pass
+  full_cad_boolean_evidence_class: concept_envelope_brep_boolean_interference_result
+  full_cad_boolean_parts_loaded: 258
+  full_cad_boolean_pair_count_brep_evaluated: 989
   full_cad_boolean_unintentional_clash_count: 0
-  full_cad_boolean_scope_result_count: 0
-  full_cad_boolean_passing_scope_result_count: 0
+  full_cad_boolean_scope_result_count: 11
+  full_cad_boolean_passing_scope_result_count: 11
   full_cad_boolean_release_credit: false
   component_model_manifest_model_to_footprint_binding: true
   component_model_manifest_pad_name_binding: true
@@ -324,7 +324,7 @@ kicad_package_state:
   routed_output_candidate_traceability_captured_pinout_file_count: 21
   routed_output_candidate_traceability_pinout_bound_footprint_count: 21
   routed_output_candidate_traceability_all_pinout_bound_footprints_have_terminal_contract: true
-  routed_output_candidate_traceability_cad_connection_count: 24
+  routed_output_candidate_traceability_cad_connection_count: 32
   routed_output_candidate_traceability_explicit_support_pattern_count: 11
   routed_output_candidate_traceability_all_support_patterns_have_explicit_provenance: true
   routed_output_candidate_traceability_gap_count: 0
@@ -332,29 +332,30 @@ kicad_package_state:
   routed_board_intake_artifact_paths_exist_for_local_candidate: true
   routed_board_intake_candidate_sha256_matches: true
   routed_board_intake_candidate_evidence_class: blocked_local_candidate_outputs_not_release
-  cad_connection_coverage_required_count: 24
-  cad_connection_coverage_passing_count: 24
-  cad_connection_coverage_required_terminal_marker_count: 48
-  cad_connection_coverage_passing_terminal_pair_count: 24
-  cad_connection_coverage_required_solid_step_part_count: 72
-  cad_connection_coverage_passing_solid_step_part_set_count: 24
-  cad_connection_coverage_solid_step_part_bytes_total: 1125435
-  cad_connection_coverage_assembly_manifest_part_count: 234
-  cad_connection_coverage_assembly_manifest_terminal_marker_count: 48
-  cad_connection_coverage_assembly_manifest_solid_step_part_count: 72
+  cad_connection_coverage_required_count: 32
+  cad_connection_coverage_passing_count: 32
+  cad_connection_coverage_required_terminal_marker_count: 64
+  cad_connection_coverage_passing_terminal_pair_count: 32
+  cad_connection_coverage_required_solid_step_part_count: 96
+  cad_connection_coverage_passing_solid_step_part_set_count: 32
+  cad_connection_coverage_solid_step_part_bytes_total: 1501919
+  cad_connection_coverage_assembly_manifest_part_count: 258
+  cad_connection_coverage_assembly_manifest_terminal_marker_count: 64
+  cad_connection_coverage_assembly_manifest_solid_step_part_count: 96
   cad_connection_coverage_assembly_manifest_missing_solid_step_part_count: 0
-  cad_connection_coverage_represented_net_count_total: 112
-  cad_connection_coverage_record_count: 24
-  cad_connection_coverage_represented_net_list_total: 112
+  cad_connection_coverage_represented_net_count_total: 150
+  cad_connection_coverage_record_count: 32
+  cad_connection_coverage_represented_net_list_total: 150
   cad_connection_coverage_all_records_have_represented_nets: true
   cad_connection_coverage_all_represented_nets_match_routed_nets: true
   cad_connection_coverage_physical_medium_counts:
     battery_power_flex: 1
     board_to_board_edge_connector: 1
     flexible_antenna_loop: 1
-    flexible_printed_circuit: 10
+    flexible_printed_circuit: 14
+    ground_spring_contact: 2
     insulated_wire_pair: 2
-    pcb_copper_trace_group: 3
+    pcb_copper_trace_group: 5
     rf_50ohm_feed: 5
     rf_tuner_interconnect: 1
   cad_connection_coverage_electrical_class_counts:
@@ -363,38 +364,45 @@ kicad_package_state:
     audio_receiver_pair: 1
     battery_power_sense: 1
     battery_power_sense_board_route: 1
+    camera_power_control: 2
+    cellular_host_interface: 1
     cellular_wifi_rf: 5
     compute_board_to_board_mixed_speed: 1
     digital_microphone: 2
+    display_bias_power: 1
     haptic_drive: 1
     low_speed_gpio: 1
     mipi_csi_camera_control: 2
     mipi_dsi_touch_control: 1
     nfc_loop_rf: 1
     pd_charger_power_control_board_route: 1
+    sensor_i2c: 1
+    shield_chassis_ground: 2
     sim_esim_low_speed: 1
     top_bottom_board_mixed_signal: 1
     usb2_pd_vbus: 1
     usb2_pd_vbus_board_route: 1
-  cad_connection_coverage_controlled_impedance_count: 14
-  cad_connection_coverage_controlled_impedance_requirement_defined_count: 24
-  cad_connection_coverage_bend_radius_requirement_defined_count: 24
-  cad_connection_coverage_supplier_release_required_count: 24
+    wifi_bt_host_interface: 1
+  cad_connection_coverage_controlled_impedance_count: 16
+  cad_connection_coverage_controlled_impedance_requirement_defined_count: 32
+  cad_connection_coverage_bend_radius_requirement_defined_count: 32
+  cad_connection_coverage_supplier_release_required_count: 32
   cad_connection_coverage_records_bound_into_routed_output_metadata: true
   cad_connection_coverage_release_credit: false
   routed_output_candidate_traceability_cad_connection_physical_medium_counts:
     battery_power_flex: 1
     board_to_board_edge_connector: 1
     flexible_antenna_loop: 1
-    flexible_printed_circuit: 10
+    flexible_printed_circuit: 14
+    ground_spring_contact: 2
     insulated_wire_pair: 2
-    pcb_copper_trace_group: 3
+    pcb_copper_trace_group: 5
     rf_50ohm_feed: 5
     rf_tuner_interconnect: 1
-  routed_output_candidate_traceability_cad_connection_controlled_impedance_count: 14
-  routed_output_candidate_traceability_cad_connection_controlled_impedance_requirement_defined_count: 24
-  routed_output_candidate_traceability_cad_connection_bend_radius_requirement_defined_count: 24
-  routed_output_candidate_traceability_cad_connection_supplier_release_required_count: 24
+  routed_output_candidate_traceability_cad_connection_controlled_impedance_count: 16
+  routed_output_candidate_traceability_cad_connection_controlled_impedance_requirement_defined_count: 32
+  routed_output_candidate_traceability_cad_connection_bend_radius_requirement_defined_count: 32
+  routed_output_candidate_traceability_cad_connection_supplier_release_required_count: 32
   board_step_failed_cases:
     - production_routed_tracks_signed_off
     - production_board_step_present

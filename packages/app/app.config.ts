@@ -20,7 +20,7 @@ interface AppWebConfig {
 
 const config = {
   appName: "Eliza",
-  appId: "app.eliza",
+  appId: "ai.elizaos.app",
   orgName: "elizaos",
   repoName: "eliza",
   cliName: "eliza",
@@ -30,7 +30,7 @@ const config = {
   defaultApps: ["@elizaos/plugin-lifeops"],
 
   desktop: {
-    bundleId: "app.eliza",
+    bundleId: "ai.elizaos.app",
     urlScheme: "elizaos",
   },
 

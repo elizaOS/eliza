@@ -37,14 +37,14 @@ options:
   --serial=SERIAL         adb serial (forwarded as `adb -s SERIAL`); if
                           unset, the default device is used
   --package=NAME          expected Android package name to verify after
-                          install (default: ai.milady.milady)
+                          install (default: ai.elizaos.app)
   --help                  this message
 USAGE
 }
 
 apk=${ELIZA_APK_PATH:-}
 serial=${AOSP_ADB_SERIAL:-}
-package=${AOSP_AGENT_PACKAGE:-ai.milady.milady}
+package=${AOSP_AGENT_PACKAGE:-ai.elizaos.app}
 
 while [ "$#" -gt 0 ]; do
 	case "$1" in

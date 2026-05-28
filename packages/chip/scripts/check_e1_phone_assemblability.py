@@ -886,12 +886,16 @@ def main() -> int:
     REVIEW_DIR.mkdir(parents=True, exist_ok=True)
     (REVIEW_DIR / "assembly-verification.json").write_text(json.dumps(out, indent=2) + "\n")
     write_markdown(out)
-    print(
+    summary = (
         f"assemblable={assemblable} steps={len(step_results)} "
         f"trapped={len(set(trapped))} fastener_pass={fastener['pass']} "
         f"fpc_pass={fpc['pass']} runtime={out['runtime_s']}s"
     )
-    return 0 if assemblable else 1
+    if assemblable:
+        print(summary)
+        return 0
+    print(f"STATUS: BLOCKED E1 phone assemblability {summary}")
+    return 2
 
 
 def write_markdown(out: dict) -> None:

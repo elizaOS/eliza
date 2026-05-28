@@ -38,6 +38,24 @@ def _finite_number(value: Any) -> bool:
         return False
 
 
+def _phase_physical_contract(row: dict[str, Any]) -> bool:
+    checks = row.get("physical_checks")
+    return (
+        row.get("physical_success") is True
+        and isinstance(checks, dict)
+        and bool(checks)
+        and all(value is True for value in checks.values())
+        and isinstance(row.get("tracked_body_name"), str)
+        and bool(row.get("tracked_body_name"))
+        and _finite_number(row.get("failure_rate"))
+        and float(row["failure_rate"]) <= 0.0
+        and _finite_number(row.get("mean_final_tracked_delta_x_m"))
+        and _finite_number(row.get("mean_final_tracked_delta_y_m"))
+        and _finite_number(row.get("mean_final_tracked_delta_z_m"))
+        and _finite_number(row.get("mean_final_tracked_z_m"))
+    )
+
+
 def _controller_contract(value: Any, *, pca_dim: int) -> bool:
     if not isinstance(value, dict):
         return False
@@ -89,6 +107,25 @@ def _history_contract(history: Any, tasks: list[str]) -> bool:
             return False
         if not _finite_number(row.get("eval_mean_return")):
             return False
+        for optional_key in (
+            "pre_eval_mean_return",
+            "pre_eval_success_rate",
+            "learning_return_delta",
+            "learning_success_rate_delta",
+            "pre_mean_final_delta_x_m",
+            "eval_mean_final_delta_x_m",
+            "pre_mean_final_delta_y_m",
+            "eval_mean_final_delta_y_m",
+            "pre_mean_final_delta_yaw_rad",
+            "eval_mean_final_delta_yaw_rad",
+            "pre_mean_final_torso_z_m",
+            "eval_mean_final_torso_z_m",
+            "learning_delta_x_m",
+            "learning_delta_y_m",
+            "learning_delta_yaw_rad",
+        ):
+            if optional_key in row and not _finite_number(row.get(optional_key)):
+                return False
     return True
 
 
@@ -137,6 +174,8 @@ def _phase_promotion_contract(
         if int(row.get("phase", -1)) != phase_idx or row.get("task") != task:
             return False
         if row.get("promotion_passed") is not True:
+            return False
+        if not _phase_physical_contract(row):
             return False
         if not _finite_number(row.get("steps_trained")) or not _finite_number(
             row.get("cumulative_steps")

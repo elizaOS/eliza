@@ -48,6 +48,8 @@ MANUFACTURING_ARTIFACTS_REPORT_PATH = ROOT / "build/reports/manufacturing_artifa
 ANDROID_RELEASE_READINESS_REPORT_PATH = (
     ROOT / "build/reports/android_release_readiness_contract.json"
 )
+CPU_AP_COMPLETION_REPORT_PATH = ROOT / "build/reports/cpu_ap_completion_gate.json"
+ANTENNA_METADATA_REPORT_PATH = ROOT / "build/reports/antenna_metadata.json"
 PDK_ACCESS_GATE_REPORT_PATH = ROOT / "build/reports/pdk_access_gate.json"
 PDN_WORKLOAD_SIGNOFF_REPORT_PATH = ROOT / "build/reports/pdn_workload_signoff.json"
 IO_CELL_CONTRACT_REPORT_PATH = ROOT / "build/reports/io_cell_contract.json"
@@ -64,6 +66,12 @@ E1_PHONE_FIRST_ARTICLE_REPORT_PATH = ROOT / "build/reports/e1_phone_first_articl
 E1_PHONE_SUPPLIER_RETURN_REPORT_PATH = ROOT / "build/reports/e1_phone_supplier_return_content.json"
 E1_PHONE_RELEASE_APPROVAL_REPORT_PATH = (
     ROOT / "build/reports/e1_phone_release_approval_signatures.json"
+)
+E1_PHONE_ASSEMBLY_VERIFICATION_PATH = (
+    ROOT / "mechanical/e1-phone/review/assembly-verification.json"
+)
+E1_PHONE_BOOLEAN_INTERFERENCE_PATH = (
+    ROOT / "mechanical/e1-phone/review/full-cad-boolean-interference.json"
 )
 PHONE_RUNTIME_READINESS_REPORT_PATH = ROOT / "build/reports/phone_runtime_readiness_contract.json"
 BOOT_SECURITY_CHAIN_CONTRACT_REPORT_PATH = ROOT / "build/reports/boot_security_chain_contract.json"
@@ -824,6 +832,7 @@ GATES: tuple[GateSpec, ...] = (
         script="../os/linux/elizaos/scripts/qemu_virt_smoke.py",
         subsystem="os_rv64",
         tier="spec",
+        args=("--validate-existing",),
     ),
 )
 
@@ -919,6 +928,12 @@ def classify_blocker_dependency(result: GateResult) -> BlockerDependency:
     if result.status != "BLOCKED":
         return "not_blocked"
 
+    if result.name in (
+        "e1-phone-board-package-check",
+        "e1-phone-assemblability-check",
+        "e1-phone-boolean-interference-check",
+    ):
+        return "actionable_external_dependency"
     if result.name == "product-release-status-check":
         product_dependency = product_release_status_dependency()
         if product_dependency is not None:
@@ -996,6 +1011,8 @@ CHIP_RELEASE_REPORTS_BY_GATE: dict[str, Path] = {
     "kicad-artifacts-release-check": KICAD_ARTIFACTS_REPORT_PATH,
     "manufacturing-artifacts-release-check": MANUFACTURING_ARTIFACTS_REPORT_PATH,
     "android-release-readiness-contract-check": ANDROID_RELEASE_READINESS_REPORT_PATH,
+    "antenna-metadata-check": ANTENNA_METADATA_REPORT_PATH,
+    "antenna-metadata-release-check": ANTENNA_METADATA_REPORT_PATH,
     "linux-boot-artifacts-check": LINUX_BOOT_ARTIFACTS_REPORT_PATH,
     "android-simulated-peripheral-evidence-check": ANDROID_SIMULATED_PERIPHERAL_REPORT_PATH,
     "android-system-bridge-contract-check": ANDROID_SYSTEM_BRIDGE_REPORT_PATH,
@@ -1066,6 +1083,8 @@ def fixed_chip_release_report_dependency(gate_name: str) -> BlockerDependency | 
         "boot-security-chain-contract-check",
         "linux-firmware-boot-chain-contract-check",
     ):
+        return "actionable_external_dependency"
+    if gate_name in ("antenna-metadata-check", "antenna-metadata-release-check"):
         return "actionable_external_dependency"
     if gate_name == "aosp-linux-handoff-contract-check":
         return "live_device_validation"
@@ -1323,6 +1342,70 @@ def externalized_candidate_action(
     )
 
 
+def phone_assemblability_action() -> str:
+    report = read_report(E1_PHONE_ASSEMBLY_VERIFICATION_PATH)
+    trapped = report.get("trapped_parts")
+    trapped_count = len(trapped) if isinstance(trapped, list) else 0
+    fpc = report.get("fpc_routing")
+    pinched_routes: list[str] = []
+    if isinstance(fpc, dict):
+        routes = fpc.get("routes")
+        if isinstance(routes, list):
+            for route in routes:
+                if isinstance(route, dict) and route.get("unpinched") is False:
+                    pinched_routes.append(str(route.get("flex") or route.get("keepout")))
+    details: list[str] = []
+    if trapped_count:
+        details.append(f"{trapped_count} trapped part(s): {', '.join(map(str, trapped[:4]))}")
+    if pinched_routes:
+        details.append(f"{len(pinched_routes)} pinched FPC route(s): {', '.join(pinched_routes[:4])}")
+    suffix = f" Current blockers: {'; '.join(details)}." if details else ""
+    return (
+        "Revise the mechanical stack/assembly sequence or enclosure/frame geometry until "
+        "the swept insertion check reports no trapped parts and all FPC bend keepouts are "
+        "unpinched; rerun python3 scripts/check_e1_phone_assemblability.py."
+        + suffix
+    )
+
+
+def phone_boolean_interference_action() -> str:
+    report = read_report(E1_PHONE_BOOLEAN_INTERFERENCE_PATH)
+    clashes = report.get("unintentional_clashes")
+    clash_count = len(clashes) if isinstance(clashes, list) else count_value(report, "release_blocker_count")
+    samples: list[str] = []
+    if isinstance(clashes, list):
+        for row in clashes[:4]:
+            if isinstance(row, dict):
+                samples.append(f"{row.get('a')} vs {row.get('b')}")
+    sample_text = f" Sample clashes: {', '.join(samples)}." if samples else ""
+    return (
+        "Close the full-CAD boolean validation by eliminating unintentional clashes in the "
+        "concept/routed/supplier geometry, then rerun python3 scripts/check_e1_phone_boolean_interference.py. "
+        f"Current unintentional clash count: {clash_count}."
+        + sample_text
+    )
+
+
+def cpu_ap_completion_action() -> str:
+    report = read_report(CPU_AP_COMPLETION_REPORT_PATH)
+    missing = report.get("missing_required_transcripts")
+    missing_count = len(missing) if isinstance(missing, list) else 0
+    commands = report.get("next_capture_commands")
+    command_count = len(commands) if isinstance(commands, list) else 0
+    detail = (
+        f" Current missing generated CPU/AP transcripts: {missing_count}; "
+        f"capture command templates: {command_count}."
+        if missing_count or command_count
+        else ""
+    )
+    return (
+        "Collect generated Eliza Rocket/RV64GC CPU/AP transcripts from the current "
+        "Chipyard/AP run and rerun python3 scripts/check_cpu_ap_completion_gate.py; "
+        "qemu-virt Linux boot evidence is reference-only and does not close this AP claim."
+        + detail
+    )
+
+
 def blocker_action(result: GateResult) -> dict[str, object]:
     """Return an operator-facing next action for a blocked aggregate gate."""
     product_repo_groups = product_repo_artifact_group_summary()
@@ -1332,6 +1415,7 @@ def blocker_action(result: GateResult) -> dict[str, object]:
     supplier_summary = report_summary(E1_PHONE_SUPPLIER_RETURN_REPORT_PATH)
     approval_summary = report_summary(E1_PHONE_RELEASE_APPROVAL_REPORT_PATH)
     action_by_gate = {
+        "cpu-ap-completion-gate": cpu_ap_completion_action(),
         "e1-phone-board-package-check": (
             "Keep structural board package checks green while replacing fail-closed "
             "planning/candidate artifacts with release evidence from the underlying "
@@ -1377,15 +1461,9 @@ def blocker_action(result: GateResult) -> dict[str, object]:
             "Collect routed-board STEP clearance, production enclosure handoff packets, "
             "CMM/FAI, process limits, validation results, and first-article fit evidence."
         ),
-        "product-release-status-check": (
-            "Resolve product release detail checks by generating repo artifacts where "
-            "possible and attaching external/live evidence where required."
-            + (
-                f" Current top repo-artifact groups: {product_repo_groups}."
-                if product_repo_groups
-                else ""
-            )
-        ),
+        "e1-phone-assemblability-check": phone_assemblability_action(),
+        "e1-phone-boolean-interference-check": phone_boolean_interference_action(),
+        "product-release-status-check": product_release_status_action(product_repo_groups),
         "phone-runtime-readiness-contract-check": (
             "Boot a target phone/emulator and capture live Android/system bridge, media, "
             "security lifecycle, radio/sensor/PMIC, and launcher runtime evidence."
@@ -1411,6 +1489,24 @@ def blocker_action(result: GateResult) -> dict[str, object]:
         runtime_action = runtime_next_capture_action()
         if runtime_action is not None:
             action["next_runtime_capture_action"] = runtime_action
+    return action
+
+
+def product_release_status_action(product_repo_groups: str = "") -> str:
+    """Return product guidance that matches the rollup dependency state."""
+    dependency = product_release_status_dependency()
+    if dependency in {"actionable_external_dependency", "live_device_validation"}:
+        return (
+            "Resolve product release detail checks by closing external approvals, "
+            "supplier/factory returns, physical validation, and live-device evidence; "
+            "the current product rollup has no repo-artifact generation blockers."
+        )
+    action = (
+        "Resolve product release detail checks by generating repo artifacts where "
+        "possible and attaching external/live evidence where required."
+    )
+    if product_repo_groups:
+        action += f" Current top repo-artifact groups: {product_repo_groups}."
     return action
 
 
@@ -1459,6 +1555,38 @@ def runtime_next_capture_action() -> dict[str, object] | None:
         return None
     action = report.get("next_runtime_capture_action")
     return action if isinstance(action, dict) else None
+
+
+def blocker_code(name: str, fallback: str = "gate") -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in name)
+    parts = [part for part in cleaned.split("_") if part]
+    return "_".join(parts[:10]) or fallback
+
+
+def structured_blockers(results: list[GateResult]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for result in results:
+        if result.status not in {"BLOCKED", "FAIL"}:
+            continue
+        code_prefix = "blocked" if result.status == "BLOCKED" else "failed"
+        validation = result.script
+        if result.args:
+            validation = " ".join((validation, *result.args))
+        rows.append(
+            {
+                "code": f"{code_prefix}_{blocker_code(result.name)}",
+                "name": result.name,
+                "status": result.status.lower(),
+                "subsystem": result.subsystem,
+                "tier": result.tier,
+                "script": result.script,
+                "validation_command": f"python3 {validation}".strip(),
+                "dependency": result.blocker_dependency,
+                "message": result.evidence,
+                "next_action": blocker_action(result).get("next_action", ""),
+            }
+        )
+    return rows
 
 
 AGGREGATE_RELEASE_PHASES: tuple[dict[str, object], ...] = (
@@ -1845,12 +1973,14 @@ def build_report(results: list[GateResult]) -> dict[str, object]:
     release_blocker = summary["fail"] > 0
     effective_release_blocker = release_blocker or summary["blocked"] > 0
     phase_plan = blocker_phase_plan(categorized_results)
+    blockers = structured_blockers(categorized_results)
     return {
         "schema": SCHEMA,
         "as_of": date.today().isoformat(),
         "status": status,
         "gates": [asdict(result) for result in categorized_results],
         "results": [asdict(result) for result in categorized_results],
+        "blockers": blockers,
         "summary": summary,
         "blocker_dependency_counts": blocker_dependency_counts,
         "blocker_groups": blocker_groups,

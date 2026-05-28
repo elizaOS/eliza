@@ -31,7 +31,7 @@ VENV_PYTHON := $(VENV)/bin/python
 BENCH_PYTHON := $(if $(wildcard $(VENV_PYTHON)),$(VENV_PYTHON),$(PYTHON))
 COCOTB_PYTHON ?= $(shell if [ -x "$(VENV_PYTHON)" ] && "$(VENV_PYTHON)" -c "import cocotb" >/dev/null 2>&1; then printf '%s' "$(VENV_PYTHON)"; else command -v "$(PYTHON)" || printf '%s' "$(PYTHON)"; fi)
 RTL_TOP := e1_chip_top
-RTL_SRCS := rtl/top/e1_chip_top.sv rtl/clock/e1_reset_sync.sv rtl/debug/e1_dbg_mmio_bridge.sv rtl/top/e1_soc_top.sv rtl/bootrom/e1_bootrom.sv rtl/dma/e1_dma.sv rtl/npu/e1_npu.sv rtl/display/e1_display.sv rtl/peripherals/e1_peripherals.sv rtl/cpu/e1_cpu_subsystem_stub.sv rtl/interconnect/e1_axi_lite_interconnect.sv rtl/memory/e1_axi_lite_dram.sv rtl/memory/e1_weight_buffer_sram.sv rtl/interrupts/e1_interrupt_controller.sv rtl/interconnect/e1_linux_soc_contract.sv
+RTL_SRCS := rtl/top/e1_chip_top.sv rtl/clock/e1_reset_sync.sv rtl/debug/e1_dbg_mmio_bridge.sv rtl/top/e1_soc_top.sv rtl/bootrom/e1_bootrom.sv rtl/dma/e1_dma.sv rtl/npu/e1_npu.sv rtl/display/e1_display.sv rtl/peripherals/e1_peripherals.sv rtl/cpu/e1_tiny_cpu_contract.sv rtl/cpu/e1_cpu_subsystem_stub.sv rtl/interconnect/e1_axi_lite_interconnect.sv rtl/memory/e1_axi_lite_dram.sv rtl/memory/e1_weight_buffer_sram.sv rtl/interrupts/e1_interrupt_controller.sv rtl/interconnect/e1_linux_soc_contract.sv
 BUILD := build
 
 .PHONY: ci-release-evidence evidence-regression-test formal-fast formal-strict openlane-orchestration-test physical-gates-test pipeline-check-strict strict-release-gate-test
@@ -246,6 +246,18 @@ tapeout-readiness: manufacturing-tapeout-scope-check
 tapeout-readiness-strict: manufacturing-tapeout-scope-check
 	@$(PYTHON) scripts/aggregate_tapeout_readiness.py --strict
 
+chip-tapeout-readiness: manufacturing-tapeout-scope-check
+	@$(PYTHON) scripts/aggregate_tapeout_readiness.py --scope chip --report build/reports/chip-tapeout-readiness.json
+
+chip-tapeout-readiness-strict: manufacturing-tapeout-scope-check
+	@$(PYTHON) scripts/aggregate_tapeout_readiness.py --scope chip --strict --report build/reports/chip-tapeout-readiness.json
+
+phone-release-readiness: manufacturing-tapeout-scope-check
+	@$(PYTHON) scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness.json
+
+phone-release-readiness-strict: manufacturing-tapeout-scope-check
+	@$(PYTHON) scripts/aggregate_tapeout_readiness.py --scope phone --strict --report build/reports/phone-release-readiness.json
+
 tapeout-readiness-test:
 	@$(PYTHON) scripts/test_aggregate_tapeout_readiness.py
 
@@ -339,7 +351,7 @@ e1x-wafer-mesh-evidence:
 e1x-wafer-mesh-test:
 	@$(PYTHON) -m pytest scripts/test_e1x_wafer_mesh_model.py -q
 
-.PHONY: e1x-rtl-contract-check e1x-rtl-contract-test e1x-benchmark e1x-benchmark-test e1x-core-cocotb e1x-core-cocotb-test e1x-tile-cocotb e1x-tile-cocotb-test e1x-fabric-cocotb e1x-fabric-cocotb-test
+.PHONY: e1x-rtl-contract-check e1x-rtl-contract-test e1x-benchmark e1x-benchmark-test e1x-repair-rom-cocotb e1x-repair-rom-cocotb-test e1x-core-cocotb e1x-core-cocotb-test e1x-tile-cocotb e1x-tile-cocotb-test e1x-fabric-cocotb e1x-fabric-cocotb-test
 
 e1x-rtl-contract-check:
 	@$(PYTHON) scripts/check_e1x_rtl_contract.py
@@ -352,6 +364,12 @@ e1x-benchmark:
 
 e1x-benchmark-test:
 	@$(PYTHON) -m pytest scripts/test_e1x_benchmark.py -q
+
+e1x-repair-rom-cocotb:
+	@$(PYTHON) scripts/check_e1x_repair_rom_cocotb.py
+
+e1x-repair-rom-cocotb-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_repair_rom_cocotb.py -q
 
 e1x-core-cocotb:
 	@$(PYTHON) scripts/check_e1x_core_cocotb.py
@@ -1212,6 +1230,8 @@ cocotb:
 
 cocotb-npu:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_e1_npu COCOTB_TOPLEVEL=e1_npu scripts/run_cocotb.sh
+	@$(PYTHON) -m pytest compiler/runtime/test_e1_npu_tiny_mlp_e2e.py::test_mobilenet_first_conv2d_partitioner_emits_cpu_fallback_set -q
+	@$(PYTHON) scripts/check_npu_coverage_summary.py
 
 cocotb-npu-tiny-mlp-e2e:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/npu COCOTB_MODULE=test_iree_tiny_mlp_e2e COCOTB_TOPLEVEL=e1_npu scripts/run_cocotb.sh
@@ -1758,7 +1778,7 @@ software-bsp-test:
 	@$(PYTHON) scripts/test_software_bsp_evidence.py
 	@$(PYTHON) scripts/test_software_bsp_scope.py
 
-evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check product-check-status-test benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-test software-bsp-scope-test cpu-ap-scope-test npu-scope-test renode-status-test cocotb cocotb-npu cocotb-contract cocotb-cpu record-tool-versions strict-release-gate-test
+evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check product-check-status-test benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-test software-bsp-scope-test cpu-ap-scope-test npu-scope-test renode-status-test cocotb cocotb-npu cocotb-contract cocotb-cpu cocotb-cross-domain synth verilator formal record-tool-versions strict-release-gate-test
 	@echo "evidence regression tests complete"
 
 .PHONY: ai-eda-source-inventory-check ai-eda-ai-workload-manifest-check ai-eda-assertion-candidate-manifests-check ai-eda-external-method-wrapper-readiness-check ai-eda-external-assets-check ai-eda-external-intake-check \
@@ -2161,6 +2181,7 @@ pipeline-check-strict:
 
 strict-release-gate-test:
 	@$(PYTHON) scripts/test_strict_release_gates.py
+	@$(PYTHON) -m pytest scripts/test_release_archive_simulator_evidence.py -q
 
 archive-release: pipeline-check
 	@scripts/archive_release.sh

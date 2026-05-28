@@ -29,8 +29,10 @@
 //     prefetch port is exposed on the SoC boundary so downstream cache RTL
 //     can be slotted in without re-wiring the BPU.
 //   - The CPU cluster (`e1_cluster_top` in lite tie-off mode) presents
-//     eight AXI4 master interfaces.  This top routes them through the
-//     production AXI4 fabric `e1_axi4_interconnect`.
+//     eight AXI4 master interfaces.  The optional
+//     `+define+E1_CLUSTER_SLOT0_CVA6` path instantiates a real CVA6 wrapper,
+//     upsizes its 64-bit AXI4 master to 128 bits, and routes it through
+//     fabric master[2] to `e1_dram_ctrl`.
 //   - A single SLC slice (`e1_slc`, 64 KB / 4-way / 2-bank) drives line
 //     transactions through the `e1_slc_to_chi_line_shim` adapter into
 //     the `e1_chi_to_axi4_bridge` request side; the bridge issues AXI4
@@ -54,14 +56,15 @@
 //
 // What this top does NOT prove (BLOCKED per docs/evidence/integration):
 //
-//   - Real CPU execution — the cluster is in lite tie-off mode; the BPU is
-//     a directly-driven verification surface, not driven by a fetched
-//     instruction stream.  Linux boot, SPEC, GB6, etc. are BLOCKED until
-//     the cluster gets a real big/mid/little core wrapper.
+//   - Full production cluster execution — the default cluster is in lite
+//     tie-off mode and the optional CVA6 proof covers slot 0 only.  The BPU
+//     remains a directly-driven verification surface, not driven by a fetched
+//     instruction stream.  Linux boot, SPEC, GB6, etc. are BLOCKED until the
+//     cluster gets real big/mid/little wrappers and production frontend
+//     coupling.
 //   - True coherent MESI traffic — the TL-C/CHI bridge is exercised as a
-//     functional translator; the L1/L2/L3/SLC cores are not instantiated
-//     in this top (their port-counts exceed what a single integration test
-//     surface can drive deterministically).  Cache coherence remains tested
+//     functional translator and the BPU demand path instantiates L1I/L2/SLC
+//     refill RTL, but full multi-core coherent snoop traffic remains tested
 //     under `verify/cocotb/cache/`.
 //   - Real PHY traffic — `e1_dram_ctrl` north side is AXI4; the south DFI
 //     5.0 PHY is BLOCKED under docs/evidence/memory/lpddr-phy-procurement.
@@ -164,6 +167,8 @@ module e1_soc_integrated
     output logic                l1i_l2_active_lane1_o,
     output logic                l2_l3_acq_valid_o,
     output logic                l2_l3_grant_valid_o,
+    output logic                slc_dram_acq_valid_o,
+    output logic                slc_dram_grant_valid_o,
 
     // Zihpm read port exposed so the integration test can verify the
     // remapped event bus actually increments counters when the BPU fires
@@ -191,25 +196,22 @@ module e1_soc_integrated
     // compiled with `+define+E1_CLUSTER_SLOT0_CVA6`.  When that define is
     // not set the wrapper synthesises to a stub that drives the counters
     // to zero so the SoC harness can read the ports unconditionally.  The
-    // counters increment per-handshake at the 128-bit downstream side of
-    // the CVA6 → width-converter → cluster slot-0 path, so they measure
-    // the end-to-end traffic that reaches the slot-0 receiver (in
-    // contrast to the standalone wrapper TB which counts at the 64-bit
-    // upstream side).  The cocotb in-band SoC boot test
+    // counters increment per-handshake at the 128-bit fabric-facing side of
+    // the CVA6 → width-converter path, so they measure the traffic that
+    // reaches fabric master[2] (in contrast to the standalone wrapper TB
+    // which counts at the 64-bit upstream side).  The cocotb in-band SoC boot test
     // (`test_cva6_boots_in_soc.py`) uses these counters as structural
-    // proof that CVA6 came out of reset, fetched code from the slot-0
-    // boot ROM, and executed the store/load program through the SoC
-    // fabric path.
+    // proof that CVA6 came out of reset, fetched code from shared DRAM, and
+    // executed the store/load program through the SoC fabric path.
     output logic [31:0] cva6_slot0_ar_xfers_o,
     output logic [31:0] cva6_slot0_aw_xfers_o,
     output logic [31:0] cva6_slot0_w_xfers_o,
     output logic [31:0] cva6_slot0_r_xfers_o,
     output logic [31:0] cva6_slot0_b_xfers_o,
-    // First three 128-bit boot-ROM words mirrored for cocotb preload
-    // verification.  Same role as `boot_rom_word{0,1,2}_o` in the
-    // standalone `e1_cva6_unit_tb`: Verilator's GPI does not always
-    // surface every element of an unpacked logic array, so we re-export
-    // the words the cocotb test cares about as flat ports.
+    // First three 128-bit preload words mirrored for cocotb verification.
+    // The simulator GPI does not surface the DRAM controller's sparse backing
+    // store directly, so we re-export the words the cocotb test cares about
+    // as flat ports.
     output logic [127:0] cva6_slot0_rom_word0_o,
     output logic [127:0] cva6_slot0_rom_word1_o,
     output logic [127:0] cva6_slot0_rom_word2_o
@@ -218,25 +220,34 @@ module e1_soc_integrated
     // ----------------------------------------------------------------------
     // Local parameters mirroring the production geometry (see docs/arch).
     //
-    // AXI_ADDR_W / AXI_ID_W here are the *downstream-narrowed* SoC-fabric
-    // geometry, not the cluster master geometry: AXI_ADDR_W mirrors the
-    // nameplate SOC_PHYS_ADDR_W (40-bit post-translation PA) and AXI_ID_W is
-    // the narrowed fabric ID. AXI_DATA_W (128) matches the nameplate fabric
-    // width. NUM_CPU_CORES is sourced from the generated nameplate package
+    // AXI_ADDR_W here is the downstream SoC-fabric physical geometry
+    // (40-bit post-translation PA).  The fabric ID width follows the
+    // production cluster contract (8-bit per-core AXI IDs); narrower
+    // domains such as CHI/IOMMU/CVA6 are zero-padded at their adapters.
+    // AXI_DATA_W (128) matches the nameplate fabric width.
+    // NUM_CPU_CORES is sourced from the generated nameplate package
     // (e1_topology_pkg::NUM_CORES = NUM_BIG + NUM_MID + NUM_LITTLE) instead of
     // a hard literal so the cluster instance can never silently drift from
     // docs/spec-db/chip-topology.yaml.
     // ----------------------------------------------------------------------
     localparam int unsigned AXI_ADDR_W       = e1_topology_pkg::SOC_PHYS_ADDR_W;
     localparam int unsigned AXI_DATA_W       = 128;
-    localparam int unsigned AXI_ID_W         = 4;
+    localparam int unsigned FABRIC_AXI_ID_W  = e1_topology_pkg::AXI_ID_W;
+    localparam int unsigned CLUSTER_AXI_ID_W = e1_topology_pkg::AXI_ID_W;
+    localparam int unsigned CHI_AXI_ID_W     = 6;
+    localparam int unsigned IOMMU_AXI_ID_W   = 6;
     localparam int unsigned AXI_USER_W       = 8;
     localparam int unsigned BURST_LEN_W      = 8;
     localparam int unsigned NUM_CPU_CORES    = e1_topology_pkg::NUM_CORES;
     // Fabric masters:
     //   0..0 : CHI->AXI4 bridge (CPU-side cache miss south boundary)
     //   1..1 : IOMMU translated master (NPU/DMA/display)
-    localparam int unsigned FABRIC_MASTERS   = 2;
+    //   2..2 : optional CVA6 slot-0 master after 64->128 width conversion
+    //   3..10: production e1_cluster_top per-core AXI4 masters
+    //   11..11: production display scanout read master
+    localparam int unsigned CLUSTER_MASTER_BASE = 3;
+    localparam int unsigned DISPLAY_MASTER_INDEX = CLUSTER_MASTER_BASE + NUM_CPU_CORES;
+    localparam int unsigned FABRIC_MASTERS   = DISPLAY_MASTER_INDEX + 1;
     // Fabric slaves:
     //   0 : DRAM controller
     //   1..3 : Decode-err sentinels (UNMAP — never matched).  We carry
@@ -306,7 +317,10 @@ module e1_soc_integrated
     logic [31:0] npu_m_rdata;
     logic [1:0]  npu_m_rresp;
 
-    // Display framebuffer read port
+    // Legacy behavioural-DRAM display read port.  The integrated display
+    // block below now uses an AXI4 scanout master on the production fabric;
+    // keep this tied quiet so the shared v0 scratch DRAM remains reusable by
+    // DMA/NPU/debug MMIO without the old per-pixel display fetch path.
     logic        display_scan_hsync;
     logic        display_scan_vsync;
     logic        display_scan_active;
@@ -318,6 +332,73 @@ module e1_soc_integrated
     logic [31:0] display_fb_read_addr;
     logic [31:0] display_fb_read_data;
     logic        display_fb_read_ready;
+
+    // Production display scanout read master before/after 32->128 AXI4
+    // width conversion.
+    localparam int unsigned DISPLAY_AXI_ID_W   = 4;
+    localparam int unsigned DISPLAY_AXI_DATA_W = 32;
+    logic                         display_axi_arvalid;
+    logic                         display_axi_arready;
+    logic [DISPLAY_AXI_ID_W-1:0]  display_axi_arid;
+    logic [AXI_ADDR_W-1:0]        display_axi_araddr;
+    logic [BURST_LEN_W-1:0]       display_axi_arlen;
+    logic [2:0]                   display_axi_arsize;
+    logic [1:0]                   display_axi_arburst;
+    logic [3:0]                   display_axi_arcache;
+    logic [2:0]                   display_axi_arprot;
+    logic [3:0]                   display_axi_arqos;
+    logic                         display_axi_rvalid;
+    logic                         display_axi_rready;
+    logic [DISPLAY_AXI_ID_W-1:0]  display_axi_rid;
+    logic                         display_axi_rlast;
+    logic [DISPLAY_AXI_DATA_W-1:0] display_axi_rdata;
+    logic [1:0]                   display_axi_rresp;
+
+    logic                         display_dn_awvalid;
+    logic                         display_dn_awready;
+    logic [DISPLAY_AXI_ID_W-1:0]  display_dn_awid;
+    logic [AXI_ADDR_W-1:0]        display_dn_awaddr;
+    logic [BURST_LEN_W-1:0]       display_dn_awlen;
+    logic [2:0]                   display_dn_awsize;
+    logic [1:0]                   display_dn_awburst;
+    logic                         display_dn_awlock;
+    logic [3:0]                   display_dn_awcache;
+    logic [2:0]                   display_dn_awprot;
+    logic [3:0]                   display_dn_awqos;
+    logic [3:0]                   display_dn_awregion;
+    logic [5:0]                   display_dn_awatop;
+    logic                         display_dn_awuser;
+    logic                         display_dn_wvalid;
+    logic                         display_dn_wready;
+    logic [AXI_DATA_W-1:0]        display_dn_wdata;
+    logic [AXI_DATA_W/8-1:0]      display_dn_wstrb;
+    logic                         display_dn_wlast;
+    logic                         display_dn_wuser;
+    logic                         display_dn_bvalid;
+    logic                         display_dn_bready;
+    logic [DISPLAY_AXI_ID_W-1:0]  display_dn_bid;
+    logic [1:0]                   display_dn_bresp;
+    logic                         display_dn_buser;
+    logic                         display_dn_arvalid;
+    logic                         display_dn_arready;
+    logic [DISPLAY_AXI_ID_W-1:0]  display_dn_arid;
+    logic [AXI_ADDR_W-1:0]        display_dn_araddr;
+    logic [BURST_LEN_W-1:0]       display_dn_arlen;
+    logic [2:0]                   display_dn_arsize;
+    logic [1:0]                   display_dn_arburst;
+    logic                         display_dn_arlock;
+    logic [3:0]                   display_dn_arcache;
+    logic [2:0]                   display_dn_arprot;
+    logic [3:0]                   display_dn_arqos;
+    logic [3:0]                   display_dn_arregion;
+    logic                         display_dn_aruser;
+    logic                         display_dn_rvalid;
+    logic                         display_dn_rready;
+    logic [DISPLAY_AXI_ID_W-1:0]  display_dn_rid;
+    logic [AXI_DATA_W-1:0]        display_dn_rdata;
+    logic [1:0]                   display_dn_rresp;
+    logic                         display_dn_rlast;
+    logic                         display_dn_ruser;
 
     // MMIO decode
     logic bootrom_sel;
@@ -403,13 +484,23 @@ module e1_soc_integrated
         display_scan_x,
         display_scan_y,
         display_scan_fb_addr,
-        display_scan_rgb
+        display_scan_rgb,
+        display_fb_read_data,
+        display_fb_read_ready
     };
     /* verilator lint_on UNUSEDSIGNAL */
 
+    assign display_scan_x       = '0;
+    assign display_scan_y       = '0;
+    assign display_scan_fb_addr = '0;
+
     // Shared behavioural scratch-DRAM model (rtl/memory/e1_behavioral_dram.sv);
-    // identical instance to e1_soc_top's. Backs the DMA / NPU AXI-Lite masters,
-    // the display framebuffer read port, and the CPU/debug MMIO DRAM window.
+    // identical instance to e1_soc_top's. Backs the DMA / NPU AXI-Lite masters
+    // and the CPU/debug MMIO DRAM window.  Display scanout now reads the main
+    // AXI4 fabric DRAM, so the legacy framebuffer read port stays idle here.
+    assign display_fb_read_valid = 1'b0;
+    assign display_fb_read_addr  = '0;
+
     e1_behavioral_dram u_behavioral_dram (
         .clk                   (clk),
         .rst_n                 (rst_n),
@@ -684,21 +775,37 @@ module e1_soc_integrated
     logic                       l2_hpm_miss_w;
     logic                       l2_hpm_prefetch_w;
 
-    function automatic logic [8*L1I_LINE_BYTES-1:0] soc_l1i_line_payload(
-        input logic [PADDR_W_DEFAULT-1:0] paddr_line
-    );
-        logic [8*L1I_LINE_BYTES-1:0] line;
-        line = '0;
-        for (int beat = 0; beat < L1I_LINE_BYTES / 16; beat++) begin
-            line[beat*128 +: 128] = {
-                32'h1E1F_1000 ^ paddr_line[31:0],
-                32'(beat),
-                paddr_line[31:0] + (32'(beat) << 4),
-                32'hCACE_0000 | 32'(beat)
-            };
-        end
-        return line;
-    endfunction
+    // Small integration SLC geometry. Declared before the L2 block because
+    // the integrated L2 now uses this SLC as its downstream hierarchy.
+    localparam int unsigned SLC_INT_SIZE  = 64 * 1024;
+    localparam int unsigned SLC_INT_WAYS  = 4;
+    localparam int unsigned SLC_INT_LINE  = 64;
+    // SLC parameter logic relies on `$clog2(BANKS) >= 1` and
+    // `$clog2(NUM_CLIENTS) >= 1`; honour those floors here so the
+    // generated bit ranges stay positive under Verilator.
+    localparam int unsigned SLC_INT_BANKS = 2;
+    localparam int unsigned SLC_INT_NUM_CLIENTS = 2;
+    localparam logic [$clog2(SLC_INT_NUM_CLIENTS)-1:0] SLC_CLIENT_L2  = '0;
+    localparam logic [$clog2(SLC_INT_NUM_CLIENTS)-1:0] SLC_CLIENT_FIX = 1;
+
+    logic                       slc_req_valid;
+    logic                       slc_req_ready;
+    logic [PADDR_W_DEFAULT-1:0] slc_req_paddr_line;
+    logic                       slc_req_is_write;
+    logic [8*SLC_INT_LINE-1:0]  slc_req_wb_data;
+    logic [$clog2(SLC_INT_NUM_CLIENTS)-1:0] slc_req_client_id;
+    logic                       slc_resp_valid;
+    logic                       slc_resp_ready;
+    logic [PADDR_W_DEFAULT-1:0] slc_resp_paddr_line;
+    logic [8*SLC_INT_LINE-1:0]  slc_resp_data;
+    logic [$clog2(SLC_INT_NUM_CLIENTS)-1:0] slc_resp_client_id;
+    logic                       slc_resp_to_l2_w;
+    logic                       slc_resp_to_fix_w;
+    logic [PADDR_W_DEFAULT-1:0] slc_fix_paddr;
+    logic                       slc_fix_busy;
+    logic                       slc_fix_is_write;
+    logic                       slc_fix_grant_seen;
+    logic [31:0]                slc_fix_grant_lo;
 
     e1_l1i_cache u_integrated_l1i (
         .clk                       (clk),
@@ -843,8 +950,10 @@ module e1_soc_integrated
         .hpm_l2_prefetch           (l2_hpm_prefetch_w)
     );
 
-    assign l2_l3_acq_ready_w = 1'b1;
+    assign l2_l3_acq_ready_w = !slc_fix_busy && slc_req_ready;
     assign l2_l3_grant_valid_o = l2_l3_grant_valid_q;
+    assign slc_resp_to_l2_w = slc_resp_valid && (slc_resp_client_id == SLC_CLIENT_L2);
+    assign slc_resp_to_fix_w = slc_resp_valid && (slc_resp_client_id == SLC_CLIENT_FIX);
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -856,11 +965,11 @@ module e1_soc_integrated
             if (l2_l3_grant_valid_q && l2_l3_grant_ready_w) begin
                 l2_l3_grant_valid_q <= 1'b0;
             end
-            if (l2_l3_acq_valid_o && l2_l3_acq_ready_w &&
+            if (slc_resp_to_l2_w && slc_resp_ready &&
                 !(l2_l3_grant_valid_q && !l2_l3_grant_ready_w)) begin
                 l2_l3_grant_valid_q <= 1'b1;
-                l2_l3_grant_paddr_line_q <= l2_l3_acq_paddr_line_w;
-                l2_l3_grant_data_q <= soc_l1i_line_payload(l2_l3_acq_paddr_line_w);
+                l2_l3_grant_paddr_line_q <= slc_resp_paddr_line;
+                l2_l3_grant_data_q <= slc_resp_data;
                 l2_l3_grant_state_q <= MESI_S;
             end
         end
@@ -934,7 +1043,7 @@ module e1_soc_integrated
 
     // Per-core AXI4 master nets.  The cluster always drives these to safe
     // idle values in lite mode.
-    logic [NUM_CPU_CORES-1:0][AXI_ID_W-1:0]    cluster_axi_aw_id;
+    logic [NUM_CPU_CORES-1:0][CLUSTER_AXI_ID_W-1:0] cluster_axi_aw_id;
     logic [NUM_CPU_CORES-1:0][AXI_ADDR_W-1:0]  cluster_axi_aw_addr;
     logic [NUM_CPU_CORES-1:0][7:0]             cluster_axi_aw_len;
     logic [NUM_CPU_CORES-1:0][2:0]             cluster_axi_aw_size;
@@ -949,11 +1058,11 @@ module e1_soc_integrated
     logic [NUM_CPU_CORES-1:0]                  cluster_axi_w_last;
     logic [NUM_CPU_CORES-1:0]                  cluster_axi_w_valid;
     logic [NUM_CPU_CORES-1:0]                  cluster_axi_w_ready;
-    logic [NUM_CPU_CORES-1:0][AXI_ID_W-1:0]    cluster_axi_b_id;
+    logic [NUM_CPU_CORES-1:0][CLUSTER_AXI_ID_W-1:0] cluster_axi_b_id;
     logic [NUM_CPU_CORES-1:0][1:0]             cluster_axi_b_resp;
     logic [NUM_CPU_CORES-1:0]                  cluster_axi_b_valid;
     logic [NUM_CPU_CORES-1:0]                  cluster_axi_b_ready;
-    logic [NUM_CPU_CORES-1:0][AXI_ID_W-1:0]    cluster_axi_ar_id;
+    logic [NUM_CPU_CORES-1:0][CLUSTER_AXI_ID_W-1:0] cluster_axi_ar_id;
     logic [NUM_CPU_CORES-1:0][AXI_ADDR_W-1:0]  cluster_axi_ar_addr;
     logic [NUM_CPU_CORES-1:0][7:0]             cluster_axi_ar_len;
     logic [NUM_CPU_CORES-1:0][2:0]             cluster_axi_ar_size;
@@ -963,7 +1072,7 @@ module e1_soc_integrated
     logic [NUM_CPU_CORES-1:0][2:0]             cluster_axi_ar_prot;
     logic [NUM_CPU_CORES-1:0]                  cluster_axi_ar_valid;
     logic [NUM_CPU_CORES-1:0]                  cluster_axi_ar_ready;
-    logic [NUM_CPU_CORES-1:0][AXI_ID_W-1:0]    cluster_axi_r_id;
+    logic [NUM_CPU_CORES-1:0][CLUSTER_AXI_ID_W-1:0] cluster_axi_r_id;
     logic [NUM_CPU_CORES-1:0][AXI_DATA_W-1:0]  cluster_axi_r_data;
     logic [NUM_CPU_CORES-1:0][1:0]             cluster_axi_r_resp;
     logic [NUM_CPU_CORES-1:0]                  cluster_axi_r_last;
@@ -983,19 +1092,8 @@ module e1_soc_integrated
     logic              [NUM_CPU_CORES-1:0][1:0]  cluster_lsu_l1d_valid;
     lsu_l1d_resp_t     [NUM_CPU_CORES-1:0][1:0]  cluster_lsu_l1d_resp;
 
-    // Cluster handles ready/last by tying them to safe defaults — when a
-    // real core wrapper lands, these become the fabric responses.
-    assign cluster_axi_aw_ready = '0;
-    assign cluster_axi_w_ready  = '0;
-    assign cluster_axi_b_id     = '0;
-    assign cluster_axi_b_resp   = '0;
-    assign cluster_axi_b_valid  = '0;
-    assign cluster_axi_ar_ready = '0;
-    assign cluster_axi_r_id     = '0;
-    assign cluster_axi_r_data   = '0;
-    assign cluster_axi_r_resp   = '0;
-    assign cluster_axi_r_last   = '0;
-    assign cluster_axi_r_valid  = '0;
+    // The per-core AXI response wires are driven by fabric masters
+    // CLUSTER_MASTER_BASE..CLUSTER_MASTER_BASE+NUM_CPU_CORES-1 below.
     assign cluster_ftq_l1i_ready = {NUM_CPU_CORES{1'b1}};
     assign cluster_lsu_l1d_resp = '0;
 
@@ -1005,7 +1103,7 @@ module e1_soc_integrated
         .NUM_LITTLE_CORES (4),
         .AXI_ADDR_W       (AXI_ADDR_W),
         .AXI_DATA_W       (AXI_DATA_W),
-        .AXI_ID_W         (AXI_ID_W)
+        .AXI_ID_W         (CLUSTER_AXI_ID_W)
     ) u_cluster (
         .core_clk_i              ({NUM_CPU_CORES{clk}}),
         .core_rst_ni             ({NUM_CPU_CORES{rst_n}}),
@@ -1065,20 +1163,12 @@ module e1_soc_integrated
         .cluster_event_bus_o     ()
     );
 
-    // Suppress lint on the cluster outputs we intentionally do not route
-    // (they are quiet in lite tie-off mode).
+    // Suppress lint on the non-AXI cluster outputs we intentionally do not
+    // route yet (they are quiet in lite tie-off mode).  The per-core AXI4
+    // masters are routed into the production fabric below.
     /* verilator lint_off UNUSEDSIGNAL */
     logic unused_cluster_outs;
     assign unused_cluster_outs = ^{
-        cluster_axi_aw_id, cluster_axi_aw_addr, cluster_axi_aw_len,
-        cluster_axi_aw_size, cluster_axi_aw_burst, cluster_axi_aw_lock,
-        cluster_axi_aw_cache, cluster_axi_aw_prot, cluster_axi_aw_valid,
-        cluster_axi_w_data, cluster_axi_w_strb, cluster_axi_w_last,
-        cluster_axi_w_valid, cluster_axi_b_ready,
-        cluster_axi_ar_id, cluster_axi_ar_addr, cluster_axi_ar_len,
-        cluster_axi_ar_size, cluster_axi_ar_burst, cluster_axi_ar_lock,
-        cluster_axi_ar_cache, cluster_axi_ar_prot, cluster_axi_ar_valid,
-        cluster_axi_r_ready,
         cluster_ftq_l1i_req, cluster_ftq_l1i_valid, cluster_ftq_l1i_flush,
         cluster_lsu_l1d_req, cluster_lsu_l1d_valid
     };
@@ -1089,22 +1179,12 @@ module e1_soc_integrated
     //
     // When `+define+E1_CLUSTER_SLOT0_CVA6` is set the e1_cpu_subsystem
     // wrapper (which wraps the OpenHW Group CVA6 v5.3.0 core under
-    // `+define+E1_HAVE_CVA6`) is instantiated here as a structural
-    // declaration.  The wrapper's AXI4 master is currently NOT routed
-    // into the cluster's slot-0 AXI ports because CVA6 issues 64-bit
-    // data while the cluster's per-core port is 128-bit
-    // (AXI_DATA_W=128, matching the L1D cache line port).
-    //
-    // The remaining gap is a 64↔128 AXI4 data-width converter; once that
-    // adapter lands the slot-0 cluster signals (`cluster_axi_*[0]`) can
-    // be driven from `u_cva6_slot0`'s AXI master and the integration
-    // becomes truly WIRED rather than WIRED_OBSERVABILITY_ONLY.
-    //
-    // Until the data-width converter lands, the wrapper's master ties off
-    // to a safe-idle AXI4 sink so
-    // the structural instantiation elaborates cleanly under Verilator.
-    // The wrapper's `dbg_pc_o` / `dbg_valid_o` are exposed via the
-    // top-level testbench harness to give cocotb a structural anchor.
+    // `+define+E1_HAVE_CVA6`) is instantiated and routed through a
+    // 64↔128 AXI4 width converter into fabric master[2], then through the
+    // existing AXI4 fabric and e1_dram_ctrl. This keeps the default
+    // lite-mode SoC small while preserving an in-band cocotb path that proves
+    // CVA6 fetch/store/load traffic can leave the wrapper and reach the
+    // shared memory controller path.
     // ----------------------------------------------------------------------
 `ifdef E1_CLUSTER_SLOT0_CVA6
     localparam int unsigned CVA6_AXI_ID_W   = 4;
@@ -1155,22 +1235,12 @@ module e1_soc_integrated
     // on the byte lane selected by the address.  Read data is muxed
     // back to the upstream lane.
     //
-    // The downstream 128-bit side terminates on a quiet AXI4 sink at
-    // this top because the cluster's slot 0 master is itself driven by
-    // `e1_cluster_top` (the cluster owns those output ports).  The
-    // converter's structural presence + cocotb coverage under
-    // `verify/cocotb/axi4/test_width_converter.py` establishes the
-    // 64<->128 conversion path; once the cluster transitions out of
-    // lite tie-off mode the 128-bit downstream nets below connect into
-    // the cluster's slot-0 input ports without further adapter work.
-    // CVA6's cv64a6 executable-PMA region 1 starts at 0x1_0000 (length
-    // 0x10000).  The standalone wrapper TB uses the same vector; the
-    // in-band SoC instance has to honour the same PMA contract because
-    // the CVA6 PMA/PMP check fires before any AR is issued.  Sitting
-    // outside an executable region triggers INSTR_ACCESS_FAULT before
-    // the slot-0 memory ever gets a chance to serve a fetch.
+    // The downstream 128-bit side is a real AXI4-fabric master.  CVA6's
+    // cv64a6 executable PMA includes the cacheable DRAM window at
+    // 0x8000_0000, so the in-band test preloads e1_dram_ctrl there and boots
+    // directly from the shared DRAM aperture.
     e1_cpu_subsystem #(
-        .BOOT_ADDR  (64'h0000_0000_0001_0000),
+        .BOOT_ADDR  (64'h0000_0000_8000_0000),
         .AXI_ID_W   (CVA6_AXI_ID_W),
         .AXI_ADDR_W (CVA6_AXI_ADDR_W),
         .AXI_DATA_W (CVA6_AXI_DATA_W),
@@ -1281,9 +1351,9 @@ module e1_soc_integrated
     logic                             slot0_b_ready;
     logic                             slot0_r_ready;
 
-    // Downstream-side AXI4 response signals (driven by the slot-0 memory
-    // model below).  Declared as wires so the converter's `dn_*_ready` /
-    // `dn_r_data` / `dn_b_*` inputs see the memory's outputs.
+    // Downstream-side AXI4 response signals (driven by fabric master[2]).
+    // Declared as wires so the converter's `dn_*_ready` / `dn_r_data` /
+    // `dn_b_*` inputs see the fabric responses.
     logic                             slot0_aw_ready;
     logic                             slot0_w_ready;
     logic [CVA6_AXI_ID_W-1:0]         slot0_b_id;
@@ -1354,15 +1424,9 @@ module e1_soc_integrated
         .up_r_user  (cva6_r_user_wire),
         .up_r_valid (cva6_r_valid_wire),
         .up_r_ready (cva6_r_ready),
-        // Downstream 128-bit slot-0 net.  In production this would land on
-        // the cluster's slot-0 per-core AXI4 input ports.  Until the
-        // cluster's per-core wrappers ship (see `e1_cluster_top.sv` lite
-        // tie-off), we attach a thin AXI4-slave memory model directly on
-        // the downstream net so cocotb can exercise the end-to-end
-        // CVA6 → wrapper → adapter → width converter → memory loop.  The
-        // memory serves the same boot-ROM + DRAM contract as the
-        // standalone `e1_cva6_unit_tb.sv`, but at the 128-bit downstream
-        // width (so the test exercises the actual converter beats).
+        // Downstream 128-bit slot-0 net.  This attaches to fabric master[2]
+        // below so cocotb can exercise the end-to-end CVA6 → wrapper →
+        // adapter → width converter → AXI4 fabric → e1_dram_ctrl loop.
         .dn_aw_id   (slot0_aw_id),
         .dn_aw_addr (slot0_aw_addr),
         .dn_aw_len  (slot0_aw_len),
@@ -1410,226 +1474,35 @@ module e1_soc_integrated
         .dn_r_ready (slot0_r_ready)
     );
 
-    // ── Slot-0 memory model + AXI4 traffic counters (128-bit downstream) ──
+    // ── CVA6 fabric attachment + preload mirrors ──────────────────────────
     //
-    // Serves the same ROM @ 0x1_0000 / DRAM @ 0x8000_0000 contract as the
-    // standalone `e1_cva6_unit_tb`, but at the 128-bit downstream width so
-    // the in-band SoC test exercises the CVA6 → wrapper → adapter → width
-    // converter → memory chain end-to-end.  Preloaded via `$readmemh` from
-    // a hex file written by the cocotb test at module-import time (same
-    // mechanism + same `boot_rom.hex` filename as the standalone TB), and
-    // the first three 128-bit words are mirrored to top-level flat ports so
-    // the test can assert the preload landed before releasing reset.
-    //
-    // The model is a simple single-inflight FSM mirroring the standalone
-    // TB's read/write handling.  CVA6 cv64a6 issues at most one outstanding
-    // AR/AW; the width converter is single-inflight, so a single-FSM model
-    // matches the actual traffic shape.
-    localparam int unsigned SLOT0_ROM_BYTES = 4096;   // 4 KiB
-    localparam int unsigned SLOT0_DRAM_BYTES = 16384; // 16 KiB
-    localparam int unsigned SLOT0_ROM_WORDS_128  = SLOT0_ROM_BYTES / 16;
-    localparam int unsigned SLOT0_DRAM_WORDS_128 = SLOT0_DRAM_BYTES / 16;
-    localparam logic [CVA6_AXI_ADDR_W-1:0] SLOT0_ROM_BASE  =
-        64'h0000_0000_0001_0000;
-    localparam logic [CVA6_AXI_ADDR_W-1:0] SLOT0_DRAM_BASE =
-        64'h0000_0000_8000_0000;
+    // The program image is loaded by `e1_dram_ctrl` via
+    // `+E1_DRAM_PRELOAD_HEX=<file>`.  Keep a tiny independent mirror here so
+    // cocotb can fail loudly if the expected hex file was not present before
+    // time 0; the actual instruction/data fetches below return through the
+    // shared fabric and memory controller, not this mirror.
+    localparam int unsigned SLOT0_PRELOAD_WORDS_128 = 3;
+    logic [127:0] slot0_preload_mirror [0:SLOT0_PRELOAD_WORDS_128-1];
 
-    logic [127:0] slot0_rom  [0:SLOT0_ROM_WORDS_128-1];
-    logic [127:0] slot0_dram [0:SLOT0_DRAM_WORDS_128-1];
-
-    // `$readmemh` reads big-endian-by-default; the cocotb hex writer must
-    // emit one 128-bit word per line (32 hex chars).  Path is taken from
-    // the `SLOT0_BOOT_ROM_HEX` plusarg (default `boot_rom.hex` relative to
-    // the simulator cwd) — same default as the standalone TB so a single
-    // file shared between tests works in the common case.
-    initial begin : init_slot0_mem
-        string rom_path;
-        for (int i = 0; i < SLOT0_ROM_WORDS_128;  i++) slot0_rom[i]  = 128'h0;
-        for (int i = 0; i < SLOT0_DRAM_WORDS_128; i++) slot0_dram[i] = 128'h0;
-        if (!$value$plusargs("SLOT0_BOOT_ROM_HEX=%s", rom_path)) begin
-            rom_path = "boot_rom.hex";
+    initial begin : init_slot0_preload_mirror
+        string preload_path;
+        for (int i = 0; i < SLOT0_PRELOAD_WORDS_128; i++) begin
+            slot0_preload_mirror[i] = 128'h0;
         end
-        $readmemh(rom_path, slot0_rom);
+        if (!$value$plusargs("E1_DRAM_PRELOAD_HEX=%s", preload_path)) begin
+            preload_path = "boot_rom.hex";
+        end
+        $readmemh(preload_path, slot0_preload_mirror);
     end
 
-    assign cva6_slot0_rom_word0_o = slot0_rom[0];
-    assign cva6_slot0_rom_word1_o = slot0_rom[1];
-    assign cva6_slot0_rom_word2_o = slot0_rom[2];
+    assign cva6_slot0_rom_word0_o = slot0_preload_mirror[0];
+    assign cva6_slot0_rom_word1_o = slot0_preload_mirror[1];
+    assign cva6_slot0_rom_word2_o = slot0_preload_mirror[2];
 
-    function automatic logic slot0_is_rom_addr(input logic [CVA6_AXI_ADDR_W-1:0] addr);
-        return (addr >= SLOT0_ROM_BASE) &&
-               (addr <  (SLOT0_ROM_BASE + SLOT0_ROM_BYTES));
-    endfunction
-    function automatic logic slot0_is_dram_addr(input logic [CVA6_AXI_ADDR_W-1:0] addr);
-        return (addr >= SLOT0_DRAM_BASE) &&
-               (addr <  (SLOT0_DRAM_BASE + SLOT0_DRAM_BYTES));
-    endfunction
-
-    // Read FSM
-    //
-    // AXI4 IHI 0022 A8.4.1 (upsizing): the slave receives the master's
-    // AxLEN/AxSIZE unchanged.  Each downstream beat must serve the
-    // 128-bit word that contains the *current* beat address.  For a CVA6
-    // 64-bit master (AxSIZE=3) the address advances 8 bytes per beat, so
-    // two consecutive upstream beats land in the same 128-bit slot (the
-    // width converter's `r_lane_q` picks the right 64-bit half).  Using a
-    // simple `slot0_rom[beat_idx]` lookup walks the ROM at 128-bit
-    // strides regardless of AxSIZE, which mis-serves upsize bursts.  The
-    // fix is to track the per-beat byte address and index by `(addr >> 4)`.
-    typedef enum logic [1:0] {SLOT0_R_IDLE, SLOT0_R_RESPOND} slot0_read_state_t;
-    slot0_read_state_t       slot0_r_state;
-    logic [CVA6_AXI_ID_W-1:0]   slot0_r_pending_id;
-    logic [CVA6_AXI_ADDR_W-1:0] slot0_r_cur_addr;
-    logic [7:0]                 slot0_r_pending_beats;
-    logic [2:0]                 slot0_r_size;
-    logic [7:0]                 slot0_r_beat_idx;
-
-    assign slot0_ar_ready = (slot0_r_state == SLOT0_R_IDLE);
-
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            slot0_r_state         <= SLOT0_R_IDLE;
-            slot0_r_pending_id    <= '0;
-            slot0_r_cur_addr      <= '0;
-            slot0_r_pending_beats <= '0;
-            slot0_r_size          <= 3'd0;
-            slot0_r_beat_idx      <= '0;
-            slot0_r_valid         <= 1'b0;
-            slot0_r_id            <= '0;
-            slot0_r_data          <= '0;
-            slot0_r_resp          <= 2'b00;
-            slot0_r_last          <= 1'b0;
-            slot0_r_user          <= '0;
-        end else begin
-            unique case (slot0_r_state)
-                SLOT0_R_IDLE: begin
-                    slot0_r_valid <= 1'b0;
-                    slot0_r_last  <= 1'b0;
-                    if (slot0_ar_valid && slot0_ar_ready) begin
-                        slot0_r_state         <= SLOT0_R_RESPOND;
-                        slot0_r_pending_id    <= slot0_ar_id;
-                        slot0_r_cur_addr      <= slot0_ar_addr;
-                        slot0_r_pending_beats <= slot0_ar_len;
-                        slot0_r_size          <= slot0_ar_size;
-                        slot0_r_beat_idx      <= 8'd0;
-                    end
-                end
-                SLOT0_R_RESPOND: begin
-                    slot0_r_valid <= 1'b1;
-                    slot0_r_id    <= slot0_r_pending_id;
-                    if (slot0_is_rom_addr(slot0_r_cur_addr)) begin
-                        slot0_r_data <= slot0_rom[
-                            (slot0_r_cur_addr - SLOT0_ROM_BASE) >> 4];
-                        slot0_r_resp <= 2'b00;
-                    end else if (slot0_is_dram_addr(slot0_r_cur_addr)) begin
-                        slot0_r_data <= slot0_dram[
-                            (slot0_r_cur_addr - SLOT0_DRAM_BASE) >> 4];
-                        slot0_r_resp <= 2'b00;
-                    end else begin
-                        slot0_r_data <= 128'h0;
-                        slot0_r_resp <= 2'b11; // DECERR for unmapped
-                    end
-                    slot0_r_last <= (slot0_r_beat_idx == slot0_r_pending_beats);
-                    if (slot0_r_valid && slot0_r_ready) begin
-                        if (slot0_r_beat_idx == slot0_r_pending_beats) begin
-                            slot0_r_state <= SLOT0_R_IDLE;
-                            slot0_r_valid <= 1'b0;
-                            slot0_r_last  <= 1'b0;
-                        end else begin
-                            slot0_r_beat_idx <= slot0_r_beat_idx + 8'd1;
-                            slot0_r_cur_addr <= slot0_r_cur_addr +
-                                ({{(CVA6_AXI_ADDR_W-1){1'b0}}, 1'b1} << slot0_r_size);
-                        end
-                    end
-                end
-                default: slot0_r_state <= SLOT0_R_IDLE;
-            endcase
-        end
-    end
-
-    // Write FSM
-    //
-    // Same upsize convention as the read side: the slave receives the
-    // master's AxLEN/AxSIZE and the width converter places the per-beat
-    // upstream WSTRB+W_DATA on the byte lane selected by the per-beat
-    // address.  We track the current beat byte-address and merge each
-    // 128-bit beat into the destination 128-bit slot using WSTRB
-    // byte-wise (covers both DRAM and any stray ROM write — though ROM
-    // writes are silently dropped because the SoC contract leaves the
-    // boot-vector region read-only).
-    typedef enum logic [1:0] {SLOT0_W_IDLE, SLOT0_W_DATA, SLOT0_W_RESP}
-        slot0_write_state_t;
-    slot0_write_state_t      slot0_w_state;
-    logic [CVA6_AXI_ID_W-1:0]   slot0_w_pending_id;
-    logic [CVA6_AXI_ADDR_W-1:0] slot0_w_cur_addr;
-    logic [7:0]                 slot0_w_pending_beats;
-    logic [2:0]                 slot0_w_size;
-    logic [7:0]                 slot0_w_beat_idx;
-
-    assign slot0_aw_ready = (slot0_w_state == SLOT0_W_IDLE);
-    assign slot0_w_ready  = (slot0_w_state == SLOT0_W_DATA);
-
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            slot0_w_state         <= SLOT0_W_IDLE;
-            slot0_w_pending_id    <= '0;
-            slot0_w_cur_addr      <= '0;
-            slot0_w_pending_beats <= '0;
-            slot0_w_size          <= 3'd0;
-            slot0_w_beat_idx      <= '0;
-            slot0_b_valid         <= 1'b0;
-            slot0_b_id            <= '0;
-            slot0_b_resp          <= 2'b00;
-            slot0_b_user          <= '0;
-        end else begin
-            unique case (slot0_w_state)
-                SLOT0_W_IDLE: begin
-                    slot0_b_valid <= 1'b0;
-                    if (slot0_aw_valid && slot0_aw_ready) begin
-                        slot0_w_state         <= SLOT0_W_DATA;
-                        slot0_w_pending_id    <= slot0_aw_id;
-                        slot0_w_cur_addr      <= slot0_aw_addr;
-                        slot0_w_pending_beats <= slot0_aw_len;
-                        slot0_w_size          <= slot0_aw_size;
-                        slot0_w_beat_idx      <= 8'd0;
-                    end
-                end
-                SLOT0_W_DATA: begin
-                    if (slot0_w_valid && slot0_w_ready) begin
-                        if (slot0_is_dram_addr(slot0_w_cur_addr)) begin
-                            for (int b = 0; b < 16; b++) begin
-                                if (slot0_w_strb[b]) begin
-                                    slot0_dram[
-                                        (slot0_w_cur_addr - SLOT0_DRAM_BASE) >> 4
-                                    ][b*8 +: 8] <= slot0_w_data[b*8 +: 8];
-                                end
-                            end
-                        end
-                        // ROM writes are silently dropped (tests should not
-                        // target the ROM with writes; the SoC contract is
-                        // read-only for the boot-vector region).
-                        if (slot0_w_last) begin
-                            slot0_w_state <= SLOT0_W_RESP;
-                            slot0_b_id    <= slot0_w_pending_id;
-                            slot0_b_resp  <= 2'b00;
-                            slot0_b_valid <= 1'b1;
-                        end else begin
-                            slot0_w_beat_idx <= slot0_w_beat_idx + 8'd1;
-                            slot0_w_cur_addr <= slot0_w_cur_addr +
-                                ({{(CVA6_AXI_ADDR_W-1){1'b0}}, 1'b1} << slot0_w_size);
-                        end
-                    end
-                end
-                SLOT0_W_RESP: begin
-                    if (slot0_b_valid && slot0_b_ready) begin
-                        slot0_w_state <= SLOT0_W_IDLE;
-                        slot0_b_valid <= 1'b0;
-                    end
-                end
-                default: slot0_w_state <= SLOT0_W_IDLE;
-            endcase
-        end
-    end
+    // Fabric master[2] response plumbing is assigned after the fabric arrays
+    // are declared.  The counters remain next to the optional CVA6 instance
+    // and count handshakes on the 128-bit fabric-facing side of the width
+    // converter.
 
     // AXI4 traffic counters at the 128-bit downstream side.
     always_ff @(posedge clk or negedge rst_n) begin
@@ -1700,17 +1573,17 @@ module e1_soc_integrated
     logic chi_req_is_exclusive;
     logic chi_req_stash;
     logic [AXI_ADDR_W-1:0] chi_req_addr;
-    logic [5:0]            chi_req_id;     // CHI bridge ID_WIDTH default = 6
+    logic [CHI_AXI_ID_W-1:0] chi_req_id;     // CHI bridge ID_WIDTH default = 6
     logic [AXI_USER_W-1:0] chi_req_user;
     logic chi_wd_valid, chi_wd_ready, chi_wd_last;
     logic [AXI_DATA_W-1:0] chi_wd_data;
     logic [AXI_DATA_W/8-1:0] chi_wd_strb;
     logic chi_rd_valid, chi_rd_ready, chi_rd_last;
     logic [AXI_DATA_W-1:0] chi_rd_data;
-    logic [5:0]            chi_rd_id;
+    logic [CHI_AXI_ID_W-1:0] chi_rd_id;
     logic [1:0]            chi_rd_resp;
     logic chi_wc_valid, chi_wc_ready;
-    logic [5:0]            chi_wc_id;
+    logic [CHI_AXI_ID_W-1:0] chi_wc_id;
     logic [1:0]            chi_wc_resp;
 
     // ----------------------------------------------------------------------
@@ -1727,14 +1600,6 @@ module e1_soc_integrated
     // bounded inside the integration top.  Production SLC is exercised
     // under `verify/cocotb/cache/`.
     // ----------------------------------------------------------------------
-    localparam int unsigned SLC_INT_SIZE  = 64 * 1024;
-    localparam int unsigned SLC_INT_WAYS  = 4;
-    localparam int unsigned SLC_INT_LINE  = 64;
-    // SLC parameter logic relies on `$clog2(BANKS) >= 1` and
-    // `$clog2(NUM_CLIENTS) >= 1`; honour those floors here so the
-    // generated bit ranges stay positive under Verilator.
-    localparam int unsigned SLC_INT_BANKS = 2;
-    localparam int unsigned SLC_INT_NUM_CLIENTS = 2;
 
     // SLC client fixture (MMIO 0x1008_0000): one outstanding line read or
     // write into the SLC.  Programmer registers:
@@ -1746,20 +1611,6 @@ module e1_soc_integrated
     //
     // The fixture issues exactly one acq beat then waits for the grant
     // pulse; cocotb polls STATUS to confirm the SLC→CHI path traversed.
-    logic [PADDR_W_DEFAULT-1:0] slc_fix_paddr;
-    logic                       slc_fix_busy;
-    logic                       slc_fix_is_write;
-    logic                       slc_fix_grant_seen;
-    logic [31:0]                slc_fix_grant_lo;
-
-    logic                       slc_req_valid;
-    logic                       slc_req_ready;
-    logic                       slc_req_is_write;
-    logic                       slc_resp_valid;
-    logic                       slc_resp_ready;
-    logic [PADDR_W_DEFAULT-1:0] slc_resp_paddr_line;
-    logic [8*SLC_INT_LINE-1:0]  slc_resp_data;
-
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             slc_fix_paddr      <= '0;
@@ -1795,20 +1646,27 @@ module e1_soc_integrated
                 endcase
             end
             // Clear req_busy once the SLC accepts the line request.
-            if (slc_req_valid && slc_req_ready) begin
+            if (slc_fix_busy && slc_req_ready) begin
                 slc_fix_busy <= 1'b0;
             end
             // Latch grant data when the SLC responds.
-            if (slc_resp_valid && slc_resp_ready) begin
+            if (slc_resp_to_fix_w && slc_resp_ready) begin
                 slc_fix_grant_seen <= 1'b1;
                 slc_fix_grant_lo   <= slc_resp_data[31:0];
             end
         end
     end
 
-    assign slc_req_valid    = slc_fix_busy;
-    assign slc_req_is_write = slc_fix_is_write;
-    assign slc_resp_ready   = 1'b1;
+    // SLC client arbitration.  The MMIO fixture keeps priority because it is
+    // a single explicit integration transaction; L2 requests naturally
+    // backpressure until the fixture's one request is accepted.
+    assign slc_req_valid      = slc_fix_busy || l2_l3_acq_valid_o;
+    assign slc_req_paddr_line = slc_fix_busy ? slc_fix_paddr : l2_l3_acq_paddr_line_w;
+    assign slc_req_is_write   = slc_fix_busy ? slc_fix_is_write : l2_l3_acq_is_write_w;
+    assign slc_req_wb_data    = slc_fix_busy ? '0 : l2_l3_acq_wb_data_w;
+    assign slc_req_client_id  = slc_fix_busy ? SLC_CLIENT_FIX : SLC_CLIENT_L2;
+    assign slc_resp_ready     = slc_resp_to_l2_w ? (!l2_l3_grant_valid_q || l2_l3_grant_ready_w) :
+                                1'b1;
 
     always_comb begin
         unique case (mmio_addr[7:2])
@@ -1856,6 +1714,8 @@ module e1_soc_integrated
     logic [PADDR_W_DEFAULT-1:0] slc_to_shim_grant_paddr_unused;
     assign slc_to_shim_grant_paddr_unused = slc_to_shim_grant_paddr;
     /* verilator lint_on UNUSEDSIGNAL */
+    assign slc_dram_acq_valid_o = slc_to_shim_acq_valid;
+    assign slc_dram_grant_valid_o = slc_to_shim_grant_valid;
 
     e1_slc #(
         .SIZE_BYTES (SLC_INT_SIZE),
@@ -1869,16 +1729,16 @@ module e1_soc_integrated
         .rst_n                 (rst_n),
         .req_valid             (slc_req_valid),
         .req_ready             (slc_req_ready),
-        .req_paddr_line        (slc_fix_paddr),
+        .req_paddr_line        (slc_req_paddr_line),
         .req_is_write          (slc_req_is_write),
         .req_qos               (QOS_CPU_FG),
-        .req_client_id         ('0),
-        .req_wb_data           ('0),
+        .req_client_id         (slc_req_client_id),
+        .req_wb_data           (slc_req_wb_data),
         .resp_valid            (slc_resp_valid),
         .resp_ready            (slc_resp_ready),
         .resp_paddr_line       (slc_resp_paddr_line),
         .resp_data             (slc_resp_data),
-        .resp_client_id        (),
+        .resp_client_id        (slc_resp_client_id),
         .dram_acq_valid        (slc_to_shim_acq_valid),
         .dram_acq_ready        (slc_to_shim_acq_ready),
         .dram_acq_paddr_line   (slc_to_shim_acq_paddr),
@@ -1907,9 +1767,9 @@ module e1_soc_integrated
         .PADDR_W    (PADDR_W_DEFAULT),
         .LINE_BYTES (SLC_INT_LINE),
         .DATA_WIDTH (AXI_DATA_W),
-        .ID_WIDTH   (6),
+        .ID_WIDTH   (CHI_AXI_ID_W),
         .USER_WIDTH (AXI_USER_W),
-        .REQ_ID     (6'h05)
+        .REQ_ID     (CHI_AXI_ID_W'(6'h05))
     ) u_slc_chi_shim (
         .clk   (clk),
         .rst_n (rst_n),
@@ -1947,13 +1807,12 @@ module e1_soc_integrated
         .chi_wc_resp          (chi_wc_resp)
     );
 
-    // CHI bridge → fabric master[0].  Note: the bridge declares 6-bit IDs;
-    // the fabric uses 4-bit IDs.  Width drift is absorbed by an adapter:
-    // we slice the low 4 bits of the CHI ID (the high 2 bits encode the
-    // CHI cluster ID and are reserved until multi-cluster ships).
+    // CHI bridge → fabric master[0].  The bridge declares 6-bit IDs; the
+    // fabric carries the production 8-bit CPU-cluster ID width.  Width drift
+    // is absorbed by a zero-padding adapter at this boundary.
     logic                  chi_m_awvalid;
     logic                  chi_m_awready;
-    logic [5:0]            chi_m_awid;
+    logic [CHI_AXI_ID_W-1:0] chi_m_awid;
     logic [AXI_ADDR_W-1:0] chi_m_awaddr;
     logic [BURST_LEN_W-1:0] chi_m_awlen;
     logic [2:0]            chi_m_awsize;
@@ -1967,10 +1826,10 @@ module e1_soc_integrated
     logic [AXI_DATA_W-1:0] chi_m_wdata;
     logic [AXI_DATA_W/8-1:0] chi_m_wstrb;
     logic                  chi_m_bvalid, chi_m_bready;
-    logic [5:0]            chi_m_bid;
+    logic [CHI_AXI_ID_W-1:0] chi_m_bid;
     logic [1:0]            chi_m_bresp;
     logic                  chi_m_arvalid, chi_m_arready;
-    logic [5:0]            chi_m_arid;
+    logic [CHI_AXI_ID_W-1:0] chi_m_arid;
     logic [AXI_ADDR_W-1:0] chi_m_araddr;
     logic [BURST_LEN_W-1:0] chi_m_arlen;
     logic [2:0]            chi_m_arsize;
@@ -1981,12 +1840,12 @@ module e1_soc_integrated
     logic [3:0]            chi_m_arqos;
     logic [AXI_USER_W-1:0] chi_m_aruser;
     logic                  chi_m_rvalid, chi_m_rready, chi_m_rlast;
-    logic [5:0]            chi_m_rid;
+    logic [CHI_AXI_ID_W-1:0] chi_m_rid;
     logic [AXI_DATA_W-1:0] chi_m_rdata;
     logic [1:0]            chi_m_rresp;
 
     e1_chi_to_axi4_bridge #(
-        .ID_WIDTH   (6),
+        .ID_WIDTH   (CHI_AXI_ID_W),
         .ADDR_WIDTH (AXI_ADDR_W),
         .DATA_WIDTH (AXI_DATA_W),
         .USER_WIDTH (AXI_USER_W),
@@ -2080,7 +1939,7 @@ module e1_soc_integrated
     // AXI-Lite scaffold above; this leg is the IOMMU translation surface
     // for the future per-engine masters.
     logic [IOMMU_NUM_MASTERS-1:0] iom_awvalid, iom_awready;
-    logic [IOMMU_NUM_MASTERS-1:0][AXI_ID_W-1:0]   iom_awid;
+    logic [IOMMU_NUM_MASTERS-1:0][IOMMU_AXI_ID_W-1:0] iom_awid;
     logic [IOMMU_NUM_MASTERS-1:0][AXI_ADDR_W-1:0] iom_awaddr;
     logic [IOMMU_NUM_MASTERS-1:0][BURST_LEN_W-1:0] iom_awlen;
     logic [IOMMU_NUM_MASTERS-1:0][2:0]            iom_awsize;
@@ -2095,10 +1954,10 @@ module e1_soc_integrated
     logic [IOMMU_NUM_MASTERS-1:0][AXI_DATA_W-1:0] iom_wdata;
     logic [IOMMU_NUM_MASTERS-1:0][AXI_DATA_W/8-1:0] iom_wstrb;
     logic [IOMMU_NUM_MASTERS-1:0] iom_bvalid, iom_bready;
-    logic [IOMMU_NUM_MASTERS-1:0][AXI_ID_W-1:0] iom_bid;
+    logic [IOMMU_NUM_MASTERS-1:0][IOMMU_AXI_ID_W-1:0] iom_bid;
     logic [IOMMU_NUM_MASTERS-1:0][1:0]          iom_bresp;
     logic [IOMMU_NUM_MASTERS-1:0] iom_arvalid, iom_arready;
-    logic [IOMMU_NUM_MASTERS-1:0][AXI_ID_W-1:0]    iom_arid;
+    logic [IOMMU_NUM_MASTERS-1:0][IOMMU_AXI_ID_W-1:0] iom_arid;
     logic [IOMMU_NUM_MASTERS-1:0][AXI_ADDR_W-1:0]  iom_araddr;
     logic [IOMMU_NUM_MASTERS-1:0][BURST_LEN_W-1:0] iom_arlen;
     logic [IOMMU_NUM_MASTERS-1:0][2:0]             iom_arsize;
@@ -2110,7 +1969,7 @@ module e1_soc_integrated
     logic [IOMMU_NUM_MASTERS-1:0][IOMMU_DEVID_W-1:0] iom_ar_devid;
     logic [IOMMU_NUM_MASTERS-1:0][IOMMU_PASID_W-1:0] iom_ar_pasid;
     logic [IOMMU_NUM_MASTERS-1:0] iom_rvalid, iom_rready, iom_rlast;
-    logic [IOMMU_NUM_MASTERS-1:0][AXI_ID_W-1:0]   iom_rid;
+    logic [IOMMU_NUM_MASTERS-1:0][IOMMU_AXI_ID_W-1:0] iom_rid;
     logic [IOMMU_NUM_MASTERS-1:0][AXI_DATA_W-1:0] iom_rdata;
     logic [IOMMU_NUM_MASTERS-1:0][1:0]            iom_rresp;
 
@@ -2257,7 +2116,7 @@ module e1_soc_integrated
 
     // IOMMU downstream → fabric master[1]
     logic                  iom_d_awvalid, iom_d_awready;
-    logic [5:0]            iom_d_awid;
+    logic [IOMMU_AXI_ID_W-1:0] iom_d_awid;
     logic [AXI_ADDR_W-1:0] iom_d_awaddr;
     logic [BURST_LEN_W-1:0] iom_d_awlen;
     logic [2:0]            iom_d_awsize;
@@ -2270,10 +2129,10 @@ module e1_soc_integrated
     logic [AXI_DATA_W-1:0] iom_d_wdata;
     logic [AXI_DATA_W/8-1:0] iom_d_wstrb;
     logic                  iom_d_bvalid, iom_d_bready;
-    logic [5:0]            iom_d_bid;
+    logic [IOMMU_AXI_ID_W-1:0] iom_d_bid;
     logic [1:0]            iom_d_bresp;
     logic                  iom_d_arvalid, iom_d_arready;
-    logic [5:0]            iom_d_arid;
+    logic [IOMMU_AXI_ID_W-1:0] iom_d_arid;
     logic [AXI_ADDR_W-1:0] iom_d_araddr;
     logic [BURST_LEN_W-1:0] iom_d_arlen;
     logic [2:0]            iom_d_arsize;
@@ -2283,7 +2142,7 @@ module e1_soc_integrated
     logic [3:0]            iom_d_arqos;
     logic [AXI_USER_W-1:0] iom_d_aruser;
     logic                  iom_d_rvalid, iom_d_rready, iom_d_rlast;
-    logic [5:0]            iom_d_rid;
+    logic [IOMMU_AXI_ID_W-1:0] iom_d_rid;
     logic [AXI_DATA_W-1:0] iom_d_rdata;
     logic [1:0]            iom_d_rresp;
 
@@ -2408,7 +2267,7 @@ module e1_soc_integrated
     /* verilator lint_on UNUSEDSIGNAL */
 
     e1_riscv_iommu #(
-        .ID_WIDTH    (6),
+        .ID_WIDTH    (IOMMU_AXI_ID_W),
         .ADDR_WIDTH  (AXI_ADDR_W),
         .DATA_WIDTH  (AXI_DATA_W),
         .USER_WIDTH  (AXI_USER_W),
@@ -2422,9 +2281,7 @@ module e1_soc_integrated
         // Upstream masters
         .u_awvalid (iom_awvalid),
         .u_awready (iom_awready),
-        // Upstream master AxID is 4-bit; the IOMMU declares 6-bit IDs.
-        // Pad the high 2 bits to zero.
-        .u_awid    ({iom_awid[0], 2'b00}),
+        .u_awid    (iom_awid),
         .u_awaddr  (iom_awaddr),
         .u_awlen   (iom_awlen),
         .u_awsize  (iom_awsize),
@@ -2446,7 +2303,7 @@ module e1_soc_integrated
         .u_bresp   (iom_bresp),
         .u_arvalid (iom_arvalid),
         .u_arready (iom_arready),
-        .u_arid    ({iom_arid[0], 2'b00}),
+        .u_arid    (iom_arid),
         .u_araddr  (iom_araddr),
         .u_arlen   (iom_arlen),
         .u_arsize  (iom_arsize),
@@ -2549,10 +2406,10 @@ module e1_soc_integrated
     localparam logic [AXI_ADDR_W-1:0] UNMAP_BASE  = {AXI_ADDR_W{1'b1}};
     localparam logic [AXI_ADDR_W-1:0] UNMAP_MASK  = {AXI_ADDR_W{1'b0}};
 
-    // Fabric master arrays (FABRIC_MASTERS = 2)
+    // Fabric master arrays.
     logic [FABRIC_MASTERS-1:0]                    fab_m_awvalid;
     logic [FABRIC_MASTERS-1:0]                    fab_m_awready;
-    logic [FABRIC_MASTERS-1:0][AXI_ID_W-1:0]      fab_m_awid;
+    logic [FABRIC_MASTERS-1:0][FABRIC_AXI_ID_W-1:0] fab_m_awid;
     logic [FABRIC_MASTERS-1:0][AXI_ADDR_W-1:0]    fab_m_awaddr;
     logic [FABRIC_MASTERS-1:0][BURST_LEN_W-1:0]   fab_m_awlen;
     logic [FABRIC_MASTERS-1:0][2:0]               fab_m_awsize;
@@ -2569,11 +2426,11 @@ module e1_soc_integrated
     logic [FABRIC_MASTERS-1:0]                    fab_m_wlast;
     logic [FABRIC_MASTERS-1:0]                    fab_m_bvalid;
     logic [FABRIC_MASTERS-1:0]                    fab_m_bready;
-    logic [FABRIC_MASTERS-1:0][AXI_ID_W-1:0]      fab_m_bid;
+    logic [FABRIC_MASTERS-1:0][FABRIC_AXI_ID_W-1:0] fab_m_bid;
     logic [FABRIC_MASTERS-1:0][1:0]               fab_m_bresp;
     logic [FABRIC_MASTERS-1:0]                    fab_m_arvalid;
     logic [FABRIC_MASTERS-1:0]                    fab_m_arready;
-    logic [FABRIC_MASTERS-1:0][AXI_ID_W-1:0]      fab_m_arid;
+    logic [FABRIC_MASTERS-1:0][FABRIC_AXI_ID_W-1:0] fab_m_arid;
     logic [FABRIC_MASTERS-1:0][AXI_ADDR_W-1:0]    fab_m_araddr;
     logic [FABRIC_MASTERS-1:0][BURST_LEN_W-1:0]   fab_m_arlen;
     logic [FABRIC_MASTERS-1:0][2:0]               fab_m_arsize;
@@ -2585,17 +2442,17 @@ module e1_soc_integrated
     logic [FABRIC_MASTERS-1:0][AXI_USER_W-1:0]    fab_m_aruser;
     logic [FABRIC_MASTERS-1:0]                    fab_m_rvalid;
     logic [FABRIC_MASTERS-1:0]                    fab_m_rready;
-    logic [FABRIC_MASTERS-1:0][AXI_ID_W-1:0]      fab_m_rid;
+    logic [FABRIC_MASTERS-1:0][FABRIC_AXI_ID_W-1:0] fab_m_rid;
     logic [FABRIC_MASTERS-1:0][AXI_DATA_W-1:0]    fab_m_rdata;
     logic [FABRIC_MASTERS-1:0][1:0]               fab_m_rresp;
     logic [FABRIC_MASTERS-1:0]                    fab_m_rlast;
 
     // Pack CHI bridge → master 0.  CHI declares 6-bit IDs; the fabric
-    // uses 4-bit IDs.  Slice the bottom 4 bits.  This adapter is the
-    // documented width drift between domains; see
+    // uses the 8-bit production cluster ID width.  Zero-pad the high bits.
+    // This adapter is the documented width drift between domains; see
     // `rtl/top/adapters/README.md` and docs/arch/soc-integration.md.
     assign fab_m_awvalid [0] = chi_m_awvalid;
-    assign fab_m_awid    [0] = chi_m_awid[AXI_ID_W-1:0];
+    assign fab_m_awid    [0] = {{(FABRIC_AXI_ID_W-CHI_AXI_ID_W){1'b0}}, chi_m_awid};
     assign fab_m_awaddr  [0] = chi_m_awaddr;
     assign fab_m_awlen   [0] = chi_m_awlen;
     assign fab_m_awsize  [0] = chi_m_awsize;
@@ -2612,11 +2469,11 @@ module e1_soc_integrated
     assign fab_m_wlast   [0] = chi_m_wlast;
     assign chi_m_wready      = fab_m_wready[0];
     assign chi_m_bvalid      = fab_m_bvalid[0];
-    assign chi_m_bid         = {2'b00, fab_m_bid[0]};
+    assign chi_m_bid         = fab_m_bid[0][CHI_AXI_ID_W-1:0];
     assign chi_m_bresp       = fab_m_bresp[0];
     assign fab_m_bready  [0] = chi_m_bready;
     assign fab_m_arvalid [0] = chi_m_arvalid;
-    assign fab_m_arid    [0] = chi_m_arid[AXI_ID_W-1:0];
+    assign fab_m_arid    [0] = {{(FABRIC_AXI_ID_W-CHI_AXI_ID_W){1'b0}}, chi_m_arid};
     assign fab_m_araddr  [0] = chi_m_araddr;
     assign fab_m_arlen   [0] = chi_m_arlen;
     assign fab_m_arsize  [0] = chi_m_arsize;
@@ -2628,7 +2485,7 @@ module e1_soc_integrated
     assign fab_m_aruser  [0] = chi_m_aruser;
     assign chi_m_arready     = fab_m_arready[0];
     assign chi_m_rvalid      = fab_m_rvalid[0];
-    assign chi_m_rid         = {2'b00, fab_m_rid[0]};
+    assign chi_m_rid         = fab_m_rid[0][CHI_AXI_ID_W-1:0];
     assign chi_m_rdata       = fab_m_rdata[0];
     assign chi_m_rresp       = fab_m_rresp[0];
     assign chi_m_rlast       = fab_m_rlast[0];
@@ -2637,7 +2494,7 @@ module e1_soc_integrated
     // Pack IOMMU downstream → master 1.  Same width-adapter; the IOMMU
     // is 6-bit IDs.  See `rtl/top/adapters/README.md`.
     assign fab_m_awvalid [1] = iom_d_awvalid;
-    assign fab_m_awid    [1] = iom_d_awid[AXI_ID_W-1:0];
+    assign fab_m_awid    [1] = {{(FABRIC_AXI_ID_W-IOMMU_AXI_ID_W){1'b0}}, iom_d_awid};
     assign fab_m_awaddr  [1] = iom_d_awaddr;
     assign fab_m_awlen   [1] = iom_d_awlen;
     assign fab_m_awsize  [1] = iom_d_awsize;
@@ -2654,11 +2511,11 @@ module e1_soc_integrated
     assign fab_m_wlast   [1] = iom_d_wlast;
     assign iom_d_wready      = fab_m_wready[1];
     assign iom_d_bvalid      = fab_m_bvalid[1];
-    assign iom_d_bid         = {2'b00, fab_m_bid[1]};
+    assign iom_d_bid         = fab_m_bid[1][IOMMU_AXI_ID_W-1:0];
     assign iom_d_bresp       = fab_m_bresp[1];
     assign fab_m_bready  [1] = iom_d_bready;
     assign fab_m_arvalid [1] = iom_d_arvalid;
-    assign fab_m_arid    [1] = iom_d_arid[AXI_ID_W-1:0];
+    assign fab_m_arid    [1] = {{(FABRIC_AXI_ID_W-IOMMU_AXI_ID_W){1'b0}}, iom_d_arid};
     assign fab_m_araddr  [1] = iom_d_araddr;
     assign fab_m_arlen   [1] = iom_d_arlen;
     assign fab_m_arsize  [1] = iom_d_arsize;
@@ -2670,14 +2527,191 @@ module e1_soc_integrated
     assign fab_m_aruser  [1] = iom_d_aruser;
     assign iom_d_arready     = fab_m_arready[1];
     assign iom_d_rvalid      = fab_m_rvalid[1];
-    assign iom_d_rid         = {2'b00, fab_m_rid[1]};
+    assign iom_d_rid         = fab_m_rid[1][IOMMU_AXI_ID_W-1:0];
     assign iom_d_rdata       = fab_m_rdata[1];
     assign iom_d_rresp       = fab_m_rresp[1];
     assign iom_d_rlast       = fab_m_rlast[1];
     assign fab_m_rready  [1] = iom_d_rready;
 
+`ifdef E1_CLUSTER_SLOT0_CVA6
+    // Pack optional CVA6 slot-0 downstream net → fabric master 2.  CVA6's
+    // 64-bit AXI4 master has already been upsized to the 128-bit fabric width
+    // by `u_cva6_slot0_width`; this adapter only slices the 64-bit address to
+    // the SoC's 40-bit physical fabric and pads the one-bit user field.
+    assign fab_m_awvalid [2] = slot0_aw_valid;
+    assign fab_m_awid    [2] = {{(FABRIC_AXI_ID_W-CVA6_AXI_ID_W){1'b0}}, slot0_aw_id};
+    assign fab_m_awaddr  [2] = slot0_aw_addr[AXI_ADDR_W-1:0];
+    assign fab_m_awlen   [2] = slot0_aw_len;
+    assign fab_m_awsize  [2] = slot0_aw_size;
+    assign fab_m_awburst [2] = slot0_aw_burst;
+    assign fab_m_awlock  [2] = slot0_aw_lock;
+    assign fab_m_awcache [2] = slot0_aw_cache;
+    assign fab_m_awprot  [2] = slot0_aw_prot;
+    assign fab_m_awqos   [2] = slot0_aw_qos;
+    assign fab_m_awuser  [2] = {{(AXI_USER_W-CVA6_AXI_USER_W){1'b0}}, slot0_aw_user};
+    assign slot0_aw_ready    = fab_m_awready[2];
+    assign fab_m_wvalid  [2] = slot0_w_valid;
+    assign fab_m_wdata   [2] = slot0_w_data;
+    assign fab_m_wstrb   [2] = slot0_w_strb;
+    assign fab_m_wlast   [2] = slot0_w_last;
+    assign slot0_w_ready     = fab_m_wready[2];
+    assign slot0_b_valid     = fab_m_bvalid[2];
+    assign slot0_b_id        = fab_m_bid[2][CVA6_AXI_ID_W-1:0];
+    assign slot0_b_resp      = fab_m_bresp[2];
+    assign slot0_b_user      = '0;
+    assign fab_m_bready  [2] = slot0_b_ready;
+    assign fab_m_arvalid [2] = slot0_ar_valid;
+    assign fab_m_arid    [2] = {{(FABRIC_AXI_ID_W-CVA6_AXI_ID_W){1'b0}}, slot0_ar_id};
+    assign fab_m_araddr  [2] = slot0_ar_addr[AXI_ADDR_W-1:0];
+    assign fab_m_arlen   [2] = slot0_ar_len;
+    assign fab_m_arsize  [2] = slot0_ar_size;
+    assign fab_m_arburst [2] = slot0_ar_burst;
+    assign fab_m_arlock  [2] = slot0_ar_lock;
+    assign fab_m_arcache [2] = slot0_ar_cache;
+    assign fab_m_arprot  [2] = slot0_ar_prot;
+    assign fab_m_arqos   [2] = slot0_ar_qos;
+    assign fab_m_aruser  [2] = {{(AXI_USER_W-CVA6_AXI_USER_W){1'b0}}, slot0_ar_user};
+    assign slot0_ar_ready    = fab_m_arready[2];
+    assign slot0_r_valid     = fab_m_rvalid[2];
+    assign slot0_r_id        = fab_m_rid[2][CVA6_AXI_ID_W-1:0];
+    assign slot0_r_data      = fab_m_rdata[2];
+    assign slot0_r_resp      = fab_m_rresp[2];
+    assign slot0_r_last      = fab_m_rlast[2];
+    assign slot0_r_user      = '0;
+    assign fab_m_rready  [2] = slot0_r_ready;
+`else
+    assign fab_m_awvalid [2] = 1'b0;
+    assign fab_m_awid    [2] = '0;
+    assign fab_m_awaddr  [2] = '0;
+    assign fab_m_awlen   [2] = '0;
+    assign fab_m_awsize  [2] = '0;
+    assign fab_m_awburst [2] = '0;
+    assign fab_m_awlock  [2] = 1'b0;
+    assign fab_m_awcache [2] = '0;
+    assign fab_m_awprot  [2] = '0;
+    assign fab_m_awqos   [2] = '0;
+    assign fab_m_awuser  [2] = '0;
+    assign fab_m_wvalid  [2] = 1'b0;
+    assign fab_m_wdata   [2] = '0;
+    assign fab_m_wstrb   [2] = '0;
+    assign fab_m_wlast   [2] = 1'b0;
+    assign fab_m_bready  [2] = 1'b1;
+    assign fab_m_arvalid [2] = 1'b0;
+    assign fab_m_arid    [2] = '0;
+    assign fab_m_araddr  [2] = '0;
+    assign fab_m_arlen   [2] = '0;
+    assign fab_m_arsize  [2] = '0;
+    assign fab_m_arburst [2] = '0;
+    assign fab_m_arlock  [2] = 1'b0;
+    assign fab_m_arcache [2] = '0;
+    assign fab_m_arprot  [2] = '0;
+    assign fab_m_arqos   [2] = '0;
+    assign fab_m_aruser  [2] = '0;
+    assign fab_m_rready  [2] = 1'b1;
+`endif
+
+    // Pack production cluster per-core AXI4 masters into fabric masters
+    // 3..10.  The default cluster still ties these channels off until real
+    // core wrappers are linked, but the full 1+3+4 master geometry and 8-bit
+    // AxID contract are now present at the SoC fabric boundary.
+    for (genvar gc = 0; gc < NUM_CPU_CORES; gc++) begin : g_cluster_fabric_master
+        localparam int unsigned FM = CLUSTER_MASTER_BASE + gc;
+
+        assign fab_m_awvalid [FM] = cluster_axi_aw_valid[gc];
+        assign fab_m_awid    [FM] = cluster_axi_aw_id[gc];
+        assign fab_m_awaddr  [FM] = cluster_axi_aw_addr[gc];
+        assign fab_m_awlen   [FM] = cluster_axi_aw_len[gc];
+        assign fab_m_awsize  [FM] = cluster_axi_aw_size[gc];
+        assign fab_m_awburst [FM] = cluster_axi_aw_burst[gc];
+        assign fab_m_awlock  [FM] = cluster_axi_aw_lock[gc];
+        assign fab_m_awcache [FM] = cluster_axi_aw_cache[gc];
+        assign fab_m_awprot  [FM] = cluster_axi_aw_prot[gc];
+        assign fab_m_awqos   [FM] = QOS_CPU_LATENCY;
+        assign fab_m_awuser  [FM] = '0;
+        assign cluster_axi_aw_ready[gc] = fab_m_awready[FM];
+
+        assign fab_m_wvalid  [FM] = cluster_axi_w_valid[gc];
+        assign fab_m_wdata   [FM] = cluster_axi_w_data[gc];
+        assign fab_m_wstrb   [FM] = cluster_axi_w_strb[gc];
+        assign fab_m_wlast   [FM] = cluster_axi_w_last[gc];
+        assign cluster_axi_w_ready[gc] = fab_m_wready[FM];
+
+        assign cluster_axi_b_valid[gc] = fab_m_bvalid[FM];
+        assign cluster_axi_b_id   [gc] = fab_m_bid[FM];
+        assign cluster_axi_b_resp [gc] = fab_m_bresp[FM];
+        assign fab_m_bready  [FM] = cluster_axi_b_ready[gc];
+
+        assign fab_m_arvalid [FM] = cluster_axi_ar_valid[gc];
+        assign fab_m_arid    [FM] = cluster_axi_ar_id[gc];
+        assign fab_m_araddr  [FM] = cluster_axi_ar_addr[gc];
+        assign fab_m_arlen   [FM] = cluster_axi_ar_len[gc];
+        assign fab_m_arsize  [FM] = cluster_axi_ar_size[gc];
+        assign fab_m_arburst [FM] = cluster_axi_ar_burst[gc];
+        assign fab_m_arlock  [FM] = cluster_axi_ar_lock[gc];
+        assign fab_m_arcache [FM] = cluster_axi_ar_cache[gc];
+        assign fab_m_arprot  [FM] = cluster_axi_ar_prot[gc];
+        assign fab_m_arqos   [FM] = QOS_CPU_LATENCY;
+        assign fab_m_aruser  [FM] = '0;
+        assign cluster_axi_ar_ready[gc] = fab_m_arready[FM];
+
+        assign cluster_axi_r_valid[gc] = fab_m_rvalid[FM];
+        assign cluster_axi_r_id   [gc] = fab_m_rid[FM];
+        assign cluster_axi_r_data [gc] = fab_m_rdata[FM];
+        assign cluster_axi_r_resp [gc] = fab_m_rresp[FM];
+        assign cluster_axi_r_last [gc] = fab_m_rlast[FM];
+        assign fab_m_rready  [FM] = cluster_axi_r_ready[gc];
+    end
+
+    // Pack production display scanout read master into the fabric.  The
+    // scanout controller is read-only; write channels are tied quiet at the
+    // converter input, but the converter still exposes legal downstream write
+    // channels that remain idle here.
+    assign fab_m_awvalid [DISPLAY_MASTER_INDEX] = display_dn_awvalid;
+    assign fab_m_awid    [DISPLAY_MASTER_INDEX] =
+        {{(FABRIC_AXI_ID_W-DISPLAY_AXI_ID_W){1'b0}}, display_dn_awid};
+    assign fab_m_awaddr  [DISPLAY_MASTER_INDEX] = display_dn_awaddr;
+    assign fab_m_awlen   [DISPLAY_MASTER_INDEX] = display_dn_awlen;
+    assign fab_m_awsize  [DISPLAY_MASTER_INDEX] = display_dn_awsize;
+    assign fab_m_awburst [DISPLAY_MASTER_INDEX] = display_dn_awburst;
+    assign fab_m_awlock  [DISPLAY_MASTER_INDEX] = display_dn_awlock;
+    assign fab_m_awcache [DISPLAY_MASTER_INDEX] = display_dn_awcache;
+    assign fab_m_awprot  [DISPLAY_MASTER_INDEX] = display_dn_awprot;
+    assign fab_m_awqos   [DISPLAY_MASTER_INDEX] = QOS_DISPLAY_RT;
+    assign fab_m_awuser  [DISPLAY_MASTER_INDEX] = '0;
+    assign display_dn_awready = fab_m_awready[DISPLAY_MASTER_INDEX];
+    assign fab_m_wvalid  [DISPLAY_MASTER_INDEX] = display_dn_wvalid;
+    assign fab_m_wdata   [DISPLAY_MASTER_INDEX] = display_dn_wdata;
+    assign fab_m_wstrb   [DISPLAY_MASTER_INDEX] = display_dn_wstrb;
+    assign fab_m_wlast   [DISPLAY_MASTER_INDEX] = display_dn_wlast;
+    assign display_dn_wready  = fab_m_wready[DISPLAY_MASTER_INDEX];
+    assign display_dn_bvalid  = fab_m_bvalid[DISPLAY_MASTER_INDEX];
+    assign display_dn_bid     = fab_m_bid[DISPLAY_MASTER_INDEX][DISPLAY_AXI_ID_W-1:0];
+    assign display_dn_bresp   = fab_m_bresp[DISPLAY_MASTER_INDEX];
+    assign display_dn_buser   = 1'b0;
+    assign fab_m_bready  [DISPLAY_MASTER_INDEX] = display_dn_bready;
+    assign fab_m_arvalid [DISPLAY_MASTER_INDEX] = display_dn_arvalid;
+    assign fab_m_arid    [DISPLAY_MASTER_INDEX] =
+        {{(FABRIC_AXI_ID_W-DISPLAY_AXI_ID_W){1'b0}}, display_dn_arid};
+    assign fab_m_araddr  [DISPLAY_MASTER_INDEX] = display_dn_araddr;
+    assign fab_m_arlen   [DISPLAY_MASTER_INDEX] = display_dn_arlen;
+    assign fab_m_arsize  [DISPLAY_MASTER_INDEX] = display_dn_arsize;
+    assign fab_m_arburst [DISPLAY_MASTER_INDEX] = display_dn_arburst;
+    assign fab_m_arlock  [DISPLAY_MASTER_INDEX] = display_dn_arlock;
+    assign fab_m_arcache [DISPLAY_MASTER_INDEX] = display_dn_arcache;
+    assign fab_m_arprot  [DISPLAY_MASTER_INDEX] = display_dn_arprot;
+    assign fab_m_arqos   [DISPLAY_MASTER_INDEX] = QOS_DISPLAY_RT;
+    assign fab_m_aruser  [DISPLAY_MASTER_INDEX] = '0;
+    assign display_dn_arready = fab_m_arready[DISPLAY_MASTER_INDEX];
+    assign display_dn_rvalid  = fab_m_rvalid[DISPLAY_MASTER_INDEX];
+    assign display_dn_rid     = fab_m_rid[DISPLAY_MASTER_INDEX][DISPLAY_AXI_ID_W-1:0];
+    assign display_dn_rdata   = fab_m_rdata[DISPLAY_MASTER_INDEX];
+    assign display_dn_rresp   = fab_m_rresp[DISPLAY_MASTER_INDEX];
+    assign display_dn_rlast   = fab_m_rlast[DISPLAY_MASTER_INDEX];
+    assign display_dn_ruser   = 1'b0;
+    assign fab_m_rready  [DISPLAY_MASTER_INDEX] = display_dn_rready;
+
     // Fabric slave arrays — packed
-    localparam int unsigned WIDE_ID_W = AXI_ID_W + $clog2(FABRIC_MASTERS + 1);
+    localparam int unsigned WIDE_ID_W = FABRIC_AXI_ID_W + $clog2(FABRIC_MASTERS + 1);
     logic [FABRIC_SLAVES-1:0]                    fab_s_awvalid;
     logic [FABRIC_SLAVES-1:0]                    fab_s_awready;
     logic [FABRIC_SLAVES-1:0][WIDE_ID_W-1:0]     fab_s_awid;
@@ -2729,7 +2763,7 @@ module e1_soc_integrated
         .NUM_SLAVES  (FABRIC_SLAVES),
         .ADDR_WIDTH  (AXI_ADDR_W),
         .DATA_WIDTH  (AXI_DATA_W),
-        .ID_WIDTH    (AXI_ID_W),
+        .ID_WIDTH    (FABRIC_AXI_ID_W),
         .USER_WIDTH  (AXI_USER_W),
         .MAX_OUTST   (8),
         .BURST_LEN_W (BURST_LEN_W),
@@ -3124,26 +3158,145 @@ module e1_soc_integrated
         .m_axil_rresp   (npu_m_rresp)
     );
 
-    e1_display u_display (
-        .clk           (clk),
-        .rst_n         (rst_n),
-        .valid         (mmio_valid && display_sel),
-        .write         (mmio_write),
-        .addr          (mmio_addr[7:2]),
-        .wdata         (mmio_wdata),
-        .rdata         (display_rdata),
-        .irq_vsync     (irq_vsync),
-        .scan_hsync    (display_scan_hsync),
-        .scan_vsync    (display_scan_vsync),
-        .scan_active   (display_scan_active),
-        .scan_x        (display_scan_x),
-        .scan_y        (display_scan_y),
-        .scan_fb_addr  (display_scan_fb_addr),
-        .scan_rgb      (display_scan_rgb),
-        .fb_read_valid (display_fb_read_valid),
-        .fb_read_addr  (display_fb_read_addr),
-        .fb_read_data  (display_fb_read_data),
-        .fb_read_ready (display_fb_read_ready)
+    e1_display_scanout #(
+        .ADDR_WIDTH  (AXI_ADDR_W),
+        .DATA_WIDTH  (DISPLAY_AXI_DATA_W),
+        .ID_WIDTH    (DISPLAY_AXI_ID_W),
+        .FIFO_DEPTH  (64),
+        .OUTSTANDING (4)
+    ) u_display (
+        .clk              (clk),
+        .rst_n            (rst_n),
+        .valid            (mmio_valid && display_sel),
+        .write            (mmio_write),
+        .addr             (mmio_addr[7:2]),
+        .wdata            (mmio_wdata),
+        .rdata            (display_rdata),
+        .m_arvalid        (display_axi_arvalid),
+        .m_arready        (display_axi_arready),
+        .m_arid           (display_axi_arid),
+        .m_araddr         (display_axi_araddr),
+        .m_arlen          (display_axi_arlen),
+        .m_arsize         (display_axi_arsize),
+        .m_arburst        (display_axi_arburst),
+        .m_arcache        (display_axi_arcache),
+        .m_arprot         (display_axi_arprot),
+        .m_arqos          (display_axi_arqos),
+        .m_rvalid         (display_axi_rvalid),
+        .m_rready         (display_axi_rready),
+        .m_rid            (display_axi_rid),
+        .m_rlast          (display_axi_rlast),
+        .m_rdata          (display_axi_rdata),
+        .m_rresp          (display_axi_rresp),
+        .pix_de           (display_scan_active),
+        .pix_hsync        (display_scan_hsync),
+        .pix_vsync        (display_scan_vsync),
+        .pix_valid        (),
+        .pix_data         (display_scan_rgb),
+        .dcs_vsync_pulse  (),
+        .irq_vsync        (irq_vsync)
+    );
+
+    e1_axi4_width_converter #(
+        .UPSTREAM_DATA_W   (DISPLAY_AXI_DATA_W),
+        .DOWNSTREAM_DATA_W (AXI_DATA_W),
+        .ID_W              (DISPLAY_AXI_ID_W),
+        .ADDR_W            (AXI_ADDR_W),
+        .USER_W            (1),
+        .BURST_LEN_W       (BURST_LEN_W)
+    ) u_display_scanout_width (
+        .clk_i       (clk),
+        .rst_ni      (rst_n),
+        .up_aw_id    ('0),
+        .up_aw_addr  ('0),
+        .up_aw_len   ('0),
+        .up_aw_size  ('0),
+        .up_aw_burst ('0),
+        .up_aw_lock  (1'b0),
+        .up_aw_cache ('0),
+        .up_aw_prot  ('0),
+        .up_aw_qos   (QOS_DISPLAY_RT),
+        .up_aw_region('0),
+        .up_aw_atop  ('0),
+        .up_aw_user  (1'b0),
+        .up_aw_valid (1'b0),
+        .up_aw_ready (),
+        .up_w_data   ('0),
+        .up_w_strb   ('0),
+        .up_w_last   (1'b0),
+        .up_w_user   (1'b0),
+        .up_w_valid  (1'b0),
+        .up_w_ready  (),
+        .up_b_id     (),
+        .up_b_resp   (),
+        .up_b_user   (),
+        .up_b_valid  (),
+        .up_b_ready  (1'b1),
+        .up_ar_id    (display_axi_arid),
+        .up_ar_addr  (display_axi_araddr),
+        .up_ar_len   (display_axi_arlen),
+        .up_ar_size  (display_axi_arsize),
+        .up_ar_burst (display_axi_arburst),
+        .up_ar_lock  (1'b0),
+        .up_ar_cache (display_axi_arcache),
+        .up_ar_prot  (display_axi_arprot),
+        .up_ar_qos   (display_axi_arqos),
+        .up_ar_region('0),
+        .up_ar_user  (1'b0),
+        .up_ar_valid (display_axi_arvalid),
+        .up_ar_ready (display_axi_arready),
+        .up_r_id     (display_axi_rid),
+        .up_r_data   (display_axi_rdata),
+        .up_r_resp   (display_axi_rresp),
+        .up_r_last   (display_axi_rlast),
+        .up_r_user   (),
+        .up_r_valid  (display_axi_rvalid),
+        .up_r_ready  (display_axi_rready),
+        .dn_aw_id    (display_dn_awid),
+        .dn_aw_addr  (display_dn_awaddr),
+        .dn_aw_len   (display_dn_awlen),
+        .dn_aw_size  (display_dn_awsize),
+        .dn_aw_burst (display_dn_awburst),
+        .dn_aw_lock  (display_dn_awlock),
+        .dn_aw_cache (display_dn_awcache),
+        .dn_aw_prot  (display_dn_awprot),
+        .dn_aw_qos   (display_dn_awqos),
+        .dn_aw_region(display_dn_awregion),
+        .dn_aw_atop  (display_dn_awatop),
+        .dn_aw_user  (display_dn_awuser),
+        .dn_aw_valid (display_dn_awvalid),
+        .dn_aw_ready (display_dn_awready),
+        .dn_w_data   (display_dn_wdata),
+        .dn_w_strb   (display_dn_wstrb),
+        .dn_w_last   (display_dn_wlast),
+        .dn_w_user   (display_dn_wuser),
+        .dn_w_valid  (display_dn_wvalid),
+        .dn_w_ready  (display_dn_wready),
+        .dn_b_id     (display_dn_bid),
+        .dn_b_resp   (display_dn_bresp),
+        .dn_b_user   (display_dn_buser),
+        .dn_b_valid  (display_dn_bvalid),
+        .dn_b_ready  (display_dn_bready),
+        .dn_ar_id    (display_dn_arid),
+        .dn_ar_addr  (display_dn_araddr),
+        .dn_ar_len   (display_dn_arlen),
+        .dn_ar_size  (display_dn_arsize),
+        .dn_ar_burst (display_dn_arburst),
+        .dn_ar_lock  (display_dn_arlock),
+        .dn_ar_cache (display_dn_arcache),
+        .dn_ar_prot  (display_dn_arprot),
+        .dn_ar_qos   (display_dn_arqos),
+        .dn_ar_region(display_dn_arregion),
+        .dn_ar_user  (display_dn_aruser),
+        .dn_ar_valid (display_dn_arvalid),
+        .dn_ar_ready (display_dn_arready),
+        .dn_r_id     (display_dn_rid),
+        .dn_r_data   (display_dn_rdata),
+        .dn_r_resp   (display_dn_rresp),
+        .dn_r_last   (display_dn_rlast),
+        .dn_r_user   (display_dn_ruser),
+        .dn_r_valid  (display_dn_rvalid),
+        .dn_r_ready  (display_dn_rready)
     );
 
     // Weight-buffer SRAM (Sky130 OpenRAM hard-macro at 0x1004_0000).

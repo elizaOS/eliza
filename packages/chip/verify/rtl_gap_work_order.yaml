@@ -33,13 +33,14 @@ areas:
         category: rtl_stub
         severity: critical
         affected_paths:
+          - rtl/cpu/e1_tiny_cpu_contract.sv
           - rtl/cpu/e1_cpu_subsystem_stub.sv
           - rtl/interconnect/e1_linux_soc_contract.sv
           - verify/cocotb/e1_tiny_cpu_contract_tb.sv
           - verify/cocotb/test_tiny_cpu_execution.py
         partial_closure_evidence:
           - docs/rtl/cpu-config-selection.md (Chipyard Rocket RV64GC + SV39 + L1 I/D selection, wrapper layout under rtl/wrappers/, pin TODO)
-        current_evidence: Tiny single-issue RV contract model supports only a small unprivileged instruction subset and halts on unsupported opcodes, fetch errors, and unaligned word accesses. Selected v0 CPU config is documented in docs/rtl/cpu-config-selection.md; generated RTL not yet imported.
+        current_evidence: Tiny single-issue RV contract model now lives under the production-neutral module/file name rtl/cpu/e1_tiny_cpu_contract.sv. It supports only a small unprivileged instruction subset and halts on unsupported opcodes, fetch errors, and unaligned word accesses. The legacy rtl/cpu/e1_cpu_subsystem_stub.sv name is a thin compatibility alias only. Selected v0 CPU config is documented in docs/rtl/cpu-config-selection.md; generated RTL not yet imported.
         blocking_gate: Linux-capable SoC, bootable firmware, and product claims must remain blocked while this stub is present.
         closure_evidence: Production RV64 integration with privileged mode, reset/interrupt/timer path, boot ROM handoff, memory map, generated DTS, and executable boot smoke evidence.
         work_order: Replace the tiny contract model with a production RV64 core integration and privileged boot path.
@@ -48,6 +49,7 @@ areas:
         category: incomplete_subsystem
         severity: critical
         affected_paths:
+          - rtl/cpu/e1_tiny_cpu_contract.sv
           - rtl/cpu/e1_cpu_subsystem_stub.sv
           - rtl/bootrom/e1_bootrom.sv
           - scripts/run_qemu.sh
@@ -67,15 +69,18 @@ areas:
         category: misleading_pass_gate
         severity: medium
         affected_paths:
+          - rtl/cpu/e1_tiny_cpu_contract.sv
           - rtl/cpu/e1_cpu_subsystem_stub.sv
           - Makefile
           - scripts/run_rtl_check.sh
         partial_closure_evidence:
-          - docs/rtl/cpu-config-selection.md (integration step 7 schedules the rename to e1_tiny_cpu_contract with a one-release alias)
-        current_evidence: The executable model is still named as a stub and is included in normal RTL and synthesis source lists; rename plan now documented but not yet executed.
-        blocking_gate: Passing lint/synthesis must not imply that a production CPU subsystem exists.
-        closure_evidence: Production-named CPU wrapper with any compatibility alias clearly documented as non-product scaffolding.
-        work_order: Preserve the legacy e1_cpu_subsystem_stub wrapper only as a compatibility alias once a production-named CPU wrapper exists.
+          - rtl/cpu/e1_tiny_cpu_contract.sv (primary tiny executable CPU contract implementation)
+          - rtl/cpu/e1_cpu_subsystem_stub.sv (thin compatibility alias wrapping e1_tiny_cpu_contract)
+          - verify/cocotb/e1_tiny_cpu_contract_tb.sv (testbench instantiates e1_tiny_cpu_contract directly)
+        current_evidence: The executable tiny CPU contract has been renamed to e1_tiny_cpu_contract and the legacy e1_cpu_subsystem_stub module is only a compatibility wrapper. Normal RTL/cocotb source lists include the primary module before the alias. This resolves the misleading primary module name, but it is still not a production CPU/AP wrapper.
+        blocking_gate: Passing lint/synthesis must not imply that a production CPU subsystem exists; e1_tiny_cpu_contract remains a non-Linux-capable contract model.
+        closure_evidence: Real production CPU/AP wrapper with privileged mode, MMU/cache/timer/interrupt evidence, boot ROM handoff, generated DTS, and executable boot transcript.
+        work_order: Mitigated for the misleading-name risk; keep the legacy e1_cpu_subsystem_stub wrapper as compatibility-only and do not promote e1_tiny_cpu_contract beyond scaffold status. Replace the tiny contract with the selected production CPU/AP wrapper when generated RTL lands.
   interconnect:
     current_posture: axi_lite_contract_fabric
     local_closures:
@@ -207,10 +212,26 @@ areas:
           - verify/cocotb/test_e1_npu.py
           - verify/verilator/test_npu_gemm.cpp
           - docs/three-week-prototype-workstreams.md
-        current_evidence: Tests exercise selected operations and a small GEMM case but do not publish opcode, shape, saturation, invalid-programming, or fallback coverage summaries.
-        blocking_gate: Passing cocotb/verilator must be interpreted as smoke and directed contract coverage.
-        closure_evidence: Machine-readable coverage summary for all exposed opcodes, dimensions, status bits, IRQ paths, invalid configs, and software fallback cases.
-        work_order: Add coverage accounting and require it in CI before expanding NPU pass claims.
+          - scripts/check_npu_coverage_summary.py
+          - build/reports/npu_cocotb_coverage.json
+          - build/reports/npu_coverage_summary.json
+        current_evidence: >-
+          `make cocotb-npu` now runs 21 directed RTL tests, the focused
+          runtime fallback pytest, and `scripts/check_npu_coverage_summary.py`;
+          the generated summary records all exposed opcode IDs,
+          GEMM_S8/GEMM_S4/vector shapes, status/error bits, IRQ clear/assert
+          paths, invalid-programming bins, descriptor read/write accounting,
+          counter bins, and software fallback boundary coverage.
+        blocking_gate: >-
+          Passing cocotb/verilator is still only directed local RTL/runtime
+          coverage; NPU production accelerator, NNAPI, model throughput, power,
+          and phone-class claims remain blocked by `npu-production-accelerator`
+          and `npu-formal-engine-coverage`.
+        closure_evidence: >-
+          Machine-readable coverage summary for all exposed opcodes,
+          dimensions, status bits, IRQ paths, invalid configs, and software
+          fallback cases at `build/reports/npu_coverage_summary.json`.
+        work_order: Mitigated for coverage accounting; keep production accelerator claims blocked until the microarchitecture/formal gaps close.
       - id: npu-formal-engine-coverage
         status: open
         category: proof_gap
@@ -307,11 +328,26 @@ areas:
         partial_closure_evidence:
           - arch/display.md "v0 reference panel" section (720x1280 MIPI-DSI selection and DCS init sequence summary)
           - rtl/display/e1_display_scanout.sv (production AXI4 read master + line FIFO + byte-assembly format unpack + register-programmed mode timing + DPI/DSI boundary, lint-clean under verilator --lint-only)
-          - verify/cocotb/display/test_display_scanout.py (XR24/RGB565/packed-RGB888 framebuffer scanout matches backing DRAM; mode timing matches programmed porches; forced underflow sets the status bit and recovers) via scripts/check_display_scanout.py
-        current_evidence: A standalone production scanout controller (rtl/display/e1_display_scanout.sv) now models the buildable subset — AXI4 read master with QoS=DISPLAY_RT, INCR bursts, multiple outstanding reads, a line FIFO with backpressure, a fail-closed underflow policy (defined fill colour + sticky status + counter), byte-assembly pixel-format unpack (RGB565/packed RGB888/XRGB8888), register-programmed H/V mode timing, and the digital controller->PHY DPI/DSI boundary. The DSI analog PHY, D-PHY serializers, panel DCS init, and async pixel-clock CDC remain physical dependencies. The legacy e1_display.sv SRAM-fetch timing generator is unchanged and still wired into e1_soc_top; integrating e1_display_scanout into the SoC fabric + DTS is a follow-on.
-        blocking_gate: Display subsystem pass must not imply real panel bring-up, the DSI analog PHY, or SoC-fabric integration of the new scanout master.
-        closure_evidence: SoC-fabric integration of e1_display_scanout (AXI4 master port on the NoC), DTS binding, panel DCS init at the DSI-host boundary, async pixel-clock CDC, and hardware-in-loop or cycle-accurate scanout-bandwidth trace evidence.
-        work_order: Wire rtl/display/e1_display_scanout.sv into e1_soc_top's AXI4 fabric (replacing the SRAM-backed per-pixel fetch), add the DTS node + DSI-host command boundary, and close the async pixel-clock CDC.
+          - verify/cocotb/display/test_display_scanout.py (XR24/RGB565/packed-RGB888 framebuffer scanout matches backing DRAM; mode timing matches programmed porches; forced underflow sets the status bit and recovers; disabled state, unsupported formats, AR stride monotonicity, AXI error status, and DCS/IRQ vsync cadence are property-checked) via scripts/check_display_scanout.py
+        current_evidence: >-
+          A production scanout controller (rtl/display/e1_display_scanout.sv)
+          models the buildable subset — AXI4 read master with QoS=DISPLAY_RT,
+          INCR bursts, multiple outstanding reads, a line FIFO with
+          backpressure, a fail-closed underflow policy (defined fill colour +
+          sticky status + counter), byte-assembly pixel-format unpack
+          (RGB565/packed RGB888/XRGB8888), register-programmed H/V mode
+          timing, and the digital controller->PHY DPI/DSI boundary. It is now
+          wired into e1_soc_integrated at the 0x1003_0000 display aperture:
+          its 32-bit AXI4 read master is upsized to the 128-bit fabric and
+          attached as fabric master[11], with display_scanout_reads_fabric_dram
+          proving reads through e1_axi4_interconnect into e1_dram_ctrl. The
+          legacy e1_soc_top path still uses e1_display.sv for v0 smoke
+          compatibility. The DSI analog PHY, D-PHY serializers, panel DCS init,
+          DTS/software binding, async pixel-clock CDC, and HIL/bandwidth trace
+          evidence remain physical/product dependencies.
+        blocking_gate: Display subsystem pass must not imply real panel bring-up, the DSI analog PHY, DTS/software integration, or e1_soc_top v0-path replacement.
+        closure_evidence: DTS binding, panel DCS init at the DSI-host boundary, async pixel-clock CDC, e1_soc_top v0-path replacement or formal deprecation of that path, and hardware-in-loop or cycle-accurate scanout-bandwidth trace evidence.
+        work_order: Add the DTS node + DSI-host command boundary, close the async pixel-clock CDC, and either replace e1_soc_top's legacy SRAM-backed display path or formally deprecate that top in favor of e1_soc_integrated.
       - id: display-proof-gap
         status: open
         category: proof_gap
@@ -322,11 +358,21 @@ areas:
           - verify/formal/e1_soc_top_formal.sv
           - scripts/run_formal.sh
         partial_closure_evidence:
-          - verify/cocotb/display/test_display_scanout.py (directed KAT — framebuffer-match per format, programmed-mode hsync/vsync/de cadence, and forced-underflow status+recovery) via scripts/check_display_scanout.py
-        current_evidence: The new scanout controller has directed cocotb KAT coverage (format-correct framebuffer match, mode timing, underflow status+recovery); dedicated formal properties constraining timing/coordinates/IRQ cadence/read handshakes are still a follow-on.
-        blocking_gate: Formal pass does not cover display correctness.
-        closure_evidence: Assertions for hsync/vsync cadence, active window bounds, framebuffer address monotonicity, disabled-state behavior, unsupported formats, and read-ready stalls.
-        work_order: Add display-specific formal or property-driven cocotb coverage.
+          - verify/cocotb/display/test_display_scanout.py (property-driven cocotb coverage — framebuffer-match per format, programmed-mode hsync/vsync/de cadence, DCS/IRQ vsync cadence, disabled-state quiescence, unsupported-format rejection, AR address monotonicity/stride alignment, AXI error status accounting, and forced-underflow status+recovery) via scripts/check_display_scanout.py
+          - scripts/check_display_scanout.py (requires the 10 named scanout/property tests and resolves the vendored OSS CAD Suite Verilator when it is not on PATH)
+        current_evidence: >-
+          The scanout controller now has property-driven cocotb coverage in
+          addition to directed KATs. The standalone display gate requires 10
+          tests: format-correct framebuffer match for XR24/RGB565/packed
+          RGB888, programmed hsync/vsync/de timing, forced underflow
+          status+recovery, disabled-state quiescence, unsupported-format
+          rejection, framebuffer AR monotonicity and stride alignment, AXI
+          SLVERR/DECERR status accounting, and DCS/IRQ vsync cadence.
+          Dedicated SVA/formal display proofs remain a follow-on; current
+          closure is cocotb property coverage plus lint.
+        blocking_gate: Formal pass still does not cover display correctness; report this as directed/property cocotb coverage, not full formal display proof.
+        closure_evidence: Optional SVA/formal assertions for the same hsync/vsync cadence, active window bounds, framebuffer address monotonicity, disabled-state behavior, unsupported formats, read-ready stalls, and AXI error accounting.
+        work_order: Add display-specific SVA/formal coverage if this subsystem needs formal signoff beyond the current property-driven cocotb gate.
   bootrom:
     current_posture: identity_contract_rom_plus_executable_reset_scaffold
     local_closures:
@@ -408,10 +454,20 @@ areas:
           - scripts/yosys_formal_dma.ys
           - scripts/check_mvp_status.py
           - scripts/pipeline_check.py
-        current_evidence: When SymbiYosys is missing, run_formal.sh can pass using Yosys structural/SAT fallback and generated fallback logs.
+          - scripts/test_pipeline_formal_manifest.py
+        current_evidence: >-
+          `run_formal.sh` writes `build/reports/formal_manifest.json` with an
+          explicit evidence_class per target (`fallback_structural_only`,
+          `fallback_yosys_sat`, `blocked_requires_sby`, `sby_bmc`, or
+          `sby_bmc_deep`) and a strict-release boundary. `pipeline_check.py`
+          rejects non-SBY evidence when `--strict-formal` is set, requires
+          `mode=sby-deep-top` for strict signoff, and
+          `scripts/test_pipeline_formal_manifest.py` now regression-tests that
+          labeled fallback passes only non-strict scaffold validation and fails
+          strict formal validation.
         blocking_gate: Release or signoff CI must set REQUIRE_SBY=1 and, where needed, REQUIRE_DEEP_FORMAL=1.
         closure_evidence: CI distinguishes structural checks from property proofs and records solver, depth, status, and covered modules per proof.
-        work_order: Keep fallback labeled as fallback and prevent it from satisfying deep formal signoff gates.
+        work_order: Mitigated for strict formal signoff separation; keep fallback labeled as fallback and prevent it from satisfying deep formal signoff gates.
       - id: qemu-renode-scaffold-pass-risk
         status: open
         category: misleading_pass_gate
@@ -419,8 +475,21 @@ areas:
         affected_paths:
           - scripts/run_qemu.sh
           - scripts/run_renode.sh
+          - scripts/archive_release.sh
+          - scripts/check_release_archive.py
+          - scripts/test_release_archive_simulator_evidence.py
           - docs/three-week-prototype-workstreams.md
-        current_evidence: Current checks can validate scaffold semantics or tool presence, but they are not executable e1-chip boot validation.
+        current_evidence: >-
+          QEMU and Renode checks are split from e1-chip boot validation:
+          `scripts/run_qemu.sh --check` archives `qemu_smoke.log` plus
+          `qemu_smoke.manifest` as qemu-virt executable-transcript evidence,
+          `scripts/run_renode.sh --check` emits
+          `build/renode/eliza_e1_status.json` with a qemu-virt-only claim
+          boundary, and release archives now copy `build/renode` alongside
+          `build/reports`. `scripts/check_release_archive.py` requires both
+          the QEMU smoke manifest and the Renode status report, while
+          `scripts/test_release_archive_simulator_evidence.py` proves archives
+          block if either simulator evidence boundary artifact is missing.
         blocking_gate: Boot/OS readiness must remain blocked without checked firmware image and serial transcript evidence.
-        closure_evidence: Real QEMU/Renode run under timeout against a contract-compatible model or explicit non-e1 reference target, with transcript and exit-status checks.
-        work_order: Split scaffold checks from boot-validation checks in status reporting and release archives.
+        closure_evidence: Status reporting and release archives distinguish scaffold/preflight checks from real boot transcript evidence; real e1-chip boot closure still requires a contract-compatible model, firmware image, DTB, serial transcript, and exit-status checks.
+        work_order: Mitigated for qemu-virt/Renode scaffold pass risk; keep e1-chip boot/OS readiness blocked until the real boot evidence exists.

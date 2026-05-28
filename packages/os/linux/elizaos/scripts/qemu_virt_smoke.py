@@ -451,7 +451,7 @@ def run_harness(
     if u_boot is not None:
         cmd.extend(["--u-boot", str(u_boot)])
 
-    return subprocess.run(cmd, capture_output=True, text=True, check=False)
+    return subprocess.run(cmd, text=True, check=False)
 
 
 def write_report(

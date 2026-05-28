@@ -744,6 +744,46 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
         terminal_contract = [
             str(pin) for pin in pad_record.get("local_terminal_contract", []) if pin is not None
         ]
+        non_signal_pad_contract = [
+            str(pin)
+            for pin in pad_record.get("non_signal_pad_contract", [])
+            if pin is not None
+        ]
+        npth_feature_count = int(pad_record.get("npth_mechanical_feature_count", 0) or 0)
+        npth_feature_contract = [
+            dict(item)
+            for item in pad_record.get("npth_mechanical_feature_contract", [])
+            if isinstance(item, dict)
+        ]
+        pad_contract_records = []
+        for pad_name in pad_names:
+            if pad_name in terminal_contract:
+                contract_kind = "electrical_terminal"
+                contract_source = (
+                    pad_record.get("pinout_file")
+                    or pad_record.get("local_terminal_contract_source", "")
+                )
+                covered = True
+            elif pad_name in non_signal_pad_contract:
+                contract_kind = "non_signal_mechanical_pad"
+                contract_source = pad_record.get("non_signal_pad_contract_source", "")
+                covered = True
+            elif pad_name == "" and npth_feature_count > 0 and npth_feature_contract:
+                contract_kind = "npth_mechanical_feature"
+                contract_source = pad_record.get("npth_mechanical_feature_contract_source", "")
+                covered = True
+            else:
+                contract_kind = "uncovered_pad_visual"
+                contract_source = ""
+                covered = False
+            pad_contract_records.append(
+                {
+                    "pad": pad_name,
+                    "contract_kind": contract_kind,
+                    "contract_source": contract_source,
+                    "covered": covered,
+                }
+            )
         terminal_contract_matches_pad_visuals = all(pin in pad_names for pin in terminal_contract)
         models.append(
             {
@@ -767,30 +807,20 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
                 "mechanical_pads": [
                     str(pin) for pin in pad_record.get("mechanical_pads", []) if pin is not None
                 ],
-                "npth_mechanical_feature_count": int(
-                    pad_record.get("npth_mechanical_feature_count", 0) or 0
-                ),
+                "npth_mechanical_feature_count": npth_feature_count,
                 "npth_mechanical_features": [
                     dict(item)
                     for item in pad_record.get("npth_mechanical_features", [])
                     if isinstance(item, dict)
                 ],
-                "npth_mechanical_feature_contract": [
-                    dict(item)
-                    for item in pad_record.get("npth_mechanical_feature_contract", [])
-                    if isinstance(item, dict)
-                ],
+                "npth_mechanical_feature_contract": npth_feature_contract,
                 "npth_mechanical_feature_contract_source": pad_record.get(
                     "npth_mechanical_feature_contract_source", ""
                 ),
                 "npth_mechanical_feature_contract_matches_footprint": bool(
                     pad_record.get("npth_mechanical_feature_contract_matches_footprint", True)
                 ),
-                "non_signal_pad_contract": [
-                    str(pin)
-                    for pin in pad_record.get("non_signal_pad_contract", [])
-                    if pin is not None
-                ],
+                "non_signal_pad_contract": non_signal_pad_contract,
                 "non_signal_pad_contract_source": pad_record.get(
                     "non_signal_pad_contract_source", ""
                 ),
@@ -799,6 +829,17 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
                 ),
                 "pad_visual_count": len(pads) if isinstance(pads, list) else 0,
                 "pad_names": pad_names,
+                "pad_contract_records": pad_contract_records,
+                "pad_contract_covered_count": sum(
+                    1 for record in pad_contract_records if record["covered"]
+                ),
+                "uncovered_pad_visuals": [
+                    record["pad"] for record in pad_contract_records if not record["covered"]
+                ],
+                "all_pad_visuals_have_contract": all(
+                    record["covered"] for record in pad_contract_records
+                )
+                and len(pad_contract_records) == len(pads),
                 "pinout_file": pad_record.get("pinout_file", ""),
                 "pinout_status": pad_record.get("pinout_status", ""),
                 "coverage": pad_record.get("coverage", ""),
@@ -826,6 +867,12 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
         for model in models
         if model["terminal_contract_count"] > 0 or int(model["electrical_pad_count"] or 0) == 0
     ]
+    total_pad_contract_visual_count = sum(
+        int(model.get("pad_contract_covered_count") or 0) for model in models
+    )
+    uncovered_pad_visual_count = sum(
+        len(model.get("uncovered_pad_visuals", [])) for model in models
+    )
     layer_counts: dict[str, int] = {}
     coverage_counts: dict[str, int] = {}
     pinout_status_counts: dict[str, int] = {}
@@ -910,6 +957,13 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
                 "models_with_terminal_contract_or_no_electrical_pads_count": len(
                     models_with_terminal_contract_or_no_pads
                 ),
+                "total_pad_contract_visual_count": total_pad_contract_visual_count,
+                "uncovered_pad_visual_count": uncovered_pad_visual_count,
+                "all_model_pad_visuals_have_contract": all(
+                    model.get("all_pad_visuals_have_contract") is True for model in models
+                )
+                and total_pad_contract_visual_count
+                == sum(int(model.get("pad_visual_count") or 0) for model in models),
                 "non_signal_pad_contract_count": sum(
                     len(model["non_signal_pad_contract"]) for model in models
                 ),
@@ -976,26 +1030,45 @@ def write_local_envelope_step(path: Path, model: dict[str, Any]) -> None:
     try:
         import cadquery as cq
     except ModuleNotFoundError:
-        venv_python = ROOT / ".venv/bin/python"
-        if venv_python.is_file():
-            subprocess.run(
-                [
-                    str(venv_python),
-                    "-c",
-                    (
-                        "import cadquery as cq, sys\n"
-                        "path, width, depth, height = sys.argv[1], float(sys.argv[2]), "
-                        "float(sys.argv[3]), float(sys.argv[4])\n"
-                        "shape = cq.Workplane('XY').box(width, depth, height)\n"
-                        "cq.exporters.export(shape, path)\n"
-                    ),
-                    str(path),
-                    str(width),
-                    str(depth),
-                    str(height),
-                ],
-                check=True,
-            )
+        try:
+            from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+            from OCP.IFSelect import IFSelect_RetDone
+            from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
+            from OCP.gp import gp_Pnt
+        except ModuleNotFoundError:
+            venv_python = ROOT / ".venv/bin/python"
+            if venv_python.is_file():
+                subprocess.run(
+                    [
+                        str(venv_python),
+                        "-c",
+                        (
+                            "import cadquery as cq, sys\n"
+                            "path, width, depth, height = sys.argv[1], float(sys.argv[2]), "
+                            "float(sys.argv[3]), float(sys.argv[4])\n"
+                            "shape = cq.Workplane('XY').box(width, depth, height)\n"
+                            "cq.exporters.export(shape, path)\n"
+                        ),
+                        str(path),
+                        str(width),
+                        str(depth),
+                        str(height),
+                    ],
+                    check=True,
+                )
+                return
+        else:
+            shape = BRepPrimAPI_MakeBox(
+                gp_Pnt(-width / 2.0, -depth / 2.0, -height / 2.0),
+                width,
+                depth,
+                height,
+            ).Shape()
+            writer = STEPControl_Writer()
+            writer.Transfer(shape, STEPControl_AsIs)
+            status = writer.Write(str(path))
+            if status != IFSelect_RetDone:
+                raise RuntimeError(f"OCP STEP write failed: {status}")
             return
         reference = str(model.get("reference", "LOCAL_ENVELOPE"))
         half_w = width / 2.0
@@ -1102,18 +1175,47 @@ def validate_local_envelope_step(path: Path, model: dict[str, Any]) -> dict[str,
         data = json.loads(result.stdout)
         return data if isinstance(data, dict) else {"import_status": "invalid_output"}
 
+    def validate_with_ocp() -> dict[str, Any]:
+        from OCP.Bnd import Bnd_Box
+        from OCP.BRepBndLib import BRepBndLib
+        from OCP.IFSelect import IFSelect_RetDone
+        from OCP.STEPControl import STEPControl_Reader
+
+        reader = STEPControl_Reader()
+        status = reader.ReadFile(str(path))
+        if status != IFSelect_RetDone:
+            raise RuntimeError(f"OCP STEP read failed: {status}")
+        reader.TransferRoots()
+        shape = reader.OneShape()
+        box = Bnd_Box()
+        BRepBndLib.Add_s(shape, box)
+        xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
+        return {
+            "import_status": "pass",
+            "solid_type": "Solid",
+            "validation_tool": "ocp_step_reader",
+            "bbox_mm": {
+                "width": float(xmax - xmin),
+                "depth": float(ymax - ymin),
+                "height": float(zmax - zmin),
+            },
+        }
+
     try:
         validation = validate_with_python()
     except ModuleNotFoundError:
-        venv_python = ROOT / ".venv/bin/python"
-        if not venv_python.is_file():
-            validation = {
-                "import_status": "not_run_cadquery_unavailable",
-                "solid_type": "",
-                "bbox_mm": {},
-            }
-        else:
-            validation = validate_with_python(venv_python)
+        try:
+            validation = validate_with_ocp()
+        except ModuleNotFoundError:
+            venv_python = ROOT / ".venv/bin/python"
+            if not venv_python.is_file():
+                validation = {
+                    "import_status": "not_run_cadquery_or_ocp_unavailable",
+                    "solid_type": "",
+                    "bbox_mm": {},
+                }
+            else:
+                validation = validate_with_python(venv_python)
     except Exception as exc:
         validation = {
             "import_status": "failed",
@@ -1234,6 +1336,12 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             ),
             "pad_visual_count": model.get("pad_visual_count", 0),
             "pad_names": model.get("pad_names", []),
+            "pad_contract_records": model.get("pad_contract_records", []),
+            "pad_contract_covered_count": model.get("pad_contract_covered_count", 0),
+            "uncovered_pad_visuals": model.get("uncovered_pad_visuals", []),
+            "all_pad_visuals_have_contract": model.get(
+                "all_pad_visuals_have_contract", False
+            ),
             "pinout_file": model.get("pinout_file", ""),
             "coverage": model.get("coverage", ""),
             "visual_package_class": model.get("visual_package_class", ""),
@@ -1301,6 +1409,12 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                     model.get("support_pattern_has_explicit_provenance", False)
                 ),
                 "terminal_contract_count": int(model.get("terminal_contract_count", 0) or 0),
+                "pad_contract_covered_count": int(
+                    model.get("pad_contract_covered_count", 0) or 0
+                ),
+                "all_pad_visuals_have_contract": bool(
+                    model.get("all_pad_visuals_have_contract", False)
+                ),
                 "terminal_contract_matches_pad_visuals": bool(
                     model.get("terminal_contract_matches_pad_visuals", False)
                 ),
@@ -1439,6 +1553,21 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                 for model in models
                 if isinstance(model, dict)
             ),
+            "total_pad_contract_visual_count": sum(
+                int(model.get("pad_contract_covered_count", 0) or 0)
+                for model in models
+                if isinstance(model, dict)
+            ),
+            "uncovered_pad_visual_count": sum(
+                len(model.get("uncovered_pad_visuals", []))
+                for model in models
+                if isinstance(model, dict)
+            ),
+            "all_model_pad_visuals_have_contract": all(
+                model.get("all_pad_visuals_have_contract") is True
+                for model in models
+                if isinstance(model, dict)
+            ),
             "non_signal_pad_contract_total_count": sum(
                 len(model.get("non_signal_pad_contract", []))
                 for model in models
@@ -1515,6 +1644,23 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             ),
             "all_model_records_have_expected_supplier_step_file": all(
                 bool(item.get("expected_supplier_step_file")) for item in model_records
+            ),
+            "all_record_local_step_hashes_match_files": all(
+                bool(item.get("local_discrete_step_file"))
+                and item.get("local_discrete_step_sha256")
+                == sha256(ROOT / str(item.get("local_discrete_step_file")))
+                for item in model_records
+            ),
+            "all_record_local_step_sizes_match_files": all(
+                bool(item.get("local_discrete_step_file"))
+                and int(item.get("local_discrete_step_bytes", 0) or 0)
+                == (ROOT / str(item.get("local_discrete_step_file"))).stat().st_size
+                for item in model_records
+            ),
+            "all_record_metadata_hashes_match_files": all(
+                bool(item.get("metadata"))
+                and item.get("metadata_sha256") == sha256(path / str(item.get("metadata")))
+                for item in model_records
             ),
             "local_discrete_step_imported_solid_count": sum(
                 1

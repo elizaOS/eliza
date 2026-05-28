@@ -21,6 +21,7 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/display/e1_display.sv \
 	$(REPO)/rtl/cpu/e1_cva6_wrapper.sv \
 	$(REPO)/rtl/cpu/e1_cpu_axi_bridge.sv \
+	$(REPO)/rtl/cpu/e1_tiny_cpu_contract.sv \
 	$(REPO)/rtl/cpu/e1_cpu_subsystem_stub.sv \
 	$(REPO)/rtl/memory/e1_weight_buffer_sram.sv \
 	$(REPO)/rtl/interrupts/e1_clint.sv \

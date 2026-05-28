@@ -18,6 +18,7 @@ class ChipOsEnvironmentPreflightTests(unittest.TestCase):
             with (
                 mock.patch.object(preflight, "REPO", repo),
                 mock.patch.object(preflight, "ENV_DEFAULT_PATHS", {}),
+                mock.patch.object(preflight, "ENV_DEFAULT_COMMANDS", {}),
                 mock.patch.object(preflight, "TOOL_DEFAULT_PATHS", {}),
             ):
                 report = preflight.build_report(env={}, which=lambda _name: None)
@@ -60,6 +61,7 @@ class ChipOsEnvironmentPreflightTests(unittest.TestCase):
                     "ENV_DEFAULT_PATHS",
                     {"AOSP_DIR": (aosp,)},
                 ),
+                mock.patch.object(preflight, "ENV_DEFAULT_COMMANDS", {}),
                 mock.patch.object(preflight, "TOOL_DEFAULT_PATHS", {}),
             ):
                 report = preflight.build_report(env={}, which=lambda _name: "/bin/tool")

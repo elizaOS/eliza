@@ -115,6 +115,21 @@ def build_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
         )
 
     manifest_status = "blocked" if blocked_artifacts else "passed"
+    findings = [
+        {
+            "code": f"missing_or_invalid_android_npu_artifact_{name}",
+            "severity": "blocker",
+            "message": f"Android e1-NPU proof artifact {name} is not ready",
+            "evidence": state.get("path"),
+            "next_step": (
+                "Capture the required Android e1-NPU artifact with the template-listed "
+                "markers, then rerun scripts/assemble_e1_npu_android_proof_manifest.py."
+            ),
+            "blocked_reason": state.get("blocked_reason", "missing_required_markers"),
+            "marker_errors": state.get("marker_errors", []),
+        }
+        for name, state in blocked_artifacts.items()
+    ]
     manifest = {
         "schema": "eliza.e1_npu_android_proof_manifest.v1",
         "claim_boundary": "android_e1_npu_artifact_manifest_only_not_full_android_compatibility_claim",
@@ -146,6 +161,7 @@ def build_manifest(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, 
             "passed_statuses": sum(1 for value in required_statuses.values() if value == "passed"),
             "blocked_statuses": sum(1 for value in required_statuses.values() if value == "blocked"),
         },
+        "findings": findings,
         "artifact_states": states,
     }
     return manifest, report

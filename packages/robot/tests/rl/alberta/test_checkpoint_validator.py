@@ -66,6 +66,41 @@ def _write_alberta_checkpoint(
         "steps_per_task": total_steps // len(tasks),
         "total_steps": total_steps,
         "episode_steps": 200,
+        "action_scale": 0.3,
+        "action_scale_schedule": {
+            "schema": "alberta-action-scale-schedule-v1",
+            "mode": "no_fall_physical_gate_ramp",
+            "enabled": True,
+            "initial_scale": 0.15,
+            "target_scale": 0.3,
+            "increment": 0.05,
+            "final_scale": 0.3,
+            "criteria": {
+                "failure_rate_lte": 0.0,
+                "physical_success": True,
+                "success_rate_gte": 1.0,
+            },
+            "events": [
+                {
+                    "phase": None,
+                    "task": None,
+                    "step": 0,
+                    "from_scale": None,
+                    "to_scale": 0.15,
+                    "reason": "initial_stability_scale",
+                    "gate_passed": True,
+                },
+                {
+                    "phase": 0,
+                    "task": tasks[0],
+                    "step": total_steps // len(tasks),
+                    "from_scale": 0.15,
+                    "to_scale": 0.3,
+                    "reason": "no_fall_physical_gate_passed",
+                    "gate_passed": True,
+                },
+            ],
+        },
         "eval_episodes": 3,
         "seed": 0,
         "domain_rand": domain_rand,
@@ -124,6 +159,14 @@ def _write_alberta_checkpoint(
                 "eval_episodes": 3,
                 "eval_mean_return": -0.5,
                 "eval_success_rate": 1.0,
+                "failure_rate": 0.0,
+                "physical_success": True,
+                "physical_checks": {"tracked_goal": True},
+                "tracked_body_name": "head_tilt_link",
+                "mean_final_tracked_delta_x_m": 0.4,
+                "mean_final_tracked_delta_y_m": 0.0,
+                "mean_final_tracked_delta_z_m": 0.1,
+                "mean_final_tracked_z_m": 1.0,
                 "eval_failures": 0,
                 "promotion_passed": True,
                 "promotion_reason": "success_rate_gte_threshold",
@@ -191,6 +234,25 @@ def test_alberta_checkpoint_validator_rejects_failed_phase_promotion(tmp_path: P
     manifest["phase_promotion"]["failed_phase"] = 0
     manifest["phase_promotion"]["phases"][0]["promotion_passed"] = False
     manifest["phase_promotion"]["phases"][0]["eval_success_rate"] = 0.0
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    report = validate_alberta_robot_checkpoint(
+        tmp_path,
+        min_steps=10,
+        require_phase_promotion=True,
+    )
+
+    assert report["ok"] is False
+    assert report["checks"]["phase_promotion"] is False
+
+
+def test_alberta_checkpoint_validator_requires_physical_phase_evidence(
+    tmp_path: Path,
+) -> None:
+    _write_alberta_checkpoint(tmp_path)
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    manifest["phase_promotion"]["phases"][0].pop("tracked_body_name")
+    manifest["phase_promotion"]["phases"][0]["physical_checks"] = {}
     (tmp_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
     report = validate_alberta_robot_checkpoint(

@@ -2,7 +2,7 @@
 
 Run: `robot-full-clean-1779556360`
 State: `invalid`
-Observed: `2026-05-27T22:04:52.513287Z`
+Observed: `2026-05-27T22:10:57.922857Z`
 Next action: `inspect_failed_validation_gates`
 
 ## Stage Progress
@@ -22,6 +22,7 @@ Completed: `6` / `6`
 
 - `stage_status`
 - `production_contract`
+- `obstacle_course_benchmark`
 - `video_review`
 - `production_policy_videos`
 - `curriculum_eval`
@@ -40,7 +41,6 @@ Completed: `6` / `6`
 - `asimov1_alberta_production`
 - `backend_comparison`
 - `joint_reach_benchmark`
-- `obstacle_course_benchmark`
 - `brax_full_training_run`
 - `brax_production_checkpoint`
 - `curriculum_eval_native`

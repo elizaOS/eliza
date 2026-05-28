@@ -177,16 +177,24 @@ This gate maps each CAD part to generated review views and the per-part contact 
 - PASS: `usb_pd_controller_escape_trace_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `pd_charger_control_trace_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `charger_battery_power_sense_trace_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `display_bias_power_flex_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `rear_camera_power_flex_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `front_camera_power_flex_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `wifi_bt_host_control_trace_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_host_control_trace_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `bottom_speaker_lead_pair` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `bottom_microphone_flex_leads` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `top_microphone_flex_tail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `earpiece_receiver_lead_flex` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `haptic_flex_tail` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `sensor_hub_i2c_flex_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `sim_esim_signal_flex_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `nfc_loop_antenna_flex_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `cellular_div_rf_feed_development_envelope` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `cellular_gnss_rf_feed_development_envelope` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `wifi_bt_rf1_feed_development_envelope` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `soc_shield_ground_spring_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `radio_shield_ground_spring_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `haptic_lra` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component-review-io-buttons.png`, `component_stack.png`
 - PASS: `sim_tray_keepout` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component_stack.png`
 - PASS: `sim_tray_outline` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component_stack.png`
@@ -210,6 +218,16 @@ This gate maps each CAD part to generated review views and the per-part contact 
 - PASS: `pd_controller_to_charger_control_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `charger_to_battery_power_sense_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `charger_to_battery_power_sense_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `display_bias_power_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `display_bias_power_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `rear_camera_power_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `rear_camera_power_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `front_camera_power_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `front_camera_power_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `wifi_bt_host_control_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `wifi_bt_host_control_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_host_control_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_host_control_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `bottom_speaker_lead_pair_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `bottom_speaker_lead_pair_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `bottom_microphone_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
@@ -220,12 +238,18 @@ This gate maps each CAD part to generated review views and the per-part contact 
 - PASS: `earpiece_receiver_lead_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `haptic_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `haptic_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `sensor_hub_i2c_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `sensor_hub_i2c_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `sim_esim_signal_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `sim_esim_signal_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `nfc_loop_antenna_flex_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `nfc_loop_antenna_flex_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `compute_som_sodimm_carrier_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `compute_som_sodimm_carrier_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `soc_shield_ground_spring_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `soc_shield_ground_spring_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `radio_shield_ground_spring_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `radio_shield_ground_spring_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `cellular_main_rf_feed_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `cellular_main_rf_feed_to_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `cellular_diversity_rf_feed_from_terminal` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`

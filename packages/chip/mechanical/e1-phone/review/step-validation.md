@@ -1,6 +1,6 @@
 # E1 Phone STEP Validation
 
-Status: pass; re-imported 234 part STEP files.
+Status: pass; re-imported 258 part STEP files.
 
 ## Cases
 
@@ -175,16 +175,24 @@ Status: pass; re-imported 234 part STEP files.
 - PASS: `usb_pd_controller_escape_trace_marker` max span error 0.0 mm
 - PASS: `pd_charger_control_trace_marker` max span error 0.0 mm
 - PASS: `charger_battery_power_sense_trace_marker` max span error 0.0 mm
+- PASS: `display_bias_power_flex_marker` max span error 0.0 mm
+- PASS: `rear_camera_power_flex_marker` max span error 0.0 mm
+- PASS: `front_camera_power_flex_marker` max span error 0.0 mm
+- PASS: `wifi_bt_host_control_trace_marker` max span error 0.0 mm
+- PASS: `cellular_host_control_trace_marker` max span error 0.0 mm
 - PASS: `bottom_speaker_lead_pair` max span error 0.0 mm
 - PASS: `bottom_microphone_flex_leads` max span error 0.0 mm
 - PASS: `top_microphone_flex_tail` max span error 0.0 mm
 - PASS: `earpiece_receiver_lead_flex` max span error 0.0 mm
 - PASS: `haptic_flex_tail` max span error 0.0 mm
+- PASS: `sensor_hub_i2c_flex_marker` max span error 0.0 mm
 - PASS: `sim_esim_signal_flex_marker` max span error 0.0 mm
 - PASS: `nfc_loop_antenna_flex_marker` max span error 0.0 mm
 - PASS: `cellular_div_rf_feed_development_envelope` max span error 0.0 mm
 - PASS: `cellular_gnss_rf_feed_development_envelope` max span error 0.0 mm
 - PASS: `wifi_bt_rf1_feed_development_envelope` max span error 0.0 mm
+- PASS: `soc_shield_ground_spring_marker` max span error 0.0 mm
+- PASS: `radio_shield_ground_spring_marker` max span error 0.0 mm
 - PASS: `haptic_lra` max span error 0.0 mm
 - PASS: `sim_tray_keepout` max span error 0.0 mm
 - PASS: `sim_tray_outline` max span error 0.0 mm
@@ -208,6 +216,16 @@ Status: pass; re-imported 234 part STEP files.
 - PASS: `pd_controller_to_charger_control_to_terminal` max span error 0.0 mm
 - PASS: `charger_to_battery_power_sense_from_terminal` max span error 0.0 mm
 - PASS: `charger_to_battery_power_sense_to_terminal` max span error 0.0 mm
+- PASS: `display_bias_power_flex_from_terminal` max span error 0.0 mm
+- PASS: `display_bias_power_flex_to_terminal` max span error 0.0 mm
+- PASS: `rear_camera_power_flex_from_terminal` max span error 0.0 mm
+- PASS: `rear_camera_power_flex_to_terminal` max span error 0.0 mm
+- PASS: `front_camera_power_flex_from_terminal` max span error 0.0 mm
+- PASS: `front_camera_power_flex_to_terminal` max span error 0.0 mm
+- PASS: `wifi_bt_host_control_from_terminal` max span error 0.0 mm
+- PASS: `wifi_bt_host_control_to_terminal` max span error 0.0 mm
+- PASS: `cellular_host_control_from_terminal` max span error 0.0 mm
+- PASS: `cellular_host_control_to_terminal` max span error 0.0 mm
 - PASS: `bottom_speaker_lead_pair_from_terminal` max span error 0.0 mm
 - PASS: `bottom_speaker_lead_pair_to_terminal` max span error 0.0 mm
 - PASS: `bottom_microphone_flex_from_terminal` max span error 0.0 mm
@@ -218,12 +236,18 @@ Status: pass; re-imported 234 part STEP files.
 - PASS: `earpiece_receiver_lead_flex_to_terminal` max span error 0.0 mm
 - PASS: `haptic_flex_from_terminal` max span error 0.0 mm
 - PASS: `haptic_flex_to_terminal` max span error 0.0 mm
+- PASS: `sensor_hub_i2c_flex_from_terminal` max span error 0.0 mm
+- PASS: `sensor_hub_i2c_flex_to_terminal` max span error 0.0 mm
 - PASS: `sim_esim_signal_flex_from_terminal` max span error 0.0 mm
 - PASS: `sim_esim_signal_flex_to_terminal` max span error 0.0 mm
 - PASS: `nfc_loop_antenna_flex_from_terminal` max span error 0.0 mm
 - PASS: `nfc_loop_antenna_flex_to_terminal` max span error 0.0 mm
 - PASS: `compute_som_sodimm_carrier_from_terminal` max span error 0.0 mm
 - PASS: `compute_som_sodimm_carrier_to_terminal` max span error 0.0 mm
+- PASS: `soc_shield_ground_spring_from_terminal` max span error 0.0 mm
+- PASS: `soc_shield_ground_spring_to_terminal` max span error 0.0 mm
+- PASS: `radio_shield_ground_spring_from_terminal` max span error 0.0 mm
+- PASS: `radio_shield_ground_spring_to_terminal` max span error 0.0 mm
 - PASS: `cellular_main_rf_feed_from_terminal` max span error 0.0 mm
 - PASS: `cellular_main_rf_feed_to_terminal` max span error 0.0 mm
 - PASS: `cellular_diversity_rf_feed_from_terminal` max span error 0.0 mm

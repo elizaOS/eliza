@@ -5,7 +5,7 @@
   "created_at": "2026-05-22",
   "tool_or_supplier_revision": "generate_e1_phone_cad.py",
   "input_artifact_hashes": {
-    "board_step_readiness_status": "blocked_concept_pcb_no_routed_step",
+    "board_step_readiness_status": "blocked_local_routed_step_candidate_not_release",
     "assembly_clearance_status": "pass",
     "solid_cad_status": "generated"
   },
@@ -13,10 +13,10 @@
   "reviewed_at": "unreviewed_local_candidate_2026-05-22",
   "disposition": "blocked_candidate_not_approved",
   "claim_boundary": "Fail-closed routed-board mechanical clearance intake. Concept PCB envelope clearance does not prove routed PCB/component clearance.",
-  "status": "blocked_waiting_for_routed_board_step",
+  "status": "blocked_waiting_for_physical_routed_board_clearance_result",
   "pcb_source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
   "source_reviews": {
-    "board_step_readiness_status": "blocked_concept_pcb_no_routed_step",
+    "board_step_readiness_status": "blocked_local_routed_step_candidate_not_release",
     "assembly_clearance_status": "pass",
     "solid_cad_status": "generated"
   },
@@ -47,7 +47,7 @@
       "step_intake_status": "development_step_generated_not_release",
       "step_output": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step",
       "step_exists": true,
-      "step_size_bytes": 32970696,
+      "step_size_bytes": 33644081,
       "step_footprint_envelope_count": 89,
       "release_credit": false
     }

@@ -44,6 +44,8 @@ def test_profile_env_reset_returns_obs(profile_id: str) -> None:
     assert info["task_id"] in {"walk_forward", "turn_left"}
     assert info["init_state"] == "stand"
     assert np.isfinite(info["init_torso_z"])
+    assert np.isfinite(info["init_tracked_z"])
+    assert info["tracked_body_name"]
     assert np.isfinite(info["init_upright_proj"])
     # proprio = gyro+grav+cmd+root_linvel+foot telemetry+3*action_dim, plus text.
     expected = 20 + 3 * env.action_space.shape[0] + 32
@@ -73,6 +75,11 @@ def test_profile_env_step_runs(profile_id: str) -> None:
     assert "success_predicate_now" in info
     assert "success_bounds_violated" in info
     assert "success_bound_violation" in info
+    assert info["tracked_body_name"]
+    assert np.isfinite(info["tracked_z"])
+    assert np.isfinite(info["tracked_delta_x"])
+    assert np.isfinite(info["tracked_delta_y"])
+    assert np.isfinite(info["tracked_delta_z"])
     assert not terminated
 
 
@@ -172,6 +179,37 @@ def test_profile_env_prone_reset_contract(profile_id: str) -> None:
     assert info["init_upright_proj"] < 0.5
 
 
+@pytest.mark.parametrize("profile_id", SUPPORTED)
+def test_stand_up_reset_starts_from_contact_valid_crouch(profile_id: str) -> None:
+    pytest.importorskip("mujoco")
+    env = make_text_conditioned_env(
+        profile_id,
+        config=ProfileEnvConfig(
+            include_tasks=("stand_up",),
+            exclude_tasks=(),
+            episode_steps=4,
+            pca_dim=32,
+        ),
+    )
+
+    _, info = env.reset(seed=0)
+    assert info["task_id"] == "stand_up"
+    assert info["init_state"] == "crouch"
+    max_init_ratio = 0.75 if profile_id == "hiwonder-ainex" else 0.95
+    assert info["init_torso_z"] <= max_init_ratio * info["stand_height_m"]
+    if profile_id == "hiwonder-ainex":
+        assert info["init_torso_z"] <= 0.70 * info["stand_height_m"]
+
+    _, _, terminated, _, step_info = env.step(
+        np.zeros(env.action_space.shape, dtype=np.float32)
+    )
+    assert terminated is False
+    assert step_info["done_reason"] is None
+    assert step_info["left_foot_contact"] is True
+    assert step_info["right_foot_contact"] is True
+    assert step_info["fall_threshold"] <= step_info["init_torso_z"]
+
+
 def test_turn_reward_uses_yaw_track_weight() -> None:
     pytest.importorskip("mujoco")
     env = make_text_conditioned_env(
@@ -218,6 +256,37 @@ def test_walk_reward_does_not_make_standstill_near_optimal() -> None:
     standstill = env._reward(action, pose=pose, fell=False)  # noqa: SLF001
 
     assert tracked > standstill + 4.0
+
+
+def test_walk_reward_progress_uses_tracked_body_not_root_only() -> None:
+    pytest.importorskip("mujoco")
+    env = make_text_conditioned_env(
+        "hiwonder-ainex",
+        config=ProfileEnvConfig(
+            include_tasks=("walk_forward",),
+            exclude_tasks=(),
+            episode_steps=4,
+            pca_dim=32,
+        ),
+    )
+    env.reset(seed=0)
+    pose = env._root_pose_summary()  # noqa: SLF001
+    action = np.zeros(env.action_space.shape, dtype=np.float32)
+
+    env._tracked_pose_summary = lambda _pose: {  # type: ignore[method-assign]  # noqa: SLF001
+        "x": env._episode_start_tracked_x + 0.3,  # noqa: SLF001
+        "y": env._episode_start_tracked_y,  # noqa: SLF001
+        "z": env._episode_start_tracked_z,  # noqa: SLF001
+    }
+    tracked_progress = env._reward(action, pose=pose, fell=False)  # noqa: SLF001
+    env._tracked_pose_summary = lambda _pose: {  # type: ignore[method-assign]  # noqa: SLF001
+        "x": env._episode_start_tracked_x,  # noqa: SLF001
+        "y": env._episode_start_tracked_y,  # noqa: SLF001
+        "z": env._episode_start_tracked_z,  # noqa: SLF001
+    }
+    no_progress = env._reward(action, pose=pose, fell=False)  # noqa: SLF001
+
+    assert tracked_progress > no_progress + 3.0
 
 
 def test_walk_reward_uses_contact_cadence_and_slip_terms() -> None:
@@ -372,7 +441,9 @@ def test_walk_reward_penalizes_foot_spacing_and_self_collision() -> None:
     assert colliding < crossed - 3.0
 
 
-def test_sit_down_reward_penalizes_declared_xy_drift_bounds() -> None:
+def test_sit_down_reward_penalizes_declared_xy_drift_bounds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     pytest.importorskip("mujoco")
     env = make_text_conditioned_env(
         "hiwonder-ainex",
@@ -384,6 +455,12 @@ def test_sit_down_reward_penalizes_declared_xy_drift_bounds() -> None:
         ),
     )
     env.reset(seed=0)
+    env._foot_contact_switch_count = 2  # noqa: SLF001
+    monkeypatch.setattr(
+        env,
+        "_tracked_pose_summary",
+        lambda pose: {"x": pose["x"], "y": pose["y"], "z": pose["z"]},
+    )
     action = np.zeros(env.action_space.shape, dtype=np.float32)
     base_pose = env._root_pose_summary()  # noqa: SLF001
     seated_pose = dict(base_pose)
@@ -400,7 +477,9 @@ def test_sit_down_reward_penalizes_declared_xy_drift_bounds() -> None:
     assert drifted < seated - 10.0
 
 
-def test_walk_reward_bound_violation_beats_perfect_velocity_tracking() -> None:
+def test_walk_reward_bound_violation_beats_perfect_velocity_tracking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     pytest.importorskip("mujoco")
     env = make_text_conditioned_env(
         "hiwonder-ainex",
@@ -412,6 +491,12 @@ def test_walk_reward_bound_violation_beats_perfect_velocity_tracking() -> None:
         ),
     )
     env.reset(seed=0)
+    env._foot_contact_switch_count = 2  # noqa: SLF001
+    monkeypatch.setattr(
+        env,
+        "_tracked_pose_summary",
+        lambda pose: {"x": pose["x"], "y": pose["y"], "z": pose["z"]},
+    )
     action = np.zeros(env.action_space.shape, dtype=np.float32)
     root_v = env._root_qvel_idx  # noqa: SLF001
     base_pose = env._root_pose_summary()  # noqa: SLF001
@@ -430,7 +515,9 @@ def test_walk_reward_bound_violation_beats_perfect_velocity_tracking() -> None:
     assert drifted_perfect_tracking < valid_slightly_slow
 
 
-def test_walk_reward_success_bonus_requires_height_and_forward_motion() -> None:
+def test_walk_reward_success_bonus_requires_height_and_forward_motion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     pytest.importorskip("mujoco")
     env = make_text_conditioned_env(
         "hiwonder-ainex",
@@ -442,6 +529,12 @@ def test_walk_reward_success_bonus_requires_height_and_forward_motion() -> None:
         ),
     )
     env.reset(seed=0)
+    env._foot_contact_switch_count = 2  # noqa: SLF001
+    monkeypatch.setattr(
+        env,
+        "_tracked_pose_summary",
+        lambda pose: {"x": pose["x"], "y": pose["y"], "z": pose["z"]},
+    )
     action = np.zeros(env.action_space.shape, dtype=np.float32)
     root_v = env._root_qvel_idx  # noqa: SLF001
     env._data.qvel[root_v] = 0.10  # noqa: SLF001
@@ -471,6 +564,34 @@ def test_walk_reward_success_bonus_requires_height_and_forward_motion() -> None:
     assert success_reward > standstill_reward + 6.0
 
 
+def test_walk_velocity_reward_uses_body_frame_velocity() -> None:
+    pytest.importorskip("mujoco")
+    env = make_text_conditioned_env(
+        "hiwonder-ainex",
+        config=ProfileEnvConfig(
+            include_tasks=("walk_forward",),
+            exclude_tasks=(),
+            episode_steps=4,
+            pca_dim=32,
+        ),
+    )
+    env.reset(seed=0)
+    action = np.zeros(env.action_space.shape, dtype=np.float32)
+    root_v = env._root_qvel_idx  # noqa: SLF001
+    env._data.qvel[root_v] = 0.10  # noqa: SLF001
+    env._data.qvel[root_v + 1] = 0.0  # noqa: SLF001
+
+    aligned_pose = env._root_pose_summary()  # noqa: SLF001
+    aligned_pose["yaw"] = env._episode_start_yaw  # noqa: SLF001
+    sideways_pose = dict(aligned_pose)
+    sideways_pose["yaw"] = math.pi / 2.0
+
+    aligned_reward = env._reward(action, pose=aligned_pose, fell=False)  # noqa: SLF001
+    sideways_reward = env._reward(action, pose=sideways_pose, fell=False)  # noqa: SLF001
+
+    assert aligned_reward > sideways_reward + 3.0
+
+
 def test_stand_up_reward_success_bonus_requires_height_delta() -> None:
     pytest.importorskip("mujoco")
     env = make_text_conditioned_env(
@@ -485,9 +606,10 @@ def test_stand_up_reward_success_bonus_requires_height_delta() -> None:
     env.reset(seed=0)
     action = np.zeros(env.action_space.shape, dtype=np.float32)
     no_delta_pose = env._root_pose_summary()  # noqa: SLF001
-    no_delta_pose["z"] = env._stand_height_m * 0.91  # noqa: SLF001
+    no_delta_pose["z"] = env._stand_height_m * 0.95  # noqa: SLF001
+    env._episode_start_torso_z = no_delta_pose["z"] - env._stand_height_m * 0.10  # noqa: SLF001
     stood_pose = dict(no_delta_pose)
-    stood_pose["z"] = env._episode_start_torso_z + env._stand_height_m * 0.10  # noqa: SLF001
+    stood_pose["z"] = env._episode_start_torso_z + env._stand_height_m * 0.13  # noqa: SLF001
 
     assert env._immediate_success_predicate_holds(no_delta_pose) is False  # noqa: SLF001
     assert env._immediate_success_predicate_holds(stood_pose) is True  # noqa: SLF001
@@ -496,6 +618,55 @@ def test_stand_up_reward_success_bonus_requires_height_delta() -> None:
         pose=no_delta_pose,
         fell=False,
     ) + 6.0
+
+
+def test_get_up_height_without_upright_pose_does_not_get_success_bonus() -> None:
+    pytest.importorskip("mujoco")
+    env = make_text_conditioned_env(
+        "hiwonder-ainex",
+        config=ProfileEnvConfig(
+            include_tasks=("get_up",),
+            exclude_tasks=(),
+            tier_subset=(2,),
+            episode_steps=4,
+            pca_dim=32,
+        ),
+    )
+    env.reset(seed=0)
+    pose = env._root_pose_summary()  # noqa: SLF001
+    pose["z"] = env._stand_height_m  # noqa: SLF001
+    pose["roll"] = 0.7
+    pose["pitch"] = 0.0
+    pose["upright_proj"] = 1.0
+
+    assert env._immediate_success_predicate_holds(pose) is False  # noqa: SLF001
+
+
+def test_turn_around_success_requires_translation_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("mujoco")
+    env = make_text_conditioned_env(
+        "hiwonder-ainex",
+        config=ProfileEnvConfig(
+            include_tasks=("turn_around",),
+            exclude_tasks=(),
+            episode_steps=4,
+            pca_dim=32,
+        ),
+    )
+    env.reset(seed=0)
+    monkeypatch.setattr(
+        env,
+        "_tracked_pose_summary",
+        lambda pose: {"x": pose["x"], "y": pose["y"], "z": pose["z"]},
+    )
+    pose = env._root_pose_summary()  # noqa: SLF001
+    pose["yaw"] = env._episode_start_yaw + math.pi  # noqa: SLF001
+    pose["x"] = env._episode_start_x + 0.5  # noqa: SLF001
+    pose["y"] = env._episode_start_y  # noqa: SLF001
+
+    assert env._immediate_success_predicate_holds(pose) is False  # noqa: SLF001
 
 
 def test_profile_env_reports_fall_done_reason_and_stronger_penalty() -> None:
@@ -519,7 +690,13 @@ def test_profile_env_reports_fall_done_reason_and_stronger_penalty() -> None:
     fallen = env._reward(action, pose=fallen_pose, fell=True)  # noqa: SLF001
 
     assert fallen < standing - 20.0
+    env._step_count = 1  # noqa: SLF001
+    early_fall = env._reward(action, pose=fallen_pose, fell=True)  # noqa: SLF001
+    env._step_count = env.config.episode_steps  # noqa: SLF001
+    horizon_end_fall = env._reward(action, pose=fallen_pose, fell=True)  # noqa: SLF001
+    assert early_fall < horizon_end_fall - 10.0
 
+    env._step_count = 0  # noqa: SLF001
     env._data.qpos[env._root_qpos_idx + 2] = 0.01  # noqa: SLF001
     _, _, terminated, truncated, info = env.step(action)
     assert terminated is True

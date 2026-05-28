@@ -21,5 +21,8 @@ def test_e1x_benchmark_gate_passes() -> None:
     assert report["status"] == "PASS"
     assert report["summary"]["failing_check_count"] == 0
     assert report["summary"]["claim_level"] == "L2_ARCH_SIM"
-    assert report["summary"]["logical_cores"] == 1024
-    assert report["summary"]["min_observed_tops"] > 0
+    assert report["summary"]["scaled_local_sram_mib"] >= 8192
+    assert report["summary"]["scaled_model_required_mib"] < report["summary"]["scaled_local_sram_mib"]
+    assert report["summary"]["high_failure_prefill_ms"] > 0
+    assert report["summary"]["high_failure_decode_tokens_per_second"] > 0
+    assert report["summary"]["high_failure_output_checksum"] > 0

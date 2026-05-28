@@ -728,6 +728,48 @@ def test_generate_nebius_training_report_rejects_stale_finalization_success(
     )
 
 
+def test_generate_nebius_training_report_uses_current_failed_validation_gates(
+    tmp_path: Path,
+) -> None:
+    run = tmp_path / "run"
+    _write_json(run / "monitor_status.json", {"run_id": "robot-full-test", "state": "invalid"})
+    _write_json(
+        run / "validation_report.json",
+        {
+            "run_id": "robot-full-test",
+            "ok": False,
+            "checks": {
+                "stage_status": True,
+                "production_contract": False,
+                "status_consistency": True,
+                "curriculum_eval": False,
+            },
+        },
+    )
+    _write_json(
+        run / "finalization_report.json",
+        {
+            "ok": False,
+            "missing_gates": [
+                "stage_status",
+                "production_contract",
+                "status_consistency",
+                "curriculum_eval",
+            ],
+        },
+    )
+
+    report = generate_nebius_training_report(run)
+
+    assert report["ok"] is False
+    assert report["missing_gates"] == ["production_contract", "curriculum_eval"]
+    assert report["stale_finalization_missing_gates"] == [
+        "stage_status",
+        "status_consistency",
+    ]
+    assert report["finalization_matches_current_validation"] is False
+
+
 def test_generate_nebius_training_report_requires_curriculum_eval(
     tmp_path: Path,
 ) -> None:

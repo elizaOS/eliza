@@ -187,9 +187,14 @@ def _train_alberta(
     episode_steps: int,
     eval_episodes: int,
     domain_rand: bool,
-    require_phase_success: bool,
-    min_phase_success_rate: float,
-    phase_eval_interval_steps: int | None,
+    action_scale: float = 0.3,
+    action_scale_initial: float | None = None,
+    action_scale_increment: float = 0.05,
+    gamma: float = 0.97,
+    normalize: bool = True,
+    require_phase_success: bool = False,
+    min_phase_success_rate: float = 1.0,
+    phase_eval_interval_steps: int | None = None,
 ) -> dict:
     from eliza_robot.rl.alberta.train_robot import (
         steps_per_task_from_total,
@@ -209,6 +214,11 @@ def _train_alberta(
         seed=seed,
         requested_total_steps=total_steps,
         domain_rand=domain_rand,
+        action_scale=action_scale,
+        action_scale_initial=action_scale_initial,
+        action_scale_increment=action_scale_increment,
+        gamma=gamma,
+        normalize=normalize,
         require_phase_success=require_phase_success,
         min_phase_success_rate=min_phase_success_rate,
         phase_eval_interval_steps=phase_eval_interval_steps,
@@ -393,6 +403,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pca-dim", type=int, default=32)
     parser.add_argument("--episode-steps", type=int, default=200)
     parser.add_argument("--eval-episodes", type=int, default=3)
+    parser.add_argument("--action-scale", type=float, default=0.3)
+    parser.add_argument("--action-scale-initial", type=float, default=None)
+    parser.add_argument("--action-scale-increment", type=float, default=0.05)
+    parser.add_argument("--gamma", type=float, default=0.97)
+    parser.add_argument("--no-normalize", action="store_true")
     parser.add_argument(
         "--require-phase-success",
         action="store_true",
@@ -463,6 +478,11 @@ def main(argv: list[str] | None = None) -> int:
         episode_steps=args.episode_steps,
         eval_episodes=args.eval_episodes,
         domain_rand=not args.no_domain_rand,
+        action_scale=args.action_scale,
+        action_scale_initial=args.action_scale_initial,
+        action_scale_increment=args.action_scale_increment,
+        gamma=args.gamma,
+        normalize=not args.no_normalize,
         require_phase_success=args.require_phase_success,
         min_phase_success_rate=args.min_phase_success_rate,
         phase_eval_interval_steps=args.phase_eval_interval_steps,

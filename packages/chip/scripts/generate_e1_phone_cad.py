@@ -51,14 +51,22 @@ CAD_CONNECTION_TERMINAL_ENDPOINTS: tuple[tuple[str, str, str], ...] = (
     ("usb_c_to_pd_controller_escape", "usb_c_receptacle", "usb_pd_controller_package_marker"),
     ("pd_controller_to_charger_control", "usb_pd_controller_package_marker", "charger_package_marker"),
     ("charger_to_battery_power_sense", "charger_package_marker", "battery_connector_package_marker"),
+    ("display_bias_power_flex", "backlight_bias_package_marker", "display_fpc_connector"),
+    ("rear_camera_power_flex", "main_pcb", "rear_camera_module"),
+    ("front_camera_power_flex", "main_pcb", "front_camera_module"),
+    ("wifi_bt_host_control", "wifi_bt_module_keepout", "soc_package_marker"),
+    ("cellular_host_control", "cellular_lga_module_keepout", "soc_package_marker"),
     ("bottom_speaker_lead_pair", "main_pcb", "bottom_speaker_module"),
     ("bottom_microphone_flex", "main_pcb", "bottom_mic"),
     ("top_microphone_flex", "main_pcb", "top_mic"),
     ("earpiece_receiver_lead_flex", "main_pcb", "earpiece_receiver"),
     ("haptic_flex", "main_pcb", "haptic_lra"),
+    ("sensor_hub_i2c_flex", "main_pcb", "sensor_hub_package_marker"),
     ("sim_esim_signal_flex", "main_pcb", "sim_tray_keepout"),
     ("nfc_loop_antenna_flex", "nfc_controller_package_marker", "nfc_loop_match_marker"),
     ("compute_som_sodimm_carrier", "main_pcb", "compute_som_daughterboard_keepout"),
+    ("soc_shield_ground_spring", "soc_shield_can", "main_pcb"),
+    ("radio_shield_ground_spring", "radio_shield_can", "main_pcb"),
     ("cellular_main_rf_feed", "cellular_lga_module_keepout", "cellular_top_antenna_keepout"),
     (
         "cellular_diversity_rf_feed",
@@ -1670,6 +1678,46 @@ def advanced_phone_parts(params: dict[str, Any]) -> list[Part]:
             "board-level charger to battery connector VBAT/SYS/NTC/ID route marker",
         ),
         box(
+            "display_bias_power_flex_marker",
+            [6.0, 1.0, 0.12],
+            [21.0, 41.0, -1.35],
+            FPC_AMBER,
+            "flex/cable",
+            "display bias/backlight AVDD/AVEE flex marker from bias IC to display connector",
+        ),
+        box(
+            "rear_camera_power_flex_marker",
+            [8.0, 0.7, 0.12],
+            [12.0, 58.5, -1.35],
+            FPC_AMBER,
+            "flex/cable",
+            "rear camera AVDD/DVDD/reset power-control flex marker",
+        ),
+        box(
+            "front_camera_power_flex_marker",
+            [7.0, 0.7, 0.12],
+            [-15.0, 58.5, -1.35],
+            FPC_AMBER,
+            "flex/cable",
+            "front camera AVDD/DVDD/reset power-control flex marker",
+        ),
+        box(
+            "wifi_bt_host_control_trace_marker",
+            [13.0, 1.0, 0.12],
+            [18.0, 35.5, -1.35],
+            FPC_AMBER,
+            "PCB trace marker",
+            "Wi-Fi/Bluetooth PCIe/SDIO/UART/enable host-control route marker",
+        ),
+        box(
+            "cellular_host_control_trace_marker",
+            [12.0, 1.0, 0.12],
+            [-19.0, 38.5, -1.35],
+            FPC_AMBER,
+            "PCB trace marker",
+            "cellular USB2/PCIe/reset/disable host-control route marker",
+        ),
+        box(
             "bottom_speaker_lead_pair",
             [10.0, 1.0, 0.12],
             [0.0, -62.0, -1.45],
@@ -1710,6 +1758,14 @@ def advanced_phone_parts(params: dict[str, Any]) -> list[Part]:
             "LRA haptic drive flex tail marker",
         ),
         box(
+            "sensor_hub_i2c_flex_marker",
+            [5.0, 0.8, 0.12],
+            [-10.0, 34.5, -1.35],
+            FPC_AMBER,
+            "flex/cable",
+            "sensor hub I2C flex/trace marker",
+        ),
+        box(
             "sim_esim_signal_flex_marker",
             [1.0, 9.0, 0.12],
             [29.0, -62.0, -1.45],
@@ -1748,6 +1804,22 @@ def advanced_phone_parts(params: dict[str, Any]) -> list[Part]:
             METAL,
             "RF feed",
             "development second Wi-Fi/Bluetooth RF feed envelope",
+        ),
+        box(
+            "soc_shield_ground_spring_marker",
+            [3.6, 0.7, 0.22],
+            [-5.5, 24.5, -1.1],
+            METAL,
+            "ground spring",
+            "SoC shield can to PCB ground spring marker",
+        ),
+        box(
+            "radio_shield_ground_spring_marker",
+            [3.6, 0.7, 0.22],
+            [-23.0, 33.0, -1.1],
+            METAL,
+            "ground spring",
+            "radio shield can to PCB/chassis ground spring marker",
         ),
         box(
             "haptic_lra",
@@ -2510,6 +2582,407 @@ def export_named_scene(parts: list[Part], filename: str, manifest_name: str) -> 
     (OUT_DIR / manifest_name).write_text(json.dumps(manifest, indent=2) + "\n")
 
 
+def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Refresh connection coverage when the OCP STEP fallback is used."""
+
+    coverage_path = REVIEW_DIR / "cad-connection-coverage.json"
+    existing = (
+        json.loads(coverage_path.read_text())
+        if coverage_path.is_file()
+        else {"connections": []}
+    )
+    existing_connections = {
+        str(row.get("id")): row
+        for row in existing.get("connections", [])
+        if isinstance(row, dict) and row.get("id")
+    }
+    supplemental_contracts = [
+        {
+            "id": "display_bias_power_flex",
+            "cad_part": "display_bias_power_flex_marker",
+            "from": "backlight_bias_package_marker",
+            "to": "display_fpc_connector",
+            "connection_type": "display_bias_power_flex",
+            "nets": ["DISP_AVDD_5V5", "DISP_AVEE_N5V5"],
+            "physical_medium": "flexible_printed_circuit",
+            "electrical_class": "display_bias_power",
+            "controlled_impedance_required": False,
+            "impedance_requirement": "display_bias_voltage_and_current_capacity_required",
+            "min_bend_radius_mm": 1.0,
+            "supplier_release_required": True,
+        },
+        {
+            "id": "rear_camera_power_flex",
+            "cad_part": "rear_camera_power_flex_marker",
+            "from": "main_pcb",
+            "to": "rear_camera_module",
+            "connection_type": "camera_power_flex",
+            "nets": ["CAM_AVDD_2V8", "CAM_DVDD_1V2", "CAM0_RESET_N"],
+            "physical_medium": "flexible_printed_circuit",
+            "electrical_class": "camera_power_control",
+            "controlled_impedance_required": False,
+            "impedance_requirement": "camera_rail_current_capacity_and_sequencing_required",
+            "min_bend_radius_mm": 1.0,
+            "supplier_release_required": True,
+        },
+        {
+            "id": "front_camera_power_flex",
+            "cad_part": "front_camera_power_flex_marker",
+            "from": "main_pcb",
+            "to": "front_camera_module",
+            "connection_type": "camera_power_flex",
+            "nets": ["CAM_AVDD_2V8", "CAM_DVDD_1V2", "CAM1_RESET_N"],
+            "physical_medium": "flexible_printed_circuit",
+            "electrical_class": "camera_power_control",
+            "controlled_impedance_required": False,
+            "impedance_requirement": "camera_rail_current_capacity_and_sequencing_required",
+            "min_bend_radius_mm": 1.0,
+            "supplier_release_required": True,
+        },
+        {
+            "id": "wifi_bt_host_control",
+            "cad_part": "wifi_bt_host_control_trace_marker",
+            "from": "wifi_bt_module_keepout",
+            "to": "soc_package_marker",
+            "connection_type": "wifi_bt_host_control_trace",
+            "nets": [
+                "WIFI_PCIE_TX_P",
+                "WIFI_PCIE_TX_N",
+                "WIFI_PCIE_RX_P",
+                "WIFI_PCIE_RX_N",
+                "WIFI_EN",
+                "BT_EN",
+                "WIFI_SDIO_CLK",
+                "WIFI_SDIO_CMD",
+                "WIFI_SDIO_D0",
+                "WIFI_SDIO_D1",
+                "WIFI_SDIO_D2",
+                "WIFI_SDIO_D3",
+                "BT_UART_TX",
+                "BT_UART_RX",
+                "BT_UART_CTS_N",
+                "BT_UART_RTS_N",
+                "WIFI_HOST_WAKE",
+            ],
+            "physical_medium": "pcb_copper_trace_group",
+            "electrical_class": "wifi_bt_host_interface",
+            "controlled_impedance_required": True,
+            "impedance_requirement": "PCIe differential impedance plus SDIO/UART/control routing review",
+            "min_bend_radius_mm": 0.0,
+            "supplier_release_required": True,
+        },
+        {
+            "id": "cellular_host_control",
+            "cad_part": "cellular_host_control_trace_marker",
+            "from": "cellular_lga_module_keepout",
+            "to": "soc_package_marker",
+            "connection_type": "cellular_host_control_trace",
+            "nets": [
+                "CELL_USB2_DP",
+                "CELL_USB2_DN",
+                "CELL_PCIE_TX_P",
+                "CELL_PCIE_TX_N",
+                "CELL_PCIE_RX_P",
+                "CELL_PCIE_RX_N",
+                "CELL_RESET_N",
+                "CELL_W_DISABLE_N",
+            ],
+            "physical_medium": "pcb_copper_trace_group",
+            "electrical_class": "cellular_host_interface",
+            "controlled_impedance_required": True,
+            "impedance_requirement": "USB2/PCIe differential impedance plus reset/disable routing review",
+            "min_bend_radius_mm": 0.0,
+            "supplier_release_required": True,
+        },
+        {
+            "id": "sensor_hub_i2c_flex",
+            "cad_part": "sensor_hub_i2c_flex_marker",
+            "from": "main_pcb",
+            "to": "sensor_hub_package_marker",
+            "connection_type": "sensor_hub_i2c_flex",
+            "nets": ["SENSOR_I2C_SCL", "SENSOR_I2C_SDA"],
+            "physical_medium": "flexible_printed_circuit",
+            "electrical_class": "sensor_i2c",
+            "controlled_impedance_required": False,
+            "impedance_requirement": "not_controlled_impedance",
+            "min_bend_radius_mm": 0.8,
+            "supplier_release_required": True,
+        },
+        {
+            "id": "soc_shield_ground_spring",
+            "cad_part": "soc_shield_ground_spring_marker",
+            "from": "soc_shield_can",
+            "to": "main_pcb",
+            "connection_type": "shield_ground_spring",
+            "nets": ["GND"],
+            "physical_medium": "ground_spring_contact",
+            "electrical_class": "shield_chassis_ground",
+            "controlled_impedance_required": False,
+            "impedance_requirement": "low_inductance_chassis_ground_contact_required",
+            "min_bend_radius_mm": 0.0,
+            "supplier_release_required": True,
+        },
+        {
+            "id": "radio_shield_ground_spring",
+            "cad_part": "radio_shield_ground_spring_marker",
+            "from": "radio_shield_can",
+            "to": "main_pcb",
+            "connection_type": "shield_ground_spring",
+            "nets": ["GND", "SHIELD_GND"],
+            "physical_medium": "ground_spring_contact",
+            "electrical_class": "shield_chassis_ground",
+            "controlled_impedance_required": False,
+            "impedance_requirement": "low_inductance_chassis_ground_contact_required",
+            "min_bend_radius_mm": 0.0,
+            "supplier_release_required": True,
+        },
+    ]
+    for contract in supplemental_contracts:
+        existing_connections.setdefault(contract["id"], contract)
+
+    part_rows_by_name = {str(row["name"]): row for row in part_rows}
+    solid_names = set(part_rows_by_name)
+    routed_intake_path = (
+        ROOT / "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml"
+    )
+    routed_intake = (
+        yaml.safe_load(routed_intake_path.read_text()) if routed_intake_path.is_file() else {}
+    )
+    routed_nets = {
+        str(route.get("net")) for route in routed_intake.get("routes", []) if route.get("net")
+    }
+    routed_route_records_by_net: dict[str, list[dict[str, Any]]] = {}
+    for route in routed_intake.get("routes", []):
+        if not isinstance(route, dict):
+            continue
+        route_net = str(route.get("canonical_net") or route.get("net") or "")
+        if route_net:
+            routed_route_records_by_net.setdefault(route_net, []).append(route)
+
+    endpoint_order = [connection_id for connection_id, _from, _to in CAD_CONNECTION_TERMINAL_ENDPOINTS]
+    contracts = [
+        existing_connections[connection_id]
+        for connection_id in endpoint_order
+        if connection_id in existing_connections
+    ]
+    contracts.extend(
+        row for key, row in sorted(existing_connections.items()) if key not in set(endpoint_order)
+    )
+
+    def bbox_center(row: dict[str, Any]) -> list[float] | None:
+        bbox = row.get("bbox_mm")
+        if not isinstance(bbox, dict):
+            return None
+        low = bbox.get("min")
+        high = bbox.get("max")
+        if not isinstance(low, list) or not isinstance(high, list) or len(low) != 3:
+            return None
+        return [round((float(low[idx]) + float(high[idx])) / 2.0, 3) for idx in range(3)]
+
+    connection_rows = []
+    for contract in contracts:
+        part = part_rows_by_name.get(str(contract["cad_part"]), {})
+        part_bbox = part.get("bbox_mm") if isinstance(part.get("bbox_mm"), dict) else {}
+        part_span = part_bbox.get("span") if isinstance(part_bbox, dict) else []
+        from_terminal = f"{contract['id']}_from_terminal"
+        to_terminal = f"{contract['id']}_to_terminal"
+        terminal_rows = [
+            part_rows_by_name.get(from_terminal, {}),
+            part_rows_by_name.get(to_terminal, {}),
+        ]
+        represented_nets = [str(net) for net in contract.get("nets", [])]
+        represented_route_records = [
+            {
+                "id": route.get("id", ""),
+                "net": route.get("net", ""),
+                "canonical_net": route.get("canonical_net", route.get("net", "")),
+                "layer": route.get("layer", ""),
+                "width_mm": route.get("width_mm", 0),
+                "length_mm": route.get("length_mm", 0),
+                "manhattan_length_mm": route.get("manhattan_length_mm", 0),
+                "route_classes": route.get("route_classes", []),
+                "source_domains": route.get("source_domains", []),
+                "controlled_impedance_targets_ohm": route.get(
+                    "controlled_impedance_targets_ohm", []
+                ),
+                "linked_via_ids": route.get("linked_via_ids", []),
+                "constraint_status": route.get("constraint_status", ""),
+            }
+            for net in represented_nets
+            for route in routed_route_records_by_net.get(net, [])
+        ]
+        from_center = bbox_center(part_rows_by_name.get(str(contract["from"]), {}))
+        to_center = bbox_center(part_rows_by_name.get(str(contract["to"]), {}))
+        endpoint_center_distance_mm = None
+        if from_center and to_center:
+            endpoint_center_distance_mm = round(
+                math.sqrt(
+                    sum((float(from_center[idx]) - float(to_center[idx])) ** 2 for idx in range(3))
+                ),
+                3,
+            )
+        terminal_step_bytes_total = sum(int(row.get("bytes", 0) or 0) for row in terminal_rows)
+        connection_step_part_names = [str(contract["cad_part"]), from_terminal, to_terminal]
+        routed_net_presence = {net: net in routed_nets for net in represented_nets}
+        row = {
+            **contract,
+            "cad_part_present": str(contract["cad_part"]) in solid_names,
+            "cad_step": part.get("step", ""),
+            "cad_step_bytes": int(part.get("bytes", 0) or 0),
+            "cad_part_bbox_mm": part_bbox,
+            "visual_route_span_mm": round(max([float(value) for value in part_span] or [0.0]), 3),
+            "represented_nets": represented_nets,
+            "represented_net_count": len(represented_nets),
+            "represented_route_ids": [str(route.get("id")) for route in represented_route_records],
+            "represented_route_count": len(represented_route_records),
+            "represented_route_records": represented_route_records,
+            "represented_route_classes": sorted(
+                {
+                    str(route_class)
+                    for route in represented_route_records
+                    for route_class in route.get("route_classes", [])
+                }
+            ),
+            "represented_source_domains": sorted(
+                {
+                    str(domain)
+                    for route in represented_route_records
+                    for domain in route.get("source_domains", [])
+                }
+            ),
+            "represented_route_length_total_mm": round(
+                sum(float(route.get("length_mm") or 0.0) for route in represented_route_records),
+                3,
+            ),
+            "represented_controlled_impedance_route_count": sum(
+                1 for route in represented_route_records if route.get("controlled_impedance_targets_ohm")
+            ),
+            "all_represented_nets_have_route_trace": all(
+                bool(routed_route_records_by_net.get(net)) for net in represented_nets
+            ),
+            "from_terminal_part": from_terminal,
+            "from_terminal_step": terminal_rows[0].get("step", ""),
+            "from_terminal_step_bytes": int(terminal_rows[0].get("bytes", 0) or 0),
+            "to_terminal_part": to_terminal,
+            "to_terminal_step": terminal_rows[1].get("step", ""),
+            "to_terminal_step_bytes": int(terminal_rows[1].get("bytes", 0) or 0),
+            "terminal_marker_count": 2,
+            "terminal_markers_present": all(
+                name in solid_names for name in [from_terminal, to_terminal]
+            ),
+            "terminal_step_bytes_total": terminal_step_bytes_total,
+            "solid_step_part_names": connection_step_part_names,
+            "solid_step_parts_present": all(name in solid_names for name in connection_step_part_names),
+            "solid_step_part_count": len(connection_step_part_names),
+            "solid_step_part_bytes_total": int(part.get("bytes", 0) or 0)
+            + terminal_step_bytes_total,
+            "from_endpoint_center_mm": from_center,
+            "to_endpoint_center_mm": to_center,
+            "endpoint_center_distance_mm": endpoint_center_distance_mm,
+            "endpoints_present": str(contract["from"]) in solid_names and str(contract["to"]) in solid_names,
+            "routed_net_presence": routed_net_presence,
+            "all_nets_in_routed_development_board": all(routed_net_presence.values()),
+            "controlled_impedance_requirement_defined": (
+                not bool(contract.get("controlled_impedance_required"))
+                or contract.get("impedance_requirement") != "not_controlled_impedance"
+            ),
+            "bend_radius_requirement_defined": (
+                contract.get("min_bend_radius_mm") is not None
+                or contract.get("physical_medium") == "board_to_board_edge_connector"
+            ),
+            "release_credit": False,
+        }
+        row["pass"] = (
+            row["cad_part_present"]
+            and row["cad_step_bytes"] > 1000
+            and row["terminal_markers_present"]
+            and row["terminal_step_bytes_total"] > 1000
+            and row["solid_step_parts_present"]
+            and row["visual_route_span_mm"] > 0.0
+            and row["endpoints_present"]
+            and row["all_nets_in_routed_development_board"]
+            and row["all_represented_nets_have_route_trace"]
+            and row["controlled_impedance_requirement_defined"]
+            and row["bend_radius_requirement_defined"]
+        )
+        connection_rows.append(row)
+
+    physical_medium_counts: dict[str, int] = {}
+    electrical_class_counts: dict[str, int] = {}
+    for row in connection_rows:
+        physical_medium_counts[str(row["physical_medium"])] = (
+            physical_medium_counts.get(str(row["physical_medium"]), 0) + 1
+        )
+        electrical_class_counts[str(row["electrical_class"])] = (
+            electrical_class_counts.get(str(row["electrical_class"]), 0) + 1
+        )
+    connection_coverage = {
+        **{k: v for k, v in existing.items() if k != "connections"},
+        "required_connection_count": len(connection_rows),
+        "passing_connection_count": sum(1 for row in connection_rows if row["pass"]),
+        "required_connection_terminal_marker_count": sum(
+            int(row["terminal_marker_count"]) for row in connection_rows
+        ),
+        "passing_connection_terminal_pair_count": sum(
+            1 for row in connection_rows if row["terminal_markers_present"]
+        ),
+        "required_connection_solid_step_part_count": sum(
+            int(row["solid_step_part_count"]) for row in connection_rows
+        ),
+        "passing_connection_solid_step_part_set_count": sum(
+            1 for row in connection_rows if row["solid_step_parts_present"]
+        ),
+        "connection_solid_step_part_bytes_total": sum(
+            int(row["solid_step_part_bytes_total"]) for row in connection_rows
+        ),
+        "represented_net_count_total": sum(
+            int(row["represented_net_count"]) for row in connection_rows
+        ),
+        "represented_route_count_total": sum(
+            int(row["represented_route_count"]) for row in connection_rows
+        ),
+        "represented_route_length_total_mm": round(
+            sum(float(row["represented_route_length_total_mm"]) for row in connection_rows),
+            3,
+        ),
+        "represented_controlled_impedance_route_count_total": sum(
+            int(row["represented_controlled_impedance_route_count"]) for row in connection_rows
+        ),
+        "all_represented_nets_have_route_trace": all(
+            row["all_represented_nets_have_route_trace"] for row in connection_rows
+        ),
+        "visual_route_span_total_mm": round(
+            sum(float(row["visual_route_span_mm"]) for row in connection_rows),
+            3,
+        ),
+        "endpoint_pair_distance_total_mm": round(
+            sum(float(row["endpoint_center_distance_mm"] or 0.0) for row in connection_rows),
+            3,
+        ),
+        "physical_medium_counts": dict(sorted(physical_medium_counts.items())),
+        "electrical_class_counts": dict(sorted(electrical_class_counts.items())),
+        "controlled_impedance_connection_count": sum(
+            1 for row in connection_rows if row["controlled_impedance_required"]
+        ),
+        "controlled_impedance_requirement_defined_count": sum(
+            1 for row in connection_rows if row["controlled_impedance_requirement_defined"]
+        ),
+        "bend_radius_requirement_defined_count": sum(
+            1 for row in connection_rows if row["bend_radius_requirement_defined"]
+        ),
+        "supplier_release_required_connection_count": sum(
+            1 for row in connection_rows if row["supplier_release_required"]
+        ),
+        "status": "cad_connection_markers_complete_not_release"
+        if all(row["pass"] for row in connection_rows)
+        else "blocked_cad_connection_marker_gap",
+        "release_credit": False,
+        "connections": connection_rows,
+    }
+    coverage_path.write_text(json.dumps(connection_coverage, indent=2) + "\n")
+    return connection_coverage
+
+
 def write_solid_cad_handoff_artifacts(
     params: dict[str, Any], checks: dict[str, Any], parts: list[Part] | None = None
 ) -> dict[str, Any]:
@@ -2534,18 +3007,170 @@ def write_solid_cad_handoff_artifacts(
                 except ValueError:
                     return str(path)
 
+            def rect_cells_for_plate(
+                width_mm: float,
+                height_mm: float,
+                forbidden_rects: list[tuple[float, float, float, float]],
+                min_span_mm: float = 0.05,
+            ) -> list[tuple[float, float, float, float]]:
+                """Return non-forbidden XY cells for an OCP fallback plate/frame.
+
+                Rectangles are `(xmin, xmax, ymin, ymax)`. Splitting at every
+                forbidden edge gives exact rectangular voids for camera, flash,
+                glass, port, button, and side-frame openings without requiring
+                CadQuery boolean cuts.
+                """
+
+                outer = (-width_mm / 2.0, width_mm / 2.0, -height_mm / 2.0, height_mm / 2.0)
+                xs = [outer[0], outer[1]]
+                ys = [outer[2], outer[3]]
+                clipped: list[tuple[float, float, float, float]] = []
+                for xmin, xmax, ymin, ymax in forbidden_rects:
+                    xmin = max(outer[0], xmin)
+                    xmax = min(outer[1], xmax)
+                    ymin = max(outer[2], ymin)
+                    ymax = min(outer[3], ymax)
+                    if xmax - xmin <= min_span_mm or ymax - ymin <= min_span_mm:
+                        continue
+                    clipped.append((xmin, xmax, ymin, ymax))
+                    xs.extend([xmin, xmax])
+                    ys.extend([ymin, ymax])
+                xs = sorted(set(round(v, 6) for v in xs))
+                ys = sorted(set(round(v, 6) for v in ys))
+
+                cells: list[tuple[float, float, float, float]] = []
+                for x0, x1 in zip(xs, xs[1:]):
+                    if x1 - x0 <= min_span_mm:
+                        continue
+                    cx = (x0 + x1) / 2.0
+                    for y0, y1 in zip(ys, ys[1:]):
+                        if y1 - y0 <= min_span_mm:
+                            continue
+                        cy = (y0 + y1) / 2.0
+                        if any(xmin <= cx <= xmax and ymin <= cy <= ymax for xmin, xmax, ymin, ymax in clipped):
+                            continue
+                        cells.append((x0, x1, y0, y1))
+                return cells
+
+            def boxes_from_xy_cells(
+                cells: list[tuple[float, float, float, float]],
+                z_min: float,
+                z_max: float,
+            ) -> list[tuple[list[float], list[float]]]:
+                boxes: list[tuple[list[float], list[float]]] = []
+                for x0, x1, y0, y1 in cells:
+                    boxes.append(
+                        (
+                            [round(x1 - x0, 6), round(y1 - y0, 6), round(z_max - z_min, 6)],
+                            [round((x0 + x1) / 2.0, 6), round((y0 + y1) / 2.0, 6), round((z_min + z_max) / 2.0, 6)],
+                        )
+                    )
+                return boxes
+
+            def rect_from_center_size(center: list[float] | tuple[float, float], size: list[float]) -> tuple[float, float, float, float]:
+                return (
+                    float(center[0]) - float(size[0]) / 2.0,
+                    float(center[0]) + float(size[0]) / 2.0,
+                    float(center[1]) - float(size[1]) / 2.0,
+                    float(center[1]) + float(size[1]) / 2.0,
+                )
+
+            def fallback_boxes_for_part(part: Part) -> list[tuple[list[float], list[float]]]:
+                width, height, depth = [float(v) for v in params["device"]["envelope_mm"]]
+                if part.name == "orange_back_shell":
+                    shell_t = 1.2
+                    z_min = -depth / 2.0
+                    z_max = z_min + shell_t
+                    camera_xy = rear_camera_center_xy(params)
+                    flash_xy = rear_flash_center_xy(params)
+                    forbidden = [
+                        rect_from_center_size(camera_xy, rear_camera_shell_aperture_mm(params)),
+                        rect_from_center_size(flash_xy, rear_flash_shell_aperture_mm(params)),
+                    ]
+                    return boxes_from_xy_cells(
+                        rect_cells_for_plate(width, height, forbidden),
+                        z_min,
+                        z_max,
+                    )
+
+                if part.name == "orange_side_frame":
+                    side_size, side_center = side_frame_body_size_center(params)
+                    z_min = float(side_center[2]) - float(side_size[2]) / 2.0
+                    z_max = float(side_center[2]) + float(side_size[2]) / 2.0
+                    wall = float(params["device"]["wall_thickness_mm"])
+                    forbidden = [
+                        (
+                            -width / 2.0 + wall,
+                            width / 2.0 - wall,
+                            -height / 2.0 + wall,
+                            height / 2.0 - wall,
+                        )
+                    ]
+                    for cutout in side_frame_external_cutout_specs(params):
+                        forbidden.append(rect_from_center_size(cutout["center"], cutout["size"]))
+                    return boxes_from_xy_cells(
+                        rect_cells_for_plate(width, height, forbidden),
+                        z_min,
+                        z_max,
+                    )
+
+                if part.name == "screen_cover_glass":
+                    glass_w, glass_h, glass_t = [float(v) for v in params["display"]["cover_glass_mm"]]
+                    center_z = depth / 2.0 - 0.35
+                    z_min = center_z - glass_t / 2.0
+                    z_max = center_z + glass_t / 2.0
+                    forbidden = [
+                        rect_from_center_size(
+                            handset_acoustic_slot_center(params),
+                            handset_cover_glass_cutout_mm(params),
+                        )
+                    ]
+                    return boxes_from_xy_cells(
+                        rect_cells_for_plate(glass_w, glass_h, forbidden),
+                        z_min,
+                        z_max,
+                    )
+
+                low, high = part.bounds
+                return [
+                    (
+                        [float(high[0] - low[0]), float(high[1] - low[1]), float(high[2] - low[2])],
+                        [
+                            float((low[0] + high[0]) / 2.0),
+                            float((low[1] + high[1]) / 2.0),
+                            float((low[2] + high[2]) / 2.0),
+                        ],
+                    )
+                ]
+
+            def fallback_compound_from_boxes(
+                boxes: list[tuple[list[float], list[float]]]
+            ) -> tuple[Any, np.ndarray, np.ndarray]:
+                compound = TopoDS_Compound()
+                builder.MakeCompound(compound)
+                lows: list[list[float]] = []
+                highs: list[list[float]] = []
+                for size, center in boxes:
+                    low = [float(center[i]) - float(size[i]) / 2.0 for i in range(3)]
+                    high = [float(center[i]) + float(size[i]) / 2.0 for i in range(3)]
+                    shape = BRepPrimAPI_MakeBox(
+                        gp_Pnt(low[0], low[1], low[2]),
+                        float(size[0]),
+                        float(size[1]),
+                        float(size[2]),
+                    ).Shape()
+                    builder.Add(compound, shape)
+                    lows.append(low)
+                    highs.append(high)
+                return compound, np.min(np.asarray(lows), axis=0), np.max(np.asarray(highs), axis=0)
+
             builder = BRep_Builder()
             assembly_shape = TopoDS_Compound()
             builder.MakeCompound(assembly_shape)
             part_rows: list[dict[str, Any]] = []
             for part in parts:
-                low, high = part.bounds
-                shape = BRepPrimAPI_MakeBox(
-                    gp_Pnt(float(low[0]), float(low[1]), float(low[2])),
-                    float(high[0] - low[0]),
-                    float(high[1] - low[1]),
-                    float(high[2] - low[2]),
-                ).Shape()
+                boxes = fallback_boxes_for_part(part)
+                shape, low, high = fallback_compound_from_boxes(boxes)
                 builder.Add(assembly_shape, shape)
                 step_path = OUT_DIR / f"{part.name}.step"
                 writer = STEPControl_Writer()
@@ -2559,6 +3184,7 @@ def write_solid_cad_handoff_artifacts(
                         "material": part.material,
                         "step": fallback_artifact_path(step_path),
                         "bytes": step_path.stat().st_size,
+                        "fallback_box_count": len(boxes),
                         "bbox_mm": {
                             "min": [round(float(value), 3) for value in low],
                             "max": [round(float(value), 3) for value in high],
@@ -2573,12 +3199,7 @@ def write_solid_cad_handoff_artifacts(
             if writer.Write(str(assembly_path)) != IFSelect_RetDone:
                 raise RuntimeError("STEP write failed for e1-phone-solid-assembly")
 
-            connection_coverage_path = REVIEW_DIR / "cad-connection-coverage.json"
-            connection_coverage = (
-                json.loads(connection_coverage_path.read_text())
-                if connection_coverage_path.is_file()
-                else {"status": "missing", "connections": []}
-            )
+            connection_coverage = refresh_ocp_connection_coverage(part_rows)
             required_solid_presence = {
                 row["name"]: {
                     "present": Path(ROOT / row["step"]).is_file(),
@@ -2604,14 +3225,29 @@ def write_solid_cad_handoff_artifacts(
                 "side_frame_external_cutouts": {
                     "status": "pass",
                     "cutout_count": 11,
-                    "cutouts": [],
-                    "note": "OCP fallback preserves already modeled side-frame opening part envelopes.",
+                    "cutouts": [
+                        {
+                            "name": cutout["name"],
+                            "source_aperture": cutout["source_aperture"],
+                            "size_mm": cutout["size"],
+                            "center_mm": cutout["center"],
+                        }
+                        for cutout in side_frame_external_cutout_specs(params)
+                    ],
+                    "note": "OCP fallback emits the side frame as a compound perimeter with real interior, port, microphone, speaker, and button voids.",
                 },
                 "cover_glass_external_cutouts": {
                     "status": "pass",
                     "cutout_count": 1,
-                    "cutouts": [],
-                    "note": "OCP fallback preserves the handset acoustic opening envelope.",
+                    "cutouts": [
+                        {
+                            "name": "handset_cover_glass_slot_cutout",
+                            "source_aperture": "handset_acoustic_slot",
+                            "size_mm": handset_cover_glass_cutout_mm(params),
+                            "center_mm": handset_acoustic_slot_center(params),
+                        }
+                    ],
+                    "note": "OCP fallback emits the cover glass as a compound plate with a real handset acoustic slot void.",
                 },
                 "linked_fit_status": checks["status"],
                 "remaining_blockers": [
@@ -2827,6 +3463,73 @@ def write_solid_cad_handoff_artifacts(
                 "nets": ["VBAT", "SYS", "BAT_NTC", "BAT_ID"],
             },
             {
+                "id": "display_bias_power_flex",
+                "cad_part": "display_bias_power_flex_marker",
+                "from": "backlight_bias_package_marker",
+                "to": "display_fpc_connector",
+                "connection_type": "display_bias_power_flex",
+                "nets": ["DISP_AVDD_5V5", "DISP_AVEE_N5V5"],
+            },
+            {
+                "id": "rear_camera_power_flex",
+                "cad_part": "rear_camera_power_flex_marker",
+                "from": "main_pcb",
+                "to": "rear_camera_module",
+                "connection_type": "camera_power_flex",
+                "nets": ["CAM_AVDD_2V8", "CAM_DVDD_1V2", "CAM0_RESET_N"],
+            },
+            {
+                "id": "front_camera_power_flex",
+                "cad_part": "front_camera_power_flex_marker",
+                "from": "main_pcb",
+                "to": "front_camera_module",
+                "connection_type": "camera_power_flex",
+                "nets": ["CAM_AVDD_2V8", "CAM_DVDD_1V2", "CAM1_RESET_N"],
+            },
+            {
+                "id": "wifi_bt_host_control",
+                "cad_part": "wifi_bt_host_control_trace_marker",
+                "from": "wifi_bt_module_keepout",
+                "to": "soc_package_marker",
+                "connection_type": "wifi_bt_host_control_trace",
+                "nets": [
+                    "WIFI_PCIE_TX_P",
+                    "WIFI_PCIE_TX_N",
+                    "WIFI_PCIE_RX_P",
+                    "WIFI_PCIE_RX_N",
+                    "WIFI_EN",
+                    "BT_EN",
+                    "WIFI_SDIO_CLK",
+                    "WIFI_SDIO_CMD",
+                    "WIFI_SDIO_D0",
+                    "WIFI_SDIO_D1",
+                    "WIFI_SDIO_D2",
+                    "WIFI_SDIO_D3",
+                    "BT_UART_TX",
+                    "BT_UART_RX",
+                    "BT_UART_CTS_N",
+                    "BT_UART_RTS_N",
+                    "WIFI_HOST_WAKE",
+                ],
+            },
+            {
+                "id": "cellular_host_control",
+                "cad_part": "cellular_host_control_trace_marker",
+                "from": "cellular_lga_module_keepout",
+                "to": "soc_package_marker",
+                "connection_type": "cellular_host_control_trace",
+                "nets": [
+                    "CELL_USB2_DP",
+                    "CELL_USB2_DN",
+                    "CELL_PCIE_TX_P",
+                    "CELL_PCIE_TX_N",
+                    "CELL_PCIE_RX_P",
+                    "CELL_PCIE_RX_N",
+                    "CELL_RESET_N",
+                    "CELL_W_DISABLE_N",
+                ],
+            },
+            {
                 "id": "bottom_speaker_lead_pair",
                 "cad_part": "bottom_speaker_lead_pair",
                 "from": "main_pcb",
@@ -2865,6 +3568,14 @@ def write_solid_cad_handoff_artifacts(
                 "to": "haptic_lra",
                 "connection_type": "haptic_flex",
                 "nets": ["HAPTIC_OUT"],
+            },
+            {
+                "id": "sensor_hub_i2c_flex",
+                "cad_part": "sensor_hub_i2c_flex_marker",
+                "from": "main_pcb",
+                "to": "sensor_hub_package_marker",
+                "connection_type": "sensor_hub_i2c_flex",
+                "nets": ["SENSOR_I2C_SCL", "SENSOR_I2C_SDA"],
             },
             {
                 "id": "sim_esim_signal_flex",
@@ -2909,6 +3620,22 @@ def write_solid_cad_handoff_artifacts(
                     "LPDDR_CK_P",
                     "LPDDR_CK_N",
                 ],
+            },
+            {
+                "id": "soc_shield_ground_spring",
+                "cad_part": "soc_shield_ground_spring_marker",
+                "from": "soc_shield_can",
+                "to": "main_pcb",
+                "connection_type": "shield_ground_spring",
+                "nets": ["GND"],
+            },
+            {
+                "id": "radio_shield_ground_spring",
+                "cad_part": "radio_shield_ground_spring_marker",
+                "from": "radio_shield_can",
+                "to": "main_pcb",
+                "connection_type": "shield_ground_spring",
+                "nets": ["GND", "SHIELD_GND"],
             },
             {
                 "id": "cellular_main_rf_feed",
@@ -4093,6 +4820,41 @@ def write_solid_cad_handoff_artifacts(
             "board-level charger to battery connector VBAT/SYS/NTC/ID route marker",
         ),
         (
+            "display_bias_power_flex_marker",
+            [6.0, 1.0, 0.12],
+            [21.0, 41.0, -1.35],
+            "flex/cable",
+            "display bias/backlight AVDD/AVEE flex marker from bias IC to display connector",
+        ),
+        (
+            "rear_camera_power_flex_marker",
+            [8.0, 0.7, 0.12],
+            [12.0, 58.5, -1.35],
+            "flex/cable",
+            "rear camera AVDD/DVDD/reset power-control flex marker",
+        ),
+        (
+            "front_camera_power_flex_marker",
+            [7.0, 0.7, 0.12],
+            [-15.0, 58.5, -1.35],
+            "flex/cable",
+            "front camera AVDD/DVDD/reset power-control flex marker",
+        ),
+        (
+            "wifi_bt_host_control_trace_marker",
+            [13.0, 1.0, 0.12],
+            [18.0, 35.5, -1.35],
+            "PCB trace marker",
+            "Wi-Fi/Bluetooth PCIe/SDIO/UART/enable host-control route marker",
+        ),
+        (
+            "cellular_host_control_trace_marker",
+            [12.0, 1.0, 0.12],
+            [-19.0, 38.5, -1.35],
+            "PCB trace marker",
+            "cellular USB2/PCIe/reset/disable host-control route marker",
+        ),
+        (
             "bottom_speaker_lead_pair",
             [10.0, 1.0, 0.12],
             [0.0, -62.0, -1.45],
@@ -4128,6 +4890,13 @@ def write_solid_cad_handoff_artifacts(
             "LRA haptic drive flex tail marker",
         ),
         (
+            "sensor_hub_i2c_flex_marker",
+            [5.0, 0.8, 0.12],
+            [-10.0, 34.5, -1.35],
+            "flex/cable",
+            "sensor hub I2C flex/trace marker",
+        ),
+        (
             "sim_esim_signal_flex_marker",
             [1.0, 9.0, 0.12],
             [29.0, -62.0, -1.45],
@@ -4161,6 +4930,20 @@ def write_solid_cad_handoff_artifacts(
             [27.0, 39.0, -1.35],
             "RF feed",
             "development second Wi-Fi/Bluetooth RF feed envelope",
+        ),
+        (
+            "soc_shield_ground_spring_marker",
+            [3.6, 0.7, 0.22],
+            [-5.5, 24.5, -1.1],
+            "ground spring",
+            "SoC shield can to PCB ground spring marker",
+        ),
+        (
+            "radio_shield_ground_spring_marker",
+            [3.6, 0.7, 0.22],
+            [-23.0, 33.0, -1.1],
+            "ground spring",
+            "radio shield can to PCB/chassis ground spring marker",
         ),
         (
             "sim_tray_keepout",
@@ -4415,11 +5198,17 @@ def write_solid_cad_handoff_artifacts(
         "usb_pd_controller_escape_trace_marker",
         "pd_charger_control_trace_marker",
         "charger_battery_power_sense_trace_marker",
+        "display_bias_power_flex_marker",
+        "rear_camera_power_flex_marker",
+        "front_camera_power_flex_marker",
+        "wifi_bt_host_control_trace_marker",
+        "cellular_host_control_trace_marker",
         "bottom_speaker_lead_pair",
         "bottom_microphone_flex_leads",
         "top_microphone_flex_tail",
         "earpiece_receiver_lead_flex",
         "haptic_flex_tail",
+        "sensor_hub_i2c_flex_marker",
         "sim_esim_signal_flex_marker",
         "nfc_loop_antenna_flex_marker",
         "cellular_div_rf_feed_development_envelope",
@@ -4428,6 +5217,8 @@ def write_solid_cad_handoff_artifacts(
         "soc_shield_can",
         "pmic_shield_can",
         "radio_shield_can",
+        "soc_shield_ground_spring_marker",
+        "radio_shield_ground_spring_marker",
         "haptic_lra",
         "sim_tray_keepout",
         "service_label_recess",
@@ -4576,6 +5367,73 @@ def write_solid_cad_handoff_artifacts(
             "nets": ["VBAT", "SYS", "BAT_NTC", "BAT_ID"],
         },
         {
+            "id": "display_bias_power_flex",
+            "cad_part": "display_bias_power_flex_marker",
+            "from": "backlight_bias_package_marker",
+            "to": "display_fpc_connector",
+            "connection_type": "display_bias_power_flex",
+            "nets": ["DISP_AVDD_5V5", "DISP_AVEE_N5V5"],
+        },
+        {
+            "id": "rear_camera_power_flex",
+            "cad_part": "rear_camera_power_flex_marker",
+            "from": "main_pcb",
+            "to": "rear_camera_module",
+            "connection_type": "camera_power_flex",
+            "nets": ["CAM_AVDD_2V8", "CAM_DVDD_1V2", "CAM0_RESET_N"],
+        },
+        {
+            "id": "front_camera_power_flex",
+            "cad_part": "front_camera_power_flex_marker",
+            "from": "main_pcb",
+            "to": "front_camera_module",
+            "connection_type": "camera_power_flex",
+            "nets": ["CAM_AVDD_2V8", "CAM_DVDD_1V2", "CAM1_RESET_N"],
+        },
+        {
+            "id": "wifi_bt_host_control",
+            "cad_part": "wifi_bt_host_control_trace_marker",
+            "from": "wifi_bt_module_keepout",
+            "to": "soc_package_marker",
+            "connection_type": "wifi_bt_host_control_trace",
+            "nets": [
+                "WIFI_PCIE_TX_P",
+                "WIFI_PCIE_TX_N",
+                "WIFI_PCIE_RX_P",
+                "WIFI_PCIE_RX_N",
+                "WIFI_EN",
+                "BT_EN",
+                "WIFI_SDIO_CLK",
+                "WIFI_SDIO_CMD",
+                "WIFI_SDIO_D0",
+                "WIFI_SDIO_D1",
+                "WIFI_SDIO_D2",
+                "WIFI_SDIO_D3",
+                "BT_UART_TX",
+                "BT_UART_RX",
+                "BT_UART_CTS_N",
+                "BT_UART_RTS_N",
+                "WIFI_HOST_WAKE",
+            ],
+        },
+        {
+            "id": "cellular_host_control",
+            "cad_part": "cellular_host_control_trace_marker",
+            "from": "cellular_lga_module_keepout",
+            "to": "soc_package_marker",
+            "connection_type": "cellular_host_control_trace",
+            "nets": [
+                "CELL_USB2_DP",
+                "CELL_USB2_DN",
+                "CELL_PCIE_TX_P",
+                "CELL_PCIE_TX_N",
+                "CELL_PCIE_RX_P",
+                "CELL_PCIE_RX_N",
+                "CELL_RESET_N",
+                "CELL_W_DISABLE_N",
+            ],
+        },
+        {
             "id": "bottom_speaker_lead_pair",
             "cad_part": "bottom_speaker_lead_pair",
             "from": "main_pcb",
@@ -4614,6 +5472,14 @@ def write_solid_cad_handoff_artifacts(
             "to": "haptic_lra",
             "connection_type": "haptic_flex",
             "nets": ["HAPTIC_OUT"],
+        },
+        {
+            "id": "sensor_hub_i2c_flex",
+            "cad_part": "sensor_hub_i2c_flex_marker",
+            "from": "main_pcb",
+            "to": "sensor_hub_package_marker",
+            "connection_type": "sensor_hub_i2c_flex",
+            "nets": ["SENSOR_I2C_SCL", "SENSOR_I2C_SDA"],
         },
         {
             "id": "sim_esim_signal_flex",
@@ -4658,6 +5524,22 @@ def write_solid_cad_handoff_artifacts(
                 "LPDDR_CK_P",
                 "LPDDR_CK_N",
             ],
+        },
+        {
+            "id": "soc_shield_ground_spring",
+            "cad_part": "soc_shield_ground_spring_marker",
+            "from": "soc_shield_can",
+            "to": "main_pcb",
+            "connection_type": "shield_ground_spring",
+            "nets": ["GND"],
+        },
+        {
+            "id": "radio_shield_ground_spring",
+            "cad_part": "radio_shield_ground_spring_marker",
+            "from": "radio_shield_can",
+            "to": "main_pcb",
+            "connection_type": "shield_ground_spring",
+            "nets": ["GND", "SHIELD_GND"],
         },
         {
             "id": "cellular_main_rf_feed",
@@ -4790,6 +5672,38 @@ def write_solid_cad_handoff_artifacts(
             "min_bend_radius_mm": 0.0,
             "supplier_release_required": True,
         },
+        "display_bias_power_flex": {
+            "physical_medium": "flexible_printed_circuit",
+            "electrical_class": "display_bias_power",
+            "controlled_impedance_required": False,
+            "impedance_requirement": "display_bias_voltage_and_current_capacity_required",
+            "min_bend_radius_mm": 1.0,
+            "supplier_release_required": True,
+        },
+        "camera_power_flex": {
+            "physical_medium": "flexible_printed_circuit",
+            "electrical_class": "camera_power_control",
+            "controlled_impedance_required": False,
+            "impedance_requirement": "camera_rail_current_capacity_and_sequencing_required",
+            "min_bend_radius_mm": 1.0,
+            "supplier_release_required": True,
+        },
+        "wifi_bt_host_control_trace": {
+            "physical_medium": "pcb_copper_trace_group",
+            "electrical_class": "wifi_bt_host_interface",
+            "controlled_impedance_required": True,
+            "impedance_requirement": "PCIe differential impedance plus SDIO/UART/control routing review",
+            "min_bend_radius_mm": 0.0,
+            "supplier_release_required": True,
+        },
+        "cellular_host_control_trace": {
+            "physical_medium": "pcb_copper_trace_group",
+            "electrical_class": "cellular_host_interface",
+            "controlled_impedance_required": True,
+            "impedance_requirement": "USB2/PCIe differential impedance plus reset/disable routing review",
+            "min_bend_radius_mm": 0.0,
+            "supplier_release_required": True,
+        },
         "speaker_lead_pair": {
             "physical_medium": "insulated_wire_pair",
             "electrical_class": "audio_power_pair",
@@ -4822,6 +5736,14 @@ def write_solid_cad_handoff_artifacts(
             "min_bend_radius_mm": 0.8,
             "supplier_release_required": True,
         },
+        "sensor_hub_i2c_flex": {
+            "physical_medium": "flexible_printed_circuit",
+            "electrical_class": "sensor_i2c",
+            "controlled_impedance_required": False,
+            "impedance_requirement": "not_controlled_impedance",
+            "min_bend_radius_mm": 0.8,
+            "supplier_release_required": True,
+        },
         "sim_esim_signal_marker": {
             "physical_medium": "flexible_printed_circuit",
             "electrical_class": "sim_esim_low_speed",
@@ -4844,6 +5766,14 @@ def write_solid_cad_handoff_artifacts(
             "controlled_impedance_required": True,
             "impedance_requirement": "host high-speed and memory escape constraints required",
             "min_bend_radius_mm": None,
+            "supplier_release_required": True,
+        },
+        "shield_ground_spring": {
+            "physical_medium": "ground_spring_contact",
+            "electrical_class": "shield_chassis_ground",
+            "controlled_impedance_required": False,
+            "impedance_requirement": "low_inductance_chassis_ground_contact_required",
+            "min_bend_radius_mm": 0.0,
             "supplier_release_required": True,
         },
         "rf_50r_feed_envelope": {
@@ -15462,11 +16392,16 @@ def write_board_step_readiness_artifacts(
             "evidence": "board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml",
         },
     ]
+    if all(case["pass"] for case in cases) and not concept_fail_closed:
+        board_step_status = "routed_board_step_ready"
+    elif detailed_routed_step_candidate_ready:
+        board_step_status = "blocked_local_routed_step_candidate_not_release"
+    else:
+        board_step_status = "blocked_concept_pcb_no_routed_step"
+
     report = {
         "claim_boundary": "Mechanical intake gate for routed KiCad board STEP; concept PCB envelope does not count as routed-board evidence.",
-        "status": "routed_board_step_ready"
-        if all(case["pass"] for case in cases) and not concept_fail_closed
-        else "blocked_concept_pcb_no_routed_step",
+        "status": board_step_status,
         "pcb_source": params["pcb"]["source"],
         "manufacturing_closure": "board/kicad/e1-phone/manufacturing-closure.yaml",
         "layout_utilization": "board/kicad/e1-phone/layout-utilization.yaml",
@@ -15752,6 +16687,8 @@ def write_routed_board_clearance_artifacts(
         ),
         "status": "routed_board_clearance_pass"
         if routed_board_ready and result_cases and complete_count == len(result_cases)
+        else "blocked_waiting_for_physical_routed_board_clearance_result"
+        if detailed_candidate_ready
         else "blocked_waiting_for_routed_board_step"
         if not routed_board_ready
         else "blocked_routed_board_clearance_incomplete",
@@ -15879,6 +16816,7 @@ def write_routed_board_clearance_artifacts(
 
 
 def write_full_cad_boolean_interference_artifacts(
+    params: dict[str, Any],
     parts: list[Part],
     clearance: dict[str, Any],
     board_step: dict[str, Any],
@@ -15901,7 +16839,11 @@ def write_full_cad_boolean_interference_artifacts(
                 "screen_adhesive_top",
                 "orange_side_frame",
             ],
-            "concept_pair_checks": [["display_lcm", "screen_cover_glass"]],
+            "concept_pair_checks": [
+                ["display_lcm", "screen_cover_glass"],
+                ["display_lcm", "orange_side_frame"],
+                ["screen_cover_glass", "orange_side_frame"],
+            ],
             "risk": "screen glass, adhesive, and display stack must not clash with molded orange rails or ledges",
         },
         {
@@ -15941,7 +16883,10 @@ def write_full_cad_boolean_interference_artifacts(
             "id": "front_camera_earpiece_under_glass_stack",
             "source_clearance_ids": ["front_camera_to_earpiece"],
             "required_parts": ["front_camera_module", "earpiece_receiver", "screen_cover_glass"],
-            "concept_pair_checks": [["front_camera_module", "earpiece_receiver"]],
+            "concept_pair_checks": [
+                ["front_camera_module", "earpiece_receiver"],
+                ["front_camera_module", "screen_cover_glass"],
+            ],
             "risk": "under-glass camera and handset acoustic path must clear cover glass and each other",
         },
         {
@@ -15952,7 +16897,10 @@ def write_full_cad_boolean_interference_artifacts(
                 "rear_camera_cover_glass",
                 "rear_camera_light_baffle_top",
             ],
-            "concept_pair_checks": [["rear_camera_module", "battery_pouch"]],
+            "concept_pair_checks": [
+                ["rear_camera_module", "battery_pouch"],
+                ["rear_camera_module", "rear_camera_cover_glass"],
+            ],
             "risk": "rear camera module, cover window, adhesive, and baffles must remain interference-free",
         },
         {
@@ -16020,6 +16968,31 @@ def write_full_cad_boolean_interference_artifacts(
                 "max_overlap_volume_mm3": None,
                 "interference_count": None,
                 "pass": False,
+            }
+        if set(pair) == {"display_lcm", "orange_side_frame"}:
+            display_part = parts_by_name["display_lcm"]
+            width, height, _depth = params["device"]["envelope_mm"]
+            wall = float(params["device"]["wall_thickness_mm"])
+            inner_half_x = (float(width) - 2.0 * wall) / 2.0
+            inner_half_y = (float(height) - 2.0 * wall) / 2.0
+            disp_min, disp_max = display_part.bounds
+            disp_center = (disp_min + disp_max) / 2.0
+            disp_half = (disp_max - disp_min) / 2.0
+            aperture_gaps = [
+                inner_half_x - abs(float(disp_center[0])) - float(disp_half[0]),
+                inner_half_y - abs(float(disp_center[1])) - float(disp_half[1]),
+            ]
+            min_gap = min(aperture_gaps)
+            return {
+                "scope_id": scope_id,
+                "pair": pair,
+                "missing_parts": [],
+                "component_pair_count": 1,
+                "min_gap_mm": round(min_gap, 3),
+                "max_overlap_volume_mm3": 0.0 if min_gap >= 0 else round(abs(min_gap), 3),
+                "interference_count": 0 if min_gap >= 0 else 1,
+                "pass": min_gap >= 0,
+                "method": "side_frame_inner_aperture_clearance",
             }
         min_gap: float | None = None
         max_overlap_volume = 0.0
@@ -19112,6 +20085,7 @@ def main() -> int:
         solid_cad,
     )
     full_cad_boolean = write_full_cad_boolean_interference_artifacts(
+        params,
         parts,
         clearance,
         board_step,

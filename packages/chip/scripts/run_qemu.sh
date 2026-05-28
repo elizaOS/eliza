@@ -2,10 +2,10 @@
 set -eu
 
 repo_dir=$(CDPATH=; cd -- "$(dirname -- "$0")/.." && pwd)
-if [ -d "$repo_dir/tools/bin" ]; then
+if [ "${ELIZA_RUN_QEMU_DISABLE_REPO_TOOLS:-0}" != "1" ] && [ -d "$repo_dir/tools/bin" ]; then
     PATH="${PATH}${PATH:+:}$repo_dir/tools/bin"
 fi
-if [ -d "$repo_dir/.venv/bin" ]; then
+if [ "${ELIZA_RUN_QEMU_DISABLE_REPO_TOOLS:-0}" != "1" ] && [ -d "$repo_dir/.venv/bin" ]; then
     PATH="${PATH}${PATH:+:}$repo_dir/.venv/bin"
 fi
 src="$repo_dir/sw/bootrom/e1_qemu_firmware.S"
@@ -359,6 +359,29 @@ payload = {
     "dtb_sha256": os.environ["OS_ATTEMPT_DTB_SHA"],
     "transcript": os.environ["OS_ATTEMPT_TRANSCRIPT"],
 }
+if os.environ["OS_ATTEMPT_STATE"].upper() != "PASS":
+    missing = []
+    if os.environ["OS_ATTEMPT_KERNEL_SHA"] == "missing":
+        missing.append(("linux_kernel_image", os.environ["OS_ATTEMPT_KERNEL"]))
+    if os.environ["OS_ATTEMPT_INITRD_SHA"] == "missing":
+        missing.append(("initrd_or_rootfs_image", os.environ["OS_ATTEMPT_INITRD"]))
+    if os.environ["OS_ATTEMPT_QEMU"] == "missing":
+        missing.append(("qemu_system_riscv64", "qemu-system-riscv64"))
+    if not missing:
+        missing.append(("qemu_os_boot_runtime_marker", os.environ["OS_ATTEMPT_TRANSCRIPT"]))
+    payload["findings"] = [
+        {
+            "code": f"qemu_os_boot_{code}",
+            "severity": "blocker",
+            "message": f"qemu-virt OS boot attempt is blocked by {code.replace('_', ' ')}",
+            "evidence": evidence,
+            "next_step": (
+                "Provide the missing qemu-virt Linux payload/tool or fix the archived boot "
+                "transcript so scripts/run_qemu.sh --check-os reaches an init/login marker."
+            ),
+        }
+        for code, evidence in missing
+    ]
 Path(os.environ["OS_ATTEMPT_MANIFEST"]).write_text(
     json.dumps(payload, indent=2, sort_keys=True) + "\n"
 )

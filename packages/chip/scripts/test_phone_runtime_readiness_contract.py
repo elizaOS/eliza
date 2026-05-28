@@ -96,6 +96,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             payload = gate.run_check(Namespace())
         self.assertEqual(payload["status"], "pass")
         self.assertEqual(payload["findings"], [])
+        self.assertRegex(payload["generated_utc"], r"^\d{4}-\d{2}-\d{2}T")
 
     def test_invalid_scope_report_is_failure(self) -> None:
         invalid = gate.ScopeSpec(
@@ -706,6 +707,15 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             any(
                 "ELIZA_ROLLBACK_REJECTION_COMMAND" in command
                 for command in security["capture_commands"]
+            )
+        )
+        verified_boot = gate.evidence_capture_plan(
+            gate.ROOT / "docs/evidence/android/security/verified_boot_acceptance.log"
+        )
+        self.assertTrue(
+            any(
+                "verdict=pass" in command and "RESULT=%s" in command
+                for command in verified_boot["capture_commands"]
             )
         )
         self.assertFalse(any("<lab command" in command for command in security["capture_commands"]))

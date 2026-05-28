@@ -65,6 +65,9 @@ development_route_snapshot:
   via_count: 24
   route_length_total_mm: 5543.028
   controlled_impedance_route_count: 48
+  route_classification_gap_count: 0
+  route_classification_gaps: []
+  route_segment_trace_bound_count: 306
   route_traceability_summary:
     classes:
       audio_control_aon:
@@ -248,15 +251,24 @@ development_route_snapshot:
         - WIFI_SDIO_D2
         - WIFI_SDIO_D3
       sim_nfc_sensor:
-        route_count: 8
-        segment_count: 16
-        length_mm: 383.29
+        route_count: 17
+        segment_count: 34
+        length_mm: 557.357
         nets:
         - ESIM_CLK
         - ESIM_IO
         - ESIM_RST
         - ESIM_VCC
+        - NFC_EN
+        - NFC_I2C_SCL
+        - NFC_I2C_SDA
+        - NFC_IRQ_N
+        - NFC_RF_N
+        - NFC_RF_P
+        - SENSOR_I2C_SCL
+        - SENSOR_I2C_SDA
         - USIM_CLK
+        - USIM_DET
         - USIM_IO
         - USIM_RST
         - USIM_VCC
@@ -285,22 +297,6 @@ development_route_snapshot:
         - UFS_RX_P
         - UFS_TX_N
         - UFS_TX_P
-      unclassified:
-        route_count: 11
-        segment_count: 22
-        length_mm: 228.651
-        nets:
-        - CELL_RESET_N
-        - CELL_W_DISABLE_N
-        - NFC_EN
-        - NFC_I2C_SCL
-        - NFC_I2C_SDA
-        - NFC_IRQ_N
-        - NFC_RF_N
-        - NFC_RF_P
-        - SENSOR_I2C_SCL
-        - SENSOR_I2C_SDA
-        - USIM_DET
       usb2_diff:
         route_count: 5
         segment_count: 10
@@ -312,22 +308,24 @@ development_route_snapshot:
         - USB_DN
         - USB_DP
       wireless_control_bt_uart:
-        route_count: 7
-        segment_count: 14
-        length_mm: 129.854
+        route_count: 9
+        segment_count: 18
+        length_mm: 184.438
         nets:
         - BT_EN
         - BT_UART_CTS_N
         - BT_UART_RTS_N
         - BT_UART_RX
         - BT_UART_TX
+        - CELL_RESET_N
+        - CELL_W_DISABLE_N
         - WIFI_EN
         - WIFI_HOST_WAKE
     domains:
       cellular_wifi_bt_rf_host:
-        route_count: 36
-        segment_count: 72
-        length_mm: 855.743
+        route_count: 47
+        segment_count: 94
+        length_mm: 1084.394
         nets:
         - BT_EN
         - BT_UART_CTS_N
@@ -339,15 +337,26 @@ development_route_snapshot:
         - CELL_PCIE_RX_P
         - CELL_PCIE_TX_N
         - CELL_PCIE_TX_P
+        - CELL_RESET_N
         - CELL_RF_DIV
         - CELL_RF_MAIN
         - CELL_USB2_DN
         - CELL_USB2_DP
+        - CELL_W_DISABLE_N
         - ESIM_CLK
         - ESIM_IO
         - ESIM_RST
         - ESIM_VCC
+        - NFC_EN
+        - NFC_I2C_SCL
+        - NFC_I2C_SDA
+        - NFC_IRQ_N
+        - NFC_RF_N
+        - NFC_RF_P
+        - SENSOR_I2C_SCL
+        - SENSOR_I2C_SDA
         - USIM_CLK
+        - USIM_DET
         - USIM_IO
         - USIM_RST
         - USIM_VCC
@@ -496,22 +505,6 @@ development_route_snapshot:
         - USB_DN
         - USB_DP
         - VBUS
-      unmapped:
-        route_count: 11
-        segment_count: 22
-        length_mm: 228.651
-        nets:
-        - CELL_RESET_N
-        - CELL_W_DISABLE_N
-        - NFC_EN
-        - NFC_I2C_SCL
-        - NFC_I2C_SDA
-        - NFC_IRQ_N
-        - NFC_RF_N
-        - NFC_RF_P
-        - SENSOR_I2C_SCL
-        - SENSOR_I2C_SDA
-        - USIM_DET
       usb_c_power_sidekey_spine:
         route_count: 23
         segment_count: 46
@@ -921,8 +914,8 @@ route_domain_net_inventory:
   - sdio_single
   - wireless_control_bt_uart
   - sim_nfc_sensor
-  exact_net_count: 37
-  exact_nets_present_count: 37
+  exact_net_count: 48
+  exact_nets_present_count: 48
   exact_nets_missing_count: 0
   missing_exact_nets: []
   alias_satisfied_exact_net_count: 5
@@ -994,7 +987,7 @@ route_domain_net_inventory:
   source_status: blocked_missing_routed_access_fiducials_coupons_and_manufacturing_exports
   route_execution_ready: false
 critical_net_summary:
-  unique_burndown_exact_net_count: 143
+  unique_burndown_exact_net_count: 154
   unique_burndown_exact_nets_missing_from_board_count: 0
   domains_with_missing_exact_nets: 0
 missing_production_outputs: []
@@ -1006,6 +999,13 @@ summary:
   development_real_footprints_present: true
   development_remaining_placeholder_marker_count: 0
   development_placeholder_footprints_present: false
+  development_routed_tracks_present: true
+  development_route_count: 153
+  development_segment_count: 306
+  development_via_count: 24
+  development_route_classification_gap_count: 0
+  development_missing_net_count: 0
+  local_routed_development_complete_not_release: true
   missing_required_output_count: 0
   routing_evidence_absent_or_incomplete: true
   release_state: blocked_fail_closed

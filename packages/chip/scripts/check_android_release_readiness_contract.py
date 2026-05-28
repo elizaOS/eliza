@@ -782,6 +782,21 @@ def staged_android_archive_integrity_inventory(
     }
 
 
+def staged_chip_riscv64_archive_has_release_integrity(
+    staged_archive_inventory: dict[str, Any],
+) -> bool:
+    records = staged_archive_inventory.get("records")
+    if not isinstance(records, list):
+        return False
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        if record.get("artifactId") != "android-chip-riscv64-zip":
+            continue
+        return bool(record.get("releaseCredit"))
+    return False
+
+
 def _release_relative_path(path_value: str) -> Path:
     path = Path(path_value)
     if path.is_absolute():
@@ -1631,8 +1646,14 @@ def prioritized_live_evidence_capture_plan(
                 "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
                 (
                     'adb connect "$CHIP_ANDROID_ADB_HOSTPORT" && '
-                    'adb -s "$CHIP_ANDROID_ADB_HOSTPORT" shell getprop ro.boot.verifiedbootstate '
-                    f"| tee {docs_evidence_dir}/security/verified_boot_acceptance.log"
+                    'state=$(adb -s "$CHIP_ANDROID_ADB_HOSTPORT" shell getprop '
+                    "ro.boot.verifiedbootstate | tr -d '\\r') && "
+                    'if [ "$state" = green ]; then result=0; verdict=pass; '
+                    "else result=1; verdict=fail; fi; "
+                    "printf 'VERIFIED_BOOT=%s\\nSTATE=%s\\nRESULT=%s\\n' "
+                    f'"$verdict" "$state" "$result" | tee '
+                    f"{docs_evidence_dir}/security/verified_boot_acceptance.log; "
+                    'test "$result" = 0'
                 ),
                 (
                     "export ELIZA_TAMPERED_BOOT_REJECTION_COMMAND="
@@ -1955,6 +1976,9 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     staged_archive_integrity_inventory = staged_android_archive_integrity_inventory(
         umbrella_manifest
     )
+    chip_archive_staged_with_integrity = staged_chip_riscv64_archive_has_release_integrity(
+        staged_archive_integrity_inventory
+    )
     archive_source_inventory = android_archive_source_member_inventory(umbrella_manifest)
     archive_source_dependency = android_archive_source_dependency(archive_source_inventory)
     live_launcher_missing_inventory = live_launcher_agent_missing_evidence(umbrella_manifest)
@@ -2039,7 +2063,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
-        aosp_chip_inventory["status"] != "complete",
+        aosp_chip_inventory["status"] != "complete" and not chip_archive_staged_with_integrity,
         "android_chip_riscv64_aosp_artifacts_incomplete",
         "AOSP chip/riscv64 build output is incomplete before release archive staging",
         f"present={aosp_chip_inventory['present']} missing={aosp_chip_inventory['missing']} product_out={aosp_chip_inventory['productOut']}",
@@ -2168,6 +2192,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "runtime_host_symlink_findings": host_symlink_findings,
         "android_release_artifact_inventory": artifact_inventory,
         "staged_android_archive_integrity_inventory": staged_archive_integrity_inventory,
+        "chip_riscv64_archive_staged_with_integrity": chip_archive_staged_with_integrity,
         "android_archive_source_member_inventory": archive_source_inventory,
         "aosp_chip_build_artifact_inventory": aosp_chip_inventory,
         "live_launcher_agent_capture_commands": live_launcher_agent_capture_commands(),

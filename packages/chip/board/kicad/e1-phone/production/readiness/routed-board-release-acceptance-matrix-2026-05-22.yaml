@@ -23,14 +23,19 @@ summary:
   missing_required_output_path_count: 0
   candidate_present_blocked_required_output_path_count: 37
   truly_missing_required_output_path_count: 0
-  candidate_step_size_bytes: 32970696
+  candidate_step_size_bytes: 33644081
   candidate_step_component_model_count: 89
   candidate_step_pinout_bound_model_count: 22
-  candidate_step_cad_connection_count: 24
-  candidate_step_cad_connection_terminal_marker_count: 48
-  candidate_step_cad_connection_terminal_pair_count: 24
+  candidate_step_cad_connection_count: 32
+  candidate_step_cad_connection_terminal_marker_count: 64
+  candidate_step_cad_connection_terminal_pair_count: 32
   validation_evidence_category_count: 6
   missing_validation_evidence_category_count: 0
+  development_route_count: 153
+  development_segment_count: 306
+  development_via_count: 24
+  development_route_classification_gap_count: 0
+  development_missing_net_count: 0
   release_state: blocked_fail_closed
   acceptance_allowed: false
 fail_closed_policy:
@@ -51,8 +56,8 @@ candidate_end_to_end_context:
   release_credit: false
   source_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
   source_step: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
-  source_step_size_bytes: 32970696
-  source_step_sha256: 9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58
+  source_step_size_bytes: 33644081
+  source_step_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
   routed_step_visual_detail:
     footprint_envelope_count: 89
     pad_contact_visual_count: 1452
@@ -68,31 +73,32 @@ candidate_end_to_end_context:
   cad_connection_coverage:
     status: cad_connection_markers_complete_not_release
     assembly_manifest: mechanical/e1-phone/out/assembly-manifest.json
-    assembly_manifest_part_count: 234
-    assembly_manifest_connection_terminal_marker_count: 48
-    assembly_manifest_connection_solid_step_part_count: 72
+    assembly_manifest_part_count: 258
+    assembly_manifest_connection_terminal_marker_count: 64
+    assembly_manifest_connection_solid_step_part_count: 96
     assembly_manifest_missing_connection_solid_step_part_count: 0
     assembly_manifest_missing_connection_solid_step_part_names: []
-    required_connection_count: 24
-    passing_connection_count: 24
-    required_connection_terminal_marker_count: 48
-    passing_connection_terminal_pair_count: 24
-    required_connection_solid_step_part_count: 72
-    passing_connection_solid_step_part_set_count: 24
-    connection_solid_step_part_bytes_total: 1125435
-    represented_net_count_total: 112
-    connection_record_count: 24
-    represented_net_list_total: 112
+    required_connection_count: 32
+    passing_connection_count: 32
+    required_connection_terminal_marker_count: 64
+    passing_connection_terminal_pair_count: 32
+    required_connection_solid_step_part_count: 96
+    passing_connection_solid_step_part_set_count: 32
+    connection_solid_step_part_bytes_total: 1501919
+    represented_net_count_total: 150
+    connection_record_count: 32
+    represented_net_list_total: 150
     all_connection_records_have_represented_nets: true
     all_connection_represented_nets_match_routed_nets: true
-    visual_route_span_total_mm: 397.8
+    visual_route_span_total_mm: 456.0
     physical_medium_counts:
       battery_power_flex: 1
       board_to_board_edge_connector: 1
       flexible_antenna_loop: 1
-      flexible_printed_circuit: 10
+      flexible_printed_circuit: 14
+      ground_spring_contact: 2
       insulated_wire_pair: 2
-      pcb_copper_trace_group: 3
+      pcb_copper_trace_group: 5
       rf_50ohm_feed: 5
       rf_tuner_interconnect: 1
     electrical_class_counts:
@@ -101,23 +107,29 @@ candidate_end_to_end_context:
       audio_receiver_pair: 1
       battery_power_sense: 1
       battery_power_sense_board_route: 1
+      camera_power_control: 2
+      cellular_host_interface: 1
       cellular_wifi_rf: 5
       compute_board_to_board_mixed_speed: 1
       digital_microphone: 2
+      display_bias_power: 1
       haptic_drive: 1
       low_speed_gpio: 1
       mipi_csi_camera_control: 2
       mipi_dsi_touch_control: 1
       nfc_loop_rf: 1
       pd_charger_power_control_board_route: 1
+      sensor_i2c: 1
+      shield_chassis_ground: 2
       sim_esim_low_speed: 1
       top_bottom_board_mixed_signal: 1
       usb2_pd_vbus: 1
       usb2_pd_vbus_board_route: 1
-    controlled_impedance_connection_count: 14
-    controlled_impedance_requirement_defined_count: 24
-    bend_radius_requirement_defined_count: 24
-    supplier_release_required_connection_count: 24
+      wifi_bt_host_interface: 1
+    controlled_impedance_connection_count: 16
+    controlled_impedance_requirement_defined_count: 32
+    bend_radius_requirement_defined_count: 32
+    supplier_release_required_connection_count: 32
     release_credit: false
   kicad_cad_traceability:
     status: local_traceability_complete_not_release
@@ -126,21 +138,22 @@ candidate_end_to_end_context:
     step_footprint_instance_count: 89
     pinout_bound_footprint_count: 21
     all_pinout_bound_footprints_have_terminal_contract: true
-    cad_connection_count: 24
-    cad_connection_represented_net_count_total: 112
-    cad_connection_visual_route_span_total_mm: 397.8
-    cad_connection_terminal_marker_count: 48
-    cad_connection_terminal_pair_count: 24
-    cad_connection_solid_step_part_count: 72
-    cad_connection_solid_step_part_set_count: 24
-    cad_connection_solid_step_part_bytes_total: 1125435
+    cad_connection_count: 32
+    cad_connection_represented_net_count_total: 150
+    cad_connection_visual_route_span_total_mm: 456.0
+    cad_connection_terminal_marker_count: 64
+    cad_connection_terminal_pair_count: 32
+    cad_connection_solid_step_part_count: 96
+    cad_connection_solid_step_part_set_count: 32
+    cad_connection_solid_step_part_bytes_total: 1501919
     cad_connection_physical_medium_counts:
       battery_power_flex: 1
       board_to_board_edge_connector: 1
       flexible_antenna_loop: 1
-      flexible_printed_circuit: 10
+      flexible_printed_circuit: 14
+      ground_spring_contact: 2
       insulated_wire_pair: 2
-      pcb_copper_trace_group: 3
+      pcb_copper_trace_group: 5
       rf_50ohm_feed: 5
       rf_tuner_interconnect: 1
     cad_connection_electrical_class_counts:
@@ -149,23 +162,29 @@ candidate_end_to_end_context:
       audio_receiver_pair: 1
       battery_power_sense: 1
       battery_power_sense_board_route: 1
+      camera_power_control: 2
+      cellular_host_interface: 1
       cellular_wifi_rf: 5
       compute_board_to_board_mixed_speed: 1
       digital_microphone: 2
+      display_bias_power: 1
       haptic_drive: 1
       low_speed_gpio: 1
       mipi_csi_camera_control: 2
       mipi_dsi_touch_control: 1
       nfc_loop_rf: 1
       pd_charger_power_control_board_route: 1
+      sensor_i2c: 1
+      shield_chassis_ground: 2
       sim_esim_low_speed: 1
       top_bottom_board_mixed_signal: 1
       usb2_pd_vbus: 1
       usb2_pd_vbus_board_route: 1
-    cad_connection_controlled_impedance_count: 14
-    cad_connection_controlled_impedance_requirement_defined_count: 24
-    cad_connection_bend_radius_requirement_defined_count: 24
-    cad_connection_supplier_release_required_count: 24
+      wifi_bt_host_interface: 1
+    cad_connection_controlled_impedance_count: 16
+    cad_connection_controlled_impedance_requirement_defined_count: 32
+    cad_connection_bend_radius_requirement_defined_count: 32
+    cad_connection_supplier_release_required_count: 32
     incomplete_footprint_count: 0
     incomplete_cad_connection_count: 0
     release_credit: false
@@ -191,6 +210,9 @@ candidate_end_to_end_context:
     pinout_bound_model_count: 22
     support_pattern_model_count: 67
     models_with_terminal_contract_or_no_electrical_pads_count: 89
+    total_pad_contract_visual_count: 1452
+    uncovered_pad_visual_count: 0
+    all_model_pad_visuals_have_contract: true
     non_signal_pad_contract_count: 7
     models_with_non_signal_pad_contract_count: 6
     npth_mechanical_feature_contract_count: 4
@@ -198,7 +220,7 @@ candidate_end_to_end_context:
     local_discrete_step_file_count: 89
     local_discrete_step_imported_solid_count: 89
     local_discrete_step_bbox_match_count: 89
-    local_discrete_step_bytes_total: 1385932
+    local_discrete_step_bytes_total: 1387362
     all_models_have_local_discrete_step_file: true
     all_local_discrete_step_hashes_match_files: true
     all_local_discrete_step_sizes_match_files: true
@@ -219,6 +241,9 @@ candidate_end_to_end_context:
     support_pattern_model_record_count: 67
     terminal_contract_model_record_count: 85
     terminal_contract_total_count: 1441
+    total_pad_contract_visual_count: 1452
+    uncovered_pad_visual_count: 0
+    all_model_pad_visuals_have_contract: true
     non_signal_pad_contract_total_count: 7
     npth_mechanical_feature_contract_total_count: 4
     models_with_npth_mechanical_feature_contract_count: 4
@@ -232,7 +257,7 @@ candidate_end_to_end_context:
     local_discrete_step_imported_solid_count: 89
     local_discrete_step_bbox_match_count: 89
     local_discrete_step_file_count: 89
-    local_discrete_step_bytes_total: 1385932
+    local_discrete_step_bytes_total: 1387362
     missing_supplier_discrete_model_count: 89
     supplier_step_intake_placeholder_count: 0
     supplier_step_intake_local_surrogate_count: 47
@@ -266,7 +291,7 @@ candidate_end_to_end_context:
     status: blocked_local_component_binding_gap_matrix_not_supplier_approval
     row_count: 89
     csv_matrix: board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv
-    csv_matrix_sha256: b16aec2534b9aa8e39ad8f0ff45062f0118a72e573ac2eebc0ce429275c21e5b
+    csv_matrix_sha256: 3c79dff53d63aaaf207f8d3989f016e71492f85fd0015c984842f5fc5d7fd1a1
     csv_matrix_bytes: 50452
     local_discrete_step_file_count: 89
     local_discrete_step_import_pass_count: 89
@@ -301,6 +326,10 @@ development_route_context:
   board_file: packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed-development.kicad_pcb
   route_count: 153
   segment_count: 306
+  via_count: 24
+  controlled_impedance_route_count: 48
+  route_classification_gap_count: 0
+  route_segment_trace_bound_count: 306
   missing_nets: []
   release_credit: false
   reason_not_release: development_routing_visualization_not_release
@@ -539,8 +568,8 @@ route_domain_acceptance_matrix:
   - top_antenna
   - bottom_antenna
   - sim_tray
-  required_exact_net_count: 37
-  present_exact_net_count: 37
+  required_exact_net_count: 48
+  present_exact_net_count: 48
   missing_exact_net_count: 0
   missing_exact_nets: []
   alias_satisfied_exact_net_count: 5

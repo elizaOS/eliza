@@ -22,8 +22,7 @@ from xml.etree import ElementTree
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
 ELIZA_ROOT = ROOT.parents[1]
-OUTER_WORKSPACE = ROOT.parents[2] if len(ROOT.parents) > 2 else ELIZA_ROOT
-ANDROID_APP_GRADLE = WORKSPACE / "app-core/platforms/android/app/build.gradle"
+ANDROID_APP_GRADLE = WORKSPACE / "app/android/app/build.gradle"
 LOCAL_MANIFEST = ROOT / "sw/aosp-device/local_manifests/eliza.xml"
 
 
@@ -67,17 +66,11 @@ def package_name_to_path(package_name: str) -> Path:
 
 
 GRADLE_IDENTITY = read_android_gradle_identity()
-BRAND_CONFIG = infer_vendor_identity(
-    GRADLE_IDENTITY["appId"] if GRADLE_IDENTITY else "ai.milady.milady"
-)
-APP_PACKAGE = BRAND_CONFIG["appId"] if BRAND_CONFIG else "ai.elizaos.app"
-APP_NAME = BRAND_CONFIG["appName"] if BRAND_CONFIG else "Eliza"
-VENDOR_DIR_NAME = BRAND_CONFIG["vendorDir"] if BRAND_CONFIG else "eliza"
-VENDOR_ROOT = (
-    OUTER_WORKSPACE / "os/android/vendor" / VENDOR_DIR_NAME
-    if (OUTER_WORKSPACE / "os/android/vendor" / VENDOR_DIR_NAME).is_dir()
-    else WORKSPACE / "os/android/vendor" / VENDOR_DIR_NAME
-)
+APP_SOURCE_PACKAGE = GRADLE_IDENTITY["appId"] if GRADLE_IDENTITY else "app.eliza"
+APP_PACKAGE = "ai.elizaos.app"
+APP_NAME = "Eliza"
+VENDOR_DIR_NAME = "eliza"
+VENDOR_ROOT = WORKSPACE / "os/android/vendor" / VENDOR_DIR_NAME
 SYSTEM_UI = WORKSPACE / "os/android/system-ui"
 NATIVE = SYSTEM_UI / "native"
 BRIDGE_KT = NATIVE / "src/main/java/ai/elizaos/system/bridge/SystemBridge.kt"
@@ -89,8 +82,8 @@ MOCK_PROVIDER = SYSTEM_UI / "src/providers/MockSystemProvider.tsx"
 BRIDGE_CONTRACT = SYSTEM_UI / "src/bridge/bridge-contract.ts"
 LAUNCHER_MAIN_ACTIVITY = (
     WORKSPACE
-    / "app-core/platforms/android/app/src/main/java"
-    / package_name_to_path(APP_PACKAGE)
+    / "app/android/app/src/main/java"
+    / package_name_to_path(APP_SOURCE_PACKAGE)
     / "MainActivity.java"
 )
 OS_COMMON = VENDOR_ROOT / f"{VENDOR_DIR_NAME}_common.mk"

@@ -30,6 +30,9 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/cpu/bpu/fetch_stream_to_l1i_demand.sv \
 	$(REPO)/rtl/cpu/bpu/ftq_to_l1i_shim.sv \
 	$(REPO)/rtl/cpu/csr/bpu_to_zihpm_remap.sv \
+	$(REPO)/rtl/cache/l1i/e1_l1i_cache.sv \
+	$(REPO)/rtl/cache/l1i/e1_l1i_dual_miss_to_l2.sv \
+	$(REPO)/rtl/cache/l2/e1_l2_cache.sv \
 	$(REPO)/rtl/cpu/cluster/e1_cluster_top.sv \
 	$(REPO)/rtl/interconnect/axi4/e1_axi4_interconnect.sv \
 	$(REPO)/rtl/interconnect/chi_bridge/e1_chi_to_axi4_bridge.sv \
@@ -44,6 +47,7 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/dma/e1_dma.sv \
 	$(REPO)/rtl/npu/e1_npu.sv \
 	$(REPO)/rtl/display/e1_display.sv \
+	$(REPO)/rtl/display/e1_display_scanout.sv \
 	$(REPO)/rtl/top/adapters/e1_slc_to_chi_line_shim.sv \
 	$(REPO)/rtl/top/adapters/e1_axi4_width_converter.sv \
 	$(REPO)/rtl/peripherals/e1_mmio_decode.sv \

@@ -41,6 +41,8 @@ class SequentialLearner(Protocol):
 
     def eval_task_motion(self, task_id: int, episodes: int) -> dict[str, Any]: ...
 
+    def eval_task_trace(self, task_id: int) -> dict[str, Any]: ...
+
 
 @dataclass
 class MotionEvalStats:
@@ -79,7 +81,8 @@ def _evaluate_motion(
     *,
     seed: int,
     action_fn: Callable[[np.ndarray], np.ndarray],
-) -> dict[str, Any]:
+    trace_first_episode: bool = False,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
     env.set_task(task_id)
     returns: list[float] = []
     lengths: list[float] = []
@@ -91,14 +94,45 @@ def _evaluate_motion(
     final_y: list[float] = []
     goal_dists: list[float] = []
     clearances: list[float] = []
+    trace: dict[str, Any] | None = None
     for ep in range(episodes):
-        obs, _ = env.reset(seed=seed + task_id + ep)
+        obs, reset_info = env.reset(seed=seed + task_id + ep)
         done = False
         ep_ret = 0.0
         ep_len = 0
-        last_info: dict[str, Any] = {}
-        min_clearance = float("inf")
+        last_info: dict[str, Any] = dict(reset_info)
+        min_clearance = float(reset_info.get("obstacle_clearance_m", float("inf")))
         collided = False
+        if trace_first_episode and ep == 0:
+            trace = {
+                "task_id": int(task_id),
+                "lane_y": float(reset_info.get("lane_y", np.nan)),
+                "goal": [float(env.goal[0]), float(env.goal[1])] if hasattr(env, "goal") else None,
+                "obstacle": {
+                    "x": float(getattr(env.config, "obstacle_x_m", np.nan)),
+                    "y": float(getattr(env.config, "obstacle_y_m", np.nan)),
+                    "radius": float(getattr(env.config, "obstacle_radius_m", np.nan)),
+                }
+                if hasattr(env, "config")
+                else None,
+                "steps": [
+                    {
+                        "step": 0,
+                        "x": float(reset_info.get("x", np.nan)),
+                        "y": float(reset_info.get("y", np.nan)),
+                        "vx": float(reset_info.get("vx", 0.0)),
+                        "vy": float(reset_info.get("vy", 0.0)),
+                        "reward": 0.0,
+                        "collision": bool(reset_info.get("collision")),
+                        "goal_reached": bool(reset_info.get("goal_reached")),
+                        "passed_obstacle": bool(reset_info.get("passed_obstacle")),
+                        "forward_progress_m": float(reset_info.get("forward_progress_m", 0.0)),
+                        "obstacle_clearance_m": float(
+                            reset_info.get("obstacle_clearance_m", np.nan)
+                        ),
+                    }
+                ],
+            }
         while not done:
             action = action_fn(np.asarray(obs, dtype=np.float32))
             obs, reward, terminated, truncated, info = env.step(action)
@@ -109,6 +143,26 @@ def _evaluate_motion(
             collided = collided or bool(info.get("collision"))
             ep_ret += float(reward)
             ep_len += 1
+            if trace is not None and ep == 0:
+                trace["steps"].append(
+                    {
+                        "step": ep_len,
+                        "x": float(last_info.get("x", np.nan)),
+                        "y": float(last_info.get("y", np.nan)),
+                        "vx": float(last_info.get("vx", np.nan)),
+                        "vy": float(last_info.get("vy", np.nan)),
+                        "reward": float(reward),
+                        "collision": bool(last_info.get("collision")),
+                        "goal_reached": bool(last_info.get("goal_reached")),
+                        "passed_obstacle": bool(last_info.get("passed_obstacle")),
+                        "forward_progress_m": float(
+                            last_info.get("forward_progress_m", np.nan)
+                        ),
+                        "obstacle_clearance_m": float(
+                            last_info.get("obstacle_clearance_m", np.nan)
+                        ),
+                    }
+                )
             done = bool(terminated or truncated)
         returns.append(ep_ret)
         lengths.append(float(ep_len))
@@ -134,7 +188,10 @@ def _evaluate_motion(
         mean_return=float(np.mean(returns)) if returns else 0.0,
         mean_length=float(np.mean(lengths)) if lengths else 0.0,
     )
-    return stats.to_dict()
+    stats_dict = stats.to_dict()
+    if trace is not None:
+        trace["summary"] = stats_dict
+    return stats_dict, trace
 
 
 def _eval_deterministic_env(env: JointReachEnv, task_id: int) -> None:
@@ -163,13 +220,25 @@ class AlbertaSequentialLearner:
         return stats.mean_return
 
     def eval_task_motion(self, task_id: int, episodes: int) -> dict[str, Any]:
-        return _evaluate_motion(
+        stats, _trace = _evaluate_motion(
             self.env,
             task_id,
             episodes,
             seed=self._eval_seed,
             action_fn=lambda obs: self.controller.act_greedy(obs),
         )
+        return stats
+
+    def eval_task_trace(self, task_id: int) -> dict[str, Any]:
+        _stats, trace = _evaluate_motion(
+            self.env,
+            task_id,
+            1,
+            seed=self._eval_seed,
+            action_fn=lambda obs: self.controller.act_greedy(obs),
+            trace_first_episode=True,
+        )
+        return trace or {}
 
 
 class PPOSequentialLearner:
@@ -228,13 +297,25 @@ class PPOSequentialLearner:
         return float(np.mean(returns)) if returns else 0.0
 
     def eval_task_motion(self, task_id: int, episodes: int) -> dict[str, Any]:
-        return _evaluate_motion(
+        stats, _trace = _evaluate_motion(
             self.env,
             task_id,
             episodes,
             seed=self._eval_seed,
             action_fn=lambda obs: self._model.predict(obs, deterministic=True)[0],
         )
+        return stats
+
+    def eval_task_trace(self, task_id: int) -> dict[str, Any]:
+        _stats, trace = _evaluate_motion(
+            self.env,
+            task_id,
+            1,
+            seed=self._eval_seed,
+            action_fn=lambda obs: self._model.predict(obs, deterministic=True)[0],
+            trace_first_episode=True,
+        )
+        return trace or {}
 
 
 class SACSequentialLearner:
@@ -299,10 +380,22 @@ class SACSequentialLearner:
         return float(np.mean(returns)) if returns else 0.0
 
     def eval_task_motion(self, task_id: int, episodes: int) -> dict[str, Any]:
-        return _evaluate_motion(
+        stats, _trace = _evaluate_motion(
             self.env,
             task_id,
             episodes,
             seed=self._eval_seed,
             action_fn=lambda obs: self._model.predict(obs, deterministic=True)[0],
         )
+        return stats
+
+    def eval_task_trace(self, task_id: int) -> dict[str, Any]:
+        _stats, trace = _evaluate_motion(
+            self.env,
+            task_id,
+            1,
+            seed=self._eval_seed,
+            action_fn=lambda obs: self._model.predict(obs, deterministic=True)[0],
+            trace_first_episode=True,
+        )
+        return trace or {}

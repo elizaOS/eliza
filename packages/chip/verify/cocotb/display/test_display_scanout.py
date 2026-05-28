@@ -22,6 +22,16 @@ Tests:
     FIFO underrun: pix_data is the defined fill colour, the sticky underflow
     status bit + counter are set, and the next (well-fed) frame scans out
     clean with the status cleared via W1C.
+  * disabled_state_blocks_axi_and_pixels -- disabled scanout emits no ARs and
+    no active/valid/sync pixel-boundary signals.
+  * unsupported_format_write_is_ignored -- invalid fourcc programming is
+    rejected without changing the active format.
+  * framebuffer_ar_addresses_are_monotonic_and_stride_aligned -- read bursts
+    walk each line monotonically and jump by programmed stride at line end.
+  * axi_error_sets_underflow_status -- SLVERR/DECERR on returned beats is
+    fail-closed and software-visible.
+  * dcs_and_irq_vsync_cadence_matches_mode -- DCS vsync mirrors the digital
+    vsync boundary and IRQ pulses once at the programmed frame phase.
 """
 
 from __future__ import annotations
@@ -77,7 +87,7 @@ async def reset(dut):
 #   ``starve``     : if True, never returns read data (forces underflow).
 # Honours arlen (INCR bursts), drives rlast on the final beat, returns OKAY.
 # ---------------------------------------------------------------------------
-async def axi4_read_slave(dut, mem, *, latency=2, starve=False, max_outstanding=4):
+async def axi4_read_slave(dut, mem, *, latency=2, starve=False, max_outstanding=4, rresp=0):
     pending: list[list[int]] = []  # [addr, beats_left, beat_idx, countdown, arid]
     dut.m_arready.value = 1
     dut.m_rvalid.value = 0
@@ -108,7 +118,7 @@ async def axi4_read_slave(dut, mem, *, latency=2, starve=False, max_outstanding=
                     dut.m_rvalid.value = 1
                     last = req[2] == req[1] - 1
                     dut.m_rlast.value = 1 if last else 0
-                    dut.m_rresp.value = 0
+                    dut.m_rresp.value = rresp
                     drove = True
                     req[2] += 1
                     if last:
@@ -157,6 +167,20 @@ async def capture_active_pixels(dut, count, *, timeout_cycles=20000):
         cycles += 1
     assert len(pixels) == count, f"captured {len(pixels)}/{count} pixels"
     return pixels
+
+
+async def collect_ar_fires(dut, count, *, timeout_cycles=20000):
+    """Collect accepted AXI read-address bursts."""
+    bursts: list[tuple[int, int]] = []
+    cycles = 0
+    while len(bursts) < count and cycles < timeout_cycles:
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.m_arvalid.value) and int(dut.m_arready.value):
+            bursts.append((int(dut.m_araddr.value), int(dut.m_arlen.value) + 1))
+        cycles += 1
+    assert len(bursts) == count, f"captured {len(bursts)}/{count} AR bursts"
+    return bursts
 
 
 @cocotb.test()
@@ -351,3 +375,173 @@ async def forced_underflow_sets_status_and_recovers(dut):
     pixels = await capture_active_pixels(dut, w * h)
     assert pixels == expected, f"got {[hex(p) for p in pixels]}"
     assert int(await common.read_reg(dut, R_UNDERFLOW_STICKY)) == 0, "no underflow when well-fed"
+
+
+@cocotb.test()
+async def disabled_state_blocks_axi_and_pixels(dut):
+    """Disabled scanout must not issue reads or drive the pixel boundary."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+    await common.write_reg(dut, R_FB_BASE, 0x6000)
+    await common.write_reg(dut, R_MODE, (4 << 16) | 8)
+    await common.write_reg(dut, R_STRIDE, 32)
+    await common.write_reg(dut, R_FORMAT, FMT_XR24)
+    await common.write_reg(dut, R_ENABLE, 0)
+    dut.m_arready.value = 1
+
+    for _ in range(128):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        assert int(dut.m_arvalid.value) == 0
+        assert int(dut.pix_de.value) == 0
+        assert int(dut.pix_valid.value) == 0
+        assert int(dut.pix_hsync.value) == 0
+        assert int(dut.pix_vsync.value) == 0
+        assert int(dut.dcs_vsync_pulse.value) == 0
+        assert int(dut.irq_vsync.value) == 0
+
+
+@cocotb.test()
+async def unsupported_format_write_is_ignored(dut):
+    """Unsupported fourcc values are ignored; the active format is stable."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+    assert await common.read_reg(dut, R_FORMAT) == FMT_XR24
+
+    await common.write_reg(dut, R_FORMAT, 0xDEAD_BEEF)
+    assert await common.read_reg(dut, R_FORMAT) == FMT_XR24
+
+    await common.write_reg(dut, R_FORMAT, FMT_RG16)
+    assert await common.read_reg(dut, R_FORMAT) == FMT_RG16
+
+    await common.write_reg(dut, R_FORMAT, 0x0000_0000)
+    assert await common.read_reg(dut, R_FORMAT) == FMT_RG16
+
+
+@cocotb.test()
+async def framebuffer_ar_addresses_are_monotonic_and_stride_aligned(dut):
+    """AXI read addresses walk each line and jump by stride at line end."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+    fb_base = 0x7000
+    w, h = 20, 2
+    stride = 128
+    dut.m_arready.value = 1
+
+    await program_mode(
+        dut,
+        fb_base=fb_base,
+        w=w,
+        h=h,
+        fmt=FMT_XR24,
+        stride=stride,
+        h_front=1,
+        h_sync=1,
+        h_back=1,
+        v_front=1,
+        v_sync=1,
+        v_back=3,
+    )
+    assert await common.read_reg(dut, R_WORDS_PER_LINE) == 20
+
+    bursts = await collect_ar_fires(dut, 4)
+    expected_cycle = [
+        (fb_base, 16),
+        (fb_base + 64, 4),
+        (fb_base + stride, 16),
+        (fb_base + stride + 64, 4),
+    ]
+    rotations = [expected_cycle[i:] + expected_cycle[:i] for i in range(len(expected_cycle))]
+    assert bursts in rotations, f"bursts={bursts}"
+
+
+@cocotb.test()
+async def axi_error_sets_underflow_status(dut):
+    """SLVERR/DECERR read beats are counted as fail-closed underflow events."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+    mem = {addr: 0xA5 for addr in range(0x8000, 0x8100)}
+    cocotb.start_soon(axi4_read_slave(dut, mem, latency=1, rresp=3))
+    await program_mode(
+        dut,
+        fb_base=0x8000,
+        w=4,
+        h=1,
+        fmt=FMT_XR24,
+        stride=16,
+        h_front=1,
+        h_sync=1,
+        h_back=1,
+        v_front=1,
+        v_sync=1,
+        v_back=2,
+    )
+
+    # DECERR data may still be present, but the controller must expose the
+    # error as an underflow-class status event.
+    saw_beat = False
+    for _ in range(512):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        if int(dut.m_rvalid.value) and int(dut.m_rready.value):
+            saw_beat = True
+            break
+    assert saw_beat, "expected at least one read beat"
+    status_seen = False
+    for _ in range(64):
+        await RisingEdge(dut.clk)
+        if int(await common.read_reg(dut, R_UNDERFLOW_STICKY)) == 1:
+            status_seen = True
+            break
+    assert status_seen, "AXI DECERR did not set sticky underflow status"
+    assert int(await common.read_reg(dut, R_UNDERFLOW_COUNT)) > 0
+
+
+@cocotb.test()
+async def dcs_and_irq_vsync_cadence_matches_mode(dut):
+    """DCS vsync follows pix_vsync; IRQ pulses at the programmed frame phase."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+    mem = {addr: 0 for addr in range(0x9000, 0x9800)}
+    cocotb.start_soon(axi4_read_slave(dut, mem, latency=1))
+    w, h = 4, 2
+    h_front = h_sync = h_back = 1
+    v_front = v_sync = v_back = 1
+    await program_mode(
+        dut,
+        fb_base=0x9000,
+        w=w,
+        h=h,
+        fmt=FMT_XR24,
+        stride=w * 4,
+        h_front=h_front,
+        h_sync=h_sync,
+        h_back=h_back,
+        v_front=v_front,
+        v_sync=v_sync,
+        v_back=v_back,
+    )
+
+    line_total = w + h_front + h_sync + h_back
+    frame_lines = h + v_front + v_sync + v_back
+    samples = frame_lines * line_total * 3
+    irq_pulses = 0
+    dcs_pulses = 0
+    last_irq = 0
+    last_dcs = 0
+    for _ in range(samples):
+        await RisingEdge(dut.clk)
+        await Timer(1, units="ns")
+        pix_vs = int(dut.pix_vsync.value)
+        dcs_vs = int(dut.dcs_vsync_pulse.value)
+        irq = int(dut.irq_vsync.value)
+        assert dcs_vs == pix_vs, "DCS vsync sideband must mirror pix_vsync"
+        if dcs_vs and not last_dcs:
+            dcs_pulses += 1
+        if irq and not last_irq:
+            irq_pulses += 1
+        last_dcs = dcs_vs
+        last_irq = irq
+
+    assert dcs_pulses >= 3, f"dcs_pulses={dcs_pulses}"
+    assert irq_pulses >= 3, f"irq_pulses={irq_pulses}"

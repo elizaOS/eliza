@@ -215,9 +215,10 @@
           "min_bytes": 160,
           "required_strings": [
             "eliza-evidence: target=aosp artifact=eliza_ai_soc_lunch",
-            "eliza-evidence: command=lunch eliza_ai_soc-trunk_staging-userdebug",
+            "eliza-evidence: command=lunch eliza_openagent_ai_soc_phone-trunk_staging-userdebug",
             "eliza-evidence: started_utc=",
-            "TARGET_PRODUCT=eliza_ai_soc",
+            "TARGET_PRODUCT=eliza_openagent_ai_soc_phone",
+            "TARGET_ARCH=riscv64",
             "eliza-evidence: ended_utc=",
             "eliza-evidence: status=PASS"
           ],
@@ -348,9 +349,9 @@
           "path": "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log",
           "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp cts-vts-plan",
           "external_artifacts": [
-            "out/host/linux-x86/cts",
-            "out/host/linux-x86/vts",
-            "Tradefed result directory"
+            "bounded CTS/VTS smoke-scope intake",
+            "optional cts-tradefed module list when prebuilt tools are present",
+            "optional vts-tradefed module list when prebuilt tools are present"
           ],
           "min_bytes": 160,
           "required_strings": [

@@ -17,14 +17,19 @@ Fail-closed acceptance matrix generated from routed-board source inventories. Th
 | `missing_required_output_path_count` | `0` |
 | `candidate_present_blocked_required_output_path_count` | `37` |
 | `truly_missing_required_output_path_count` | `0` |
-| `candidate_step_size_bytes` | `32970696` |
+| `candidate_step_size_bytes` | `33644081` |
 | `candidate_step_component_model_count` | `89` |
 | `candidate_step_pinout_bound_model_count` | `22` |
-| `candidate_step_cad_connection_count` | `24` |
-| `candidate_step_cad_connection_terminal_marker_count` | `48` |
-| `candidate_step_cad_connection_terminal_pair_count` | `24` |
+| `candidate_step_cad_connection_count` | `32` |
+| `candidate_step_cad_connection_terminal_marker_count` | `64` |
+| `candidate_step_cad_connection_terminal_pair_count` | `32` |
 | `validation_evidence_category_count` | `6` |
 | `missing_validation_evidence_category_count` | `0` |
+| `development_route_count` | `153` |
+| `development_segment_count` | `306` |
+| `development_via_count` | `24` |
+| `development_route_classification_gap_count` | `0` |
+| `development_missing_net_count` | `0` |
 | `release_state` | `blocked_fail_closed` |
 | `acceptance_allowed` | `False` |
 
@@ -34,25 +39,25 @@ Fail-closed acceptance matrix generated from routed-board source inventories. Th
 | --- | ---: |
 | Status | `blocked_local_candidate_outputs_not_release` |
 | Release credit | `False` |
-| STEP bytes | `32970696` |
+| STEP bytes | `33644081` |
 | Component envelopes | `89` |
 | Pad/contact visuals | `1452` |
 | Route segment visuals | `306` |
 | Via visuals | `24` |
-| CAD connections passing | `24` |
-| CAD endpoint terminal markers | `48` |
-| CAD terminal pairs passing | `24` |
-| CAD connection STEP parts | `72` |
-| CAD connection STEP part sets passing | `24` |
-| CAD represented nets | `112` |
-| CAD connection records | `24` |
-| CAD represented net list entries | `112` |
+| CAD connections passing | `32` |
+| CAD endpoint terminal markers | `64` |
+| CAD terminal pairs passing | `32` |
+| CAD connection STEP parts | `96` |
+| CAD connection STEP part sets passing | `32` |
+| CAD represented nets | `150` |
+| CAD connection records | `32` |
+| CAD represented net list entries | `150` |
 | CAD represented nets match routed nets | `True` |
-| CAD visual route span mm | `397.8` |
-| CAD controlled-impedance connections | `14` |
-| CAD controlled-impedance requirements defined | `24` |
-| CAD bend-radius requirements defined | `24` |
-| CAD supplier-release-required connections | `24` |
+| CAD visual route span mm | `456.0` |
+| CAD controlled-impedance connections | `16` |
+| CAD controlled-impedance requirements defined | `32` |
+| CAD bend-radius requirements defined | `32` |
+| CAD supplier-release-required connections | `32` |
 | Component model rows | `89` |
 | Component pad visuals | `1452` |
 | Electrical pads represented | `1441` |

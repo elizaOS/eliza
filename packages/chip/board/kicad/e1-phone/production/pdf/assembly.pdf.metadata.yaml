@@ -6,7 +6,7 @@ created_at: '2026-05-22'
 tool_or_supplier_revision: generate_e1_phone_routed_output_candidates.py
 input_artifact_hashes:
   board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb: f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f
-  board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step: 9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58
+  board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
 reviewer: unreviewed
 reviewed_at: unreviewed_local_candidate_2026-05-22
 disposition: blocked_candidate_not_approved
@@ -27,9 +27,9 @@ routed_step_reference: board/kicad/e1-phone/production/step/routed-board-with-co
 routed_step_visual_detail:
   source_step_intake: board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml
   routed_development_intake: board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml
-  source_board_sha256: ed022f26f2ab500c01a92e7d214b9c9683fcc6b0e376f4045eda359501640a8f
-  source_step_sha256: 9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58
-  routed_intake_step_sha256: 9bac7fab99ec286074c2e30872575f3c8d88aaa60daa1dd96318b1d815637a58
+  source_board_sha256: f67f78175696a39398d26ea5def8e4233c4c92693fbee7d901eec48d9eeb5a8f
+  source_step_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
+  routed_intake_step_sha256: fc198f8d555d43471f3c796e8555016278c444cb1423068c6d20c74d16b9c2c3
   footprint_envelope_count: 89
   pad_contact_visual_count: 1452
   route_segment_visual_count: 306
@@ -44,29 +44,30 @@ routed_step_visual_detail:
 cad_connection_coverage:
   coverage_report: mechanical/e1-phone/review/cad-connection-coverage.json
   assembly_manifest: mechanical/e1-phone/out/assembly-manifest.json
-  assembly_manifest_part_count: 234
-  assembly_manifest_connection_terminal_marker_count: 48
-  assembly_manifest_connection_solid_step_part_count: 72
+  assembly_manifest_part_count: 258
+  assembly_manifest_connection_terminal_marker_count: 64
+  assembly_manifest_connection_solid_step_part_count: 96
   assembly_manifest_missing_connection_solid_step_part_count: 0
   assembly_manifest_missing_connection_solid_step_part_names: []
   status: cad_connection_markers_complete_not_release
-  required_connection_count: 24
-  passing_connection_count: 24
-  required_connection_terminal_marker_count: 48
-  passing_connection_terminal_pair_count: 24
-  required_connection_solid_step_part_count: 72
-  passing_connection_solid_step_part_set_count: 24
-  connection_solid_step_part_bytes_total: 1125435
-  represented_net_count_total: 112
-  visual_route_span_total_mm: 397.8
-  endpoint_pair_distance_total_mm: 1180.692
+  required_connection_count: 32
+  passing_connection_count: 32
+  required_connection_terminal_marker_count: 64
+  passing_connection_terminal_pair_count: 32
+  required_connection_solid_step_part_count: 96
+  passing_connection_solid_step_part_set_count: 32
+  connection_solid_step_part_bytes_total: 1501919
+  represented_net_count_total: 150
+  visual_route_span_total_mm: 456.0
+  endpoint_pair_distance_total_mm: 1521.175
   physical_medium_counts:
     battery_power_flex: 1
     board_to_board_edge_connector: 1
     flexible_antenna_loop: 1
-    flexible_printed_circuit: 10
+    flexible_printed_circuit: 14
+    ground_spring_contact: 2
     insulated_wire_pair: 2
-    pcb_copper_trace_group: 3
+    pcb_copper_trace_group: 5
     rf_50ohm_feed: 5
     rf_tuner_interconnect: 1
   electrical_class_counts:
@@ -75,23 +76,29 @@ cad_connection_coverage:
     audio_receiver_pair: 1
     battery_power_sense: 1
     battery_power_sense_board_route: 1
+    camera_power_control: 2
+    cellular_host_interface: 1
     cellular_wifi_rf: 5
     compute_board_to_board_mixed_speed: 1
     digital_microphone: 2
+    display_bias_power: 1
     haptic_drive: 1
     low_speed_gpio: 1
     mipi_csi_camera_control: 2
     mipi_dsi_touch_control: 1
     nfc_loop_rf: 1
     pd_charger_power_control_board_route: 1
+    sensor_i2c: 1
+    shield_chassis_ground: 2
     sim_esim_low_speed: 1
     top_bottom_board_mixed_signal: 1
     usb2_pd_vbus: 1
     usb2_pd_vbus_board_route: 1
-  controlled_impedance_connection_count: 14
-  controlled_impedance_requirement_defined_count: 24
-  bend_radius_requirement_defined_count: 24
-  supplier_release_required_connection_count: 24
+    wifi_bt_host_interface: 1
+  controlled_impedance_connection_count: 16
+  controlled_impedance_requirement_defined_count: 32
+  bend_radius_requirement_defined_count: 32
+  supplier_release_required_connection_count: 32
   release_credit: false
   connection_ids:
   - display_touch_fpc
@@ -103,14 +110,22 @@ cad_connection_coverage:
   - usb_c_to_pd_controller_escape
   - pd_controller_to_charger_control
   - charger_to_battery_power_sense
+  - display_bias_power_flex
+  - rear_camera_power_flex
+  - front_camera_power_flex
+  - wifi_bt_host_control
+  - cellular_host_control
   - bottom_speaker_lead_pair
   - bottom_microphone_flex
   - top_microphone_flex
   - earpiece_receiver_lead_flex
   - haptic_flex
+  - sensor_hub_i2c_flex
   - sim_esim_signal_flex
   - nfc_loop_antenna_flex
   - compute_som_sodimm_carrier
+  - soc_shield_ground_spring
+  - radio_shield_ground_spring
   - cellular_main_rf_feed
   - cellular_diversity_rf_feed
   - cellular_antenna_aperture_tuner
@@ -128,14 +143,22 @@ cad_connection_coverage:
   - usb_pd_controller_escape_trace_marker
   - pd_charger_control_trace_marker
   - charger_battery_power_sense_trace_marker
+  - display_bias_power_flex_marker
+  - rear_camera_power_flex_marker
+  - front_camera_power_flex_marker
+  - wifi_bt_host_control_trace_marker
+  - cellular_host_control_trace_marker
   - bottom_speaker_lead_pair
   - bottom_microphone_flex_leads
   - top_microphone_flex_tail
   - earpiece_receiver_lead_flex
   - haptic_flex_tail
+  - sensor_hub_i2c_flex_marker
   - sim_esim_signal_flex_marker
   - nfc_loop_antenna_flex_marker
   - compute_som_sodimm_connector
+  - soc_shield_ground_spring_marker
+  - radio_shield_ground_spring_marker
   - cellular_rf_feed_development_envelope
   - cellular_div_rf_feed_development_envelope
   - antenna_aperture_tuner
@@ -156,23 +179,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/display_fpc_tail.step
-    cad_step_bytes: 15509
+    cad_step_bytes: 15523
     from_terminal_part: display_touch_fpc_from_terminal
     from_terminal_step: mechanical/e1-phone/out/display_touch_fpc_from_terminal.step
-    from_terminal_step_bytes: 15633
+    from_terminal_step_bytes: 15647
     to_terminal_part: display_touch_fpc_to_terminal
     to_terminal_step: mechanical/e1-phone/out/display_touch_fpc_to_terminal.step
-    to_terminal_step_bytes: 15633
+    to_terminal_step_bytes: 15647
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31266
+    terminal_step_bytes_total: 31294
     solid_step_part_names:
     - display_fpc_tail
     - display_touch_fpc_from_terminal
     - display_touch_fpc_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46775
+    solid_step_part_bytes_total: 46817
     net_count: 14
     nets:
     - DSI_D0_P
@@ -224,23 +247,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/rear_camera_fpc_tail.step
-    cad_step_bytes: 15522
+    cad_step_bytes: 15536
     from_terminal_part: rear_camera_csi_fpc_from_terminal
     from_terminal_step: mechanical/e1-phone/out/rear_camera_csi_fpc_from_terminal.step
-    from_terminal_step_bytes: 15685
+    from_terminal_step_bytes: 15699
     to_terminal_part: rear_camera_csi_fpc_to_terminal
     to_terminal_step: mechanical/e1-phone/out/rear_camera_csi_fpc_to_terminal.step
-    to_terminal_step_bytes: 15659
+    to_terminal_step_bytes: 15673
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31344
+    terminal_step_bytes_total: 31372
     solid_step_part_names:
     - rear_camera_fpc_tail
     - rear_camera_csi_fpc_from_terminal
     - rear_camera_csi_fpc_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46866
+    solid_step_part_bytes_total: 46908
     net_count: 13
     nets:
     - CAM0_CSI_D0_P
@@ -290,23 +313,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/front_camera_fpc_tail.step
-    cad_step_bytes: 15587
+    cad_step_bytes: 15601
     from_terminal_part: front_camera_csi_fpc_from_terminal
     from_terminal_step: mechanical/e1-phone/out/front_camera_csi_fpc_from_terminal.step
-    from_terminal_step_bytes: 15685
+    from_terminal_step_bytes: 15699
     to_terminal_part: front_camera_csi_fpc_to_terminal
     to_terminal_step: mechanical/e1-phone/out/front_camera_csi_fpc_to_terminal.step
-    to_terminal_step_bytes: 15685
+    to_terminal_step_bytes: 15699
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31370
+    terminal_step_bytes_total: 31398
     solid_step_part_names:
     - front_camera_fpc_tail
     - front_camera_csi_fpc_from_terminal
     - front_camera_csi_fpc_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46957
+    solid_step_part_bytes_total: 46999
     net_count: 9
     nets:
     - CAM1_CSI_CLK_P
@@ -348,23 +371,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 0.8
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/side_key_flex_tail.step
-    cad_step_bytes: 15535
+    cad_step_bytes: 15549
     from_terminal_part: side_key_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/side_key_flex_from_terminal.step
-    from_terminal_step_bytes: 15659
+    from_terminal_step_bytes: 15673
     to_terminal_part: side_key_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/side_key_flex_to_terminal.step
-    to_terminal_step_bytes: 15659
+    to_terminal_step_bytes: 15673
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31318
+    terminal_step_bytes_total: 31346
     solid_step_part_names:
     - side_key_flex_tail
     - side_key_flex_from_terminal
     - side_key_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46853
+    solid_step_part_bytes_total: 46895
     net_count: 3
     nets:
     - PWR_KEY_N
@@ -394,23 +417,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.5
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/battery_connector_lead_flex.step
-    cad_step_bytes: 15578
+    cad_step_bytes: 15592
     from_terminal_part: battery_lead_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/battery_lead_flex_from_terminal.step
-    from_terminal_step_bytes: 15633
+    from_terminal_step_bytes: 15647
     to_terminal_part: battery_lead_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/battery_lead_flex_to_terminal.step
-    to_terminal_step_bytes: 15633
+    to_terminal_step_bytes: 15647
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31266
+    terminal_step_bytes_total: 31294
     solid_step_part_names:
     - battery_connector_lead_flex
     - battery_lead_flex_from_terminal
     - battery_lead_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46844
+    solid_step_part_bytes_total: 46886
     net_count: 4
     nets:
     - VBAT
@@ -442,23 +465,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/usb_c_power_data_escape_tail.step
-    cad_step_bytes: 15552
+    cad_step_bytes: 15566
     from_terminal_part: usb_c_escape_tail_from_terminal
     from_terminal_step: mechanical/e1-phone/out/usb_c_escape_tail_from_terminal.step
-    from_terminal_step_bytes: 15659
+    from_terminal_step_bytes: 15673
     to_terminal_part: usb_c_escape_tail_to_terminal
     to_terminal_step: mechanical/e1-phone/out/usb_c_escape_tail_to_terminal.step
-    to_terminal_step_bytes: 15659
+    to_terminal_step_bytes: 15673
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31318
+    terminal_step_bytes_total: 31346
     solid_step_part_names:
     - usb_c_power_data_escape_tail
     - usb_c_escape_tail_from_terminal
     - usb_c_escape_tail_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46870
+    solid_step_part_bytes_total: 46912
     net_count: 5
     nets:
     - VBUS
@@ -492,23 +515,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 0.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/usb_pd_controller_escape_trace_marker.step
-    cad_step_bytes: 15574
+    cad_step_bytes: 15588
     from_terminal_part: usb_c_to_pd_controller_escape_from_terminal
     from_terminal_step: mechanical/e1-phone/out/usb_c_to_pd_controller_escape_from_terminal.step
-    from_terminal_step_bytes: 15650
+    from_terminal_step_bytes: 15664
     to_terminal_part: usb_c_to_pd_controller_escape_to_terminal
     to_terminal_step: mechanical/e1-phone/out/usb_c_to_pd_controller_escape_to_terminal.step
-    to_terminal_step_bytes: 15659
+    to_terminal_step_bytes: 15673
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31309
+    terminal_step_bytes_total: 31337
     solid_step_part_names:
     - usb_pd_controller_escape_trace_marker
     - usb_c_to_pd_controller_escape_from_terminal
     - usb_c_to_pd_controller_escape_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46883
+    solid_step_part_bytes_total: 46925
     net_count: 5
     nets:
     - VBUS
@@ -542,23 +565,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 0.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/pd_charger_control_trace_marker.step
-    cad_step_bytes: 15578
+    cad_step_bytes: 15592
     from_terminal_part: pd_controller_to_charger_control_from_terminal
     from_terminal_step: mechanical/e1-phone/out/pd_controller_to_charger_control_from_terminal.step
-    from_terminal_step_bytes: 15659
+    from_terminal_step_bytes: 15673
     to_terminal_part: pd_controller_to_charger_control_to_terminal
     to_terminal_step: mechanical/e1-phone/out/pd_controller_to_charger_control_to_terminal.step
-    to_terminal_step_bytes: 15685
+    to_terminal_step_bytes: 15699
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31344
+    terminal_step_bytes_total: 31372
     solid_step_part_names:
     - pd_charger_control_trace_marker
     - pd_controller_to_charger_control_from_terminal
     - pd_controller_to_charger_control_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46922
+    solid_step_part_bytes_total: 46964
     net_count: 9
     nets:
     - VBUS
@@ -600,23 +623,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 0.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/charger_battery_power_sense_trace_marker.step
-    cad_step_bytes: 15552
+    cad_step_bytes: 15566
     from_terminal_part: charger_to_battery_power_sense_from_terminal
     from_terminal_step: mechanical/e1-phone/out/charger_to_battery_power_sense_from_terminal.step
-    from_terminal_step_bytes: 15685
+    from_terminal_step_bytes: 15699
     to_terminal_part: charger_to_battery_power_sense_to_terminal
     to_terminal_step: mechanical/e1-phone/out/charger_to_battery_power_sense_to_terminal.step
-    to_terminal_step_bytes: 15685
+    to_terminal_step_bytes: 15699
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31370
+    terminal_step_bytes_total: 31398
     solid_step_part_names:
     - charger_battery_power_sense_trace_marker
     - charger_to_battery_power_sense_from_terminal
     - charger_to_battery_power_sense_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46922
+    solid_step_part_bytes_total: 46964
     net_count: 4
     nets:
     - VBAT
@@ -636,6 +659,272 @@ cad_connection_coverage:
     bend_radius_requirement_defined: true
     pass: true
     release_credit: false
+  - id: display_bias_power_flex
+    cad_part: display_bias_power_flex_marker
+    from: backlight_bias_package_marker
+    to: display_fpc_connector
+    connection_type: display_bias_power_flex
+    physical_medium: flexible_printed_circuit
+    electrical_class: display_bias_power
+    controlled_impedance_required: false
+    impedance_requirement: display_bias_voltage_and_current_capacity_required
+    min_bend_radius_mm: 1.0
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/display_bias_power_flex_marker.step
+    cad_step_bytes: 15545
+    from_terminal_part: display_bias_power_flex_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/display_bias_power_flex_from_terminal.step
+    from_terminal_step_bytes: 15673
+    to_terminal_part: display_bias_power_flex_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/display_bias_power_flex_to_terminal.step
+    to_terminal_step_bytes: 15673
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31346
+    solid_step_part_names:
+    - display_bias_power_flex_marker
+    - display_bias_power_flex_from_terminal
+    - display_bias_power_flex_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46891
+    net_count: 2
+    nets:
+    - DISP_AVDD_5V5
+    - DISP_AVEE_N5V5
+    represented_net_count: 2
+    represented_nets:
+    - DISP_AVDD_5V5
+    - DISP_AVEE_N5V5
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
+  - id: rear_camera_power_flex
+    cad_part: rear_camera_power_flex_marker
+    from: main_pcb
+    to: rear_camera_module
+    connection_type: camera_power_flex
+    physical_medium: flexible_printed_circuit
+    electrical_class: camera_power_control
+    controlled_impedance_required: false
+    impedance_requirement: camera_rail_current_capacity_and_sequencing_required
+    min_bend_radius_mm: 1.0
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/rear_camera_power_flex_marker.step
+    cad_step_bytes: 15558
+    from_terminal_part: rear_camera_power_flex_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/rear_camera_power_flex_from_terminal.step
+    from_terminal_step_bytes: 15673
+    to_terminal_part: rear_camera_power_flex_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/rear_camera_power_flex_to_terminal.step
+    to_terminal_step_bytes: 15673
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31346
+    solid_step_part_names:
+    - rear_camera_power_flex_marker
+    - rear_camera_power_flex_from_terminal
+    - rear_camera_power_flex_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46904
+    net_count: 3
+    nets:
+    - CAM_AVDD_2V8
+    - CAM_DVDD_1V2
+    - CAM0_RESET_N
+    represented_net_count: 3
+    represented_nets:
+    - CAM_AVDD_2V8
+    - CAM_DVDD_1V2
+    - CAM0_RESET_N
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
+  - id: front_camera_power_flex
+    cad_part: front_camera_power_flex_marker
+    from: main_pcb
+    to: front_camera_module
+    connection_type: camera_power_flex
+    physical_medium: flexible_printed_circuit
+    electrical_class: camera_power_control
+    controlled_impedance_required: false
+    impedance_requirement: camera_rail_current_capacity_and_sequencing_required
+    min_bend_radius_mm: 1.0
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/front_camera_power_flex_marker.step
+    cad_step_bytes: 15627
+    from_terminal_part: front_camera_power_flex_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/front_camera_power_flex_from_terminal.step
+    from_terminal_step_bytes: 15673
+    to_terminal_part: front_camera_power_flex_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/front_camera_power_flex_to_terminal.step
+    to_terminal_step_bytes: 15699
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31372
+    solid_step_part_names:
+    - front_camera_power_flex_marker
+    - front_camera_power_flex_from_terminal
+    - front_camera_power_flex_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46999
+    net_count: 3
+    nets:
+    - CAM_AVDD_2V8
+    - CAM_DVDD_1V2
+    - CAM1_RESET_N
+    represented_net_count: 3
+    represented_nets:
+    - CAM_AVDD_2V8
+    - CAM_DVDD_1V2
+    - CAM1_RESET_N
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
+  - id: wifi_bt_host_control
+    cad_part: wifi_bt_host_control_trace_marker
+    from: wifi_bt_module_keepout
+    to: soc_package_marker
+    connection_type: wifi_bt_host_control_trace
+    physical_medium: pcb_copper_trace_group
+    electrical_class: wifi_bt_host_interface
+    controlled_impedance_required: true
+    impedance_requirement: PCIe differential impedance plus SDIO/UART/control routing review
+    min_bend_radius_mm: 0.0
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/wifi_bt_host_control_trace_marker.step
+    cad_step_bytes: 15549
+    from_terminal_part: wifi_bt_host_control_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/wifi_bt_host_control_from_terminal.step
+    from_terminal_step_bytes: 15673
+    to_terminal_part: wifi_bt_host_control_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/wifi_bt_host_control_to_terminal.step
+    to_terminal_step_bytes: 15673
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31346
+    solid_step_part_names:
+    - wifi_bt_host_control_trace_marker
+    - wifi_bt_host_control_from_terminal
+    - wifi_bt_host_control_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46895
+    net_count: 17
+    nets:
+    - WIFI_PCIE_TX_P
+    - WIFI_PCIE_TX_N
+    - WIFI_PCIE_RX_P
+    - WIFI_PCIE_RX_N
+    - WIFI_EN
+    - BT_EN
+    - WIFI_SDIO_CLK
+    - WIFI_SDIO_CMD
+    - WIFI_SDIO_D0
+    - WIFI_SDIO_D1
+    - WIFI_SDIO_D2
+    - WIFI_SDIO_D3
+    - BT_UART_TX
+    - BT_UART_RX
+    - BT_UART_CTS_N
+    - BT_UART_RTS_N
+    - WIFI_HOST_WAKE
+    represented_net_count: 17
+    represented_nets:
+    - WIFI_PCIE_TX_P
+    - WIFI_PCIE_TX_N
+    - WIFI_PCIE_RX_P
+    - WIFI_PCIE_RX_N
+    - WIFI_EN
+    - BT_EN
+    - WIFI_SDIO_CLK
+    - WIFI_SDIO_CMD
+    - WIFI_SDIO_D0
+    - WIFI_SDIO_D1
+    - WIFI_SDIO_D2
+    - WIFI_SDIO_D3
+    - BT_UART_TX
+    - BT_UART_RX
+    - BT_UART_CTS_N
+    - BT_UART_RTS_N
+    - WIFI_HOST_WAKE
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
+  - id: cellular_host_control
+    cad_part: cellular_host_control_trace_marker
+    from: cellular_lga_module_keepout
+    to: soc_package_marker
+    connection_type: cellular_host_control_trace
+    physical_medium: pcb_copper_trace_group
+    electrical_class: cellular_host_interface
+    controlled_impedance_required: true
+    impedance_requirement: USB2/PCIe differential impedance plus reset/disable routing review
+    min_bend_radius_mm: 0.0
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/cellular_host_control_trace_marker.step
+    cad_step_bytes: 15549
+    from_terminal_part: cellular_host_control_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/cellular_host_control_from_terminal.step
+    from_terminal_step_bytes: 15699
+    to_terminal_part: cellular_host_control_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/cellular_host_control_to_terminal.step
+    to_terminal_step_bytes: 15673
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31372
+    solid_step_part_names:
+    - cellular_host_control_trace_marker
+    - cellular_host_control_from_terminal
+    - cellular_host_control_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46921
+    net_count: 8
+    nets:
+    - CELL_USB2_DP
+    - CELL_USB2_DN
+    - CELL_PCIE_TX_P
+    - CELL_PCIE_TX_N
+    - CELL_PCIE_RX_P
+    - CELL_PCIE_RX_N
+    - CELL_RESET_N
+    - CELL_W_DISABLE_N
+    represented_net_count: 8
+    represented_nets:
+    - CELL_USB2_DP
+    - CELL_USB2_DN
+    - CELL_PCIE_TX_P
+    - CELL_PCIE_TX_N
+    - CELL_PCIE_RX_P
+    - CELL_PCIE_RX_N
+    - CELL_RESET_N
+    - CELL_W_DISABLE_N
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
   - id: bottom_speaker_lead_pair
     cad_part: bottom_speaker_lead_pair
     from: main_pcb
@@ -648,23 +937,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/bottom_speaker_lead_pair.step
-    cad_step_bytes: 15552
+    cad_step_bytes: 15566
     from_terminal_part: bottom_speaker_lead_pair_from_terminal
     from_terminal_step: mechanical/e1-phone/out/bottom_speaker_lead_pair_from_terminal.step
-    from_terminal_step_bytes: 15659
+    from_terminal_step_bytes: 15673
     to_terminal_part: bottom_speaker_lead_pair_to_terminal
     to_terminal_step: mechanical/e1-phone/out/bottom_speaker_lead_pair_to_terminal.step
-    to_terminal_step_bytes: 15659
+    to_terminal_step_bytes: 15673
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31318
+    terminal_step_bytes_total: 31346
     solid_step_part_names:
     - bottom_speaker_lead_pair
     - bottom_speaker_lead_pair_from_terminal
     - bottom_speaker_lead_pair_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46870
+    solid_step_part_bytes_total: 46912
     net_count: 2
     nets:
     - SPK_P
@@ -692,23 +981,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 0.8
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/bottom_microphone_flex_leads.step
-    cad_step_bytes: 15583
+    cad_step_bytes: 15597
     from_terminal_part: bottom_microphone_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/bottom_microphone_flex_from_terminal.step
-    from_terminal_step_bytes: 15659
+    from_terminal_step_bytes: 15647
     to_terminal_part: bottom_microphone_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/bottom_microphone_flex_to_terminal.step
-    to_terminal_step_bytes: 15711
+    to_terminal_step_bytes: 15725
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31370
+    terminal_step_bytes_total: 31372
     solid_step_part_names:
     - bottom_microphone_flex_leads
     - bottom_microphone_flex_from_terminal
     - bottom_microphone_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46953
+    solid_step_part_bytes_total: 46969
     net_count: 2
     nets:
     - PDM_CLK
@@ -736,23 +1025,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 0.8
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/top_microphone_flex_tail.step
-    cad_step_bytes: 15565
+    cad_step_bytes: 15579
     from_terminal_part: top_microphone_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/top_microphone_flex_from_terminal.step
-    from_terminal_step_bytes: 15659
+    from_terminal_step_bytes: 15621
     to_terminal_part: top_microphone_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/top_microphone_flex_to_terminal.step
-    to_terminal_step_bytes: 15659
+    to_terminal_step_bytes: 15673
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31318
+    terminal_step_bytes_total: 31294
     solid_step_part_names:
     - top_microphone_flex_tail
     - top_microphone_flex_from_terminal
     - top_microphone_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46883
+    solid_step_part_bytes_total: 46873
     net_count: 2
     nets:
     - PDM_CLK
@@ -780,23 +1069,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/earpiece_receiver_lead_flex.step
-    cad_step_bytes: 15530
+    cad_step_bytes: 15544
     from_terminal_part: earpiece_receiver_lead_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/earpiece_receiver_lead_flex_from_terminal.step
-    from_terminal_step_bytes: 15633
+    from_terminal_step_bytes: 15647
     to_terminal_part: earpiece_receiver_lead_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/earpiece_receiver_lead_flex_to_terminal.step
-    to_terminal_step_bytes: 15607
+    to_terminal_step_bytes: 15621
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31240
+    terminal_step_bytes_total: 31268
     solid_step_part_names:
     - earpiece_receiver_lead_flex
     - earpiece_receiver_lead_flex_from_terminal
     - earpiece_receiver_lead_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46770
+    solid_step_part_bytes_total: 46812
     net_count: 2
     nets:
     - SPK_P
@@ -824,29 +1113,73 @@ cad_connection_coverage:
     min_bend_radius_mm: 0.8
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/haptic_flex_tail.step
-    cad_step_bytes: 15561
+    cad_step_bytes: 15575
     from_terminal_part: haptic_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/haptic_flex_from_terminal.step
-    from_terminal_step_bytes: 15607
+    from_terminal_step_bytes: 15647
     to_terminal_part: haptic_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/haptic_flex_to_terminal.step
-    to_terminal_step_bytes: 15685
+    to_terminal_step_bytes: 15699
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31292
+    terminal_step_bytes_total: 31346
     solid_step_part_names:
     - haptic_flex_tail
     - haptic_flex_from_terminal
     - haptic_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46853
+    solid_step_part_bytes_total: 46921
     net_count: 1
     nets:
     - HAPTIC_OUT
     represented_net_count: 1
     represented_nets:
     - HAPTIC_OUT
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
+  - id: sensor_hub_i2c_flex
+    cad_part: sensor_hub_i2c_flex_marker
+    from: main_pcb
+    to: sensor_hub_package_marker
+    connection_type: sensor_hub_i2c_flex
+    physical_medium: flexible_printed_circuit
+    electrical_class: sensor_i2c
+    controlled_impedance_required: false
+    impedance_requirement: not_controlled_impedance
+    min_bend_radius_mm: 0.8
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/sensor_hub_i2c_flex_marker.step
+    cad_step_bytes: 15592
+    from_terminal_part: sensor_hub_i2c_flex_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/sensor_hub_i2c_flex_from_terminal.step
+    from_terminal_step_bytes: 15699
+    to_terminal_part: sensor_hub_i2c_flex_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/sensor_hub_i2c_flex_to_terminal.step
+    to_terminal_step_bytes: 15647
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31346
+    solid_step_part_names:
+    - sensor_hub_i2c_flex_marker
+    - sensor_hub_i2c_flex_from_terminal
+    - sensor_hub_i2c_flex_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46938
+    net_count: 2
+    nets:
+    - SENSOR_I2C_SCL
+    - SENSOR_I2C_SDA
+    represented_net_count: 2
+    represented_nets:
+    - SENSOR_I2C_SCL
+    - SENSOR_I2C_SDA
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -866,23 +1199,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 0.8
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/sim_esim_signal_flex_marker.step
-    cad_step_bytes: 15583
+    cad_step_bytes: 15597
     from_terminal_part: sim_esim_signal_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/sim_esim_signal_flex_from_terminal.step
-    from_terminal_step_bytes: 15633
+    from_terminal_step_bytes: 15699
     to_terminal_part: sim_esim_signal_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/sim_esim_signal_flex_to_terminal.step
-    to_terminal_step_bytes: 15685
+    to_terminal_step_bytes: 15699
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31318
+    terminal_step_bytes_total: 31398
     solid_step_part_names:
     - sim_esim_signal_flex_marker
     - sim_esim_signal_flex_from_terminal
     - sim_esim_signal_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46901
+    solid_step_part_bytes_total: 46995
     net_count: 9
     nets:
     - USIM_VCC
@@ -924,23 +1257,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/nfc_loop_antenna_flex_marker.step
-    cad_step_bytes: 15557
+    cad_step_bytes: 15571
     from_terminal_part: nfc_loop_antenna_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/nfc_loop_antenna_flex_from_terminal.step
-    from_terminal_step_bytes: 15685
+    from_terminal_step_bytes: 15699
     to_terminal_part: nfc_loop_antenna_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/nfc_loop_antenna_flex_to_terminal.step
-    to_terminal_step_bytes: 15685
+    to_terminal_step_bytes: 15699
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31370
+    terminal_step_bytes_total: 31398
     solid_step_part_names:
     - nfc_loop_antenna_flex_marker
     - nfc_loop_antenna_flex_from_terminal
     - nfc_loop_antenna_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46927
+    solid_step_part_bytes_total: 46969
     net_count: 4
     nets:
     - NFC_RF_P
@@ -972,23 +1305,23 @@ cad_connection_coverage:
     min_bend_radius_mm: null
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/compute_som_sodimm_connector.step
-    cad_step_bytes: 15561
+    cad_step_bytes: 15575
     from_terminal_part: compute_som_sodimm_carrier_from_terminal
     from_terminal_step: mechanical/e1-phone/out/compute_som_sodimm_carrier_from_terminal.step
-    from_terminal_step_bytes: 15633
+    from_terminal_step_bytes: 15673
     to_terminal_part: compute_som_sodimm_carrier_to_terminal
     to_terminal_step: mechanical/e1-phone/out/compute_som_sodimm_carrier_to_terminal.step
-    to_terminal_step_bytes: 15607
+    to_terminal_step_bytes: 15621
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31240
+    terminal_step_bytes_total: 31294
     solid_step_part_names:
     - compute_som_sodimm_connector
     - compute_som_sodimm_carrier_from_terminal
     - compute_som_sodimm_carrier_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46801
+    solid_step_part_bytes_total: 46869
     net_count: 9
     nets:
     - USB_DP
@@ -1018,6 +1351,92 @@ cad_connection_coverage:
     bend_radius_requirement_defined: true
     pass: true
     release_credit: false
+  - id: soc_shield_ground_spring
+    cad_part: soc_shield_ground_spring_marker
+    from: soc_shield_can
+    to: main_pcb
+    connection_type: shield_ground_spring
+    physical_medium: ground_spring_contact
+    electrical_class: shield_chassis_ground
+    controlled_impedance_required: false
+    impedance_requirement: low_inductance_chassis_ground_contact_required
+    min_bend_radius_mm: 0.0
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/soc_shield_ground_spring_marker.step
+    cad_step_bytes: 15605
+    from_terminal_part: soc_shield_ground_spring_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/soc_shield_ground_spring_from_terminal.step
+    from_terminal_step_bytes: 15673
+    to_terminal_part: soc_shield_ground_spring_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/soc_shield_ground_spring_to_terminal.step
+    to_terminal_step_bytes: 15647
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31320
+    solid_step_part_names:
+    - soc_shield_ground_spring_marker
+    - soc_shield_ground_spring_from_terminal
+    - soc_shield_ground_spring_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46925
+    net_count: 1
+    nets:
+    - GND
+    represented_net_count: 1
+    represented_nets:
+    - GND
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
+  - id: radio_shield_ground_spring
+    cad_part: radio_shield_ground_spring_marker
+    from: radio_shield_can
+    to: main_pcb
+    connection_type: shield_ground_spring
+    physical_medium: ground_spring_contact
+    electrical_class: shield_chassis_ground
+    controlled_impedance_required: false
+    impedance_requirement: low_inductance_chassis_ground_contact_required
+    min_bend_radius_mm: 0.0
+    supplier_release_required: true
+    cad_step: mechanical/e1-phone/out/radio_shield_ground_spring_marker.step
+    cad_step_bytes: 15631
+    from_terminal_part: radio_shield_ground_spring_from_terminal
+    from_terminal_step: mechanical/e1-phone/out/radio_shield_ground_spring_from_terminal.step
+    from_terminal_step_bytes: 15673
+    to_terminal_part: radio_shield_ground_spring_to_terminal
+    to_terminal_step: mechanical/e1-phone/out/radio_shield_ground_spring_to_terminal.step
+    to_terminal_step_bytes: 15673
+    terminal_marker_count: 2
+    terminal_markers_present: true
+    terminal_step_bytes_total: 31346
+    solid_step_part_names:
+    - radio_shield_ground_spring_marker
+    - radio_shield_ground_spring_from_terminal
+    - radio_shield_ground_spring_to_terminal
+    solid_step_parts_present: true
+    solid_step_part_count: 3
+    solid_step_part_bytes_total: 46977
+    net_count: 2
+    nets:
+    - GND
+    - SHIELD_GND
+    represented_net_count: 2
+    represented_nets:
+    - GND
+    - SHIELD_GND
+    cad_part_present: true
+    endpoints_present: true
+    all_nets_in_routed_development_board: true
+    controlled_impedance_requirement_defined: true
+    bend_radius_requirement_defined: true
+    pass: true
+    release_credit: false
   - id: cellular_main_rf_feed
     cad_part: cellular_rf_feed_development_envelope
     from: cellular_lga_module_keepout
@@ -1030,23 +1449,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.5
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/cellular_rf_feed_development_envelope.step
-    cad_step_bytes: 15673
+    cad_step_bytes: 15687
     from_terminal_part: cellular_main_rf_feed_from_terminal
     from_terminal_step: mechanical/e1-phone/out/cellular_main_rf_feed_from_terminal.step
-    from_terminal_step_bytes: 15685
+    from_terminal_step_bytes: 15699
     to_terminal_part: cellular_main_rf_feed_to_terminal
     to_terminal_step: mechanical/e1-phone/out/cellular_main_rf_feed_to_terminal.step
-    to_terminal_step_bytes: 15607
+    to_terminal_step_bytes: 15621
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31292
+    terminal_step_bytes_total: 31320
     solid_step_part_names:
     - cellular_rf_feed_development_envelope
     - cellular_main_rf_feed_from_terminal
     - cellular_main_rf_feed_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46965
+    solid_step_part_bytes_total: 47007
     net_count: 1
     nets:
     - CELL_RF_MAIN
@@ -1072,23 +1491,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.5
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/cellular_div_rf_feed_development_envelope.step
-    cad_step_bytes: 15621
+    cad_step_bytes: 15635
     from_terminal_part: cellular_diversity_rf_feed_from_terminal
     from_terminal_step: mechanical/e1-phone/out/cellular_diversity_rf_feed_from_terminal.step
-    from_terminal_step_bytes: 15685
+    from_terminal_step_bytes: 15699
     to_terminal_part: cellular_diversity_rf_feed_to_terminal
     to_terminal_step: mechanical/e1-phone/out/cellular_diversity_rf_feed_to_terminal.step
-    to_terminal_step_bytes: 15659
+    to_terminal_step_bytes: 15673
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31344
+    terminal_step_bytes_total: 31372
     solid_step_part_names:
     - cellular_div_rf_feed_development_envelope
     - cellular_diversity_rf_feed_from_terminal
     - cellular_diversity_rf_feed_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46965
+    solid_step_part_bytes_total: 47007
     net_count: 1
     nets:
     - CELL_RF_DIV
@@ -1114,23 +1533,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.5
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/antenna_aperture_tuner.step
-    cad_step_bytes: 15579
+    cad_step_bytes: 15593
     from_terminal_part: cellular_antenna_aperture_tuner_from_terminal
     from_terminal_step: mechanical/e1-phone/out/cellular_antenna_aperture_tuner_from_terminal.step
-    from_terminal_step_bytes: 15685
+    from_terminal_step_bytes: 15699
     to_terminal_part: cellular_antenna_aperture_tuner_to_terminal
     to_terminal_step: mechanical/e1-phone/out/cellular_antenna_aperture_tuner_to_terminal.step
-    to_terminal_step_bytes: 15650
+    to_terminal_step_bytes: 15664
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31335
+    terminal_step_bytes_total: 31363
     solid_step_part_names:
     - antenna_aperture_tuner
     - cellular_antenna_aperture_tuner_from_terminal
     - cellular_antenna_aperture_tuner_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46914
+    solid_step_part_bytes_total: 46956
     net_count: 2
     nets:
     - CELL_RF_DIV
@@ -1158,23 +1577,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.5
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/cellular_gnss_rf_feed_development_envelope.step
-    cad_step_bytes: 15621
+    cad_step_bytes: 15635
     from_terminal_part: cellular_gnss_rf_feed_from_terminal
     from_terminal_step: mechanical/e1-phone/out/cellular_gnss_rf_feed_from_terminal.step
-    from_terminal_step_bytes: 15685
+    from_terminal_step_bytes: 15699
     to_terminal_part: cellular_gnss_rf_feed_to_terminal
     to_terminal_step: mechanical/e1-phone/out/cellular_gnss_rf_feed_to_terminal.step
-    to_terminal_step_bytes: 15685
+    to_terminal_step_bytes: 15699
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31370
+    terminal_step_bytes_total: 31398
     solid_step_part_names:
     - cellular_gnss_rf_feed_development_envelope
     - cellular_gnss_rf_feed_from_terminal
     - cellular_gnss_rf_feed_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46991
+    solid_step_part_bytes_total: 47033
     net_count: 1
     nets:
     - CELL_GNSS_RF
@@ -1200,23 +1619,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.5
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/wifi_bt_rf_feed_development_envelope.step
-    cad_step_bytes: 15647
+    cad_step_bytes: 15661
     from_terminal_part: wifi_bt_rf0_feed_from_terminal
     from_terminal_step: mechanical/e1-phone/out/wifi_bt_rf0_feed_from_terminal.step
-    from_terminal_step_bytes: 15659
+    from_terminal_step_bytes: 15647
     to_terminal_part: wifi_bt_rf0_feed_to_terminal
     to_terminal_step: mechanical/e1-phone/out/wifi_bt_rf0_feed_to_terminal.step
-    to_terminal_step_bytes: 15659
+    to_terminal_step_bytes: 15673
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31318
+    terminal_step_bytes_total: 31320
     solid_step_part_names:
     - wifi_bt_rf_feed_development_envelope
     - wifi_bt_rf0_feed_from_terminal
     - wifi_bt_rf0_feed_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46965
+    solid_step_part_bytes_total: 46981
     net_count: 1
     nets:
     - WIFI_BT_RF0
@@ -1242,23 +1661,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.5
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/wifi_bt_rf1_feed_development_envelope.step
-    cad_step_bytes: 15595
+    cad_step_bytes: 15609
     from_terminal_part: wifi_bt_rf1_feed_from_terminal
     from_terminal_step: mechanical/e1-phone/out/wifi_bt_rf1_feed_from_terminal.step
-    from_terminal_step_bytes: 15633
+    from_terminal_step_bytes: 15673
     to_terminal_part: wifi_bt_rf1_feed_to_terminal
     to_terminal_step: mechanical/e1-phone/out/wifi_bt_rf1_feed_to_terminal.step
-    to_terminal_step_bytes: 15659
+    to_terminal_step_bytes: 15673
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31292
+    terminal_step_bytes_total: 31346
     solid_step_part_names:
     - wifi_bt_rf1_feed_development_envelope
     - wifi_bt_rf1_feed_from_terminal
     - wifi_bt_rf1_feed_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46887
+    solid_step_part_bytes_total: 46955
     net_count: 1
     nets:
     - WIFI_BT_RF1
@@ -1284,23 +1703,23 @@ cad_connection_coverage:
     min_bend_radius_mm: 1.0
     supplier_release_required: true
     cad_step: mechanical/e1-phone/out/split_interconnect_side_flex.step
-    cad_step_bytes: 15580
+    cad_step_bytes: 15594
     from_terminal_part: split_interconnect_side_flex_from_terminal
     from_terminal_step: mechanical/e1-phone/out/split_interconnect_side_flex_from_terminal.step
-    from_terminal_step_bytes: 15633
+    from_terminal_step_bytes: 15647
     to_terminal_part: split_interconnect_side_flex_to_terminal
     to_terminal_step: mechanical/e1-phone/out/split_interconnect_side_flex_to_terminal.step
-    to_terminal_step_bytes: 15685
+    to_terminal_step_bytes: 15699
     terminal_marker_count: 2
     terminal_markers_present: true
-    terminal_step_bytes_total: 31318
+    terminal_step_bytes_total: 31346
     solid_step_part_names:
     - split_interconnect_side_flex
     - split_interconnect_side_flex_from_terminal
     - split_interconnect_side_flex_to_terminal
     solid_step_parts_present: true
     solid_step_part_count: 3
-    solid_step_part_bytes_total: 46898
+    solid_step_part_bytes_total: 46940
     net_count: 8
     nets:
     - USB_DP
@@ -1341,21 +1760,22 @@ kicad_cad_traceability:
   captured_pinout_public_source_count: 21
   pinout_bound_footprint_count: 21
   all_pinout_bound_footprints_have_terminal_contract: true
-  cad_connection_count: 24
-  cad_connection_represented_net_count_total: 112
-  cad_connection_visual_route_span_total_mm: 397.8
-  cad_connection_terminal_marker_count: 48
-  cad_connection_terminal_pair_count: 24
-  cad_connection_solid_step_part_count: 72
-  cad_connection_solid_step_part_set_count: 24
-  cad_connection_solid_step_part_bytes_total: 1125435
+  cad_connection_count: 32
+  cad_connection_represented_net_count_total: 150
+  cad_connection_visual_route_span_total_mm: 456.0
+  cad_connection_terminal_marker_count: 64
+  cad_connection_terminal_pair_count: 32
+  cad_connection_solid_step_part_count: 96
+  cad_connection_solid_step_part_set_count: 32
+  cad_connection_solid_step_part_bytes_total: 1501919
   cad_connection_physical_medium_counts:
     battery_power_flex: 1
     board_to_board_edge_connector: 1
     flexible_antenna_loop: 1
-    flexible_printed_circuit: 10
+    flexible_printed_circuit: 14
+    ground_spring_contact: 2
     insulated_wire_pair: 2
-    pcb_copper_trace_group: 3
+    pcb_copper_trace_group: 5
     rf_50ohm_feed: 5
     rf_tuner_interconnect: 1
   cad_connection_electrical_class_counts:
@@ -1364,23 +1784,29 @@ kicad_cad_traceability:
     audio_receiver_pair: 1
     battery_power_sense: 1
     battery_power_sense_board_route: 1
+    camera_power_control: 2
+    cellular_host_interface: 1
     cellular_wifi_rf: 5
     compute_board_to_board_mixed_speed: 1
     digital_microphone: 2
+    display_bias_power: 1
     haptic_drive: 1
     low_speed_gpio: 1
     mipi_csi_camera_control: 2
     mipi_dsi_touch_control: 1
     nfc_loop_rf: 1
     pd_charger_power_control_board_route: 1
+    sensor_i2c: 1
+    shield_chassis_ground: 2
     sim_esim_low_speed: 1
     top_bottom_board_mixed_signal: 1
     usb2_pd_vbus: 1
     usb2_pd_vbus_board_route: 1
-  cad_connection_controlled_impedance_count: 14
-  cad_connection_controlled_impedance_requirement_defined_count: 24
-  cad_connection_bend_radius_requirement_defined_count: 24
-  cad_connection_supplier_release_required_count: 24
+    wifi_bt_host_interface: 1
+  cad_connection_controlled_impedance_count: 16
+  cad_connection_controlled_impedance_requirement_defined_count: 32
+  cad_connection_bend_radius_requirement_defined_count: 32
+  cad_connection_supplier_release_required_count: 32
   incomplete_footprint_count: 0
   incomplete_cad_connection_count: 0
   missing_captured_pinout_file_count: 0

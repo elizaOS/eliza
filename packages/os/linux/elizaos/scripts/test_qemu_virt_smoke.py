@@ -36,6 +36,31 @@ def iso_boot_artifacts(missing: list[str] | None = None) -> dict:
 
 
 class QemuVirtSmokeTests(unittest.TestCase):
+    def test_run_harness_streams_child_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            iso = root / "boot.iso"
+            harness = root / "qemu_virt_boot_riscv64.sh"
+            iso.write_bytes(b"iso")
+            harness.write_text("#!/bin/sh\n", encoding="utf-8")
+            with mock.patch.object(qemu_virt_smoke.subprocess, "run") as run:
+                run.return_value = qemu_virt_smoke.subprocess.CompletedProcess(
+                    ["bash", str(harness)], 0
+                )
+                result = qemu_virt_smoke.run_harness(
+                    iso,
+                    timeout_s=900,
+                    bash_harness=harness,
+                )
+
+        self.assertEqual(result.returncode, 0)
+        _, kwargs = run.call_args
+        self.assertNotIn("capture_output", kwargs)
+        self.assertEqual(kwargs["text"], True)
+        self.assertEqual(kwargs["check"], False)
+        self.assertIn("--timeout", run.call_args.args[0])
+        self.assertIn("900", run.call_args.args[0])
+
     def test_validate_existing_refreshes_report_without_launching_qemu(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

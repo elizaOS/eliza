@@ -49,10 +49,11 @@ def _motion_eval(
     forward_progress: float = 1.5,
     passed_obstacle: float = 1.0,
     collision_rate: float = 0.0,
+    success_rate: float = 1.0,
 ) -> dict[str, float | int]:
     return {
         "episodes": 2,
-        "success_rate": 1.0,
+        "success_rate": success_rate,
         "collision_rate": collision_rate,
         "passed_obstacle_rate": passed_obstacle,
         "mean_forward_progress_m": forward_progress,
@@ -65,8 +66,33 @@ def _motion_eval(
     }
 
 
+def _motion_baseline(n_tasks: int = 2) -> list[dict[str, float | int]]:
+    return [
+        _motion_eval(forward_progress=0.0, passed_obstacle=0.0, success_rate=0.0)
+        for _ in range(n_tasks)
+    ]
+
+
 def _motion_matrix(n_tasks: int = 2) -> list[list[dict[str, float | int]]]:
     return [[_motion_eval() for _ in range(n_tasks)] for _ in range(n_tasks)]
+
+
+def _trajectory_trace() -> dict:
+    return {
+        "task_id": 0,
+        "lane_y": 0.75,
+        "goal": [1.2, 0.75],
+        "obstacle": {"x": 0.0, "y": 0.0, "radius": 0.28},
+        "steps": [
+            {"step": 0, "x": -1.2, "y": 0.0},
+            {"step": 1, "x": 0.4, "y": 0.75},
+        ],
+        "summary": _motion_eval(),
+    }
+
+
+def _trajectory_matrix(n_tasks: int = 2) -> list[list[dict]]:
+    return [[_trajectory_trace() for _ in range(n_tasks)] for _ in range(n_tasks)]
 
 
 def _motion_summary() -> dict[str, dict[str, float | int]]:
@@ -94,12 +120,13 @@ def test_alberta_learner_builds_valid_matrix_and_retains():
     )
     env = _build_env(cfg, seed=1234)
     learner = AlbertaSequentialLearner(env, _alberta_controller_config(cfg, env, seed=1234))
-    R, baseline, baseline_motion, motion_matrix = run_learner(learner, cfg)
+    R, baseline, baseline_motion, motion_matrix, trajectory_matrix = run_learner(learner, cfg)
 
     assert R.shape == (2, 2)
     assert baseline.shape == (2,)
     assert baseline_motion == [{}, {}]
     assert motion_matrix == [[{}, {}], [{}, {}]]
+    assert trajectory_matrix == [[{}, {}], [{}, {}]]
     assert np.all(np.isfinite(R))
 
     m = compute_continual_metrics(R, baseline)
@@ -382,16 +409,18 @@ def test_benchmark_artifact_validator_can_require_demo_video(tmp_path):
                         "seed": 1000,
                         "matrix": matrix,
                         "baseline": baseline,
-                        "motion_baseline": [_motion_eval(), _motion_eval()],
+                        "motion_baseline": _motion_baseline(),
                         "motion_matrix": _motion_matrix(),
+                        "trajectory_matrix": _trajectory_matrix(),
                     },
                     {
                         "name": "ppo",
                         "seed": 1000,
                         "matrix": matrix,
                         "baseline": baseline,
-                        "motion_baseline": [_motion_eval(), _motion_eval()],
+                        "motion_baseline": _motion_baseline(),
                         "motion_matrix": _motion_matrix(),
+                        "trajectory_matrix": _trajectory_matrix(),
                     },
                 ],
             }
@@ -419,6 +448,36 @@ def test_benchmark_artifact_validator_can_require_demo_video(tmp_path):
                 "ok": True,
                 "frames": 2,
                 "video_bytes": 5,
+                "learner_results": {
+                    "alberta": {"has_trajectory_traces": True},
+                    "ppo": {"has_trajectory_traces": False},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    partial = validate_alberta_benchmark_artifacts(
+        tmp_path,
+        expected_env="obstacle_course",
+        min_seeds=1,
+        min_steps_per_task=8,
+        min_tasks=2,
+        require_demo_video=True,
+    )
+    assert partial["ok"] is False
+    assert partial["checks"]["demo_json"] is False
+
+    (tmp_path / "obstacle_course_demo.json").write_text(
+        json.dumps(
+            {
+                "schema": "robot-alberta-obstacle-demo-v1",
+                "ok": True,
+                "frames": 2,
+                "video_bytes": 5,
+                "learner_results": {
+                    "alberta": {"has_trajectory_traces": True},
+                    "ppo": {"has_trajectory_traces": True},
+                },
             }
         ),
         encoding="utf-8",
@@ -434,6 +493,136 @@ def test_benchmark_artifact_validator_can_require_demo_video(tmp_path):
     assert present["ok"] is True
     assert present["checks"]["demo_json"] is True
     assert present["checks"]["demo_video"] is True
+
+
+def test_obstacle_validator_rejects_passive_baseline_that_already_solves_course(tmp_path):
+    (tmp_path / "continual_benchmark.md").write_text("# report\n", encoding="utf-8")
+    (tmp_path / "continual_benchmark.png").write_bytes(b"png")
+    summary = {
+        learner: {
+            metric: {"mean": 1.0, "std": 0.0}
+            for metric in ("acc", "bwt", "forgetting", "fwt")
+        }
+        for learner in ("alberta", "ppo")
+    }
+    matrix = [[1.0, 0.0], [1.0, 1.0]]
+    baseline = [0.0, 0.0]
+    (tmp_path / "continual_benchmark.json").write_text(
+        json.dumps(
+            {
+                "config": {
+                    "env_kind": "obstacle_course",
+                    "n_tasks": 2,
+                    "seeds": 1,
+                    "steps_per_task": 8,
+                },
+                "summary": summary,
+                "motion": _motion_summary(),
+                "results": [
+                    {
+                        "name": "alberta",
+                        "seed": 1000,
+                        "matrix": matrix,
+                        "baseline": baseline,
+                        "motion_baseline": [_motion_eval(), _motion_eval()],
+                        "motion_matrix": _motion_matrix(),
+                        "trajectory_matrix": _trajectory_matrix(),
+                    },
+                    {
+                        "name": "ppo",
+                        "seed": 1000,
+                        "matrix": matrix,
+                        "baseline": baseline,
+                        "motion_baseline": [_motion_eval(), _motion_eval()],
+                        "motion_matrix": _motion_matrix(),
+                        "trajectory_matrix": _trajectory_matrix(),
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    validation = validate_alberta_benchmark_artifacts(
+        tmp_path,
+        expected_env="obstacle_course",
+        min_seeds=1,
+        min_steps_per_task=8,
+        min_tasks=2,
+    )
+
+    assert validation["ok"] is False
+    assert validation["checks"]["obstacle_passive_baseline_control"] is False
+    assert validation["checks"]["obstacle_beats_passive_baseline"] is False
+
+
+def test_obstacle_validator_rejects_learners_that_do_not_beat_passive_baseline(tmp_path):
+    (tmp_path / "continual_benchmark.md").write_text("# report\n", encoding="utf-8")
+    (tmp_path / "continual_benchmark.png").write_bytes(b"png")
+    summary = {
+        learner: {
+            metric: {"mean": 1.0, "std": 0.0}
+            for metric in ("acc", "bwt", "forgetting", "fwt")
+        }
+        for learner in ("alberta", "ppo")
+    }
+    weak_motion = _motion_matrix()
+    for row in weak_motion:
+        for item in row:
+            item.update(
+                _motion_eval(
+                    forward_progress=0.2,
+                    passed_obstacle=0.0,
+                    success_rate=0.0,
+                )
+            )
+    (tmp_path / "continual_benchmark.json").write_text(
+        json.dumps(
+            {
+                "config": {
+                    "env_kind": "obstacle_course",
+                    "n_tasks": 2,
+                    "seeds": 1,
+                    "steps_per_task": 8,
+                },
+                "summary": summary,
+                "motion": _motion_summary(),
+                "results": [
+                    {
+                        "name": "alberta",
+                        "seed": 1000,
+                        "matrix": [[1.0, 0.0], [1.0, 1.0]],
+                        "baseline": [0.0, 0.0],
+                        "motion_baseline": _motion_baseline(),
+                        "motion_matrix": weak_motion,
+                        "trajectory_matrix": _trajectory_matrix(),
+                    },
+                    {
+                        "name": "ppo",
+                        "seed": 1000,
+                        "matrix": [[1.0, 0.0], [1.0, 1.0]],
+                        "baseline": [0.0, 0.0],
+                        "motion_baseline": _motion_baseline(),
+                        "motion_matrix": weak_motion,
+                        "trajectory_matrix": _trajectory_matrix(),
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    validation = validate_alberta_benchmark_artifacts(
+        tmp_path,
+        expected_env="obstacle_course",
+        min_seeds=1,
+        min_steps_per_task=8,
+        min_tasks=2,
+    )
+
+    assert validation["ok"] is False
+    assert validation["checks"]["obstacle_passive_baseline_control"] is True
+    assert validation["checks"]["obstacle_beats_passive_baseline"] is False
 
 
 def test_benchmark_artifact_validator_rejects_single_task_or_bad_matrix(tmp_path):

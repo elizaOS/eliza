@@ -116,8 +116,9 @@ Each step is a separate logical commit on its own branch off `ws/cpu-boot-spec`:
 6. **Verification crossover.** Wire a new cocotb top (`e1_rocket_soc_tb.sv`)
    that drops the wrapper into the contract harness, runs a `wfi` smoke and a
    CLINT timer interrupt smoke, and archives `build/evidence/cpu_ap/rocket_smoke.log`.
-7. **Retire stub alias.** Rename `e1_cpu_subsystem_stub.sv` to
-   `e1_tiny_cpu_contract.sv`; keep a thin alias module under the old name
+7. **Retire stub alias.** The tiny executable model now lives at
+   `e1_tiny_cpu_contract.sv`; keep the thin `e1_cpu_subsystem_stub.sv`
+   compatibility alias under the old name
    for one release cycle.
 
 ## Blocking gates (do not flip until evidence exists)

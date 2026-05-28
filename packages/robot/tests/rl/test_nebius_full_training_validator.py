@@ -50,13 +50,42 @@ def _valid_curriculum_eval_report(
             {
                 "task_id": task,
                 "success_programmatic": True,
+                "physical_success": True,
+                "physical_checks": {
+                    "episodes": True,
+                    "success_rate_full": True,
+                    "failure_rate_zero": True,
+                    "command_motion": True,
+                },
                 "success_rate": 1.0,
+                "failure_rate": 0.0,
                 "episodes": 2,
                 "error": None,
             }
             for task in tasks
         ],
     }
+
+
+def test_curriculum_eval_gate_rejects_missing_physical_success(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "ckpt"
+    checkpoint.mkdir()
+    report = _valid_curriculum_eval_report(checkpoint=checkpoint)
+    report["tasks"][1]["physical_success"] = False
+    report["tasks"][1]["physical_checks"]["delta_x_forward"] = False
+    path = tmp_path / "evidence" / "curriculum_eval" / "report.json"
+    _write_json(path, report)
+
+    validation = _validate_curriculum_eval_report(
+        path,
+        checkpoint=checkpoint,
+        profile_id="asimov-1",
+        tasks=("stand_up", "walk_forward"),
+    )
+
+    assert validation["ok"] is False
+    assert validation["checks"]["all_requested_tasks_physical_success"] is False
+    assert validation["task_checks"]["walk_forward"] is False
 
 
 def _valid_text_policy_eval_report(
@@ -110,6 +139,8 @@ def _write_video_telemetry(
     policy_source: str = "checkpoint:asimov_1_alberta_full",
 ) -> None:
     delta_x, delta_y, delta_yaw = _task_motion(task_id)
+    torso_z = {"min": 0.9, "max": 1.0, "final": 1.0, "mean": 0.95} if task_id == "stand_up" else {"min": 1.0, "max": 1.0, "final": 1.0, "mean": 1.0}
+    tracked_delta_z = _summary(0.1) if task_id == "stand_up" else _summary(0.0)
     _write_json(
         path,
         {
@@ -123,7 +154,12 @@ def _write_video_telemetry(
             "goal_success": True,
             "attempted_action": True,
             "nonzero_action_steps": 8,
-            "torso_z": {"min": 1.0, "final": 1.0},
+            "torso_z": torso_z,
+            "tracked_body_name": "head_tilt_link",
+            "tracked_z_m": torso_z,
+            "tracked_delta_x_m": _summary(delta_x),
+            "tracked_delta_y_m": _summary(delta_y),
+            "tracked_delta_z_m": tracked_delta_z,
             "upright_proj": {"min": 1.0, "final": 1.0},
             "delta_x_m": _summary(delta_x),
             "delta_y_m": _summary(delta_y),
@@ -179,19 +215,34 @@ def _write_combined_video_telemetry(
             "steps_executed": len(commands) * 8,
             "commands": [
                 {
-                    "task_id": command.replace(" ", "_"),
+                    "task_id": task_id,
                     "policy_source": policy_source,
                     "rollout_ok": True,
                     "goal_success": True,
                     "attempted_action": True,
                     "nonzero_action_steps": 8,
-                    "delta_x_m": _summary(_task_motion(command.replace(" ", "_"))[0]),
-                    "delta_y_m": _summary(_task_motion(command.replace(" ", "_"))[1]),
-                    "delta_yaw_rad": _summary(
-                        _task_motion(command.replace(" ", "_"))[2]
+                    "tracked_body_name": "head_tilt_link",
+                    "torso_z": (
+                        {"min": 0.9, "max": 1.0, "final": 1.0, "mean": 0.95}
+                        if task_id == "stand_up"
+                        else {"min": 1.0, "max": 1.0, "final": 1.0, "mean": 1.0}
                     ),
+                    "tracked_z_m": (
+                        {"min": 0.9, "max": 1.0, "final": 1.0, "mean": 0.95}
+                        if task_id == "stand_up"
+                        else {"min": 1.0, "max": 1.0, "final": 1.0, "mean": 1.0}
+                    ),
+                    "tracked_delta_x_m": _summary(_task_motion(task_id)[0]),
+                    "tracked_delta_y_m": _summary(_task_motion(task_id)[1]),
+                    "tracked_delta_z_m": (
+                        _summary(0.1) if task_id == "stand_up" else _summary(0.0)
+                    ),
+                    "delta_x_m": _summary(_task_motion(task_id)[0]),
+                    "delta_y_m": _summary(_task_motion(task_id)[1]),
+                    "delta_yaw_rad": _summary(_task_motion(task_id)[2]),
                 }
                 for command in commands
+                for task_id in (command.replace(" ", "_"),)
             ],
         },
     )
@@ -551,6 +602,7 @@ def test_production_contract_rejects_short_checkpoint_manifest(tmp_path: Path) -
 
     report = _validate_production_contract(
         checkpoint_manifest=manifest,
+        tasks=("stand_up", "walk_forward"),
         require_success=True,
         run_deep_validators=True,
         min_alberta_steps=150_000_000,
@@ -564,6 +616,162 @@ def test_production_contract_rejects_short_checkpoint_manifest(tmp_path: Path) -
     assert report["checks"]["checkpoint_total_steps"] is False
     assert report["checks"]["checkpoint_requested_total_steps"] is False
     assert report["actual"]["checkpoint_total_steps"] == 7000
+
+
+def _production_contract_manifest(
+    *,
+    tasks: tuple[str, ...] = ("stand_up", "walk_forward"),
+    total_steps: int = 150_000_000,
+) -> dict:
+    steps_per_task = total_steps // len(tasks)
+    cumulative = 0
+    phases = []
+    for phase, task in enumerate(tasks):
+        cumulative += steps_per_task
+        phases.append(
+            {
+                "phase": phase,
+                "task": task,
+                "steps_trained": steps_per_task,
+                "cumulative_steps": cumulative,
+                "eval_episodes": 5,
+                "eval_mean_return": 1.0,
+                "eval_success_rate": 1.0,
+                "failure_rate": 0.0,
+                "physical_success": True,
+                "physical_checks": {"tracked_goal": True},
+                "tracked_body_name": "head_tilt_link",
+                "mean_final_tracked_delta_x_m": 0.4,
+                "mean_final_tracked_delta_y_m": 0.0,
+                "mean_final_tracked_delta_z_m": 0.1,
+                "mean_final_tracked_z_m": 1.0,
+                "promotion_passed": True,
+            }
+        )
+    return {
+        "regime": "alberta_streaming",
+        "profile_id": "asimov-1",
+        "domain_rand": True,
+        "active_tasks": list(tasks),
+        "total_steps": total_steps,
+        "requested_total_steps": total_steps,
+        "steps_per_task": steps_per_task,
+        "phase_promotion_schema": "alberta-phase-promotion-v1",
+        "phase_promotion": {
+            "gate": "curriculum_goal_checker",
+            "status": "completed",
+            "success_threshold": 1.0,
+            "eval_episodes": 5,
+            "promoted_phase_count": len(tasks),
+            "requested_phase_count": len(tasks),
+            "failed_phase": None,
+            "phases": phases,
+        },
+    }
+
+
+def _validate_production_manifest(manifest: Path, tasks: tuple[str, ...]) -> dict:
+    return _validate_production_contract(
+        checkpoint_manifest=manifest,
+        tasks=tasks,
+        require_success=True,
+        run_deep_validators=True,
+        min_alberta_steps=150_000_000,
+        min_backend_compare_steps=30_000,
+        min_benchmark_steps_per_task=16_000,
+        min_benchmark_seeds=3,
+    )
+
+
+def test_production_contract_requires_phase_promotion_proof(
+    tmp_path: Path,
+) -> None:
+    tasks = ("stand_up", "walk_forward")
+    manifest = tmp_path / "checkpoints" / "asimov_1_alberta_full" / "manifest.json"
+    payload = _production_contract_manifest(tasks=tasks)
+    payload.pop("phase_promotion_schema")
+    payload.pop("phase_promotion")
+    _write_json(manifest, payload)
+
+    report = _validate_production_manifest(manifest, tasks)
+
+    assert report["ok"] is False
+    assert report["checks"]["checkpoint_total_steps"] is True
+    assert report["checks"]["checkpoint_phase_promotion_schema"] is False
+    assert report["checks"]["checkpoint_phase_promotion_completed"] is False
+
+
+def test_production_contract_rejects_failed_or_incomplete_phase_promotion(
+    tmp_path: Path,
+) -> None:
+    tasks = ("stand_up", "walk_forward")
+    manifest = tmp_path / "checkpoints" / "asimov_1_alberta_full" / "manifest.json"
+    payload = _production_contract_manifest(tasks=tasks)
+    payload["phase_promotion"]["status"] = "failed"
+    payload["phase_promotion"]["phases"][1]["promotion_passed"] = False
+    _write_json(manifest, payload)
+
+    report = _validate_production_manifest(manifest, tasks)
+
+    assert report["ok"] is False
+    assert report["checks"]["checkpoint_phase_promotion_completed"] is False
+    assert report["checks"]["checkpoint_phase_promotion_all_passed"] is False
+
+
+def test_production_contract_rejects_phase_promotion_without_physical_evidence(
+    tmp_path: Path,
+) -> None:
+    tasks = ("stand_up", "walk_forward")
+    manifest = tmp_path / "checkpoints" / "asimov_1_alberta_full" / "manifest.json"
+    payload = _production_contract_manifest(tasks=tasks)
+    payload["phase_promotion"]["phases"][0].pop("tracked_body_name")
+    payload["phase_promotion"]["phases"][0]["physical_success"] = False
+    _write_json(manifest, payload)
+
+    report = _validate_production_manifest(manifest, tasks)
+
+    assert report["ok"] is False
+    assert report["checks"]["checkpoint_phase_promotion_physical"] is False
+
+
+def test_production_contract_rejects_non_production_or_bad_accounting(
+    tmp_path: Path,
+) -> None:
+    tasks = ("stand_up", "walk_forward")
+    manifest = tmp_path / "checkpoints" / "asimov_1_alberta_full" / "manifest.json"
+    payload = _production_contract_manifest(tasks=tasks)
+    payload["non_production"] = True
+    payload["steps_per_task"] = payload["steps_per_task"] - 1
+    _write_json(manifest, payload)
+
+    report = _validate_production_manifest(manifest, tasks)
+
+    assert report["ok"] is False
+    assert report["checks"]["checkpoint_not_non_production"] is False
+    assert report["checks"]["checkpoint_steps_accounting"] is False
+
+
+def test_production_contract_rejects_missing_required_task(tmp_path: Path) -> None:
+    tasks = ("stand_up", "walk_forward")
+    manifest = tmp_path / "checkpoints" / "asimov_1_alberta_full" / "manifest.json"
+    payload = _production_contract_manifest(tasks=("stand_up",))
+    _write_json(manifest, payload)
+
+    report = _validate_production_manifest(manifest, tasks)
+
+    assert report["ok"] is False
+    assert report["checks"]["checkpoint_tasks_cover_requested"] is False
+    assert report["checks"]["checkpoint_phase_promotion_tasks"] is False
+
+
+def test_production_contract_accepts_complete_manifest(tmp_path: Path) -> None:
+    tasks = ("stand_up", "walk_forward")
+    manifest = tmp_path / "checkpoints" / "asimov_1_alberta_full" / "manifest.json"
+    _write_json(manifest, _production_contract_manifest(tasks=tasks))
+
+    report = _validate_production_manifest(manifest, tasks)
+
+    assert report["ok"] is True
 
 
 def test_production_policy_video_gate_rejects_empty_action_clip(tmp_path: Path) -> None:
@@ -735,6 +943,70 @@ def test_production_policy_video_gate_rejects_unsuccessful_telemetry(
     assert walk_report["checks"]["delta_x_series"] is False
 
 
+def test_production_policy_video_gate_rejects_stand_up_without_action_or_rise(
+    tmp_path: Path,
+) -> None:
+    evidence = tmp_path / "evidence" / "agent_videos"
+    profile = "asimov-1"
+    profile_dir = evidence / profile
+    profile_dir.mkdir(parents=True)
+    checkpoint = tmp_path / "checkpoints" / "asimov_1_alberta_full"
+    checkpoint.mkdir(parents=True)
+    (checkpoint / "manifest.json").write_text("{}\n")
+    (checkpoint / "alberta_policy.npz").write_bytes(b"checkpoint")
+    checkpoint_path = str(checkpoint.resolve())
+    commands = ("stand up",)
+    name = f"{profile}_stand_up.mp4"
+    _write_moving_video(profile_dir / name)
+    _write_json(
+        profile_dir / f"{profile}_stand_up.telemetry.json",
+        {
+            "profile": profile,
+            "task_id": "stand_up",
+            "policy_source": "checkpoint:asimov_1_alberta_full",
+            "rollout_ok": True,
+            "goal_success": True,
+            "attempted_action": True,
+            "nonzero_action_steps": 0,
+            "torso_z": {"min": 1.0, "final": 1.0},
+            "action_norm": {"final": 0.0},
+        },
+    )
+    combined = f"{profile}_combined_actions.mp4"
+    _write_moving_video(profile_dir / combined)
+    _write_combined_video_telemetry(
+        (profile_dir / combined).with_suffix(".telemetry.json"),
+        profile=profile,
+        commands=commands,
+    )
+    _write_json(
+        evidence / "manifest.json",
+        {
+            "ok": True,
+            "policy_checkpoint": checkpoint_path,
+            "profiles": [
+                {
+                    "profile": profile,
+                    "policy_checkpoint": checkpoint_path,
+                    "ok": True,
+                }
+            ],
+        },
+    )
+
+    report = _validate_production_policy_videos(
+        evidence,
+        checkpoint=checkpoint,
+        profile_id=profile,
+        commands=commands,
+    )
+
+    assert report["ok"] is False
+    stand_report = report["telemetry_reports"][f"{profile}_stand_up.telemetry.json"]
+    assert stand_report["checks"]["nonzero_action_steps"] is False
+    assert stand_report["checks"]["torso_height_gain"] is False
+
+
 def test_production_policy_video_gate_rejects_wrong_direction_telemetry(
     tmp_path: Path,
 ) -> None:
@@ -844,6 +1116,66 @@ def test_production_policy_video_gate_rejects_wrong_direction_telemetry(
     ]["delta_yaw_right"] is False
 
 
+def test_production_policy_video_gate_rejects_turn_translation_drift(
+    tmp_path: Path,
+) -> None:
+    evidence = tmp_path / "evidence" / "agent_videos"
+    profile = "asimov-1"
+    profile_dir = evidence / profile
+    profile_dir.mkdir(parents=True)
+    checkpoint = tmp_path / "checkpoints" / "asimov_1_alberta_full"
+    checkpoint.mkdir(parents=True)
+    (checkpoint / "manifest.json").write_text("{}\n")
+    (checkpoint / "alberta_policy.npz").write_bytes(b"checkpoint")
+    checkpoint_path = str(checkpoint.resolve())
+    commands = ("turn left",)
+    name = f"{profile}_turn_left.mp4"
+    _write_moving_video(profile_dir / name)
+    _write_video_telemetry(
+        (profile_dir / name).with_suffix(".telemetry.json"),
+        profile=profile,
+        task_id="turn_left",
+    )
+    payload_path = profile_dir / f"{profile}_turn_left.telemetry.json"
+    payload = json.loads(payload_path.read_text())
+    payload["delta_x_m"] = _summary(0.4)
+    payload["tracked_delta_x_m"] = _summary(0.4)
+    _write_json(payload_path, payload)
+    combined = f"{profile}_combined_actions.mp4"
+    _write_moving_video(profile_dir / combined)
+    _write_combined_video_telemetry(
+        (profile_dir / combined).with_suffix(".telemetry.json"),
+        profile=profile,
+        commands=commands,
+    )
+    _write_json(
+        evidence / "manifest.json",
+        {
+            "ok": True,
+            "policy_checkpoint": checkpoint_path,
+            "profiles": [
+                {
+                    "profile": profile,
+                    "policy_checkpoint": checkpoint_path,
+                    "ok": True,
+                }
+            ],
+        },
+    )
+
+    report = _validate_production_policy_videos(
+        evidence,
+        checkpoint=checkpoint,
+        profile_id=profile,
+        commands=commands,
+    )
+
+    assert report["ok"] is False
+    turn_report = report["telemetry_reports"][f"{profile}_turn_left.telemetry.json"]
+    assert turn_report["checks"]["delta_yaw_left"] is True
+    assert turn_report["checks"]["translation_drift_bound"] is False
+
+
 def test_production_policy_video_gate_rejects_combined_wrong_motion(
     tmp_path: Path,
 ) -> None:
@@ -876,6 +1208,7 @@ def test_production_policy_video_gate_rejects_combined_wrong_motion(
         (profile_dir / f"{profile}_combined_actions.telemetry.json").read_text()
     )
     combined_payload["commands"][1]["delta_x_m"] = _summary(-0.4)
+    combined_payload["commands"][1]["tracked_delta_x_m"] = _summary(-0.4)
     _write_json(
         profile_dir / f"{profile}_combined_actions.telemetry.json",
         combined_payload,
@@ -908,6 +1241,73 @@ def test_production_policy_video_gate_rejects_combined_wrong_motion(
     ]
     assert combined_report["checks"]["all_goal_success"] is True
     assert combined_report["checks"]["all_command_motion"] is False
+
+
+def test_production_policy_video_gate_rejects_combined_missing_tracked_telemetry(
+    tmp_path: Path,
+) -> None:
+    evidence = tmp_path / "evidence" / "agent_videos"
+    profile = "asimov-1"
+    profile_dir = evidence / profile
+    profile_dir.mkdir(parents=True)
+    checkpoint = tmp_path / "checkpoints" / "asimov_1_alberta_full"
+    checkpoint.mkdir(parents=True)
+    (checkpoint / "manifest.json").write_text("{}\n")
+    (checkpoint / "alberta_policy.npz").write_bytes(b"checkpoint")
+    checkpoint_path = str(checkpoint.resolve())
+    commands = ("stand up", "walk forward")
+    for command in commands:
+        name = f"{profile}_{command.replace(' ', '_')}.mp4"
+        _write_moving_video(profile_dir / name)
+        _write_video_telemetry(
+            (profile_dir / name).with_suffix(".telemetry.json"),
+            profile=profile,
+            task_id=command.replace(" ", "_"),
+        )
+    combined = f"{profile}_combined_actions.mp4"
+    _write_moving_video(profile_dir / combined)
+    _write_combined_video_telemetry(
+        (profile_dir / combined).with_suffix(".telemetry.json"),
+        profile=profile,
+        commands=commands,
+    )
+    combined_path = profile_dir / f"{profile}_combined_actions.telemetry.json"
+    combined_payload = json.loads(combined_path.read_text())
+    for command_payload in combined_payload["commands"]:
+        command_payload.pop("tracked_body_name", None)
+        command_payload.pop("tracked_z_m", None)
+        command_payload.pop("tracked_delta_x_m", None)
+        command_payload.pop("tracked_delta_y_m", None)
+        command_payload.pop("tracked_delta_z_m", None)
+    _write_json(combined_path, combined_payload)
+    _write_json(
+        evidence / "manifest.json",
+        {
+            "ok": True,
+            "policy_checkpoint": checkpoint_path,
+            "profiles": [
+                {
+                    "profile": profile,
+                    "policy_checkpoint": checkpoint_path,
+                    "ok": True,
+                }
+            ],
+        },
+    )
+
+    report = _validate_production_policy_videos(
+        evidence,
+        checkpoint=checkpoint,
+        profile_id=profile,
+        commands=commands,
+    )
+
+    assert report["ok"] is False
+    combined_report = report["telemetry_reports"][
+        f"{profile}_combined_actions.telemetry.json"
+    ]
+    assert combined_report["checks"]["all_goal_success"] is True
+    assert combined_report["checks"]["all_command_tracked_telemetry"] is False
 
 
 def test_curriculum_eval_gate_requires_checkpoint_bound_task_success(
@@ -1131,6 +1531,56 @@ def test_validate_nebius_full_training_run_rejects_missing_stage_status(
     assert report["checks"]["stage_status"] is False
     assert report["reports"]["stage_status"]["checks"]["runner_status"] is False
     assert report["reports"]["stage_status"]["checks"]["all_stage_statuses"] is False
+
+
+def test_validate_nebius_full_training_run_repairs_stale_runner_status(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "run"
+    (root / "status").mkdir(parents=True)
+    (root / "status" / "success.txt").write_text("SUCCESS\n")
+    for stage in STAGES:
+        log = root / "logs" / f"{stage}.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text(f"START {stage}\nEND {stage} rc=0\n")
+    _write_stage_statuses(root)
+    _write_json(
+        root / "status" / "runner_status.json",
+        {
+            "ok": True,
+            "state": "complete",
+            "started_at": "2026-05-23T00:00:00Z",
+            "ended_at": "2026-05-23T00:06:00Z",
+            "heartbeat_at": "2026-05-23T00:06:00Z",
+            "last_stage": STAGES[-1],
+            "stages": [
+                {
+                    "stage": STAGES[-1],
+                    "state": "complete",
+                    "returncode": 0,
+                    "started_at": "2026-05-23T00:05:00Z",
+                    "ended_at": "2026-05-23T00:06:00Z",
+                    "heartbeat_at": "2026-05-23T00:06:00Z",
+                }
+            ],
+        },
+    )
+
+    report = validate_nebius_full_training_run(
+        root,
+        run_id="robot-full-test",
+        run_deep_validators=False,
+    )
+
+    stage_report = report["reports"]["stage_status"]
+    runner = stage_report["runner"]
+    assert report["checks"]["stage_logs"] is True
+    assert report["checks"]["stage_status"] is True
+    assert stage_report["checks"]["runner_status"] is True
+    assert stage_report["checks"]["all_stage_statuses"] is True
+    assert runner["repaired_from_stage_files"] is True
+    assert runner["raw_stage_count"] == 1
+    assert runner["stage_count"] == len(STAGES)
 
 
 def test_validate_nebius_full_training_run_rejects_preflight_only_brax_dir(

@@ -55,7 +55,7 @@
   "normalize_observations": true,
   "ckpt": "policy_brax.pkl",
   "encoder_model": "sentence-transformers/all-MiniLM-L6-v2",
-  "total_steps": 150000000,
+  "total_steps": 100,
   "seed": 0,
   "training_job": "asimov-1-text-conditioned-mjx-brax"
 }

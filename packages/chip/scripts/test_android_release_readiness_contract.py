@@ -196,6 +196,17 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             "next_step": "stage",
         }
 
+    def _partial_aosp_chip_inventory(self) -> dict[str, object]:
+        return {
+            "status": "partial",
+            "productOut": "/tmp/aosp/out/target/product/eliza_ai_soc",
+            "present": ["vendor.img", "system.img"],
+            "missing": ["product.img", "system_ext.img"],
+            "records": [],
+            "blocker_dependency": "repo_artifact_generation",
+            "next_step": "finish build",
+        }
+
     def _patch_tree(self, tmp: Path):
         android_manifest = write(
             tmp / "os/release/beta-2026-05-16/android-release-manifest.json",
@@ -444,6 +455,12 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
                 for command in security["capture_commands"]
             )
         )
+        self.assertTrue(
+            any(
+                "verdict=pass" in command and "RESULT=%s" in command
+                for command in security["capture_commands"]
+            )
+        )
         power = {row["capture_area"]: row for row in prioritized}["power_thermal"]
         self.assertTrue(
             any(
@@ -656,6 +673,65 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+
+    def test_staged_chip_archive_integrity_suppresses_stale_product_out_blocker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            patches = self._patch_tree(Path(tmpdir))
+            with PatchStack(patches):
+                gate.ANDROID_MANIFEST.write_text(PASSING_ANDROID_MANIFEST, encoding="utf-8")
+                gate.UMBRELLA_MANIFEST.write_text(PASSING_UMBRELLA_MANIFEST, encoding="utf-8")
+                write(
+                    Path(tmpdir)
+                    / "os/release/beta-2026-05-16/evidence/android/chip-riscv64-launcher-agent-live.json",
+                    PASSING_LAUNCHER_AGENT_LIVE_PAYLOAD,
+                )
+                write(
+                    Path(tmpdir)
+                    / "os/release/beta-2026-05-16/evidence/android/android-partition-artifacts-integrity.json",
+                    PASSING_PARTITION_INTEGRITY_PAYLOAD,
+                )
+                write(
+                    Path(tmpdir) / "os/release/beta-2026-05-16/android/partitions/boot.img",
+                    "boot-image\n",
+                )
+                archive = write_android_archive(
+                    Path(tmpdir)
+                    / "os/release/beta-2026-05-16/android/archives/elizaos-beta-2026.05.16-android-eliza_ai_soc-riscv64.zip"
+                )
+                archive_sha = gate.file_sha256(archive)
+                archive_size = archive.stat().st_size
+                umbrella = json.loads(PASSING_UMBRELLA_MANIFEST)
+                umbrella["artifacts"][0]["sizeBytes"] = archive_size
+                umbrella["artifacts"][0]["sha256"] = archive_sha
+                gate.UMBRELLA_MANIFEST.write_text(json.dumps(umbrella), encoding="utf-8")
+                write(
+                    Path(tmpdir)
+                    / "os/release/beta-2026-05-16/evidence/android/chip-riscv64-artifact-integrity.json",
+                    json.dumps(
+                        {
+                            "status": "collected",
+                            "artifact_id": "android-chip-riscv64-zip",
+                            "filename": "elizaos-beta-2026.05.16-android-eliza_ai_soc-riscv64.zip",
+                            "path": "android/archives/elizaos-beta-2026.05.16-android-eliza_ai_soc-riscv64.zip",
+                            "sha256": archive_sha,
+                            "sizeBytes": archive_size,
+                        }
+                    )
+                    + "\n",
+                )
+                gate.POST_FLASH.write_text(FULL_VALIDATOR_SCRIPT, encoding="utf-8")
+                gate.INSTALLER.write_text(FULL_VALIDATOR_SCRIPT, encoding="utf-8")
+                with mock.patch.object(
+                    gate,
+                    "aosp_chip_build_artifact_inventory",
+                    return_value=self._partial_aosp_chip_inventory(),
+                ):
+                    report = gate.run_check(Namespace())
+
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertNotIn("android_chip_riscv64_aosp_artifacts_incomplete", codes)
+        self.assertTrue(report["evidence"]["chip_riscv64_archive_staged_with_integrity"])
+        self.assertEqual(report["status"], "pass")
 
     def test_partial_aosp_chip_source_artifacts_are_explicit_repo_blocker(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -68,10 +68,12 @@ class GoalChecker:
     # ------------------------------------------------------------------
     def update(self, sample: TelemetrySample) -> GoalResult:
         self.samples.append(sample)
-        if self._init_x_m is None and sample.torso_x_m is not None:
-            self._init_x_m = sample.torso_x_m
-        if self._init_y_m is None and sample.torso_y_m is not None:
-            self._init_y_m = sample.torso_y_m
+        sample_x = _motion_x_m(sample)
+        sample_y = _motion_y_m(sample)
+        if self._init_x_m is None and sample_x is not None:
+            self._init_x_m = sample_x
+        if self._init_y_m is None and sample_y is not None:
+            self._init_y_m = sample_y
         if self._init_yaw_rad is None and sample.yaw_rad is not None:
             self._init_yaw_rad = sample.yaw_rad
         if self._init_torso_z_m is None and sample.torso_z_m is not None:
@@ -170,6 +172,8 @@ class GoalChecker:
                 reasons.append(f"Δz={dz:.3f}m ≥ {delta_min:.3f}")
 
         window_s = float(crit.get("window_s", self.task.max_episode_s))
+        sample_x = _motion_x_m(sample)
+        sample_y = _motion_y_m(sample)
 
         def inside_window() -> bool:
             return elapsed <= window_s + 0.5
@@ -177,9 +181,9 @@ class GoalChecker:
         if "delta_x_m_min" in crit and self._init_x_m is not None:
             matched = True
             min_delta = float(crit["delta_x_m_min"])
-            if sample.torso_x_m is None:
+            if sample_x is None:
                 return fail()
-            dx = sample.torso_x_m - self._init_x_m
+            dx = sample_x - self._init_x_m
             if not (dx >= min_delta and inside_window()):
                 return fail()
             reasons.append(f"Δx={dx:.3f}m ≥ {min_delta}")
@@ -187,18 +191,18 @@ class GoalChecker:
         if "delta_x_m_max" in crit and self._init_x_m is not None:
             matched = True
             max_delta = float(crit["delta_x_m_max"])
-            if sample.torso_x_m is None:
+            if sample_x is None:
                 return fail()
-            dx = sample.torso_x_m - self._init_x_m
+            dx = sample_x - self._init_x_m
             if not (dx <= max_delta and inside_window()):
                 return fail()
             reasons.append(f"Δx={dx:.3f}m ≤ {max_delta}")
 
         if "delta_y_m_min" in crit and self._init_y_m is not None:
             matched = True
-            if sample.torso_y_m is None:
+            if sample_y is None:
                 return fail()
-            dy = sample.torso_y_m - self._init_y_m
+            dy = sample_y - self._init_y_m
             min_delta = float(crit["delta_y_m_min"])
             if not (dy >= min_delta and inside_window()):
                 return fail()
@@ -206,9 +210,9 @@ class GoalChecker:
 
         if "delta_y_m_max" in crit and self._init_y_m is not None:
             matched = True
-            if sample.torso_y_m is None:
+            if sample_y is None:
                 return fail()
-            dy = sample.torso_y_m - self._init_y_m
+            dy = sample_y - self._init_y_m
             max_delta = float(crit["delta_y_m_max"])
             if not (dy <= max_delta and inside_window()):
                 return fail()
@@ -216,9 +220,9 @@ class GoalChecker:
 
         if "max_abs_delta_x_m" in crit and self._init_x_m is not None:
             matched = True
-            if sample.torso_x_m is None:
+            if sample_x is None:
                 return fail()
-            dx = sample.torso_x_m - self._init_x_m
+            dx = sample_x - self._init_x_m
             limit = float(crit["max_abs_delta_x_m"])
             if abs(dx) > limit:
                 return fail()
@@ -226,9 +230,9 @@ class GoalChecker:
 
         if "max_abs_delta_y_m" in crit and self._init_y_m is not None:
             matched = True
-            if sample.torso_y_m is None:
+            if sample_y is None:
                 return fail()
-            dy = sample.torso_y_m - self._init_y_m
+            dy = sample_y - self._init_y_m
             limit = float(crit["max_abs_delta_y_m"])
             if abs(dy) > limit:
                 return fail()
@@ -236,9 +240,9 @@ class GoalChecker:
 
         if "max_lateral_drift_m" in crit and self._init_y_m is not None:
             matched = True
-            if sample.torso_y_m is None:
+            if sample_y is None:
                 return fail()
-            dy = sample.torso_y_m - self._init_y_m
+            dy = sample_y - self._init_y_m
             limit = float(crit["max_lateral_drift_m"])
             if abs(dy) > limit:
                 return fail()
@@ -246,9 +250,9 @@ class GoalChecker:
 
         if "max_forward_drift_m" in crit and self._init_x_m is not None:
             matched = True
-            if sample.torso_x_m is None:
+            if sample_x is None:
                 return fail()
-            dx = sample.torso_x_m - self._init_x_m
+            dx = sample_x - self._init_x_m
             limit = float(crit["max_forward_drift_m"])
             if abs(dx) > limit:
                 return fail()
@@ -260,10 +264,10 @@ class GoalChecker:
             and self._init_y_m is not None
         ):
             matched = True
-            if sample.torso_x_m is None or sample.torso_y_m is None:
+            if sample_x is None or sample_y is None:
                 return fail()
-            dx = sample.torso_x_m - self._init_x_m
-            dy = sample.torso_y_m - self._init_y_m
+            dx = sample_x - self._init_x_m
+            dy = sample_y - self._init_y_m
             drift = math.hypot(dx, dy)
             limit = float(crit["max_translation_drift_m"])
             if drift > limit:
@@ -309,6 +313,14 @@ class GoalChecker:
                 f"|Δyaw|={math.degrees(adyaw):.1f}° "
                 f"≤ {math.degrees(limit):.1f}°"
             )
+
+        if "min_alternating_foot_contacts" in crit:
+            matched = True
+            switches = self._count_alternating_foot_contacts()
+            required = int(crit["min_alternating_foot_contacts"])
+            if switches < required:
+                return fail()
+            reasons.append(f"foot_contact_switches={switches}")
 
         if "head_tilt_min_rad" in crit:
             matched = True
@@ -402,6 +414,56 @@ class GoalChecker:
             if sign != 0:
                 last_sign = sign
         return crossings // 2
+
+    def _count_alternating_foot_contacts(self) -> int:
+        switches = 0
+        last_stance: str | None = None
+        for sample in self.samples:
+            left = _bool_or_none(sample.extra.get("left_foot_contact"))
+            right = _bool_or_none(sample.extra.get("right_foot_contact"))
+            if left is None or right is None:
+                continue
+            stance = None
+            if left and not right:
+                stance = "left"
+            elif right and not left:
+                stance = "right"
+            if stance is None:
+                continue
+            if last_stance is not None and stance != last_stance:
+                switches += 1
+            last_stance = stance
+        return switches
+
+
+def _bool_or_none(value: object) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        if value.lower() in {"true", "1", "yes"}:
+            return True
+        if value.lower() in {"false", "0", "no"}:
+            return False
+        return None
+    return bool(value)
+
+
+def _float_or_none(value: object) -> float | None:
+    try:
+        out = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return out if math.isfinite(out) else None
+
+
+def _motion_x_m(sample: TelemetrySample) -> float | None:
+    tracked = _float_or_none(sample.extra.get("tracked_x_m"))
+    return tracked if tracked is not None else sample.torso_x_m
+
+
+def _motion_y_m(sample: TelemetrySample) -> float | None:
+    tracked = _float_or_none(sample.extra.get("tracked_y_m"))
+    return tracked if tracked is not None else sample.torso_y_m
 
 
 def _wrap_pi(angle: float) -> float:

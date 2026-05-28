@@ -1,6 +1,6 @@
 # E1 Phone Board STEP Readiness
 
-Status: blocked_concept_pcb_no_routed_step.
+Status: blocked_local_routed_step_candidate_not_release.
 
 This is the mechanical gate for replacing the concept PCB envelope with routed KiCad board STEP.
 

@@ -697,7 +697,7 @@
     },
     "mesh_integrity": {
       "pass": true,
-      "checked_parts": 234,
+      "checked_parts": 258,
       "failures": []
     },
     "usb_c_insertion_envelope": {
@@ -923,7 +923,7 @@
     },
     "mass_budget": {
       "pass": true,
-      "estimated_mass_g": 182.19,
+      "estimated_mass_g": 182.2,
       "target_mass_g": 185,
       "note": "Rough CAD estimate; placeholder void markers excluded."
     }

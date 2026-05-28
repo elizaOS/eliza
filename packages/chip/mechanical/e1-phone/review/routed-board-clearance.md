@@ -1,6 +1,6 @@
 # E1 Phone Routed Board Clearance
 
-Status: blocked_waiting_for_routed_board_step.
+Status: blocked_waiting_for_physical_routed_board_clearance_result.
 
 Template: `mechanical/e1-phone/review/routed-board-clearance-results-template.csv`
 

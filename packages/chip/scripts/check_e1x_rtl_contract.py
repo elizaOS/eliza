@@ -18,6 +18,13 @@ REPORT = ROOT / "build/reports/e1x_rtl_contract.json"
 RTL_FILES = [
     ROOT / "rtl/e1x/e1x_pkg.sv",
     ROOT / "rtl/e1x/e1x_mesh_router.sv",
+    ROOT / "rtl/e1x/e1x_repair_aware_router.sv",
+    ROOT / "rtl/e1x/e1x_repair_mmio_programmer.sv",
+    ROOT / "rtl/e1x/e1x_repair_rom_loader.sv",
+    ROOT / "rtl/e1x/e1x_repair_state.sv",
+    ROOT / "rtl/e1x/e1x_repair_route_table.sv",
+    ROOT / "rtl/e1x/e1x_repair_routed_router.sv",
+    ROOT / "rtl/e1x/e1x_repair_routed_tile.sv",
     ROOT / "rtl/e1x/e1x_tiny_core_contract.sv",
     ROOT / "rtl/e1x/e1x_tile.sv",
 ]
@@ -120,6 +127,164 @@ def structural_checks() -> list[dict[str, str]]:
             else "missing terms: " + ", ".join(missing_terms),
         }
     )
+    repair_rom = (ROOT / "rtl/e1x/e1x_repair_rom_loader.sv").read_text(encoding="utf-8")
+    repair_rom_terms = (
+        "E1X_REPAIR_MAGIC",
+        "remap_valid_o",
+        "route_valid_o",
+        "remap_logical_o",
+        "remap_physical_o",
+        "route_logical_from_o",
+        "route_logical_to_o",
+        "route_dir_o",
+        "route_hops_o",
+    )
+    missing_repair_rom_terms = [term for term in repair_rom_terms if term not in repair_rom]
+    checks.append(
+        {
+            "id": "e1x_repair_rom_loader_decodes_handoff_words",
+            "status": "pass" if not missing_repair_rom_terms else "fail",
+            "detail": "repair-ROM loader exposes decoded remap and route records"
+            if not missing_repair_rom_terms
+            else "missing terms: " + ", ".join(missing_repair_rom_terms),
+        }
+    )
+    repair_mmio_programmer = (ROOT / "rtl/e1x/e1x_repair_mmio_programmer.sv").read_text(
+        encoding="utf-8"
+    )
+    repair_mmio_terms = (
+        "mmio_write_valid_i",
+        "mmio_write_ready_o",
+        "mmio_read_valid_i",
+        "repair_word_valid_o",
+        "repair_word_ready_i",
+        "repair_clear_o",
+        "words_pushed_o",
+        "ADDR_PUSH",
+    )
+    missing_repair_mmio_terms = [
+        term for term in repair_mmio_terms if term not in repair_mmio_programmer
+    ]
+    checks.append(
+        {
+            "id": "e1x_repair_mmio_programmer_streams_repair_words",
+            "status": "pass" if not missing_repair_mmio_terms else "fail",
+            "detail": "repair MMIO programmer stages firmware writes into repair-ROM stream words"
+            if not missing_repair_mmio_terms
+            else "missing terms: " + ", ".join(missing_repair_mmio_terms),
+        }
+    )
+    repair_state = (ROOT / "rtl/e1x/e1x_repair_state.sv").read_text(encoding="utf-8")
+    repair_state_terms = (
+        "e1x_repair_rom_loader",
+        "remap_logical_mem",
+        "remap_physical_mem",
+        "route_from_mem",
+        "route_to_mem",
+        "route_dir_mem",
+        "remap_lookup_hit_o",
+        "route_lookup_hit_o",
+        "route_lookup_dir_o",
+        "overflow_o",
+    )
+    missing_repair_state_terms = [term for term in repair_state_terms if term not in repair_state]
+    checks.append(
+        {
+            "id": "e1x_repair_state_retains_rom_records",
+            "status": "pass" if not missing_repair_state_terms else "fail",
+            "detail": "repair state stores decoded remap and route records with lookup ports"
+            if not missing_repair_state_terms
+            else "missing terms: " + ", ".join(missing_repair_state_terms),
+        }
+    )
+    repair_aware_router = (ROOT / "rtl/e1x/e1x_repair_aware_router.sv").read_text(encoding="utf-8")
+    repair_aware_router_terms = (
+        "repair_route_hit_i",
+        "repair_route_dir_i",
+        "effective_route_table",
+        "repair_override_used_o",
+        "e1x_mesh_router",
+    )
+    missing_repair_aware_router_terms = [
+        term for term in repair_aware_router_terms if term not in repair_aware_router
+    ]
+    checks.append(
+        {
+            "id": "e1x_repair_aware_router_overrides_route_table",
+            "status": "pass" if not missing_repair_aware_router_terms else "fail",
+            "detail": "repair-aware router applies repair route direction records before mesh routing"
+            if not missing_repair_aware_router_terms
+            else "missing terms: " + ", ".join(missing_repair_aware_router_terms),
+        }
+    )
+    repair_routed_router = (ROOT / "rtl/e1x/e1x_repair_routed_router.sv").read_text(encoding="utf-8")
+    repair_routed_router_terms = (
+        "e1x_repair_route_table",
+        "e1x_repair_aware_router",
+        "repair_word_valid_i",
+        "in_src_logical_i",
+        "in_dst_logical_i",
+        "route_lookup_dir",
+        "repair_override_used_o",
+        "repair_overflow_o",
+    )
+    missing_repair_routed_router_terms = [
+        term for term in repair_routed_router_terms if term not in repair_routed_router
+    ]
+    checks.append(
+        {
+            "id": "e1x_repair_routed_router_connects_rom_state_to_forwarding",
+            "status": "pass" if not missing_repair_routed_router_terms else "fail",
+            "detail": "repair-routed router connects ROM-loaded route records to next-hop forwarding"
+            if not missing_repair_routed_router_terms
+            else "missing terms: " + ", ".join(missing_repair_routed_router_terms),
+        }
+    )
+    repair_route_table = (ROOT / "rtl/e1x/e1x_repair_route_table.sv").read_text(encoding="utf-8")
+    repair_route_table_terms = (
+        "LOOKUP_PORTS",
+        "e1x_repair_rom_loader",
+        "lookup_from_i",
+        "lookup_to_i",
+        "lookup_hit_o",
+        "lookup_dir_o",
+        "route_from_mem",
+        "route_dir_mem",
+        "overflow_o",
+    )
+    missing_repair_route_table_terms = [
+        term for term in repair_route_table_terms if term not in repair_route_table
+    ]
+    checks.append(
+        {
+            "id": "e1x_repair_route_table_supports_multiport_lookup",
+            "status": "pass" if not missing_repair_route_table_terms else "fail",
+            "detail": "repair route table stores ROM route records and exposes multi-port lookups"
+            if not missing_repair_route_table_terms
+            else "missing terms: " + ", ".join(missing_repair_route_table_terms),
+        }
+    )
+    repair_routed_tile = (ROOT / "rtl/e1x/e1x_repair_routed_tile.sv").read_text(encoding="utf-8")
+    repair_routed_tile_terms = (
+        "e1x_repair_routed_router",
+        "e1x_tiny_core_contract",
+        "repair_word_valid_i",
+        "fabric_src_logical_i",
+        "fabric_dst_logical_i",
+        "repair_override_used_o",
+    )
+    missing_repair_routed_tile_terms = [
+        term for term in repair_routed_tile_terms if term not in repair_routed_tile
+    ]
+    checks.append(
+        {
+            "id": "e1x_repair_routed_tile_binds_core_rom_and_fabric",
+            "status": "pass" if not missing_repair_routed_tile_terms else "fail",
+            "detail": "repair-routed tile binds core, repair-ROM loading, logical route metadata, and fabric routing"
+            if not missing_repair_routed_tile_terms
+            else "missing terms: " + ", ".join(missing_repair_routed_tile_terms),
+        }
+    )
     return checks
 
 
@@ -162,6 +327,13 @@ def verilator_check() -> dict[str, str]:
         "-Wno-UNUSEDSIGNAL",
         "-Wno-BLKSEQ",
         str(ROOT / "rtl/e1x/e1x_mesh_router.sv"),
+        str(ROOT / "rtl/e1x/e1x_repair_aware_router.sv"),
+        str(ROOT / "rtl/e1x/e1x_repair_mmio_programmer.sv"),
+        str(ROOT / "rtl/e1x/e1x_repair_rom_loader.sv"),
+        str(ROOT / "rtl/e1x/e1x_repair_state.sv"),
+        str(ROOT / "rtl/e1x/e1x_repair_route_table.sv"),
+        str(ROOT / "rtl/e1x/e1x_repair_routed_router.sv"),
+        str(ROOT / "rtl/e1x/e1x_repair_routed_tile.sv"),
         str(ROOT / "rtl/e1x/e1x_tiny_core_contract.sv"),
         str(ROOT / "rtl/e1x/e1x_tile.sv"),
         "--top-module",

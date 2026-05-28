@@ -118,7 +118,7 @@ STEPS = [
             "bounded startup attempt of OpenSBI/Linux on generated "
             "ElizaRocketConfig Verilator simulator"
         ),
-        "command": ["scripts/run_chipyard_eliza_linux_smoke.sh"],
+        "command": [sys.executable, "scripts/check_chipyard_verilator_linux_smoke.py"],
         "pass_markers": ["STATUS: PASS chipyard.verilator_linux_smoke"],
         "block_markers": [
             "STATUS: BLOCKED chipyard.verilator_linux_smoke",
@@ -212,6 +212,13 @@ ON_CHIP_OS_BOOT_REQUIRED_STEPS = {
     "chipyard_payload_path",
     "chipyard_verilator_linux_attempt",
     "chipyard_verilator_linux_smoke",
+}
+
+READINESS_REQUIRED_STEPS = {
+    *ON_CHIP_OS_BOOT_REQUIRED_STEPS,
+    "npu_ml_smoke",
+    "qemu_firmware_smoke",
+    "renode_firmware_smoke",
 }
 
 
@@ -472,11 +479,19 @@ def main() -> int:
         item = run_step(step)
         results.append(item)
 
-    statuses = {item["status"] for item in results}
-    if "fail" in statuses:
+    required_statuses = {
+        str(item.get("name")): item.get("status")
+        for item in results
+        if str(item.get("name")) in READINESS_REQUIRED_STEPS
+    }
+    required_failed = any(status == "fail" for status in required_statuses.values())
+    required_blocked = any(status != "pass" for status in required_statuses.values()) or (
+        set(required_statuses) != READINESS_REQUIRED_STEPS
+    )
+    if required_failed:
         overall = "fail"
         code = 1
-    elif "blocked" in statuses or len(results) != len(STEPS):
+    elif required_blocked:
         overall = "blocked"
         code = 2
     else:

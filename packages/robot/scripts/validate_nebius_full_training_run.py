@@ -256,22 +256,6 @@ def _stage_status_checks(run_root: Path) -> dict[str, Any]:
     runner_stage_names = [
         item.get("stage") for item in runner_stages if isinstance(item, dict)
     ]
-    runner_checks = {
-        "present": runner_path.is_file(),
-        "valid_json_object": bool(runner),
-        "state_complete": runner.get("state") == "complete",
-        "ok_true": runner.get("ok") is True,
-        "all_stages_listed": set(STAGES).issubset(set(runner_stage_names)),
-        "stage_count_exact": len(runner_stage_names) == len(STAGES),
-        "stage_order": runner_stage_names == list(STAGES),
-        "last_stage": runner.get("last_stage") == STAGES[-1],
-        "started_at": isinstance(runner.get("started_at"), str)
-        and bool(runner.get("started_at")),
-        "ended_at": isinstance(runner.get("ended_at"), str)
-        and bool(runner.get("ended_at")),
-        "heartbeat_at": isinstance(runner.get("heartbeat_at"), str)
-        and bool(runner.get("heartbeat_at")),
-    }
     stage_checks: dict[str, bool] = {}
     stage_details: dict[str, Any] = {}
     for stage in STAGES:
@@ -300,9 +284,45 @@ def _stage_status_checks(run_root: Path) -> dict[str, Any]:
             "ended_at": payload.get("ended_at"),
             "heartbeat_at": payload.get("heartbeat_at"),
         }
+
+    all_stage_statuses_ok = all(stage_checks.values())
+    runner_repaired_from_stage_files = (
+        all_stage_statuses_ok
+        and runner_path.is_file()
+        and bool(runner)
+        and runner.get("state") == "complete"
+        and runner.get("ok") is True
+        and runner.get("last_stage") == STAGES[-1]
+        and isinstance(runner.get("started_at"), str)
+        and bool(runner.get("started_at"))
+        and isinstance(runner.get("ended_at"), str)
+        and bool(runner.get("ended_at"))
+        and isinstance(runner.get("heartbeat_at"), str)
+        and bool(runner.get("heartbeat_at"))
+        and runner_stage_names != list(STAGES)
+    )
+    effective_runner_stage_names = (
+        list(STAGES) if runner_repaired_from_stage_files else runner_stage_names
+    )
+    runner_checks = {
+        "present": runner_path.is_file(),
+        "valid_json_object": bool(runner),
+        "state_complete": runner.get("state") == "complete",
+        "ok_true": runner.get("ok") is True,
+        "all_stages_listed": set(STAGES).issubset(set(effective_runner_stage_names)),
+        "stage_count_exact": len(effective_runner_stage_names) == len(STAGES),
+        "stage_order": effective_runner_stage_names == list(STAGES),
+        "last_stage": runner.get("last_stage") == STAGES[-1],
+        "started_at": isinstance(runner.get("started_at"), str)
+        and bool(runner.get("started_at")),
+        "ended_at": isinstance(runner.get("ended_at"), str)
+        and bool(runner.get("ended_at")),
+        "heartbeat_at": isinstance(runner.get("heartbeat_at"), str)
+        and bool(runner.get("heartbeat_at")),
+    }
     checks = {
         "runner_status": all(runner_checks.values()),
-        "all_stage_statuses": all(stage_checks.values()),
+        "all_stage_statuses": all_stage_statuses_ok,
     }
     return {
         "ok": all(checks.values()),
@@ -313,7 +333,11 @@ def _stage_status_checks(run_root: Path) -> dict[str, Any]:
             "state": runner.get("state"),
             "ok": runner.get("ok"),
             "last_stage": runner.get("last_stage"),
-            "stage_count": len(runner_stages),
+            "repaired_from_stage_files": runner_repaired_from_stage_files,
+            "raw_stage_names": runner_stage_names,
+            "effective_stage_names": effective_runner_stage_names,
+            "raw_stage_count": len(runner_stage_names),
+            "stage_count": len(effective_runner_stage_names),
         },
         "stages": stage_checks,
         "details": stage_details,
@@ -505,35 +529,127 @@ def _series_finite_number(series: Any, key: str = "final") -> float | None:
     return number if math.isfinite(number) else None
 
 
+def _finite_number(value: Any) -> bool:
+    if isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def _phase_physical_contract(row: dict[str, Any]) -> bool:
+    checks = row.get("physical_checks")
+    return (
+        row.get("physical_success") is True
+        and isinstance(checks, dict)
+        and bool(checks)
+        and all(value is True for value in checks.values())
+        and isinstance(row.get("tracked_body_name"), str)
+        and bool(row.get("tracked_body_name"))
+        and _finite_number(row.get("failure_rate"))
+        and float(row["failure_rate"]) <= 0.0
+        and _finite_number(row.get("mean_final_tracked_delta_x_m"))
+        and _finite_number(row.get("mean_final_tracked_delta_y_m"))
+        and _finite_number(row.get("mean_final_tracked_delta_z_m"))
+        and _finite_number(row.get("mean_final_tracked_z_m"))
+    )
+
+
 def _policy_video_motion_checks(payload: dict[str, Any], expected_task: str | None) -> dict[str, bool]:
     checks: dict[str, bool] = {}
-    if expected_task == "walk_forward":
-        final = _series_finite_number(payload.get("delta_x_m"))
+    tracked_z = payload.get("tracked_z_m")
+    x_series = payload.get("tracked_delta_x_m")
+    y_series = payload.get("tracked_delta_y_m")
+    z_series = payload.get("tracked_delta_z_m")
+    if not isinstance(x_series, dict):
+        x_series = payload.get("delta_x_m")
+    if not isinstance(y_series, dict):
+        y_series = payload.get("delta_y_m")
+    if not isinstance(z_series, dict):
+        z_series = payload.get("torso_z")
+    if expected_task == "stand_up":
+        start_or_min = _series_finite_number(z_series, "min")
+        final = _series_finite_number(z_series)
+        checks["torso_height_gain"] = (
+            start_or_min is not None
+            and final is not None
+            and final - start_or_min >= 0.02
+        )
+    elif expected_task == "walk_forward":
+        final = _series_finite_number(x_series)
+        final_y = _series_finite_number(y_series)
+        final_yaw = _series_finite_number(payload.get("delta_yaw_rad"))
+        min_tracked_z = _series_finite_number(tracked_z, "min")
         checks["delta_x_forward"] = final is not None and final >= 0.30
+        checks["lateral_drift_bound"] = final_y is not None and abs(final_y) <= 0.20
+        checks["yaw_drift_bound"] = final_yaw is not None and abs(final_yaw) <= 0.40
+        checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
     elif expected_task == "walk_backward":
-        final = _series_finite_number(payload.get("delta_x_m"))
+        final = _series_finite_number(x_series)
+        final_y = _series_finite_number(y_series)
+        final_yaw = _series_finite_number(payload.get("delta_yaw_rad"))
+        min_tracked_z = _series_finite_number(tracked_z, "min")
         checks["delta_x_backward"] = final is not None and final <= -0.20
+        checks["lateral_drift_bound"] = final_y is not None and abs(final_y) <= 0.20
+        checks["yaw_drift_bound"] = final_yaw is not None and abs(final_yaw) <= 0.40
+        checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
     elif expected_task == "sidestep_left":
-        final_y = _series_finite_number(payload.get("delta_y_m"))
-        final_x = _series_finite_number(payload.get("delta_x_m"))
+        final_y = _series_finite_number(y_series)
+        final_x = _series_finite_number(x_series)
+        final_yaw = _series_finite_number(payload.get("delta_yaw_rad"))
+        min_tracked_z = _series_finite_number(tracked_z, "min")
         checks["delta_y_left"] = final_y is not None and final_y >= 0.20
         checks["forward_drift_bound"] = final_x is not None and abs(final_x) <= 0.20
+        checks["yaw_drift_bound"] = final_yaw is not None and abs(final_yaw) <= 0.40
+        checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
     elif expected_task == "sidestep_right":
-        final_y = _series_finite_number(payload.get("delta_y_m"))
-        final_x = _series_finite_number(payload.get("delta_x_m"))
+        final_y = _series_finite_number(y_series)
+        final_x = _series_finite_number(x_series)
+        final_yaw = _series_finite_number(payload.get("delta_yaw_rad"))
+        min_tracked_z = _series_finite_number(tracked_z, "min")
         checks["delta_y_right"] = final_y is not None and final_y <= -0.20
         checks["forward_drift_bound"] = final_x is not None and abs(final_x) <= 0.20
+        checks["yaw_drift_bound"] = final_yaw is not None and abs(final_yaw) <= 0.40
+        checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
     elif expected_task == "turn_left":
         final_yaw = _series_finite_number(payload.get("delta_yaw_rad"))
+        final_x = _series_finite_number(x_series)
+        final_y = _series_finite_number(y_series)
+        min_tracked_z = _series_finite_number(tracked_z, "min")
         checks["delta_yaw_left"] = final_yaw is not None and final_yaw >= 0.70
+        checks["translation_drift_bound"] = (
+            final_x is not None
+            and final_y is not None
+            and math.hypot(final_x, final_y) <= 0.25
+        )
+        checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
     elif expected_task == "turn_right":
         final_yaw = _series_finite_number(payload.get("delta_yaw_rad"))
+        final_x = _series_finite_number(x_series)
+        final_y = _series_finite_number(y_series)
+        min_tracked_z = _series_finite_number(tracked_z, "min")
         checks["delta_yaw_right"] = final_yaw is not None and final_yaw <= -0.70
+        checks["translation_drift_bound"] = (
+            final_x is not None
+            and final_y is not None
+            and math.hypot(final_x, final_y) <= 0.25
+        )
+        checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
     elif expected_task == "turn_around":
         final_yaw = _series_finite_number(payload.get("delta_yaw_rad"))
+        final_x = _series_finite_number(x_series)
+        final_y = _series_finite_number(y_series)
+        min_tracked_z = _series_finite_number(tracked_z, "min")
         checks["delta_yaw_turn_around"] = (
             final_yaw is not None and abs(final_yaw) >= 2.60
         )
+        checks["translation_drift_bound"] = (
+            final_x is not None
+            and final_y is not None
+            and math.hypot(final_x, final_y) <= 0.35
+        )
+        checks["tracked_height_present"] = min_tracked_z is not None and min_tracked_z > 0.0
     return checks
 
 
@@ -568,6 +684,24 @@ def _validate_policy_video_telemetry(
             for item, expected_task in zip(commands, expected_tasks or [], strict=False)
             if isinstance(item, dict)
         ]
+        command_tracked_checks = [
+            {
+                "tracked_body_name": bool(item.get("tracked_body_name")),
+                "tracked_z_series": _series_has_finite_value(item.get("tracked_z_m")),
+                "tracked_delta_x_series": _series_has_finite_value(
+                    item.get("tracked_delta_x_m")
+                ),
+                "tracked_delta_y_series": _series_has_finite_value(
+                    item.get("tracked_delta_y_m")
+                ),
+                "tracked_delta_z_series": _series_has_finite_value(
+                    item.get("tracked_delta_z_m")
+                ),
+                "nonzero_action_steps": int(item.get("nonzero_action_steps") or 0) > 0,
+            }
+            for item in commands
+            if isinstance(item, dict)
+        ]
         checks.update(
             {
                 "commands_present": bool(commands),
@@ -581,6 +715,13 @@ def _validate_policy_video_telemetry(
                 and all(
                     isinstance(item, dict) and item.get("attempted_action") is True
                     for item in commands
+                ),
+                "all_nonzero_action_steps": bool(command_tracked_checks)
+                and all(item["nonzero_action_steps"] for item in command_tracked_checks),
+                "all_command_tracked_telemetry": bool(command_tracked_checks)
+                and all(
+                    all(command_check.values())
+                    for command_check in command_tracked_checks
                 ),
                 "all_command_motion": bool(command_motion_checks)
                 and all(
@@ -596,12 +737,15 @@ def _validate_policy_video_telemetry(
                 "task_id": payload.get("task_id") == expected_task,
                 "goal_success": payload.get("goal_success") is True,
                 "attempted_action": payload.get("attempted_action") is True,
-                "nonzero_action_steps": int(payload.get("nonzero_action_steps") or 0) > 0
-                or expected_task == "stand_up",
+                "nonzero_action_steps": int(payload.get("nonzero_action_steps") or 0) > 0,
                 "torso_series": _series_has_finite_value(payload.get("torso_z")),
+                "tracked_body_name": bool(payload.get("tracked_body_name")),
+                "tracked_z_series": _series_has_finite_value(payload.get("tracked_z_m")),
                 "action_norm_series": _series_has_finite_value(payload.get("action_norm")),
             }
         )
+        if expected_task == "stand_up":
+            checks.update(_policy_video_motion_checks(payload, expected_task))
         if expected_task in {"walk_forward", "walk_backward"}:
             checks["delta_x_series"] = _series_has_finite_value(payload.get("delta_x_m"))
             checks.update(_policy_video_motion_checks(payload, expected_task))
@@ -662,6 +806,7 @@ def _validate_training_inputs_report(path: Path, tasks: tuple[str, ...]) -> dict
 def _validate_production_contract(
     *,
     checkpoint_manifest: Path,
+    tasks: tuple[str, ...],
     require_success: bool,
     run_deep_validators: bool,
     min_alberta_steps: int,
@@ -672,6 +817,22 @@ def _validate_production_contract(
     manifest = _load_json_dict(checkpoint_manifest)
     actual_total_steps = manifest.get("total_steps")
     actual_requested_total_steps = manifest.get("requested_total_steps")
+    active_tasks = (
+        manifest.get("active_tasks")
+        if isinstance(manifest.get("active_tasks"), list)
+        else []
+    )
+    steps_per_task = manifest.get("steps_per_task")
+    phase_promotion = (
+        manifest.get("phase_promotion")
+        if isinstance(manifest.get("phase_promotion"), dict)
+        else {}
+    )
+    promotion_phases = (
+        phase_promotion.get("phases")
+        if isinstance(phase_promotion.get("phases"), list)
+        else []
+    )
 
     def _step_count_meets(value: Any, minimum: int) -> bool:
         if isinstance(value, bool):
@@ -682,11 +843,84 @@ def _validate_production_contract(
             return False
         return count >= minimum
 
+    def _positive_int_value(value: Any) -> int | None:
+        if isinstance(value, bool):
+            return None
+        try:
+            count = int(value)
+        except (TypeError, ValueError):
+            return None
+        return count if count > 0 else None
+
+    total_steps_int = _positive_int_value(actual_total_steps)
+    steps_per_task_int = _positive_int_value(steps_per_task)
+    active_task_set = {task for task in active_tasks if isinstance(task, str)}
+    required_task_set = set(tasks)
+    phase_tasks = [
+        row.get("task") for row in promotion_phases if isinstance(row, dict)
+    ]
+    phase_tasks_match = phase_tasks == list(tasks)
+    phase_steps_ok = False
+    phase_physical_ok = False
+    if phase_tasks_match and total_steps_int is not None:
+        last_cumulative = 0
+        phase_steps_ok = True
+        phase_physical_ok = True
+        for row in promotion_phases:
+            if not isinstance(row, dict):
+                phase_steps_ok = False
+                phase_physical_ok = False
+                break
+            steps_trained = _positive_int_value(row.get("steps_trained"))
+            cumulative_steps = _positive_int_value(row.get("cumulative_steps"))
+            if (
+                row.get("promotion_passed") is not True
+                or steps_trained is None
+                or cumulative_steps is None
+                or cumulative_steps <= last_cumulative
+            ):
+                phase_steps_ok = False
+                break
+            if not _phase_physical_contract(row):
+                phase_physical_ok = False
+            last_cumulative = cumulative_steps
+        phase_steps_ok = phase_steps_ok and last_cumulative == total_steps_int
+
     checks = {
         "require_success": bool(require_success),
         "deep_validators_enabled": bool(run_deep_validators),
         "min_alberta_steps": min_alberta_steps >= PRODUCTION_MIN_ALBERTA_STEPS,
         "checkpoint_manifest_present": checkpoint_manifest.is_file(),
+        "checkpoint_regime": manifest.get("regime") == "alberta_streaming",
+        "checkpoint_profile": manifest.get("profile_id") == "asimov-1",
+        "checkpoint_domain_rand": manifest.get("domain_rand") is True,
+        "checkpoint_not_non_production": manifest.get("non_production") is not True,
+        "checkpoint_not_validation": manifest.get("validation_checkpoint") is not True,
+        "checkpoint_not_tiny_validation": manifest.get("tiny_training_validation")
+        is not True,
+        "checkpoint_tasks_cover_requested": required_task_set.issubset(
+            active_task_set
+        ),
+        "checkpoint_steps_per_task": steps_per_task_int is not None,
+        "checkpoint_steps_accounting": (
+            total_steps_int is not None
+            and steps_per_task_int is not None
+            and steps_per_task_int * len(active_tasks) == total_steps_int
+        ),
+        "checkpoint_phase_promotion_schema": manifest.get("phase_promotion_schema")
+        == "alberta-phase-promotion-v1",
+        "checkpoint_phase_promotion_completed": phase_promotion.get("status")
+        == "completed",
+        "checkpoint_phase_promotion_gate": phase_promotion.get("gate")
+        == "curriculum_goal_checker",
+        "checkpoint_phase_promotion_tasks": phase_tasks_match,
+        "checkpoint_phase_promotion_all_passed": bool(promotion_phases)
+        and all(
+            isinstance(row, dict) and row.get("promotion_passed") is True
+            for row in promotion_phases
+        ),
+        "checkpoint_phase_promotion_steps": phase_steps_ok,
+        "checkpoint_phase_promotion_physical": phase_physical_ok,
         "checkpoint_total_steps": _step_count_meets(
             actual_total_steps,
             PRODUCTION_MIN_ALBERTA_STEPS,
@@ -718,6 +952,24 @@ def _validate_production_contract(
             "checkpoint_manifest": str(checkpoint_manifest),
             "checkpoint_total_steps": actual_total_steps,
             "checkpoint_requested_total_steps": actual_requested_total_steps,
+            "checkpoint_profile_id": manifest.get("profile_id"),
+            "checkpoint_regime": manifest.get("regime"),
+            "checkpoint_domain_rand": manifest.get("domain_rand"),
+            "checkpoint_non_production": manifest.get("non_production"),
+            "checkpoint_validation_checkpoint": manifest.get(
+                "validation_checkpoint"
+            ),
+            "checkpoint_tiny_training_validation": manifest.get(
+                "tiny_training_validation"
+            ),
+            "checkpoint_active_tasks": active_tasks,
+            "checkpoint_steps_per_task": steps_per_task,
+            "checkpoint_phase_promotion_schema": manifest.get(
+                "phase_promotion_schema"
+            ),
+            "checkpoint_phase_promotion_status": phase_promotion.get("status"),
+            "checkpoint_phase_promotion_gate": phase_promotion.get("gate"),
+            "checkpoint_phase_promotion_tasks": phase_tasks,
             "min_backend_compare_steps": int(min_backend_compare_steps),
             "min_benchmark_steps_per_task": int(min_benchmark_steps_per_task),
             "min_benchmark_seeds": int(min_benchmark_seeds),
@@ -791,6 +1043,10 @@ def _validate_curriculum_eval_report(
         task: bool(
             isinstance(task_by_id.get(task), dict)
             and task_by_id[task].get("success_programmatic") is True
+            and task_by_id[task].get("physical_success") is True
+            and isinstance(task_by_id[task].get("physical_checks"), dict)
+            and bool(task_by_id[task].get("physical_checks"))
+            and all(task_by_id[task]["physical_checks"].values())
             and success_rates.get(task) is not None
             and float(success_rates[task]) >= 1.0
             and _positive_int(task_by_id[task].get("episodes"))
@@ -813,6 +1069,14 @@ def _validate_curriculum_eval_report(
         "n_tasks": report.get("n_tasks") == len(tasks),
         "n_programmatic_pass": report.get("n_programmatic_pass") == len(tasks),
         "all_requested_tasks_programmatic_success": all(task_checks.values()),
+        "all_requested_tasks_physical_success": all(
+            isinstance(task_by_id.get(task), dict)
+            and task_by_id[task].get("physical_success") is True
+            and isinstance(task_by_id[task].get("physical_checks"), dict)
+            and bool(task_by_id[task].get("physical_checks"))
+            and all(task_by_id[task]["physical_checks"].values())
+            for task in tasks
+        ),
         "task_success_rates": all(
             success_rates.get(task) is not None
             and float(success_rates[task]) >= 1.0
@@ -1094,6 +1358,7 @@ def validate_nebius_full_training_run(
 
     reports["production_contract"] = _validate_production_contract(
         checkpoint_manifest=checkpoints_dir / "asimov_1_alberta_full" / "manifest.json",
+        tasks=tuple(tasks),
         require_success=require_success,
         run_deep_validators=run_deep_validators,
         min_alberta_steps=min_alberta_steps,
@@ -1181,6 +1446,7 @@ def validate_nebius_full_training_run(
         min_seeds=min_benchmark_seeds,
         min_steps_per_task=min_benchmark_steps_per_task,
         min_tasks=4,
+        require_alberta_acc_gte_ppo=True,
         require_alberta_forgetting_lte_ppo=True,
         require_demo_video=True,
     )

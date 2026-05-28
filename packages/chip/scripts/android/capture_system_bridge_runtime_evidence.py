@@ -26,8 +26,8 @@ SCHEMA = "eliza.android_system_bridge_runtime_evidence.v1"
 CLAIM_BOUNDARY = "booted_android_system_bridge_runtime_evidence_only"
 DEFAULT_BRIDGE_SYSTEM_APK = "/system/priv-app/ElizaSystemBridge/ElizaSystemBridge.apk"
 PERMISSION_FILE_PATHS = (
-    "/system/etc/default-permissions/default-permissions-ai.milady.milady.xml",
-    "/system/etc/permissions/privapp-permissions-ai.milady.milady.xml",
+    "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml",
+    "/system/etc/permissions/privapp-permissions-ai.elizaos.app.xml",
     "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml",
 )
 ANDROID_TARGET_PREFIXES = (
@@ -542,7 +542,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--bridge-package", default="ai.elizaos.system.bridge")
     parser.add_argument("--bridge-system-apk-path", default=DEFAULT_BRIDGE_SYSTEM_APK)
-    parser.add_argument("--launcher-package", default="ai.milady.milady")
+    parser.add_argument("--launcher-package", default="ai.elizaos.app")
     parser.add_argument("--bridge-service-marker", default="ai.elizaos.system.bridge")
     parser.add_argument(
         "--bridge-bound-marker",

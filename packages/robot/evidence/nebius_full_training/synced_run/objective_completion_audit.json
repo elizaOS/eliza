@@ -1,7 +1,7 @@
 {
   "schema": "robot-alberta-objective-completion-audit-v1",
   "ok": false,
-  "generated_at": "2026-05-27T22:04:52.535909Z",
+  "generated_at": "2026-05-27T22:10:57.946179Z",
   "package_root": "/home/shaw/milady/eliza/packages/robot",
   "nebius_run_root": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
   "passed": [
@@ -275,11 +275,23 @@
         "validation_ok": false,
         "training_report_ok": false,
         "missing_gates": [
-          "nebius_production_training_complete"
+          "stage_status",
+          "production_contract",
+          "video_review",
+          "production_policy_videos",
+          "curriculum_eval",
+          "status_consistency",
+          "training_comparison_report"
         ]
       },
       "blockers": [
-        "nebius_production_training_complete"
+        "stage_status",
+        "production_contract",
+        "video_review",
+        "production_policy_videos",
+        "curriculum_eval",
+        "status_consistency",
+        "training_comparison_report"
       ]
     },
     {

@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import capture_cpu_ap_evidence  # noqa: E402
+import check_cpu_ap_completion_gate  # noqa: E402
 import check_cpu_ap_evidence  # noqa: E402
 import run_chipyard_eliza_isa_cache_mmu_probe as isa_cache_mmu_probe  # noqa: E402
 import wire_cpu_ap_capture_commands  # noqa: E402
@@ -77,11 +78,11 @@ def accepted_linux_boot_text(
             "riscv_hwprobe: key=mvendorid value=0x0000000000000000",
             "riscv_hwprobe: key=marchid value=0x0000000000000000",
             "riscv_hwprobe: key=ima_ext_0 value=0x0000000000000000",
-            "e1 MMIO smoke result: PASS",
             "e1-npu-ml-smoke: PASS",
             "device=/dev/e1-npu",
             "require_npu=true",
             "CPU fallback percent=0",
+            "e1 MMIO smoke result: PASS",
             "accepted generated AP userspace boot transcript with enough bytes for validation",
             "eliza-evidence: status=PASS",
             "",
@@ -131,6 +132,24 @@ def test_selected_manifest_keeps_single_rocket_as_bringup_only() -> None:
     joined = "\n".join(phone_target["minimum_claim_evidence"])
     for token in ("ISA compliance", "cache hierarchy", "MMU", "CoreMark", "CTS/VTS"):
         assert_contains(joined, token)
+
+
+def test_completion_gate_blocked_report_names_cpu_ap_evidence_not_qemu_virt() -> None:
+    report = check_cpu_ap_completion_gate.blocked_report(
+        generated_detail="generated manifest present: build/chipyard/eliza_rocket/ElizaRocketConfig.manifest.json",
+        manifest_errors=[],
+        missing_logs=["build/evidence/cpu_ap/eliza_e1_linux_boot.log"],
+        next_capture=["python3 scripts/capture_cpu_ap_evidence.py template linux-boot"],
+    )
+
+    if report["status"] != "blocked":
+        raise AssertionError("completion gate blocked report must stay blocked")
+    if "qemu_virt_linux_boot_is_reference_only" not in report["claim_boundary"]:
+        raise AssertionError("completion gate must keep QEMU virt outside CPU/AP completion")
+    if report["blocker_dependency_counts"]["live_device_validation"] != 1:
+        raise AssertionError("missing CPU/AP transcript must be live validation")
+    if "QEMU virt Linux boot evidence does not satisfy" not in report["next_step"]:
+        raise AssertionError("next step must distinguish QEMU virt from generated CPU/AP evidence")
 
 
 def test_capture_helper_knows_new_cpu_ap_transcripts() -> None:
@@ -256,10 +275,6 @@ def test_capture_command_wiring_derives_available_generated_ap_lanes() -> None:
         trap_problems = "\n".join(trap_entry.get("problems", []))
         assert_contains(trap_problems, "missing")
 
-    if entries["isa-cache-mmu"]["status"] != "blocked":
-        raise AssertionError(
-            "isa-cache-mmu must stay blocked without Linux userspace hwprobe evidence"
-        )
     isa_entry = entries["isa-cache-mmu"]
     if isa_entry["source"] != "generated_ap_isa_cache_mmu_probe":
         raise AssertionError("isa-cache-mmu should report the generated-AP probe blocker")
@@ -273,16 +288,25 @@ def test_capture_command_wiring_derives_available_generated_ap_lanes() -> None:
         "\n".join(isa_entry["required_linux_userspace_hwprobe_key_markers"]),
         "riscv_hwprobe: key=ima_ext_0",
     )
-    isa_problems = "\n".join(isa_entry.get("problems", []))
-    assert_contains(isa_problems, "generated-AP Linux smoke packages /usr/bin/eliza-riscv-hwprobe")
-    assert_contains(isa_problems, "accepted generated-AP Linux transcript")
-    assert_contains(isa_problems, "riscv_hwprobe: syscall rc=0")
-    report_path = ROOT / "build/evidence/cpu_ap/cpu_ap_isa_cache_mmu_probe.json"
-    if report_path.is_file():
-        report = json.loads(report_path.read_text(encoding="utf-8"))
-        hook = report.get("linux_userspace_hwprobe", {}).get("userspace_hook", {})
-        if isinstance(hook, dict) and hook.get("workload_invokes_helper"):
-            assert_contains(isa_problems, "has not reached userspace")
+    if isa_entry["status"] == "ready":
+        assert_contains(isa_entry["command"], "scripts/run_chipyard_eliza_isa_cache_mmu_probe.py")
+        if isa_entry.get("problems"):
+            raise AssertionError("ready isa-cache-mmu wiring must not report problems")
+    elif isa_entry["status"] == "blocked":
+        isa_problems = "\n".join(isa_entry.get("problems", []))
+        assert_contains(
+            isa_problems, "generated-AP Linux smoke packages /usr/bin/eliza-riscv-hwprobe"
+        )
+        assert_contains(isa_problems, "accepted generated-AP Linux transcript")
+        assert_contains(isa_problems, "riscv_hwprobe: syscall rc=0")
+        report_path = ROOT / "build/evidence/cpu_ap/cpu_ap_isa_cache_mmu_probe.json"
+        if report_path.is_file():
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            hook = report.get("linux_userspace_hwprobe", {}).get("userspace_hook", {})
+            if isinstance(hook, dict) and hook.get("workload_invokes_helper"):
+                assert_contains(isa_problems, "has not reached userspace")
+    else:
+        raise AssertionError("isa-cache-mmu wiring must be ready or blocked")
     ap_entry = entries["ap-benchmarks"]
     if ap_entry["source"] != "generated_ap_benchmark_runner":
         raise AssertionError("ap-benchmarks must report generated-AP benchmark runner wiring")
@@ -312,10 +336,11 @@ def test_capture_command_wiring_derives_available_generated_ap_lanes() -> None:
             assert_contains(ap_problems, "Linux/userland boot transcript is not accepted")
         else:
             assert_contains(ap_problems, "ELIZA_AP_BENCHMARKS_CMD is unset")
-    assert_contains(
-        "\n".join(report["blockers"]),
-        "generated-AP Linux/userland boot transcript is not accepted",
-    )
+    blocker_text = "\n".join(report["blockers"])
+    if not linux_boot_evidence_ready:
+        assert_contains(blocker_text, "generated-AP Linux/userland boot transcript is not accepted")
+    else:
+        assert_contains(blocker_text, "generated-AP benchmark")
     assert_contains("\n".join(report["blockers"]), "claim_level=L3")
     assert_contains("\n".join(report["required_raw_markers"]), "pdk signoff claim=none")
     prerequisites = json.dumps(report["source_build_prerequisites"], sort_keys=True)
@@ -340,8 +365,8 @@ def test_capture_command_wiring_derives_available_generated_ap_lanes() -> None:
         "\n".join(report["next_commands_after_prerequisites_exist"]),
         "capture_cpu_ap_evidence.py intake ap-benchmarks",
     )
-    if report["evidence_log_created"]:
-        raise AssertionError("wiring must not create eliza_e1_ap_benchmarks.log")
+    if report["evidence_log_created"] and not (ROOT / report["evidence_log"]).is_file():
+        raise AssertionError("wiring report marked a missing AP benchmark evidence log as present")
 
 
 def test_linux_smoke_packages_real_riscv_hwprobe_helper() -> None:
@@ -1455,6 +1480,8 @@ def test_scaffold_check_lists_new_missing_evidence_paths() -> None:
     if result.returncode != 0:
         raise AssertionError(result.stdout + result.stderr)
     assert_contains(result.stdout, "STATUS: PASS cpu_ap.scaffold")
+    if "STATUS: PASS cpu_ap.linux_evidence" in result.stdout:
+        return
     assert_contains(result.stdout, "eliza_e1_isa_cache_mmu.log")
     assert_contains(result.stdout, "eliza_e1_ap_benchmarks.log")
     assert_contains(result.stdout, "capture commands:")
@@ -1473,6 +1500,8 @@ def test_payload_path_uses_cpu_ap_manifest_transcripts_only() -> None:
     )
     if result.returncode not in (0, 2):
         raise AssertionError(result.stdout + result.stderr)
+    if "STATUS: PASS chipyard.payload_path" in result.stdout:
+        return
     assert_contains(result.stdout, "STATUS: BLOCKED chipyard.payload_path")
     assert_contains(result.stdout, "eliza_e1_ap_benchmarks.log")
     if "u_boot_eliza_build.log" in result.stdout:

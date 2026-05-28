@@ -1,0 +1,204 @@
+{
+  "schema": "robot-task-feasibility-v1",
+  "profile_id": "asimov-1",
+  "controller": "bezier_gait_for_hiwonder_locomotion_else_deterministic_smoke",
+  "max_steps": 120,
+  "tasks": [
+    {
+      "task_id": "walk_forward",
+      "controller": "deterministic_smoke",
+      "action_scale": 0.3,
+      "success": false,
+      "failed": true,
+      "reason": "fall: |pitch|=0.62 > 0.6",
+      "steps": 47,
+      "terminated": true,
+      "truncated": false,
+      "termination_reason": "fall",
+      "start_torso_z_m": 0.63,
+      "stand_height_m": 0.63,
+      "final_torso_z_m": 0.5725586214463643,
+      "min_torso_z_m": 0.5725586214463643,
+      "max_torso_z_m": 0.6343363464943796,
+      "final_delta_x_m": -0.28718527007309835,
+      "final_delta_y_m": -0.016792842373407953,
+      "final_delta_yaw_rad": 0.24456856248936562,
+      "max_abs_delta_x_m": 0.28718527007309835,
+      "max_abs_delta_y_m": 0.023208310563742847,
+      "max_abs_delta_yaw_rad": 0.24456856248936562,
+      "progress_ratio": 0.007940885732112721,
+      "candidate_score": -2.192059114267887,
+      "diagnostics": {
+        "controller": "deterministic_smoke",
+        "action_scale": 0.3,
+        "termination_reason": "fall",
+        "torso_z_m": {
+          "min": 0.5725586214463643,
+          "max": 0.6343363464943796,
+          "final": 0.5725586214463643
+        },
+        "delta_x_m": {
+          "final": -0.28718527007309835,
+          "max_abs": 0.28718527007309835,
+          "min": -0.28718527007309835,
+          "max": 0.0023822657196338162
+        },
+        "delta_y_m": {
+          "final": -0.016792842373407953,
+          "max_abs": 0.023208310563742847,
+          "min": -0.023208310563742847,
+          "max": 0.0052165852793953785
+        },
+        "delta_yaw_rad": {
+          "final": 0.24456856248936562,
+          "max_abs": 0.24456856248936562,
+          "min": -0.15896947832248712,
+          "max": 0.24456856248936562
+        },
+        "success_predicates": [
+          {
+            "predicate": "torso_z_min_ratio",
+            "expected": {
+              ">=": 0.47250000000000003,
+              "ratio_of_stand_height": 0.75
+            },
+            "actual": 0.5725586214463643,
+            "unmet": false,
+            "observed_extreme": {
+              "min": 0.5725586214463643,
+              "max": 0.6343363464943796
+            }
+          },
+          {
+            "predicate": "delta_x_m_min",
+            "expected": {
+              ">=": 0.3,
+              "within_window_s": 5.0
+            },
+            "actual": -0.28718527007309835,
+            "unmet": true,
+            "observed_extreme": {
+              "max": 0.0023822657196338162
+            }
+          },
+          {
+            "predicate": "max_lateral_drift_m",
+            "expected": {
+              "<=": 0.2
+            },
+            "actual": 0.016792842373407953,
+            "unmet": false,
+            "observed_extreme": {
+              "max_abs_delta_y_m": 0.023208310563742847
+            }
+          },
+          {
+            "predicate": "max_abs_delta_yaw_rad",
+            "expected": {
+              "<=": 0.4
+            },
+            "actual": 0.24456856248936562,
+            "unmet": false,
+            "observed_extreme": {
+              "max_abs": 0.24456856248936562
+            }
+          },
+          {
+            "predicate": "no_fall",
+            "expected": true,
+            "actual": false,
+            "unmet": true
+          }
+        ],
+        "unmet_success_predicates": [
+          "delta_x_m_min",
+          "no_fall"
+        ],
+        "progress_ratio": 0.007940885732112721,
+        "candidate_results": [
+          {
+            "controller": "deterministic_smoke",
+            "action_scale": 0.3,
+            "success": false,
+            "failed": true,
+            "terminated": true,
+            "termination_reason": "fall",
+            "steps": 47,
+            "final_torso_z_m": 0.5725586214463643,
+            "final_delta_x_m": -0.28718527007309835,
+            "final_delta_y_m": -0.016792842373407953,
+            "final_delta_yaw_rad": 0.24456856248936562,
+            "progress_ratio": 0.007940885732112721,
+            "unmet_success_predicates": [
+              "delta_x_m_min",
+              "no_fall"
+            ],
+            "candidate_score": -2.192059114267887
+          }
+        ],
+        "passive_baseline": {
+          "controller": "zero_action_baseline",
+          "action_scale": 0.3,
+          "success": false,
+          "failed": true,
+          "terminated": true,
+          "termination_reason": "fall",
+          "steps": 70,
+          "final_torso_z_m": 0.562940232439478,
+          "final_delta_x_m": -0.3783801877507183,
+          "final_delta_y_m": -1.7693591766432157e-05,
+          "final_delta_yaw_rad": -0.00043019893303575723,
+          "progress_ratio": 0.0,
+          "unmet_success_predicates": [
+            "delta_x_m_min",
+            "no_fall"
+          ],
+          "candidate_score": -2.2
+        }
+      },
+      "candidate_results": [
+        {
+          "controller": "deterministic_smoke",
+          "action_scale": 0.3,
+          "success": false,
+          "failed": true,
+          "terminated": true,
+          "termination_reason": "fall",
+          "steps": 47,
+          "final_torso_z_m": 0.5725586214463643,
+          "final_delta_x_m": -0.28718527007309835,
+          "final_delta_y_m": -0.016792842373407953,
+          "final_delta_yaw_rad": 0.24456856248936562,
+          "progress_ratio": 0.007940885732112721,
+          "unmet_success_predicates": [
+            "delta_x_m_min",
+            "no_fall"
+          ],
+          "candidate_score": -2.192059114267887
+        }
+      ],
+      "passive_baseline": {
+        "controller": "zero_action_baseline",
+        "action_scale": 0.3,
+        "success": false,
+        "failed": true,
+        "terminated": true,
+        "termination_reason": "fall",
+        "steps": 70,
+        "final_torso_z_m": 0.562940232439478,
+        "final_delta_x_m": -0.3783801877507183,
+        "final_delta_y_m": -1.7693591766432157e-05,
+        "final_delta_yaw_rad": -0.00043019893303575723,
+        "progress_ratio": 0.0,
+        "unmet_success_predicates": [
+          "delta_x_m_min",
+          "no_fall"
+        ],
+        "candidate_score": -2.2
+      }
+    }
+  ],
+  "n_tasks": 1,
+  "n_success": 0,
+  "all_success": false
+}

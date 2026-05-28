@@ -1,6 +1,6 @@
 schema: eliza.e1_phone_routed_pcb_implementation_execution.v1
 status: blocked_requires_supplier_footprints_schematic_erc_trial_route_drc_outputs_and_routed_step
-date: '2026-05-27'
+date: '2026-05-28'
 claim_boundary: File-level execution package for converting the current E1 phone KiCad
   concept scaffold into an EVT1 routed PCB release. This is not a routed PCB, not
   ERC/DRC evidence, not SI/PI/RF signoff, not a manufacturing export package, not
@@ -93,7 +93,7 @@ local_development_routing_state:
   real_footprint_step_pad_contact_visual_count: 1452
   real_footprint_step_route_segment_visual_count: 306
   candidate_routed_step_path: board/kicad/e1-phone/production/step/routed-board-with-components.step
-  candidate_routed_step_size_bytes: 32970696
+  candidate_routed_step_size_bytes: 33644081
   candidate_present_blocked_required_output_path_count: 37
   candidate_release_credit: false
   route_inventory_development_placeholder_footprints_present: false
@@ -335,7 +335,7 @@ routed_evt1_execution_phases:
           and test missing
     status: blocked_no_release_outputs_present
   - phase: 5_enclosure_routed_step_rerun
-    current_status: blocked_waiting_for_routed_board_step
+    current_status: blocked_waiting_for_physical_routed_board_clearance_result
     required_inputs_or_actions:
       - mechanical/e1-phone/review/board-step-readiness.json passes with production
         STEP

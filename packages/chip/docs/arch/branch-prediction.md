@@ -546,7 +546,12 @@ delayed late-redirect vectors, ordered `fetch_stream_*_o` fetch-control stream,
 and optional `l1i_demand_*_o` / `l1i_demand_*_lane1_o` IFU-demand ports at the
 SoC boundary. `fetch_stream_ready_i` and the demand bridge ready inputs
 backpressure FTQ pop, so target-block lane 1 remains ordered and visible until
-downstream fetch logic can accept both lanes.
+downstream fetch logic can accept both lanes. The top also feeds those same
+demand and FTQ prefetch streams into an internal `e1_l1i_cache`,
+`e1_l1i_dual_miss_to_l2`, `e1_l2_cache`, and integration SLC/CHI/DRAM chain;
+the cross-domain regression
+`bpu_fetch_stream_fills_integrated_l1i_l2_slc_dram_path` proves scalar and
+lane-1 requests fill through that path and return IFU responses.
 
 ## Blockers
 
@@ -577,9 +582,10 @@ downstream fetch logic can accept both lanes.
   cold lane-1 demand into an ordered pending miss slot and services it through
   an independent lane-1 miss/refill channel, while `e1_l1i_dual_miss_to_l2`
   connects those scalar/lane-1 miss pipes to the production L2 L1I acquire
-  channel. Remaining work is full SoC-level instantiation of the production
-  fetch/cache hierarchy behind `e1_soc_integrated` once the production
-  core/cache top is selected, not a missing lane-1 miss-to-L2 mechanism.
+  channel. `e1_soc_integrated` instantiates that L1I/bridge/L2 path behind the
+  boundary ports, so remaining work is real core-wrapper fetch into the path
+  plus full shared-cache/DRAM hierarchy selection beyond the deterministic
+  integration responder.
 3. **Commit-time predictor replay closure** — top-level TAGE/SC/ITTAGE
    updates replay FTQ histories, providers, and SC/TAGE confidence metadata by
    `resolve.ftq_idx`; the resolver bus no longer carries legacy provider
