@@ -74,6 +74,8 @@ jobs:
           smoke_log=".tmp/qa/docker-ci-smoke-step.log"
           setsid bash packages/app-core/scripts/docker-ci-smoke.sh --tag gha-${{ github.run_id }} > >(tee "$smoke_log") 2> >(tee -a "$smoke_log" >&2) &
           smoke_pid=$!
+          smoke_started_at=$SECONDS
+          last_heartbeat=$SECONDS
           deadline=$((SECONDS + 40 * 60))
 
           while kill -0 "$smoke_pid" 2>/dev/null; do
@@ -84,6 +86,10 @@ jobs:
               kill -KILL "-$smoke_pid" 2>/dev/null || kill -KILL "$smoke_pid" 2>/dev/null || true
               wait "$smoke_pid" || true
               exit 124
+            fi
+            if (( SECONDS - last_heartbeat >= 60 )); then
+              last_heartbeat=$SECONDS
+              echo "[docker-ci-smoke] still running after $((SECONDS - smoke_started_at))s; log: $smoke_log"
             fi
             sleep 10
           done
