@@ -51,7 +51,7 @@ let globalTokenRetryTimeout: number | null = null;
 /**
  * Main authentication hook.
  *
- * Phase 2: Backed by Steward auth (StewardAuth SDK) instead of Privy.
+ * Backed by Steward auth.
  * Authentication state comes from the Steward session (localStorage-backed
  * JWT) and an httpOnly `steward-token` cookie set by /api/auth/session.
  *

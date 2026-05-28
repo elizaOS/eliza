@@ -151,7 +151,7 @@ export interface EmailRecipientRow {
 
 /**
  * Resolves a verified email address for a recipient. Checks the profile email
- * first (only if verified), then falls back to Privy verified emails.
+ * first (only if verified), then falls back to verified linked emails.
  * Returns null if no verified email can be found.
  */
 export async function resolveRecipientEmail(
@@ -163,7 +163,7 @@ export async function resolveRecipientEmail(
     return profileEmail;
   }
 
-  // Phase 2: Privy user lookup removed. Email is now stored directly in Feed's
+  // Email is now stored directly in Feed's
   // users.email column (populated by Steward at login time).
   // If we reach this point without an email, log and return null.
   if (!profileEmail) {

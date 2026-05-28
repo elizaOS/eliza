@@ -180,8 +180,6 @@ function getContractDeployBlock(): bigint {
 // Helper Functions
 // ============================================================================
 
-// PrivyUserWalletsLite is imported from ./privy/user-wallets
-
 function getChainConfig(chainId: number) {
   const config = CHAIN_CONFIG[chainId];
   if (!config) {
@@ -262,7 +260,7 @@ function validateConfig(): {
 async function resolveUserEmbeddedWalletAddress(
   _userId: string,
 ): Promise<Address> {
-  // Phase 2: Privy embedded wallets removed. NFT minting is currently disabled.
+  // Embedded wallet minting has been removed. NFT minting is currently disabled.
   // This path should not be reached (NFT feature flag prevents it).
   throw new ValidationError(
     "NFT minting unavailable",
@@ -301,7 +299,7 @@ async function checkHasMintedOnChain(
  * NftSnapshot, NftOwnership, and NftClaims.
  *
  * @param userId     - The user's database ID
- * @param walletAddress - The Privy embedded wallet that received the NFT
+ * @param walletAddress - The embedded wallet that received the NFT
  * @param contractAddress - The NFT contract address
  * @param chainId    - The chain the contract is deployed on
  */
@@ -565,12 +563,12 @@ export async function checkEligibility(
   }
 
   // On-chain verification: DB says hasMinted=false, but check on-chain to catch desyncs.
-  // Only do this if the user has a Privy embedded wallet configured.
+  // Disabled until a Steward-owned embedded wallet path exists.
   let onChainMintConfirmed = false;
   try {
     const { contractAddress, chainId } = getConfig();
     if (contractAddress && isAddress(contractAddress)) {
-      // Phase 2: Privy embedded wallets removed. On-chain verification disabled.
+      // Embedded wallets removed. On-chain verification disabled.
       const hasEmbeddedWallet = false;
 
       if (hasEmbeddedWallet) {
@@ -717,7 +715,7 @@ export async function prepareMint(userId: string): Promise<PrepareResult> {
     );
   }
 
-  // Resolve user's embedded wallet address from Privy (multi-chain safe).
+  // Resolve user's embedded wallet address.
   // Note: the on-chain hasMinted check is handled by checkEligibility() above,
   // which will return already_minted and trigger reconciliation if needed.
   const walletAddress = await resolveUserEmbeddedWalletAddress(userId);
@@ -801,7 +799,7 @@ export async function confirmMint(
   const normalizedWallet = walletAddress.toLowerCase() as Address;
   const normalizedContract = contractAddress.toLowerCase() as Address;
 
-  // Verify wallet belongs to the authenticated user via Privy (do not rely on DB).
+  // Verify wallet belongs to the authenticated user.
   const expectedEmbeddedWallet = await resolveUserEmbeddedWalletAddress(userId);
   if (expectedEmbeddedWallet.toLowerCase() !== normalizedWallet.toLowerCase()) {
     throw new ValidationError(

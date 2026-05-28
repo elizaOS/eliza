@@ -71,14 +71,9 @@ export async function getAccessToken(): Promise<string | null> {
 }
 
 /**
- * @deprecated Use `getAccessToken` instead. Kept for backward compatibility.
- */
-export const getPrivyAccessToken = getAccessToken;
-
-/**
  * Lightweight wrapper around fetch that decorates requests with authentication
  *
- * Supports both HTTP-only cookie authentication (privy-token cookie) and
+ * Supports both HTTP-only cookie authentication and
  * Authorization header authentication. The cookie is preferred when available,
  * but falls back to Bearer token in the Authorization header.
  *

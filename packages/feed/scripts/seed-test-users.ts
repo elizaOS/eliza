@@ -4,7 +4,7 @@
  * Seed Test Users
  *
  * Creates human test users for manual testing.
- * These users can be logged into via Privy dev mode.
+ * These users can be logged into via Steward dev mode.
  *
  * Usage:
  *   bun run scripts/seed-test-users.ts

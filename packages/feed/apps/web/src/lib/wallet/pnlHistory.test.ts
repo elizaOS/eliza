@@ -99,7 +99,7 @@ describe("buildPnlMetricIdentityMap", () => {
       {
         id: "owner-1",
         lifetimePnL: "12",
-        privyId: "did:privy:owner-1",
+        privyId: "steward:test:owner-1",
       },
       {
         id: "agent-1",
@@ -110,11 +110,11 @@ describe("buildPnlMetricIdentityMap", () => {
 
     expect(result.positionUserIds).toEqual([
       "owner-1",
-      "did:privy:owner-1",
+      "steward:test:owner-1",
       "agent-1",
     ]);
     expect(result.aliasToCanonicalUserId.get("owner-1")).toBe("owner-1");
-    expect(result.aliasToCanonicalUserId.get("did:privy:owner-1")).toBe(
+    expect(result.aliasToCanonicalUserId.get("steward:test:owner-1")).toBe(
       "owner-1",
     );
     expect(result.aliasToCanonicalUserId.get("agent-1")).toBe("agent-1");

@@ -129,7 +129,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
     parsed.data;
 
   // Verify state format and get user ID
-  // State format: userId|timestamp|random (using pipe because userId may contain colons like did:privy:xxx)
+  // State format: userId|timestamp|random (using pipe because userId may contain colons like steward:test:xxx)
   const stateParts = state.split("|");
 
   // Format: [userId, timestamp, random]

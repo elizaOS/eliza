@@ -15,7 +15,7 @@ import {
   navigateTo,
   waitForPageLoad,
 } from "./helpers/page-helpers";
-import { loginWithWallet } from "./helpers/privy-auth";
+import { loginWithWallet } from "./helpers/auth";
 import { ROUTES } from "./helpers/test-data";
 
 // Increase test timeout for network operations

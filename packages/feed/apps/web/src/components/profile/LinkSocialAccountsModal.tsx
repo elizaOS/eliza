@@ -18,7 +18,7 @@ import { apiUrl } from "@/utils/api-url";
  * linked account information. Awards reputation points for social linking.
  *
  * Features:
- * - Email linking via Privy
+ * - Email linking
  * - Twitter OAuth linking
  * - Farcaster OAuth linking
  * - OAuth callback handling
@@ -55,7 +55,7 @@ export function LinkSocialAccountsModal({
   const [unlinkingTwitter, setUnlinkingTwitter] = useState(false);
 
   // Phase 2: Email comes from Feed user record (set by Steward at login)
-  const privyEmail = user?.email ?? null;
+  const linkedEmail = user?.email ?? null;
 
   // Phase 2: Social linking flows are handled via OAuth/SIWF redirects
   // These stubs maintain API compatibility while Steward linking is implemented
@@ -199,7 +199,7 @@ export function LinkSocialAccountsModal({
             <div className="flex items-center gap-2">
               <Mail className="h-5 w-5" />
               <h3 className="font-semibold">Email</h3>
-              {privyEmail && (
+              {linkedEmail && (
                 <span className="ml-auto flex items-center gap-1 text-green-500 text-sm">
                   <Check className="h-4 w-4" />
                   Verified
@@ -207,17 +207,17 @@ export function LinkSocialAccountsModal({
               )}
             </div>
 
-            {privyEmail ? (
+            {linkedEmail ? (
               <div className="flex items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 p-3">
                 <Check className="h-4 w-4 text-green-500" />
-                <span className="font-medium text-sm">{privyEmail}</span>
+                <span className="font-medium text-sm">{linkedEmail}</span>
               </div>
             ) : (
               <div className="space-y-2">
                 <div className="flex items-start gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 p-3">
                   <Shield className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
                   <p className="text-muted-foreground text-xs">
-                    Link a verified email in Privy to enable notification emails
+                    Link a verified email to enable notification emails
                     and account recovery.
                   </p>
                 </div>
@@ -232,11 +232,11 @@ export function LinkSocialAccountsModal({
                   )}
                 >
                   {linking === "email" ? (
-                    <span>Opening Privy...</span>
+                    <span>Opening email link...</span>
                   ) : (
                     <>
                       <Mail className="h-4 w-4" />
-                      <span>Link my email to Privy</span>
+                      <span>Link my email</span>
                     </>
                   )}
                 </button>
@@ -462,7 +462,7 @@ export function LinkSocialAccountsModal({
                   <p className="text-muted-foreground text-xs">
                     {isMiniApp
                       ? "Link your Telegram account to earn points and unlock rewards."
-                      : "Open Feed in Telegram to seamlessly link your account, or connect via Privy."}
+                      : "Open Feed in Telegram to seamlessly link your account."}
                   </p>
                 </div>
                 <button

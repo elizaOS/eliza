@@ -37,7 +37,7 @@ describe("accessToken", () => {
       getAccessTokenSafely(
         () =>
           Promise.reject({
-            code: "privy_access_token_rejected",
+            code: "access_token_rejected",
             data: { reason: "session_expired" },
             message: "Session expired",
           }),

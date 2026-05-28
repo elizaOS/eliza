@@ -70,9 +70,6 @@ mock.module("@feed/api", () => ({
   ensureOfflineWalletReady: mockEnsureOfflineWalletReady,
   getHashedClientIp: mockGetHashedClientIp,
   getOrCreateReferralCode: mockGetOrCreateReferralCode,
-  getPrivyClient: mock(() => ({
-    getUserFromIdToken: mock(),
-  })),
   InternalServerError: MockInternalServerError,
   isReferralCodeAvailableForUser: mockIsReferralCodeAvailableForUser,
   notifyNewAccount: mockNotifyNewAccount,
@@ -221,7 +218,7 @@ describe("signup route referral code handling", () => {
     mockAuthenticate.mockResolvedValue({
       userId: "user_1",
       dbUserId: "user_1",
-      privyId: "did:privy:user_1",
+      privyId: "steward:test:user_1",
       walletAddress: null,
     });
     mockEnsureOfflineWalletReady.mockResolvedValue({
@@ -255,7 +252,7 @@ describe("signup route referral code handling", () => {
     mockWithRetry.mockResolvedValue({
       user: {
         id: "user_1",
-        privyId: "did:privy:user_1",
+        privyId: "steward:test:user_1",
         username: "alice",
         displayName: "Alice",
         bio: "",

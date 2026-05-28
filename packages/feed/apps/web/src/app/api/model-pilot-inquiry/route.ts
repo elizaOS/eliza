@@ -1,5 +1,5 @@
 /**
- * Model pilot inquiry — POST from /research. Fully public (no Privy/session/API key).
+ * Model pilot inquiry — POST from /research. Fully public (no session/API key).
  * Rate limited by client IP only. Not linked in navigation (noindex).
  * Emails feed@elizalabs.ai (overridable) and the submitter via SendGrid.
  */

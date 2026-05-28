@@ -110,7 +110,7 @@ describe("SSEManager token recovery", () => {
       reconnectDelay: 1,
       maxReconnectDelay: 1,
     });
-    manager.setAuthProvider(async () => "privy-token");
+    manager.setAuthProvider(async () => "steward-token");
     manager.setAuthenticated(true);
 
     const unsubscribe = manager.subscribe("markets", () => {});
@@ -155,7 +155,7 @@ describe("SSEManager token recovery", () => {
       reconnectDelay: 1,
       maxReconnectDelay: 1,
     });
-    manager.setAuthProvider(async () => "privy-token");
+    manager.setAuthProvider(async () => "steward-token");
     manager.setAuthenticated(true);
 
     const unsubscribe = manager.subscribe("markets", () => {});

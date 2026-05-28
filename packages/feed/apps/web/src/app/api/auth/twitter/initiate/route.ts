@@ -65,7 +65,7 @@ export const GET = withErrorHandling(async function GET(request: NextRequest) {
   const authUser = await authenticate(request);
   const userId = authUser.userId;
 
-  // Use | as separator instead of : to avoid conflicts with Privy DIDs (did:privy:...)
+  // Use | as separator instead of : to avoid conflicts with legacy provider IDs (steward:test:...)
   const state = `${userId}|${Date.now()}|${Math.random().toString(36).substring(7)}`;
 
   // Generate PKCE parameters

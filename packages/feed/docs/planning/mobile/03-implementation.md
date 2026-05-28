@@ -60,7 +60,7 @@ Every `fetch('/api/...')` call goes through `apiUrl()` (`apps/web/src/utils/api-
 ### Server actions → API routes
 
 3 server action files (`_actions/onchain.ts`, `_actions/nft.ts`, `_actions/utils.ts`) were replaced with API routes:
-- `POST /api/onchain` — handles buy-shares, sell-shares, update-agent-profile via Privy sponsored transactions
+- `POST /api/onchain` — handles buy-shares, sell-shares, and update-agent-profile through the app API
 - `POST /api/nft/mint/execute` — full mint flow (prepare → send tx → poll for confirmation with exponential backoff)
 - `GET /api/profiles/resolve/[identifier]` — resolves ambiguous identifiers to canonical profile paths
 
@@ -91,7 +91,7 @@ All Capacitor plugins are lazy-loaded via dynamic `import()`. This means native 
 | `apps/web/public/.well-known/apple-app-site-association` | iOS Universal Links |
 | `apps/web/public/.well-known/assetlinks.json` | Android App Links |
 | `apps/mobile/` | Complete mobile app (77+ files) |
-| `apps/mobile/src/components/AppUrlListener.tsx` | Privy OAuth handler |
+| `apps/mobile/src/components/AppUrlListener.tsx` | App deep-link handler |
 | `apps/mobile/src/lib/platform.ts` | Platform detection |
 | `apps/mobile/src/lib/haptics.ts` | Haptic feedback |
 | `apps/mobile/src/lib/push-notifications.ts` | Push setup |
@@ -120,4 +120,3 @@ const config: CapacitorConfig = {
 **Pros:** Zero code changes. Full feature parity. Instant updates.
 **Cons:** Requires internet. Slower load. Higher Apple rejection risk.
 **Use for:** Dev testing, Android Play Store (less strict), internal TestFlight.
-

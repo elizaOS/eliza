@@ -157,7 +157,7 @@ export const UsernameParamSchema = z.object({
 });
 
 /**
- * User ID param schema (accepts both UUID and Privy DID)
+ * User ID param schema
  * Uses UserIdSchema from common for consistency
  */
 export const UserIdParamSchema = z.object({

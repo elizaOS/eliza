@@ -11,7 +11,7 @@
  * Prerequisites:
  * - Server running at PLAYWRIGHT_BASE_URL with simulation settlement mode
  * - Database with at least one active prediction market
- * - Dev auth enabled (ALLOW_TEST_PRIVY_DID_AUTH=true)
+ * - Dev auth enabled (ALLOW_TEST_STEWARD_AUTH=true)
  *
  * Run with: npx playwright test prediction-market-trading.e2e.test.ts
  */

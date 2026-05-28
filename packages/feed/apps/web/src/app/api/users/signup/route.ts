@@ -171,8 +171,8 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
   // Capture and hash IP address for self-referral detection
   const registrationIpHash = getHashedClientIp(request.headers);
 
-  // Phase 2: Privy identity token replaced by Steward. Social usernames come
-  // from the user's profile payload or are populated at social login time.
+  // Social usernames come from the user's profile payload or are populated at
+  // social login time.
   let identityFarcasterUsername: string | undefined;
   let identityTwitterUsername: string | undefined;
   const adminEmailResult = {
@@ -310,7 +310,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           );
         }
 
-        // Handle Farcaster from Privy identity or onboarding import
+        // Handle Farcaster from onboarding import or stored profile data.
         if (identityFarcasterUsername || importedFarcaster) {
           baseUserData.hasFarcaster = true;
           baseUserData.farcasterUsername =
@@ -320,7 +320,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
           }
         }
 
-        // Handle Twitter from Privy identity or onboarding import
+        // Handle Twitter from onboarding import or stored profile data.
         if (identityTwitterUsername || importedTwitter) {
           baseUserData.hasTwitter = true;
           baseUserData.twitterUsername =
@@ -375,7 +375,7 @@ export const POST = withErrorHandling(async (request: NextRequest) => {
         } else {
           // Create new user
           // Check if user should be auto-promoted to admin based on email domain
-          // SECURITY: Use Privy-verified email, not user-supplied email from parsedProfile
+          // SECURITY: Use verified auth email, not user-supplied email from parsedProfile
           // This prevents attackers from submitting fake admin emails in the request body
           // Check ALL linked emails, not just the primary one
           const { adminEmail: newUserAdminEmail, allVerifiedEmails } =

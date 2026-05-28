@@ -33,13 +33,11 @@
  */
 type WindowWithAccessToken = Window & {
   __accessToken?: string | null;
-  __privyAccessToken?: string | null;
 };
 
 export function getAuthToken(): string | null {
   if (typeof window === "undefined") {
     return null;
   }
-  const authWindow = window as WindowWithAccessToken;
-  return authWindow.__accessToken ?? authWindow.__privyAccessToken ?? null;
+  return (window as WindowWithAccessToken).__accessToken ?? null;
 }

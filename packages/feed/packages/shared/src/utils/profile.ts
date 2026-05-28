@@ -72,7 +72,7 @@ export function getOrganizationProfileUrl(orgId: string): string {
  * Check if a profile identifier is a username (not a user ID)
  *
  * @description Determines if an identifier string is a username rather than
- * a user ID. User IDs are typically DIDs (did:privy:...), UUIDs, or contain
+ * a user ID. User IDs are typically UUIDs, Snowflakes, or contain
  * dashes. Usernames are shorter strings without special patterns.
  *
  * @param {string} identifier - The identifier to check
@@ -81,7 +81,7 @@ export function getOrganizationProfileUrl(orgId: string): string {
  * @example
  * ```typescript
  * isUsername('alice') // Returns true
- * isUsername('did:privy:abc123') // Returns false
+ * isUsername('550e8400-e29b-41d4-a716-446655440000') // Returns false
  * isUsername('@alice') // Returns true
  * isUsername('550e8400-e29b-41d4-a716-446655440000') // Returns false (UUID)
  * ```
@@ -92,16 +92,6 @@ export function isUsername(identifier: string): boolean {
     return true;
   }
 
-  // If it contains "privy" anywhere, it's definitely a user ID, not a username
-  if (identifier.toLowerCase().includes("privy")) {
-    return false;
-  }
-
-  // If it starts with "did:", it's a DID (user ID)
-  if (identifier.startsWith("did:")) {
-    return false;
-  }
-
   // If it's a UUID format (contains dashes in UUID pattern), it's a user ID
   // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
   const uuidPattern =
@@ -110,9 +100,12 @@ export function isUsername(identifier: string): boolean {
     return false;
   }
 
-  // If it's a short string without dashes and not a DID, it's likely a username
-  // User IDs are typically: "did:privy:..." (long) or UUIDs (contain dashes)
-  return identifier.length <= 42 && !identifier.includes("-");
+  // If it's a short string without dashes, it's likely a username.
+  return (
+    identifier.length <= 42 &&
+    !identifier.includes("-") &&
+    !identifier.includes(":")
+  );
 }
 
 /**

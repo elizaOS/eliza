@@ -85,7 +85,7 @@ const ExternalAgentRegisterSchema = z.object({
 });
 
 export const POST = withErrorHandling(async function POST(req: NextRequest) {
-  // Authenticate the request (requires valid Privy session)
+  // Authenticate the request (requires a valid Steward session)
   const authUser = await authenticate(req);
 
   // Rate limit check - 5 registrations per hour per user

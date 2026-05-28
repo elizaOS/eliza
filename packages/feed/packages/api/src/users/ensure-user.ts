@@ -62,8 +62,8 @@ async function findMinimalUserByIdentifierDirect(
   const condition =
     kind === "id"
       ? eq(users.id, normalizedIdentifier)
-      : kind === "privyId"
-        ? eq(users.privyId, normalizedIdentifier)
+      : kind === "stewardId"
+        ? eq(users.stewardId, normalizedIdentifier)
         : sql`lower(${users.username}) = lower(${normalizedIdentifier})`;
 
   const [user] = await db
@@ -92,17 +92,19 @@ async function findMinimalUserByIdentifierDirect(
 }
 
 async function findCanonicalUserByAuthIdentifiersDirect(
-  privyId: string,
+  stewardId: string | undefined,
   userId: string,
 ): Promise<CanonicalUser | null> {
-  const [byPrivyId] = await db
-    .select(canonicalUserSelect)
-    .from(users)
-    .where(eq(users.privyId, privyId))
-    .limit(1);
+  if (stewardId) {
+    const [byStewardId] = await db
+      .select(canonicalUserSelect)
+      .from(users)
+      .where(eq(users.stewardId, stewardId))
+      .limit(1);
 
-  if (byPrivyId) {
-    return byPrivyId;
+    if (byStewardId) {
+      return byStewardId;
+    }
   }
 
   const [byId] = await db
@@ -189,14 +191,16 @@ export async function ensureUserForAuth(
   user: AuthenticatedUser,
   options: EnsureUserOptions = {},
 ): Promise<{ user: CanonicalUser }> {
-  const privyId = user.privyId ?? user.userId;
+  const stewardId = user.stewardId;
   const canonicalUserId = user.dbUserId ?? user.userId;
 
   // Check if user exists
   const existing = await db
     .select(canonicalUserSelect)
     .from(users)
-    .where(eq(users.privyId, privyId))
+    .where(
+      stewardId ? eq(users.stewardId, stewardId) : eq(users.id, canonicalUserId),
+    )
     .limit(1);
 
   if (existing.length > 0 && existing[0]) {
@@ -228,7 +232,6 @@ export async function ensureUserForAuth(
 
     if (Object.keys(updateData).length > 0) {
       const oldUsername = existingUser.username;
-      const oldPrivyId = existingUser.privyId;
 
       const updated = await db
         .update(users)
@@ -243,8 +246,6 @@ export async function ensureUserForAuth(
       // now cache the full user row under identifier-based keys.
       const usernameChanged =
         options.username !== undefined && oldUsername !== updatedUser.username;
-      const privyIdChanged = oldPrivyId !== updatedUser.privyId;
-
       await cachedDb.invalidateUserIdentifierCaches(
         {
           id: updatedUser.id,
@@ -253,7 +254,6 @@ export async function ensureUserForAuth(
         },
         {
           username: usernameChanged ? oldUsername : undefined,
-          privyId: privyIdChanged ? oldPrivyId : undefined,
         },
       );
 
@@ -267,7 +267,7 @@ export async function ensureUserForAuth(
   // Create new user
   const createData: typeof users.$inferInsert = {
     id: canonicalUserId,
-    privyId,
+    stewardId,
     isActor: options.isActor ?? false,
     updatedAt: new Date(),
   };
@@ -290,7 +290,7 @@ export async function ensureUserForAuth(
 
   if (!createdUser) {
     const concurrentUser = await findCanonicalUserByAuthIdentifiersDirect(
-      privyId,
+      stewardId,
       canonicalUserId,
     );
 

@@ -46,11 +46,6 @@ export async function getAccessToken(): Promise<string | null> {
 }
 
 /**
- * @deprecated Use `getAccessToken` instead. Kept for backward compatibility.
- */
-export const getPrivyAccessToken = getAccessToken;
-
-/**
  * Lightweight wrapper around fetch that decorates requests with authentication
  *
  * @description Wrapper around fetch that uses Steward JWT cookie authentication.

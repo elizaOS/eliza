@@ -56,7 +56,6 @@ export {
   authenticate,
   authenticateUser,
   authenticateWithDbUser,
-  getPrivyClient,
   isAuthenticationError,
   optionalAuth,
   optionalAuthFromHeaders,
@@ -103,7 +102,6 @@ export {
 // Env helpers (server-only)
 export {
   getNotificationEmailFromEnv,
-  getPrivyAppIdFromEnv,
   getTrimmedEnv,
 } from "./env";
 // Error Handler (Next.js specific)
@@ -141,8 +139,6 @@ export {
   type ApiFetchOptions,
   apiFetch,
   getAccessToken,
-  /** @deprecated Use `getAccessToken` instead. */
-  getPrivyAccessToken,
 } from "./fetch";
 // Linear Integration
 export {
@@ -240,21 +236,6 @@ export {
 } from "./redis";
 // Services
 export * from "./services";
-export {
-  type AuthedPrivyUserContext,
-  getAuthedUserContextFromPrivyToken,
-  getAuthedUserContextFromPrivyTokenBundle,
-} from "./services/privy/authed-user";
-export {
-  extractPrivyApiDiagnostics,
-  type PrivyApiDiagnostics,
-  redactJwtLikeTokens,
-} from "./services/privy/error-diagnostics";
-// Privy (embedded wallet server-side helpers - kept for NFT mint service)
-export {
-  type PrivyUserWalletsLite,
-  pickEmbeddedEvmWallet,
-} from "./services/privy/user-wallets";
 // SSE Event Broadcasting
 export {
   type AgentActivityEvent,

@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { sepolia } from "viem/chains";
 import {
   getCurrentChainId,
   getRpcUrlForChainId,
+  sepolia,
 } from "../../shared/src/config";
 
 const originalChainId = process.env.CHAIN_ID;

@@ -9,7 +9,7 @@ import {
   createLogger,
   defineConfig,
   type Plugin,
-  transformWithEsbuild,
+  transformWithOxc,
 } from "vite";
 import { resolveAppBranding } from "../shared/src/config/app-config.ts";
 import { colorizeDevSettingsStartupBanner } from "../shared/src/dev-settings-banner-style.ts";
@@ -161,8 +161,8 @@ function iosLocalAgentKernelEsbuildPlugin(): Plugin {
     async transform(code, id) {
       const normalizedId = id.split("?")[0]?.split(path.sep).join("/");
       if (normalizedId !== targetPath) return null;
-      return transformWithEsbuild(code, id, {
-        loader: "ts",
+      return transformWithOxc(code, id, {
+        lang: "ts",
         target: "es2022",
       });
     },
@@ -1005,14 +1005,17 @@ function asyncLocalStoragePatchPlugin(): Plugin {
 }
 
 function isIgnoredWorkspaceGeneratedOutput(normalizedFile: string): boolean {
-  return (
-    normalizedFile.includes("/packages/app/.vite/") ||
-    normalizedFile.includes("/.turbo/") ||
-    normalizedFile.includes("/.wrangler/") ||
-    normalizedFile.includes("/packages/agent/data/") ||
-    normalizedFile.includes("/output/generated-cad/") ||
-    normalizedFile.includes("/packages/robot/") ||
-    normalizedFile.includes("/src/i18n/generated/") ||
+	return (
+		normalizedFile.includes("/packages/app/.vite/") ||
+		normalizedFile.includes("/.turbo/") ||
+		normalizedFile.includes("/.wrangler/") ||
+		normalizedFile.includes("/packages/agent/data/") ||
+		normalizedFile.includes("/packages/agent/.elizadb/") ||
+		normalizedFile.includes("/packages/examples/") ||
+		normalizedFile.includes("/packages/feed/") ||
+		normalizedFile.includes("/output/generated-cad/") ||
+		normalizedFile.includes("/packages/robot/") ||
+		normalizedFile.includes("/src/i18n/generated/") ||
     normalizedFile.endsWith(".d.ts") ||
     normalizedFile.endsWith(".d.ts.map") ||
     normalizedFile.endsWith(".log") ||
@@ -1106,8 +1109,8 @@ function workspaceJsxInJsPlugin(): Plugin {
       if (!cleanId.endsWith(".js")) return null;
       if (!normalizedId.startsWith(`${normalizedAppCoreSrcRoot}/`)) return null;
 
-      return transformWithEsbuild(code, cleanId, {
-        loader: "jsx",
+      return transformWithOxc(code, cleanId, {
+        lang: "jsx",
         jsx: "automatic",
         sourcemap: true,
       });
@@ -1558,7 +1561,7 @@ export default defineConfig({
     ],
   },
   optimizeDeps: {
-    noDiscovery: process.env.ELIZA_APP_VITE_NO_DISCOVERY === "1",
+    noDiscovery: process.env.ELIZA_APP_VITE_NO_DISCOVERY !== "0",
     include: [
       "react",
       "react-dom",
@@ -1589,8 +1592,8 @@ export default defineConfig({
               return null;
             }
 
-            return transformWithEsbuild(code, id, {
-              loader: "jsx",
+            return transformWithOxc(code, id, {
+              lang: "jsx",
               jsx: "automatic",
               sourcemap: true,
             });
@@ -1809,7 +1812,10 @@ export default defineConfig({
         "**/packages/app/.vite/**",
         "**/packages/**/.turbo/**",
         "**/packages/**/.wrangler/**",
+        "**/packages/agent/.elizadb/**",
         "**/packages/agent/data/**",
+        "**/packages/examples/**",
+        "**/packages/feed/**",
         "**/packages/**/dist/**",
         "**/packages/**/*.log",
         "**/packages/**/*.md",

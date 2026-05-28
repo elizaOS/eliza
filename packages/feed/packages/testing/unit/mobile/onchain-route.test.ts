@@ -4,16 +4,16 @@ import { describe, expect, it } from "bun:test";
  * Tests for the /api/onchain route's input validation and token extraction.
  *
  * The actual on-chain transaction logic depends on @feed/api and
- * Privy server auth, which require live infrastructure. These tests
+ * Steward server auth, which requires live infrastructure. These tests
  * verify the request parsing and validation layer.
  */
 
-// Simulate the extractPrivyToken logic from the route
-function extractPrivyToken(request: {
+// Simulate the route's token extraction logic.
+function extractAccessToken(request: {
   cookies: Map<string, string>;
   headers: Map<string, string>;
 }): string {
-  const cookieToken = request.cookies.get("privy-token");
+  const cookieToken = request.cookies.get("steward-token");
   const authHeader = request.headers.get("authorization");
   const headerToken = authHeader?.startsWith("Bearer ")
     ? authHeader.substring(7)
@@ -60,16 +60,16 @@ function validateOnchainRequest(body: Record<string, unknown>): {
 
 describe("/api/onchain — token extraction", () => {
   it("prefers Bearer token over cookie", () => {
-    const token = extractPrivyToken({
-      cookies: new Map([["privy-token", "cookie-token"]]),
+    const token = extractAccessToken({
+      cookies: new Map([["steward-token", "cookie-token"]]),
       headers: new Map([["authorization", "Bearer header-token"]]),
     });
     expect(token).toBe("header-token");
   });
 
   it("falls back to cookie when no Authorization header", () => {
-    const token = extractPrivyToken({
-      cookies: new Map([["privy-token", "cookie-token"]]),
+    const token = extractAccessToken({
+      cookies: new Map([["steward-token", "cookie-token"]]),
       headers: new Map(),
     });
     expect(token).toBe("cookie-token");
@@ -77,7 +77,7 @@ describe("/api/onchain — token extraction", () => {
 
   it("throws when no token is available", () => {
     expect(() =>
-      extractPrivyToken({
+      extractAccessToken({
         cookies: new Map(),
         headers: new Map(),
       }),
@@ -86,7 +86,7 @@ describe("/api/onchain — token extraction", () => {
 
   it("ignores non-Bearer auth headers", () => {
     expect(() =>
-      extractPrivyToken({
+      extractAccessToken({
         cookies: new Map(),
         headers: new Map([["authorization", "Basic dXNlcjpwYXNz"]]),
       }),
@@ -96,7 +96,7 @@ describe("/api/onchain — token extraction", () => {
   it("handles empty Bearer token", () => {
     // "Bearer " with nothing after it — substring(7) returns ""
     expect(() =>
-      extractPrivyToken({
+      extractAccessToken({
         cookies: new Map(),
         headers: new Map([["authorization", "Bearer "]]),
       }),

@@ -6,12 +6,58 @@
  */
 
 import type { Address } from "viem";
-import { base, baseSepolia, hardhat, mainnet, sepolia } from "viem/chains";
 import configData from "./public-config.json";
 
 // Re-export viem chain objects for NFT services (chains.ts was removed in Phase 1).
 // TODO: Remove these exports once NFT code is fully deleted in a future phase.
-export { base, baseSepolia, hardhat, mainnet, sepolia };
+const etherCurrency = {
+  decimals: 18,
+  name: "Ether",
+  symbol: "ETH",
+} as const;
+
+export const mainnet = {
+  id: 1,
+  name: "Ethereum",
+  nativeCurrency: etherCurrency,
+  rpcUrls: { default: { http: ["https://eth.llamarpc.com"] } },
+  blockExplorers: { default: { name: "Etherscan", url: "https://etherscan.io" } },
+} as const;
+
+export const sepolia = {
+  id: 11155111,
+  name: "Sepolia",
+  nativeCurrency: etherCurrency,
+  rpcUrls: { default: { http: ["https://rpc.sepolia.org"] } },
+  blockExplorers: {
+    default: { name: "Etherscan", url: "https://sepolia.etherscan.io" },
+  },
+} as const;
+
+export const base = {
+  id: 8453,
+  name: "Base",
+  nativeCurrency: etherCurrency,
+  rpcUrls: { default: { http: ["https://mainnet.base.org"] } },
+  blockExplorers: { default: { name: "Basescan", url: "https://basescan.org" } },
+} as const;
+
+export const baseSepolia = {
+  id: 84532,
+  name: "Base Sepolia",
+  nativeCurrency: etherCurrency,
+  rpcUrls: { default: { http: ["https://sepolia.base.org"] } },
+  blockExplorers: {
+    default: { name: "Basescan", url: "https://sepolia.basescan.org" },
+  },
+} as const;
+
+export const hardhat = {
+  id: 31337,
+  name: "Hardhat",
+  nativeCurrency: etherCurrency,
+  rpcUrls: { default: { http: ["http://localhost:8545"] } },
+} as const;
 
 // =============================================================================
 // Types

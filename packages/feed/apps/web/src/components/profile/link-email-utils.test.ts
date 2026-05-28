@@ -7,13 +7,13 @@ import {
 
 describe("link-email-utils", () => {
   describe("getLinkedEmail", () => {
-    it("prefers Privy email when present", () => {
+    it("prefers auth email when present", () => {
       expect(getLinkedEmail("linked@example.com", "stored@example.com")).toBe(
         "linked@example.com",
       );
     });
 
-    it("falls back to stored email when Privy email is missing", () => {
+    it("falls back to stored email when auth email is missing", () => {
       expect(getLinkedEmail(undefined, "stored@example.com")).toBe(
         "stored@example.com",
       );
@@ -33,7 +33,7 @@ describe("link-email-utils", () => {
       expect(isLinkEmailFlowCancellationError("exited_auth_flow")).toBe(true);
     });
 
-    it("detects a PrivyClientError-shaped object with code exited_auth_flow", () => {
+    it("detects an auth error-shaped object with code exited_auth_flow", () => {
       const err = Object.assign(new Error("User exited link email flow"), {
         code: "exited_auth_flow",
       });
@@ -70,9 +70,9 @@ describe("link-email-utils", () => {
       );
     });
 
-    it("detects Error instances that expose a Privy error code", () => {
+    it("detects Error instances that expose an auth error code", () => {
       const err = Object.assign(new Error("Email already linked"), {
-        privyErrorCode: "cannot_link_more_of_type",
+        authErrorCode: "cannot_link_more_of_type",
       });
 
       expect(isLinkEmailAlreadyLinkedError(err)).toBe(true);

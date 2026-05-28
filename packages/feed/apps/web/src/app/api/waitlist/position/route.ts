@@ -158,7 +158,7 @@ export const GET = withErrorHandling(async (request: NextRequest) => {
   const position = await WaitlistService.getWaitlistPosition(userId);
 
   // If user doesn't exist or isn't on waitlist, return null gracefully
-  // This handles new Privy users who haven't completed signup yet
+  // This handles new Steward users who haven't completed signup yet
   if (!position) {
     logger.info(
       "Waitlist position not found - user not on waitlist or doesn't exist yet",

@@ -97,7 +97,7 @@ The mobile layout auto-syncs the status bar with the app theme by observing DOM 
 | Android back button | `window.history.back()` if history exists, otherwise `App.minimizeApp()` |
 | App state change | Logs resume from background (hook for future data refresh logic) |
 
-OAuth deep links (Privy) are handled separately by `AppUrlListener` — see [04-privy-auth.md](./04-privy-auth.md).
+Auth and app deep links are handled separately by `AppUrlListener`.
 
 ---
 
@@ -158,4 +158,3 @@ var(--keyboard-height)  /* e.g., '300px' when keyboard is open, '0px' when close
 ```
 
 Use this to adjust layouts when the keyboard opens (e.g., chat input, comment forms).
-

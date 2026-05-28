@@ -3,8 +3,7 @@ import { evaluateEnv } from "../../../scripts/validate-env";
 
 const baseEnv = {
   DATABASE_URL: "postgresql://localhost:5432/feed",
-  NEXT_PUBLIC_PRIVY_APP_ID: "privy-app-id",
-  PRIVY_APP_SECRET: "privy-app-secret",
+  STEWARD_JWT_SECRET: "steward-secret",
   CRON_SECRET: "cron-secret",
   GROQ_API_KEY: "groq-key",
 };
@@ -20,12 +19,11 @@ describe("scripts/validate-env", () => {
     expect(result.missing.length).toBe(0);
   });
 
-  it("accepts Privy app id alias and alternate LLM provider key", () => {
+  it("accepts alternate LLM provider key", () => {
     const result = evaluateEnv({
       env: {
         DATABASE_URL: baseEnv.DATABASE_URL,
-        PRIVY_APP_ID: "legacy-privy-app-id",
-        PRIVY_APP_SECRET: baseEnv.PRIVY_APP_SECRET,
+        STEWARD_JWT_SECRET: baseEnv.STEWARD_JWT_SECRET,
         CRON_SECRET: baseEnv.CRON_SECRET,
         OPENAI_API_KEY: "openai-key",
       },

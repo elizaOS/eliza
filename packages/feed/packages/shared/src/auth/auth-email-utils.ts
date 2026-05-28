@@ -1,23 +1,23 @@
 /**
- * Privy Email Utility Functions
+ * Auth Email Utility Functions
  *
  * @description Shared utilities for extracting and processing email addresses
- * from Privy user objects. Used for admin email domain checks and other
+ * from auth user objects. Used for admin email domain checks and other
  * email-related functionality.
  *
  * These utilities work with both primary email (user.email) and linked email
  * accounts (user.linkedAccounts) to ensure complete email coverage.
  *
- * @security Only verified emails are returned. Privy includes verification
+ * @security Only verified emails are returned. Auth providers include verification
  * timestamps (verified_at, first_verified_at, latest_verified_at) on email
  * accounts - we only include emails that have been verified.
  */
 
 /**
- * Privy email account with verification timestamps.
- * Matches Privy's LinkedAccountEmail structure.
+ * Auth email account with verification timestamps.
+ * Matches auth provider's LinkedAccountEmail structure.
  */
-export interface PrivyEmailAccount {
+export interface AuthEmailAccount {
   type: "email";
   address: string;
   /** UNIX timestamp when email was last verified */
@@ -29,10 +29,10 @@ export interface PrivyEmailAccount {
 }
 
 /**
- * Privy linked account types for type discrimination.
+ * Auth linked account types for type discrimination.
  */
-export type PrivyLinkedAccount =
-  | PrivyEmailAccount
+export type AuthLinkedAccount =
+  | AuthEmailAccount
   | { type: "wallet"; address?: string; walletClient?: string }
   | { type: "farcaster"; fid?: number; username?: string }
   | { type: "twitter"; username?: string }
@@ -45,11 +45,11 @@ export type PrivyLinkedAccount =
   | { type?: string; address?: string }; // Fallback for unknown types
 
 /**
- * Minimal Privy user type for email extraction.
+ * Minimal auth user type for email extraction.
  * Compatible with both server SDK User type and client-side user objects.
  */
-export interface PrivyUserWithEmails {
-  /** Primary email (convenience property from Privy SDK) */
+export interface AuthUserWithEmails {
+  /** Primary email (convenience property from auth provider) */
   email?: {
     address?: string;
     verified_at?: number;
@@ -57,12 +57,12 @@ export interface PrivyUserWithEmails {
     latest_verified_at?: number;
   };
   /** All linked accounts including emails, wallets, social accounts */
-  linkedAccounts?: PrivyLinkedAccount[];
+  linkedAccounts?: AuthLinkedAccount[];
 }
 
 /**
  * Check if an email account is verified.
- * Privy includes verification timestamps only for verified emails.
+ * Auth providers include verification timestamps only for verified emails.
  *
  * @param account - The email account to check
  * @returns true if the email has verification timestamps
@@ -81,7 +81,7 @@ function isEmailVerified(account: {
 }
 
 /**
- * Get all verified email addresses from a Privy user.
+ * Get all verified email addresses from an auth user.
  *
  * Checks both the primary email (`user.email`) and the `linkedAccounts`
  * array for email-type accounts. Only returns emails that have been
@@ -90,33 +90,33 @@ function isEmailVerified(account: {
  * @security Only verified emails are returned. Emails without verification
  * timestamps are excluded to prevent unverified email attacks.
  *
- * @param user - The Privy user object (or null/undefined)
+ * @param user - The auth user object (or null/undefined)
  * @returns Array of all verified email addresses (deduplicated, lowercase)
  *
  * @example
- * const emails = getAllVerifiedEmails(privyUser);
+ * const emails = getAllVerifiedEmails(authUser);
  * // Returns: ['user@gmail.com', 'user@company.com']
  *
  * @example
  * // User logged in with Farcaster, later linked and verified email
- * const emails = getAllVerifiedEmails(privyUser);
+ * const emails = getAllVerifiedEmails(authUser);
  * // Returns email from linkedAccounts if verified
  */
 export function getAllVerifiedEmails(
-  user: PrivyUserWithEmails | null | undefined,
+  user: AuthUserWithEmails | null | undefined,
 ): string[] {
   if (!user) return [];
 
   const emails = new Set<string>();
 
-  // Check primary email field (convenience property from Privy SDK)
+  // Check primary email field (convenience property from auth provider)
   // The primary email in user.email is always verified if present
-  // (Privy only populates this field for verified emails)
+  // (Auth provider only populates this field for verified emails)
   if (user.email?.address) {
-    // For the primary email, Privy only includes it if verified
+    // For the primary email, Auth provider only includes it if verified
     // But we also check timestamps for extra safety
     const hasTimestamps = isEmailVerified(user.email);
-    // Accept if verified or if no timestamps available (Privy SDK behavior)
+    // Accept if verified or if no timestamps available (auth provider behavior)
     if (hasTimestamps || user.email.verified_at === undefined) {
       emails.add(user.email.address.toLowerCase());
     }
@@ -130,7 +130,7 @@ export function getAllVerifiedEmails(
         "address" in account &&
         account.address
       ) {
-        const emailAccount = account as PrivyEmailAccount;
+        const emailAccount = account as AuthEmailAccount;
         // Only include verified emails
         if (isEmailVerified(emailAccount)) {
           emails.add(emailAccount.address.toLowerCase());
@@ -180,17 +180,17 @@ export function findEmailByDomain(
  * Convenience function that combines getAllVerifiedEmails and findEmailByDomain.
  * Uses ADMIN_EMAIL_DOMAIN environment variable.
  *
- * @param user - The Privy user object
+ * @param user - The auth user object
  * @returns Object with adminEmail (if found) and allVerifiedEmails array
  *
  * @example
- * const { adminEmail, allVerifiedEmails } = checkForAdminEmail(privyUser);
+ * const { adminEmail, allVerifiedEmails } = checkForAdminEmail(authUser);
  * if (adminEmail) {
  *   // User has admin access
  * }
  */
 export function checkForAdminEmail(
-  user: PrivyUserWithEmails | null | undefined,
+  user: AuthUserWithEmails | null | undefined,
 ): {
   adminEmail: string | null;
   allVerifiedEmails: string[];

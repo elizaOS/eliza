@@ -103,7 +103,7 @@ export default defineConfig({
             stderr: "pipe",
           },
           {
-            command: `cd ${rootDir}/apps/web && CRON_SECRET=development ALLOW_TEST_PRIVY_DID_AUTH=true DISABLE_RATE_LIMITING=true bunx next start --hostname ${serverHostname} --port ${serverPort}`,
+            command: `cd ${rootDir}/apps/web && CRON_SECRET=development ALLOW_TEST_STEWARD_AUTH=true DISABLE_RATE_LIMITING=true bunx next start --hostname ${serverHostname} --port ${serverPort}`,
             url: baseURL,
             reuseExistingServer: true,
             timeout: 120_000,

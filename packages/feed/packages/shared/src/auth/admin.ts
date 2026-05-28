@@ -27,8 +27,8 @@ export function getAdminEmailDomain(): string | null {
  * This is a low-level check that only validates the email format.
  *
  * NOTE: For auto-admin promotion, use `checkForAdminEmail` from
- * `./privy-email-utils` instead, which checks all linked emails and
- * uses Privy's verification timestamps.
+ * `./auth-email-utils` instead, which checks all linked emails and
+ * uses auth provider's verification timestamps.
  *
  * @param email - The email address to check
  * @returns True if the email domain matches the admin domain
@@ -49,8 +49,8 @@ export function isAdminEmail(email: string | null | undefined): boolean {
 /**
  * Check if a user should be auto-promoted to admin based on their email.
  *
- * @deprecated Use `checkForAdminEmail` from `./privy-email-utils` instead.
- * That function properly checks all linked emails and uses Privy's verification
+ * @deprecated Use `checkForAdminEmail` from `./auth-email-utils` instead.
+ * That function properly checks all linked emails and uses auth provider's verification
  * timestamps rather than requiring a separate emailVerified boolean.
  *
  * SECURITY: Requires both:

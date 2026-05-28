@@ -59,16 +59,10 @@ const BASE_REQUIRED_RULES: ValidationRule[] = [
     keys: ["DATABASE_URL"],
   },
   {
-    id: "privy-app-id",
-    description: "Privy application identifier",
-    kind: "oneOf",
-    keys: ["NEXT_PUBLIC_PRIVY_APP_ID", "PRIVY_APP_ID"],
-  },
-  {
-    id: "privy-app-secret",
-    description: "Privy backend secret",
+    id: "steward-jwt-secret",
+    description: "Steward JWT signing secret",
     kind: "allOf",
-    keys: ["PRIVY_APP_SECRET"],
+    keys: ["STEWARD_JWT_SECRET"],
   },
   {
     id: "cron-secret",

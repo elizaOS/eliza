@@ -13,7 +13,7 @@ const PRODUCTION_ORIGINS = [
   "https://feed.market",
   "https://www.feed.market",
   "https://app.feed.market",
-  // 'https://privy.feed.market', // DEPRECATED — Privy removed in Phase 2
+  // 'https://privy.feed.market', // DEPRECATED — Steward removed in Phase 2
   "https://staging.feed.market",
   "https://app.staging.feed.market",
   "https://play.staging.feed.market",

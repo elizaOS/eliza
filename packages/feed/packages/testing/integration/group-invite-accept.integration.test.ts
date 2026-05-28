@@ -80,7 +80,7 @@ async function postWithAuth(
   });
 }
 
-// Helper to create test user with a mock Privy ID for auth
+// Helper to create test user with a mock historical auth ID for auth
 async function createTestUser(options?: {
   username?: string;
   displayName?: string;
@@ -91,7 +91,7 @@ async function createTestUser(options?: {
   privyId: string;
 }> {
   const id = await generateSnowflakeId();
-  const privyId = `did:privy:test-${id}`;
+  const privyId = `steward:test:test-${id}`;
   const username = options?.username || `test-user-${id.slice(-6)}`;
   const displayName = options?.displayName || `Test User ${id.slice(-6)}`;
 

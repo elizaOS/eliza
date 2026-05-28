@@ -12,7 +12,7 @@
  * - Server running at PLAYWRIGHT_BASE_URL with simulation settlement mode
  *   (NEXT_PUBLIC_PERP_SETTLEMENT_MODE=simulation or unset)
  * - Database with perp market snapshots seeded
- * - Dev auth enabled (ALLOW_TEST_PRIVY_DID_AUTH=true)
+ * - Dev auth enabled (ALLOW_TEST_STEWARD_AUTH=true)
  *
  * Run with: npx playwright test perp-market-trading.e2e.test.ts
  */

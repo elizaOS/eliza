@@ -352,7 +352,7 @@ export function ProfilePageClient({
       if (mode === "auto") {
         const allowUsernameLookup =
           isUsernameParam ||
-          (!routeKey.startsWith("did:privy:") &&
+          (!routeKey.startsWith("steward:test:") &&
             routeKey.length <= 42 &&
             !routeKey.includes("-"));
 

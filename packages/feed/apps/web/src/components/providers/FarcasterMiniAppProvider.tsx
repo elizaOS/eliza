@@ -9,7 +9,7 @@ import { useStewardAuthContext } from "./StewardAuthProvider";
  * Farcaster Mini App Provider.
  *
  * Phase 2: Auto-authenticates via the Feed /api/auth/farcaster-miniapp
- * endpoint (quickAuth JWKS verification) instead of Privy.
+ * endpoint (quickAuth JWKS verification) instead of legacy auth.
  *
  * Flow:
  * 1. Detect mini-app context via sdk.context

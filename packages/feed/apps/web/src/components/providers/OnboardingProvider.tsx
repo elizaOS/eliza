@@ -7,7 +7,7 @@ import {
   POINTS,
   sanitizeOnboardingUsername,
 } from "@feed/shared";
-// Phase 2: Privy replaced by Steward — no more usePrivy or useIdentityToken
+// Steward is the canonical auth provider; onboarding reads auth through useAuth.
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ImportedProfileData } from "@/components/onboarding/UserOnboardingFlow";

@@ -2,8 +2,7 @@
  * Deep link handling for the Capacitor mobile app.
  *
  * Handles two types of deep links:
- * 1. Privy OAuth redirects (handled by AppUrlListener — not here)
- * 2. App content links (feed.market/post/123 → navigate to /post/123)
+ * 1. App content links (feed.market/post/123 -> navigate to /post/123)
  *
  * This module provides the initialization for Android back button handling
  * and app lifecycle events.

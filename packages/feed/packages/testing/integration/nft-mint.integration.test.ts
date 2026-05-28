@@ -94,7 +94,7 @@ async function createTestUser(
   walletAddress?: string,
 ): Promise<{ id: string; walletAddress: string }> {
   const userId = await generateSnowflakeId();
-  const privyId = `did:privy:test-${userId}`;
+  const privyId = `steward:test:test-${userId}`;
   const normalizedWalletAddress = (
     walletAddress ?? createUniqueWalletAddress(userId)
   ).toLowerCase();
@@ -182,7 +182,7 @@ async function cleanupTestNftCollection(): Promise<void> {
 }
 
 function getAuthToken(userId: string): string {
-  return `did:privy:test-${userId}`;
+  return `steward:test:test-${userId}`;
 }
 
 async function authenticatedFetch(

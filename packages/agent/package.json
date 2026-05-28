@@ -138,7 +138,6 @@
       "default": "./dist/auth/*.js"
     },
     "./services/app-session-gate": {
-      "types": "./src/services/app-session-gate.d.ts",
       "eliza-source": {
         "types": "./src/services/app-session-gate.ts",
         "import": "./src/services/app-session-gate.ts",
@@ -149,6 +148,7 @@
         "import": "./src/services/app-session-gate.ts",
         "default": "./src/services/app-session-gate.ts"
       },
+      "types": "./src/services/app-session-gate.d.ts",
       "import": "./dist/services/app-session-gate.js",
       "default": "./dist/services/app-session-gate.js"
     },
@@ -279,6 +279,7 @@
     "@elizaos/plugin-computeruse": "workspace:*",
     "@elizaos/plugin-discord": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-gitpathologist": "workspace:*",
     "@elizaos/plugin-imessage": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",

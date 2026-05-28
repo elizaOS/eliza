@@ -38,7 +38,7 @@ async function createTestUser(
 
   await db.insert(users).values({
     id: userId,
-    privyId: `did:privy:test-${userId}`,
+    privyId: `steward:test:test-${userId}`,
     username,
     displayName: username,
     profileComplete: true,

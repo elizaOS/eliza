@@ -80,15 +80,10 @@ describe("Profile URL Utilities", () => {
       expect(isUsername("@bob123")).toBe(true);
     });
 
-    it("should return false for DID identifiers", () => {
-      expect(isUsername("did:privy:abc123")).toBe(false);
-      expect(isUsername("did:ethr:0x123")).toBe(false);
-    });
-
-    it("should return false for identifiers containing privy", () => {
-      expect(isUsername("privy-user-123")).toBe(false);
-      expect(isUsername("some-privy-id")).toBe(false);
-      expect(isUsername("PRIVY_USER")).toBe(false);
+    it("should return false for identifiers with separators", () => {
+      expect(isUsername("steward:test:abc123")).toBe(false);
+      expect(isUsername("provider-user-123")).toBe(false);
+      expect(isUsername("some-provider-id")).toBe(false);
     });
 
     it("should return false for UUID identifiers", () => {

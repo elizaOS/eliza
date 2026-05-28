@@ -93,7 +93,7 @@ export const CACHE_KEYS = {
    *
    * Cache keys within this namespace use prefixes:
    * - `id:{userId}` for ID lookups
-   * - `privy:{privyId}` for Privy ID lookups
+   * - `privy:{privyId}` for historical auth ID lookups
    * - `username:{lowercaseUsername}` for username lookups
    *
    * @see {@link packages/api/src/users/user-lookup.ts} for implementation details

@@ -116,7 +116,7 @@ import { z } from "zod";
 const ShareRequestSchema = z.object({
   platform: z.enum(["twitter", "farcaster", "link", "telegram", "discord"]),
   contentType: z.enum(["post", "profile", "market", "referral", "leaderboard"]),
-  contentId: z.string().optional(), // Allow any string (user IDs can be Privy DIDs or Snowflake IDs)
+  contentId: z.string().optional(), // Allow any string (user IDs can be legacy provider IDs or Snowflake IDs)
   url: z.string().url().optional(),
 });
 

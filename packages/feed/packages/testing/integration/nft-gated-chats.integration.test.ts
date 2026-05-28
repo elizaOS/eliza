@@ -57,7 +57,7 @@ async function createTestUser(
 
   await db.insert(users).values({
     id: userId,
-    privyId: `did:privy:test-${userId}`,
+    privyId: `steward:test:test-${userId}`,
     walletAddress: userWallet,
     username: `test-nft-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     displayName: `Test NFT User ${userId.slice(0, 8)}`,
@@ -84,7 +84,7 @@ async function createTestUser(
  */
 async function getAuthToken(userId?: string): Promise<string | null> {
   if (userId) {
-    return `did:privy:test-${userId}`;
+    return `steward:test:test-${userId}`;
   }
 
   // Try to load from test tokens file if available

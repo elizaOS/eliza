@@ -33,10 +33,10 @@ export interface TradingBalanceTransferSuccess {
   transferId: string;
   amount: number;
   senderUserId: string;
-  senderPrivyId?: string | null;
+  senderHistoricalAuthId?: string | null;
   senderUsername?: string | null;
   recipientUserId: string;
-  recipientPrivyId?: string | null;
+  recipientHistoricalAuthId?: string | null;
   recipientUsername?: string | null;
   senderBalanceBefore: number;
   senderBalanceAfter: number;
@@ -307,10 +307,10 @@ export class TradingBalanceTransferService {
         transferId,
         amount,
         senderUserId: sender.id,
-        senderPrivyId: sender.privyId,
+        senderHistoricalAuthId: sender.privyId,
         senderUsername: sender.username,
         recipientUserId: recipientUser.id,
-        recipientPrivyId: recipientUser.privyId,
+        recipientHistoricalAuthId: recipientUser.privyId,
         recipientUsername: recipientUser.username,
         senderBalanceBefore,
         senderBalanceAfter,
@@ -334,12 +334,12 @@ export class TradingBalanceTransferService {
       await TradingBalanceTransferService.afterBalanceMutation([
         {
           id: result.senderUserId,
-          privyId: result.senderPrivyId,
+          privyId: result.senderHistoricalAuthId,
           username: result.senderUsername,
         },
         {
           id: result.recipientUserId,
-          privyId: result.recipientPrivyId,
+          privyId: result.recipientHistoricalAuthId,
           username: result.recipientUsername,
         },
       ]);

@@ -15,8 +15,8 @@ type BrowserDevAuthSession = {
   walletAddress: string;
 };
 
-function createPlaywrightTestPrivyToken(userId: string): string {
-  return `did:privy:test-${userId}`;
+function createPlaywrightTestStewardToken(userId: string): string {
+  return `steward:test:${userId}`;
 }
 
 function deriveSecret(seed: string, purpose: string): string {
@@ -46,6 +46,7 @@ async function ensureSynpressDevUser(): Promise<BrowserDevAuthSession> {
     displayName,
     bio: "Local Synpress trading account",
     walletAddress: DEFAULT_WALLET_ADDRESS,
+    stewardId: createPlaywrightTestStewardToken(userId),
     isAdmin: true,
     profileComplete: true,
     hasUsername: true,
@@ -65,14 +66,14 @@ async function ensureSynpressDevUser(): Promise<BrowserDevAuthSession> {
     await db.insert(users).values({
       id: userId,
       ...userValues,
-      privyId: createPlaywrightTestPrivyToken(userId),
+      stewardId: createPlaywrightTestStewardToken(userId),
     });
   }
 
   const hostname = process.env.HOSTNAME || "localhost";
   return {
     userId,
-    accessToken: createPlaywrightTestPrivyToken(userId),
+    accessToken: createPlaywrightTestStewardToken(userId),
     adminToken: deriveSecret(hostname, "admin"),
     displayName,
     walletAddress: DEFAULT_WALLET_ADDRESS,

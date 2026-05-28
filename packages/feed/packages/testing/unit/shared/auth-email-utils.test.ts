@@ -1,18 +1,18 @@
 /**
- * Privy Email Utilities Unit Tests
- * Tests for email extraction and admin domain checking from Privy user objects
+ * Auth Email Utilities Unit Tests
+ * Tests for email extraction and admin domain checking from auth user objects
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import type { PrivyEmailAccount, PrivyUserWithEmails } from "@feed/shared";
+import type { AuthEmailAccount, AuthUserWithEmails } from "@feed/shared";
 
 // Import from absolute source path with cache-busting to avoid mocked @feed/shared.
 const { checkForAdminEmail, findEmailByDomain, getAllVerifiedEmails } =
   await import(
-    `${import.meta.dir}/../../../shared/src/auth/privy-email-utils?t=${Date.now()}`
+    `${import.meta.dir}/../../../shared/src/auth/auth-email-utils?t=${Date.now()}`
   );
 
-describe("Privy Email Utilities", () => {
+describe("Auth Email Utilities", () => {
   describe("getAllVerifiedEmails", () => {
     it("should return empty array for null user", () => {
       expect(getAllVerifiedEmails(null)).toEqual([]);
@@ -23,12 +23,12 @@ describe("Privy Email Utilities", () => {
     });
 
     it("should return empty array for user with no emails", () => {
-      const user: PrivyUserWithEmails = {};
+      const user: AuthUserWithEmails = {};
       expect(getAllVerifiedEmails(user)).toEqual([]);
     });
 
     it("should return primary email when present and verified", () => {
-      const user: PrivyUserWithEmails = {
+      const user: AuthUserWithEmails = {
         email: {
           address: "user@example.com",
           verified_at: Date.now(),
@@ -37,9 +37,9 @@ describe("Privy Email Utilities", () => {
       expect(getAllVerifiedEmails(user)).toEqual(["user@example.com"]);
     });
 
-    it("should return primary email when no verification timestamps (Privy SDK behavior)", () => {
-      // Privy SDK only includes email if verified, so trust it even without timestamps
-      const user: PrivyUserWithEmails = {
+    it("should return primary email when no verification timestamps (auth provider behavior)", () => {
+      // auth provider only includes email if verified, so trust it even without timestamps
+      const user: AuthUserWithEmails = {
         email: {
           address: "user@example.com",
         },
@@ -48,33 +48,33 @@ describe("Privy Email Utilities", () => {
     });
 
     it("should return emails from linkedAccounts when verified", () => {
-      const user: PrivyUserWithEmails = {
+      const user: AuthUserWithEmails = {
         linkedAccounts: [
           {
             type: "email",
             address: "linked@example.com",
             verified_at: Date.now(),
-          } as PrivyEmailAccount,
+          } as AuthEmailAccount,
         ],
       };
       expect(getAllVerifiedEmails(user)).toEqual(["linked@example.com"]);
     });
 
     it("should NOT return unverified emails from linkedAccounts", () => {
-      const user: PrivyUserWithEmails = {
+      const user: AuthUserWithEmails = {
         linkedAccounts: [
           {
             type: "email",
             address: "unverified@example.com",
             // No verification timestamps
-          } as PrivyEmailAccount,
+          } as AuthEmailAccount,
         ],
       };
       expect(getAllVerifiedEmails(user)).toEqual([]);
     });
 
     it("should return both primary and linkedAccounts emails", () => {
-      const user: PrivyUserWithEmails = {
+      const user: AuthUserWithEmails = {
         email: {
           address: "primary@example.com",
           verified_at: Date.now(),
@@ -84,7 +84,7 @@ describe("Privy Email Utilities", () => {
             type: "email",
             address: "linked@company.com",
             verified_at: Date.now(),
-          } as PrivyEmailAccount,
+          } as AuthEmailAccount,
         ],
       };
       const emails = getAllVerifiedEmails(user);
@@ -94,7 +94,7 @@ describe("Privy Email Utilities", () => {
     });
 
     it("should deduplicate emails when primary appears in linkedAccounts", () => {
-      const user: PrivyUserWithEmails = {
+      const user: AuthUserWithEmails = {
         email: {
           address: "user@example.com",
           verified_at: Date.now(),
@@ -104,14 +104,14 @@ describe("Privy Email Utilities", () => {
             type: "email",
             address: "user@example.com",
             verified_at: Date.now(),
-          } as PrivyEmailAccount,
+          } as AuthEmailAccount,
         ],
       };
       expect(getAllVerifiedEmails(user)).toEqual(["user@example.com"]);
     });
 
     it("should normalize emails to lowercase", () => {
-      const user: PrivyUserWithEmails = {
+      const user: AuthUserWithEmails = {
         email: {
           address: "User@Example.COM",
           verified_at: Date.now(),
@@ -121,7 +121,7 @@ describe("Privy Email Utilities", () => {
             type: "email",
             address: "LINKED@Company.org",
             verified_at: Date.now(),
-          } as PrivyEmailAccount,
+          } as AuthEmailAccount,
         ],
       };
       const emails = getAllVerifiedEmails(user);
@@ -130,20 +130,20 @@ describe("Privy Email Utilities", () => {
     });
 
     it("should handle mixed account types in linkedAccounts", () => {
-      const user: PrivyUserWithEmails = {
+      const user: AuthUserWithEmails = {
         linkedAccounts: [
           { type: "wallet", address: "0x123" },
           {
             type: "email",
             address: "verified@example.com",
             verified_at: Date.now(),
-          } as PrivyEmailAccount,
+          } as AuthEmailAccount,
           { type: "farcaster", fid: 12345 },
           {
             type: "email",
             address: "another@example.com",
             verified_at: Date.now(),
-          } as PrivyEmailAccount,
+          } as AuthEmailAccount,
         ],
       };
       const emails = getAllVerifiedEmails(user);
@@ -153,26 +153,26 @@ describe("Privy Email Utilities", () => {
     });
 
     it("should handle first_verified_at timestamp", () => {
-      const user: PrivyUserWithEmails = {
+      const user: AuthUserWithEmails = {
         linkedAccounts: [
           {
             type: "email",
             address: "first@example.com",
             first_verified_at: Date.now(),
-          } as PrivyEmailAccount,
+          } as AuthEmailAccount,
         ],
       };
       expect(getAllVerifiedEmails(user)).toEqual(["first@example.com"]);
     });
 
     it("should handle latest_verified_at timestamp", () => {
-      const user: PrivyUserWithEmails = {
+      const user: AuthUserWithEmails = {
         linkedAccounts: [
           {
             type: "email",
             address: "latest@example.com",
             latest_verified_at: Date.now(),
-          } as PrivyEmailAccount,
+          } as AuthEmailAccount,
         ],
       };
       expect(getAllVerifiedEmails(user)).toEqual(["latest@example.com"]);
@@ -275,7 +275,7 @@ describe("Privy Email Utilities", () => {
     });
 
     it("should return null adminEmail when no emails match admin domain", () => {
-      const user: PrivyUserWithEmails = {
+      const user: AuthUserWithEmails = {
         email: {
           address: "user@gmail.com",
           verified_at: Date.now(),
@@ -287,7 +287,7 @@ describe("Privy Email Utilities", () => {
     });
 
     it("should return admin email from primary email", () => {
-      const user: PrivyUserWithEmails = {
+      const user: AuthUserWithEmails = {
         email: {
           address: "admin@elizalabs.ai",
           verified_at: Date.now(),
@@ -299,7 +299,7 @@ describe("Privy Email Utilities", () => {
     });
 
     it("should return admin email from linkedAccounts", () => {
-      const user: PrivyUserWithEmails = {
+      const user: AuthUserWithEmails = {
         email: {
           address: "personal@gmail.com",
           verified_at: Date.now(),
@@ -309,7 +309,7 @@ describe("Privy Email Utilities", () => {
             type: "email",
             address: "work@elizalabs.ai",
             verified_at: Date.now(),
-          } as PrivyEmailAccount,
+          } as AuthEmailAccount,
         ],
       };
       const result = checkForAdminEmail(user);
@@ -319,7 +319,7 @@ describe("Privy Email Utilities", () => {
     });
 
     it("should find admin email even when primary is not admin domain", () => {
-      const user: PrivyUserWithEmails = {
+      const user: AuthUserWithEmails = {
         linkedAccounts: [
           { type: "wallet", address: "0x123" },
           { type: "farcaster", fid: 12345 },
@@ -327,7 +327,7 @@ describe("Privy Email Utilities", () => {
             type: "email",
             address: "hidden@elizalabs.ai",
             verified_at: Date.now(),
-          } as PrivyEmailAccount,
+          } as AuthEmailAccount,
         ],
       };
       const result = checkForAdminEmail(user);

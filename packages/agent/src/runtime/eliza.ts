@@ -331,6 +331,9 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
     if (packageName === "@elizaos/plugin-openai") {
       return await import("@elizaos/plugin-openai");
     }
+    if (packageName === "@elizaos/plugin-gitpathologist") {
+      return await import("@elizaos/plugin-gitpathologist");
+    }
     return await import(packageName);
   } catch {
     const sourceEntry = resolveWorkspacePluginSourceEntry(packageName);
@@ -489,6 +492,7 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       pluginAnthropic,
       pluginOpenai,
       pluginGoogle,
+      pluginGitpathologist,
     ] = await Promise.all([
       trackImport("@elizaos/plugin-sql", () => getPluginSql(), {
         required: true,
@@ -558,6 +562,11 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
         () => getOptionalPlugin("@elizaos/plugin-google"),
         { required: false },
       ),
+      trackImport(
+        "@elizaos/plugin-gitpathologist",
+        () => getOptionalPlugin("@elizaos/plugin-gitpathologist"),
+        { required: false },
+      ),
     ]);
 
     if (!pluginSql) {
@@ -585,6 +594,9 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
         : {}),
       ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
       ...(pluginGoogle ? { "@elizaos/plugin-google": pluginGoogle } : {}),
+      ...(pluginGitpathologist
+        ? { "@elizaos/plugin-gitpathologist": pluginGitpathologist }
+        : {}),
       ...(pluginAnthropic
         ? { "@elizaos/plugin-anthropic": pluginAnthropic }
         : {}),

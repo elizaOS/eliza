@@ -1,8 +1,8 @@
 /**
  * Authentication E2E Tests
  *
- * Tests authentication flow with Privy + MetaMask:
- * - Wallet connection via Privy
+ * Tests authentication flow with Steward dev auth:
+ * - Wallet-backed test account setup
  * - Session persistence
  * - Protected route access
  * - Admin access verification (Anvil test wallet is admin)
@@ -14,7 +14,7 @@ import {
   navigateTo,
   waitForPageLoad,
 } from "./helpers/page-helpers";
-import { loginWithWallet } from "./helpers/privy-auth";
+import { loginWithWallet } from "./helpers/auth";
 import {
   ADMIN_ROUTES,
   AUTHENTICATED_ROUTES,

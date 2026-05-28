@@ -52,7 +52,7 @@ describe("GET /api/markets/predictions", () => {
       user: {
         userId: "user-1",
         dbUserId: "db-user-1",
-        privyId: "did:privy:user-1",
+        privyId: "steward:test:user-1",
       },
       rateLimitInfo: null,
     });

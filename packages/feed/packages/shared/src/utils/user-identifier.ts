@@ -16,16 +16,16 @@
  * Checks are ordered by index efficiency (fastest first) to minimize pattern
  * matching overhead and route to the fastest index when possible:
  * 1. Primary key (id) - Fastest: direct PK index access, O(1) lookup
- * 2. Unique index (privyId) - Very fast: unique index, similar to PK performance
+ * 2. Unique index (stewardId) - Very fast: unique index, similar to PK performance
  * 3. Functional index (username) - Slower: functional index on lower(username), still indexed
  *
  * @param {string} identifier - The identifier to classify
- * @returns {'id' | 'privyId' | 'username'} The identifier kind
+ * @returns {'id' | 'stewardId' | 'username'} The identifier kind
  *
  * @example
  * ```typescript
- * const kind = resolveUserIdentifierKind('did:privy:abc123');
- * // Returns 'privyId'
+ * const kind = resolveUserIdentifierKind('alice');
+ * // Returns 'username'
  * ```
  *
  * Further detail: `packages/shared/src/utils/USER_IDENTIFIER.md`.
@@ -57,12 +57,7 @@ export function resolveUserIdentifierKind(
     return "id";
   }
 
-  // Check 2a: Unique index - Privy DID
-  if (identifier.startsWith("did:privy:")) {
-    return "privyId";
-  }
-
-  // Check 2b: Unique index - Steward ID (UUID v4 that isn't a Feed PK)
+  // Check 2: Unique index - Steward ID (UUID v4 that isn't a Feed PK)
   // Steward issues standard UUID v4 tokens: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
   // The UUID regex above already returns 'id' for valid UUID-format IDs.
   // Steward IDs are NOT stored as Feed PKs — Feed uses snowflake IDs.
@@ -72,11 +67,11 @@ export function resolveUserIdentifierKind(
   // but auth-middleware looks up by stewardId explicitly, not via this function.)
 
   // Check 3: Functional index (slower) - Username (default)
-  // WHY default to username? Conservative approach - if it doesn't match id or privyId patterns,
+  // WHY default to username? Conservative approach - if it doesn't match id patterns,
   // it's most likely a username. This includes:
   // - Short numeric strings (3-14 digits) - too short to be snowflakes
   // - Strings with letters/underscores/hyphens - typical username patterns
-  // - Any other format that doesn't match id or privyId
+  // - Any other format that doesn't match id
   // WHY not validate username format? Validation would add overhead; database will reject
   // invalid usernames anyway. Defaulting to username query is safe (will return null if not found)
   return "username";
