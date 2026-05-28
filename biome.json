@@ -16,6 +16,8 @@
       "!**/build",
       "!**/.next",
       "!**/node_modules",
+      "!packages/cloud-sdk/src/**/*.d.ts",
+      "!packages/plugin-remote-manifest/src/**/*.d.ts",
       "!**/vendor",
       "!**/vendor/**",
       "!**/public",
