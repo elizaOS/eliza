@@ -85,6 +85,10 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 			return null;
 		}
 
+		if (typeof stored === "string") {
+			return stored;
+		}
+
 		if (typeof stored === "object") {
 			const storedSecret = stored as StoredSecret;
 
@@ -210,7 +214,7 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 			return { ...(stored as StoredSecret).config };
 		}
 
-		return null;
+		return this.createDefaultConfig(key, context);
 	}
 
 	async updateConfig(
@@ -226,11 +230,16 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 			return false;
 		}
 
-		if (!(typeof stored === "object" && "config" in stored)) {
-			return false;
-		}
-
-		const storedSecret = stored as StoredSecret;
+		const storedSecret =
+			typeof stored === "object" && "config" in stored
+				? (stored as StoredSecret)
+				: ({
+						value: stored as string,
+						config: this.createDefaultConfig(key, {
+							level: "global",
+							agentId: this.runtime.agentId,
+						}),
+					} satisfies StoredSecret);
 		storedSecret.config = {
 			...storedSecret.config,
 			...config,
@@ -257,5 +266,4 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 
 		return secrets as Record<string, StoredSecret>;
 	}
-
 }

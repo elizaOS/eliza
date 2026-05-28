@@ -22,7 +22,6 @@ import { BaseSecretStorage } from "./interface.ts";
 
 /**
  * Extended metadata with secrets support
- * Using index signature for compatibility with World.metadata
  */
 interface WorldMetadataWithSecrets {
 	[key: string]: unknown;
@@ -72,6 +71,10 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 
 		if (stored === undefined || stored === null) {
 			return null;
+		}
+
+		if (typeof stored === "string") {
+			return stored;
 		}
 
 		if (typeof stored === "object") {
@@ -234,6 +237,12 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 				if (storedSecret.config) {
 					metadata[key] = { ...storedSecret.config };
 				}
+			} else {
+				metadata[key] = this.createDefaultConfig(key, {
+					level: "world",
+					agentId: this.runtime.agentId,
+					worldId: context.worldId,
+				});
 			}
 		}
 
@@ -259,7 +268,11 @@ export class WorldMetadataStorage extends BaseSecretStorage {
 			return { ...(stored as StoredSecret).config };
 		}
 
-		return null;
+		return this.createDefaultConfig(key, {
+			level: "world",
+			agentId: this.runtime.agentId,
+			worldId: context.worldId,
+		});
 	}
 
 	async updateConfig(

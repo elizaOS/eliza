@@ -5,7 +5,7 @@
  * event-driven hooks across the Eliza agent runtime.
  */
 
-import { type EventPayload, EventType } from "./events";
+import type { EventPayload, EventType } from "./events";
 import type { Service } from "./service";
 
 // ============================================================================

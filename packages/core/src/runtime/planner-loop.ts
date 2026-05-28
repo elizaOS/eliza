@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
 import { plannerSchema, plannerTemplate } from "../prompts/planner";
 import { resolveOptimizedPromptForRuntime } from "../services/optimized-prompt-resolver";
@@ -27,7 +28,6 @@ import {
 	normalizePromptSegments,
 	renderContextObject,
 } from "./context-renderer";
-import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { runEvaluator } from "./evaluator";
 import {
 	extractJsonObjects,

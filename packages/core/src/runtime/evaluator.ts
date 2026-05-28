@@ -1,3 +1,4 @@
+import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { EvaluationResult } from "../types/components";
@@ -13,7 +14,6 @@ import {
 	normalizePromptSegments,
 	renderContextObject,
 } from "./context-renderer";
-import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { extractJsonObjects, parseJsonObject } from "./json-output";
 import {
 	buildModelInputBudget,

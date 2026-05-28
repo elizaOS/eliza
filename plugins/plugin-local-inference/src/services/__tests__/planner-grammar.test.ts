@@ -141,7 +141,6 @@ describe("compileSkeletonToGbnf(buildPlanActionsSkeleton(...))", () => {
 			/HALLUCINATED|UNKNOWN_ACTION|NOT_A_REAL/,
 		);
 	});
-
 });
 
 describe("buildPlannerGuidedDecode — full bundle for the local engine", () => {

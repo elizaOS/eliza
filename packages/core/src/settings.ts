@@ -46,6 +46,17 @@ let saltCache: SaltCache | null = null;
 let saltErrorLogged = false;
 const SALT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes TTL
 
+function isEncryptedV1(value: string): boolean {
+	const parts = value.split(":");
+	if (parts.length !== 2) return false;
+	try {
+		const iv = BufferUtils.fromHex(parts[0]);
+		return iv.length === 16;
+	} catch {
+		return false;
+	}
+}
+
 function isEncryptedV2(value: string): boolean {
 	const parts = value.split(":");
 	if (parts.length !== 4) return false;
@@ -135,7 +146,7 @@ export function encryptStringValue(value: string, salt: string): string {
 	}
 
 	// If already encrypted, return as-is.
-	if (isEncryptedV2(value)) {
+	if (isEncryptedV1(value) || isEncryptedV2(value)) {
 		return value;
 	}
 
@@ -170,29 +181,37 @@ export function decryptStringValue(value: string, salt: string): string {
 	try {
 		const parts = value.split(":");
 
-		if (!isEncryptedV2(value)) {
-			return value;
-		}
-
-		// v2:<ivHex>:<ciphertextHex>:<tagHex>
-		const iv = BufferUtils.fromHex(parts[1]);
-		const ciphertext = BufferUtils.fromHex(parts[2]);
-		const tag = BufferUtils.fromHex(parts[3]);
-
 		const key = cryptoUtils
 			.createHash("sha256")
 			.update(salt)
 			.digest()
 			.slice(0, 32);
-		const aad = new TextEncoder().encode("elizaos:settings:v2");
-		const plaintextBytes = cryptoUtils.decryptAes256Gcm(
-			key,
-			iv,
-			ciphertext,
-			tag,
-			aad,
-		);
-		return BufferUtils.bufferToString(plaintextBytes, "utf8");
+
+		if (isEncryptedV2(value)) {
+			const iv = BufferUtils.fromHex(parts[1]);
+			const ciphertext = BufferUtils.fromHex(parts[2]);
+			const tag = BufferUtils.fromHex(parts[3]);
+			const aad = new TextEncoder().encode("elizaos:settings:v2");
+			const plaintextBytes = cryptoUtils.decryptAes256Gcm(
+				key,
+				iv,
+				ciphertext,
+				tag,
+				aad,
+			);
+			return BufferUtils.bufferToString(plaintextBytes, "utf8");
+		}
+
+		if (isEncryptedV1(value)) {
+			const iv = BufferUtils.fromHex(parts[0]);
+			const encryptedText = parts[1];
+			const decipher = cryptoUtils.createDecipheriv("aes-256-cbc", key, iv);
+			let decrypted = decipher.update(encryptedText, "hex", "utf8");
+			decrypted += decipher.final("utf8");
+			return decrypted;
+		}
+
+		return value;
 	} catch (error) {
 		logger.error({ src: "core:settings", error }, "Decryption failed");
 		// Return the original value on error

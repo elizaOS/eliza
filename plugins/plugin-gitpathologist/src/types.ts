@@ -117,11 +117,14 @@ export interface PathologyReport {
   cacheKey: string;
 }
 
-export type Operation = "report" | "list";
+export type Operation = "report" | "trace" | "diff" | "list";
 
 export interface OperationParams {
-  action: Operation;
+  action?: Operation;
+  operation?: Operation;
   surface?: string;
+  compareTo?: string;
+  symptom?: string;
   since?: string;
   budget?: number;
   cache?: AnalysisOptions["cache"];

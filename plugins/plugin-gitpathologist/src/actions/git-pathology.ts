@@ -5,6 +5,7 @@
  * Actions:
  *   report (default) — full pathology report for a surface
  *   list             — list cached reports for the repo root
+ *   trace/diff       — legacy v2 placeholders retained as explicit errors
  */
 
 import path from "node:path";
@@ -24,7 +25,14 @@ import {
 } from "../services/git-pathology-service.ts";
 import type { AnalysisOptions, Operation, PathologyReport, SurfaceSpec } from "../types.ts";
 
-const VALID_ACTIONS: ReadonlySet<Operation> = new Set(["report", "list"]);
+type GitPathologyOperation = Operation | "trace" | "diff";
+
+const VALID_ACTIONS: ReadonlySet<GitPathologyOperation> = new Set([
+  "report",
+  "list",
+  "trace",
+  "diff",
+]);
 const SURFACE_HINT_RE =
   /\b(pathology|git\s+history|code\s+health|drift|rot|inflection|when\s+did\s+(?:this\s+)?(?:code|file|module|package|plugin|service|component|path|repo|repository|branch|commit))\b/i;
 
@@ -36,14 +44,22 @@ function paramsRecord(
   options: HandlerOptions | Record<string, unknown> | undefined
 ): Record<string, unknown> {
   if (!options || typeof options !== "object") return {};
+  const parameters = (options as HandlerOptions).parameters;
+  if (parameters && typeof parameters === "object") {
+    return parameters as Record<string, unknown>;
+  }
   const params = (options as Record<string, unknown>).params;
   if (params && typeof params === "object") return params as Record<string, unknown>;
   return options as Record<string, unknown>;
 }
 
-function readAction(params: Record<string, unknown>): Operation {
-  const raw = typeof params.action === "string" ? params.action.toLowerCase() : "report";
-  return VALID_ACTIONS.has(raw as Operation) ? (raw as Operation) : "report";
+function readAction(params: Record<string, unknown>): GitPathologyOperation {
+  const rawValue =
+    params.action ?? params.operation ?? params.op ?? params.subaction;
+  const raw = typeof rawValue === "string" ? rawValue.toLowerCase() : "report";
+  return VALID_ACTIONS.has(raw as GitPathologyOperation)
+    ? (raw as GitPathologyOperation)
+    : "report";
 }
 
 function readString(params: Record<string, unknown>, key: string): string | undefined {
@@ -96,6 +112,11 @@ function listResult(service: GitPathologyService, repoRoot: string): ActionResul
     text: `Cached pathology reports:\n${lines.join("\n")}`,
     data: { reports: summaries },
   };
+}
+
+function notImplementedResult(operation: GitPathologyOperation): ActionResult {
+  const text = `Operation "${operation}" is not implemented in gitpathologist v1. Use action="report" or action="list".`;
+  return { success: false, text, error: "NOT_IMPLEMENTED" };
 }
 
 function reportResult(report: PathologyReport): ActionResult {
@@ -159,7 +180,15 @@ export const gitPathologyAction: Action & { suppressPostActionContinuation: true
       content.params && typeof content.params === "object"
         ? (content.params as Record<string, unknown>)
         : null;
-    if (params && typeof params.action === "string") return true;
+    if (
+      params &&
+      (typeof params.action === "string" ||
+        typeof params.operation === "string" ||
+        typeof params.op === "string" ||
+        typeof params.subaction === "string")
+    ) {
+      return true;
+    }
     if (params && typeof params.surface === "string") return true;
     const text = typeof content.text === "string" ? content.text : "";
     return SURFACE_HINT_RE.test(text);
@@ -182,6 +211,14 @@ export const gitPathologyAction: Action & { suppressPostActionContinuation: true
 
     if (action === "list") {
       const result = listResult(service, repoRoot);
+      if (callback && typeof result.text === "string") {
+        await callback({ text: result.text });
+      }
+      return result;
+    }
+
+    if (action === "trace" || action === "diff") {
+      const result = notImplementedResult(action);
       if (callback && typeof result.text === "string") {
         await callback({ text: result.text });
       }
