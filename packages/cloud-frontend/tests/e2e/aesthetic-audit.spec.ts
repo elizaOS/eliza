@@ -963,435 +963,431 @@ for (const viewport of VIEWPORTS) {
           await context.clearCookies();
         }
 
-        // Stub out API endpoints that 401 against the test JWT so the
-        // audit captures actual page content instead of the
-        // "Unauthorized" error boundary. We use a single broad route
-        // that maps URL patterns to canned empty/zero shapes — the goal
-        // is to render the empty-state UI, not to exercise application
-        // logic.
-        if (route.auth) {
-          await context.route(/\/api\//, (r) => {
-            const url = r.request().url();
-            const empty = (json: unknown) =>
-              r.fulfill({
-                json,
-                headers: { "content-type": "application/json" },
-              });
+        // Stub out API endpoints so the audit captures deterministic page
+        // content instead of backend/proxy failures. Public parameterized
+        // routes also depend on these fixtures, even when no auth cookie is
+        // injected.
+        await context.route(/\/api\//, (r) => {
+          const url = r.request().url();
+          const empty = (json: unknown) =>
+            r.fulfill({
+              json,
+              headers: { "content-type": "application/json" },
+            });
 
-            // Auth + session
-            if (/\/sessions\/current/.test(url))
-              return empty({
-                id: "test-session",
-                userId: "22222222-2222-4222-8222-222222222222",
-                expiresAt: new Date(Date.now() + 3600_000).toISOString(),
-              });
-            if (/\/auth\/logout/.test(url)) return empty({ ok: true });
-            if (/\/me\/mfa/.test(url))
-              return empty({ enrolled: false, methods: [] });
-            if (/\/me\/plugin-grants/.test(url)) return empty({ grants: [] });
+          // Auth + session
+          if (/\/sessions\/current/.test(url))
+            return empty({
+              id: "test-session",
+              userId: "22222222-2222-4222-8222-222222222222",
+              expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+            });
+          if (/\/auth\/logout/.test(url)) return empty({ ok: true });
+          if (/\/me\/mfa/.test(url))
+            return empty({ enrolled: false, methods: [] });
+          if (/\/me\/plugin-grants/.test(url)) return empty({ grants: [] });
 
-            // List endpoints
-            if (/\/api-keys\/explorer/.test(url))
-              return empty({
-                apiKey: {
-                  id: "audit-explorer-key",
-                  name: "Audit Explorer Key",
-                  description: "Synthetic key for the aesthetic audit",
-                  key_prefix: "elizaaudit",
-                  key: "elizaaudit_test_key",
-                  created_at: new Date(0).toISOString(),
-                  is_active: true,
-                  usage_count: 0,
-                  last_used_at: null,
-                },
-                isNew: false,
-              });
-            if (/\/api-keys($|\?)/.test(url))
-              return empty({ keys: [], total: 0 });
-            if (/\/containers(\/auth)?($|\?|\/[^/]+$)/.test(url))
-              return empty({ containers: [] });
-            if (/\/eliza\/agents($|\?)/.test(url))
-              return empty({ success: true, data: [] });
-            if (/\/eliza\/agents\/[^/?]+/.test(url))
-              return empty({
-                success: true,
-                data: {
-                  id: "e2e-fixture",
-                  agentName: "E2E Test Agent",
-                  status: "running",
-                  databaseStatus: "connected",
-                  lastBackupAt: null,
-                  lastHeartbeatAt: new Date().toISOString(),
-                  errorMessage: null,
-                  createdAt: new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
-                  token_address: null,
-                  token_chain: null,
-                  token_name: null,
-                  token_ticker: null,
-                  bridgeUrl: null,
-                  errorCount: 0,
-                  walletAddress: null,
-                  walletProvider: null,
-                  walletStatus: "none",
-                  adminDetails: null,
-                },
-              });
-            if (/\/my-agents\/characters/.test(url))
-              return empty({ success: true, data: { characters: [] } });
-            if (/\/my-agents\/saved/.test(url))
-              return empty({ success: true, data: { agents: [] } });
-            if (/\/my-agents\/claim-affiliate-characters/.test(url))
-              return empty({ success: true, claimed: [] });
-            if (/\/agents(\/[^/]+)?($|\?)/.test(url)) return empty([]);
-            if (/\/apps(\/[^/]+)?($|\?)/.test(url)) return empty({ apps: [] });
-            if (/\/mcps($|\?)/.test(url)) return empty({ mcps: [] });
-            if (/\/documents\/query/.test(url))
-              return empty({ documents: [], total: 0 });
-            if (/\/documents($|\?)/.test(url))
-              return empty({ documents: [], total: 0 });
-            if (/\/invoices\/list/.test(url))
-              return empty({ invoices: [], total: 0 });
-            if (/\/invoices/.test(url)) return empty({ invoices: [] });
-            if (/\/redemptions\/balance/.test(url))
-              return empty({
-                balance: {
-                  totalEarned: 0,
-                  availableBalance: 0,
-                  pendingBalance: 0,
-                  totalRedeemed: 0,
-                  totalPending: 0,
-                  totalConvertedToCredits: 0,
-                },
-                bySource: [],
-                recentEarnings: [],
-                limits: {
-                  minRedemptionUsd: 10,
-                  maxSingleRedemptionUsd: 1000,
-                  userDailyLimitUsd: 1000,
-                  userHourlyLimitUsd: 250,
-                },
-                eligibility: {
-                  canRedeem: false,
-                  reason:
-                    "Minimum redemption is $10.00. You have $0.00 available.",
-                  dailyLimitRemaining: 1000,
-                },
-              });
-            if (/\/redemptions\/status/.test(url))
-              return empty({
-                enabled: true,
-                operational: true,
-                networks: {
-                  ethereum: { available: "available" },
-                  base: { available: "available" },
-                  solana: { available: "available" },
-                },
-              });
-            if (/\/redemptions/.test(url))
-              return empty({ redemptions: [], total: 0 });
-            if (/\/affiliates/.test(url))
-              return empty({
-                code: {
-                  id: "aff_test",
-                  code: "TEST123",
-                  markup_percent: "20.00",
-                  is_active: true,
-                },
-              });
-            if (/\/referrals/.test(url))
-              return empty({
-                code: "REF123",
-                total_referrals: 0,
+          // List endpoints
+          if (/\/api-keys\/explorer/.test(url))
+            return empty({
+              apiKey: {
+                id: "audit-explorer-key",
+                name: "Audit Explorer Key",
+                description: "Synthetic key for the aesthetic audit",
+                key_prefix: "elizaaudit",
+                key: "elizaaudit_test_key",
+                created_at: new Date(0).toISOString(),
                 is_active: true,
-              });
-            if (/\/quotas\/usage/.test(url))
-              return empty({
-                quotas: {},
-                usage: { tokens: 0, requests: 0 },
-              });
-            if (/\/credits\/transactions/.test(url))
-              return empty({ transactions: [], total: 0 });
+                usage_count: 0,
+                last_used_at: null,
+              },
+              isNew: false,
+            });
+          if (/\/api-keys($|\?)/.test(url))
+            return empty({ keys: [], total: 0 });
+          if (/\/containers(\/auth)?($|\?|\/[^/]+$)/.test(url))
+            return empty({ containers: [] });
+          if (/\/eliza\/agents($|\?)/.test(url))
+            return empty({ success: true, data: [] });
+          if (/\/eliza\/agents\/[^/?]+/.test(url))
+            return empty({
+              success: true,
+              data: {
+                id: "e2e-fixture",
+                agentName: "E2E Test Agent",
+                status: "running",
+                databaseStatus: "connected",
+                lastBackupAt: null,
+                lastHeartbeatAt: new Date().toISOString(),
+                errorMessage: null,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                token_address: null,
+                token_chain: null,
+                token_name: null,
+                token_ticker: null,
+                bridgeUrl: null,
+                errorCount: 0,
+                walletAddress: null,
+                walletProvider: null,
+                walletStatus: "none",
+                adminDetails: null,
+              },
+            });
+          if (/\/my-agents\/characters/.test(url))
+            return empty({ success: true, data: { characters: [] } });
+          if (/\/my-agents\/saved/.test(url))
+            return empty({ success: true, data: { agents: [] } });
+          if (/\/my-agents\/claim-affiliate-characters/.test(url))
+            return empty({ success: true, claimed: [] });
+          if (/\/agents(\/[^/]+)?($|\?)/.test(url)) return empty([]);
+          if (/\/apps(\/[^/]+)?($|\?)/.test(url)) return empty({ apps: [] });
+          if (/\/mcps($|\?)/.test(url)) return empty({ mcps: [] });
+          if (/\/documents\/query/.test(url))
+            return empty({ documents: [], total: 0 });
+          if (/\/documents($|\?)/.test(url))
+            return empty({ documents: [], total: 0 });
+          if (/\/invoices\/list/.test(url))
+            return empty({ invoices: [], total: 0 });
+          if (/\/invoices/.test(url)) return empty({ invoices: [] });
+          if (/\/redemptions\/balance/.test(url))
+            return empty({
+              balance: {
+                totalEarned: 0,
+                availableBalance: 0,
+                pendingBalance: 0,
+                totalRedeemed: 0,
+                totalPending: 0,
+                totalConvertedToCredits: 0,
+              },
+              bySource: [],
+              recentEarnings: [],
+              limits: {
+                minRedemptionUsd: 10,
+                maxSingleRedemptionUsd: 1000,
+                userDailyLimitUsd: 1000,
+                userHourlyLimitUsd: 250,
+              },
+              eligibility: {
+                canRedeem: false,
+                reason:
+                  "Minimum redemption is $10.00. You have $0.00 available.",
+                dailyLimitRemaining: 1000,
+              },
+            });
+          if (/\/redemptions\/status/.test(url))
+            return empty({
+              enabled: true,
+              operational: true,
+              networks: {
+                ethereum: { available: "available" },
+                base: { available: "available" },
+                solana: { available: "available" },
+              },
+            });
+          if (/\/redemptions/.test(url))
+            return empty({ redemptions: [], total: 0 });
+          if (/\/affiliates/.test(url))
+            return empty({
+              code: {
+                id: "aff_test",
+                code: "TEST123",
+                markup_percent: "20.00",
+                is_active: true,
+              },
+            });
+          if (/\/referrals/.test(url))
+            return empty({
+              code: "REF123",
+              total_referrals: 0,
+              is_active: true,
+            });
+          if (/\/quotas\/usage/.test(url))
+            return empty({
+              quotas: {},
+              usage: { tokens: 0, requests: 0 },
+            });
+          if (/\/credits\/transactions/.test(url))
+            return empty({ transactions: [], total: 0 });
 
-            // Billing surfaces
-            if (/\/billing\/settings/.test(url))
-              return empty({
-                settings: {
-                  autoTopUp: {
-                    enabled: false,
-                    amount: null,
-                    threshold: null,
-                    paymentMethodId: null,
-                  },
-                  payAsYouGo: {
-                    enabled: false,
-                  },
-                  limits: {
-                    minTopUpAmount: 5,
-                    maxTopUpAmount: 500,
-                    minThreshold: 1,
-                    maxThreshold: 100,
-                  },
+          // Billing surfaces
+          if (/\/billing\/settings/.test(url))
+            return empty({
+              settings: {
+                autoTopUp: {
+                  enabled: false,
+                  amount: null,
+                  threshold: null,
+                  paymentMethodId: null,
                 },
-              });
-            if (/\/credits\/balance/.test(url))
-              return empty({ balance: 0, currency: "USD" });
-            if (/\/billing/.test(url))
-              return empty({
-                paymentMethods: [],
-                subscriptions: [],
-                upcomingInvoice: null,
-              });
-            if (/\/crypto\/(direct-payments|payments|status)/.test(url))
-              return empty({ payments: [], enabled: true });
-            if (/\/stripe\/create-checkout-session/.test(url))
-              return empty({ url: "https://example.com/checkout" });
+                payAsYouGo: {
+                  enabled: false,
+                },
+                limits: {
+                  minTopUpAmount: 5,
+                  maxTopUpAmount: 500,
+                  minThreshold: 1,
+                  maxThreshold: 100,
+                },
+              },
+            });
+          if (/\/credits\/balance/.test(url))
+            return empty({ balance: 0, currency: "USD" });
+          if (/\/billing/.test(url))
+            return empty({
+              paymentMethods: [],
+              subscriptions: [],
+              upcomingInvoice: null,
+            });
+          if (/\/crypto\/(direct-payments|payments|status)/.test(url))
+            return empty({ payments: [], enabled: true });
+          if (/\/stripe\/create-checkout-session/.test(url))
+            return empty({ url: "https://example.com/checkout" });
 
-            // Dashboard / profile
-            if (/\/dashboard\b/.test(url))
-              return empty({
-                user: { name: "Test User" },
-                agents: [],
-              });
-            if (/\/v1\/user($|\?)/.test(url)) {
-              const now = new Date().toISOString();
-              return empty({
-                success: true,
-                data: {
-                  id: "22222222-2222-4222-8222-222222222222",
-                  email: "audit@example.com",
-                  email_verified: true,
-                  wallet_address: "0xE2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2",
-                  wallet_chain_type: "ethereum",
-                  wallet_verified: true,
-                  name: "Test User",
-                  avatar: null,
-                  organization_id: "33333333-3333-4333-8333-333333333333",
-                  role: "owner",
-                  steward_user_id: "steward-test-user",
-                  telegram_id: null,
-                  telegram_username: null,
-                  telegram_first_name: null,
-                  telegram_photo_url: null,
-                  discord_id: null,
-                  discord_username: null,
-                  discord_global_name: null,
-                  discord_avatar_url: null,
-                  whatsapp_id: null,
-                  whatsapp_name: null,
-                  phone_number: null,
-                  phone_verified: null,
-                  is_anonymous: false,
-                  anonymous_session_id: null,
-                  expires_at: null,
-                  nickname: "Test",
-                  work_function: null,
-                  preferences: null,
-                  email_notifications: true,
-                  response_notifications: true,
-                  is_active: true,
+          // Dashboard / profile
+          if (/\/dashboard\b/.test(url))
+            return empty({
+              user: { name: "Test User" },
+              agents: [],
+            });
+          if (/\/v1\/user($|\?)/.test(url)) {
+            const now = new Date().toISOString();
+            return empty({
+              success: true,
+              data: {
+                id: "22222222-2222-4222-8222-222222222222",
+                email: "audit@example.com",
+                email_verified: true,
+                wallet_address: "0xE2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2",
+                wallet_chain_type: "ethereum",
+                wallet_verified: true,
+                name: "Test User",
+                avatar: null,
+                organization_id: "33333333-3333-4333-8333-333333333333",
+                role: "owner",
+                steward_user_id: "steward-test-user",
+                telegram_id: null,
+                telegram_username: null,
+                telegram_first_name: null,
+                telegram_photo_url: null,
+                discord_id: null,
+                discord_username: null,
+                discord_global_name: null,
+                discord_avatar_url: null,
+                whatsapp_id: null,
+                whatsapp_name: null,
+                phone_number: null,
+                phone_verified: null,
+                is_anonymous: false,
+                anonymous_session_id: null,
+                expires_at: null,
+                nickname: "Test",
+                work_function: null,
+                preferences: null,
+                email_notifications: true,
+                response_notifications: true,
+                is_active: true,
+                created_at: now,
+                updated_at: now,
+                organization: {
+                  id: "33333333-3333-4333-8333-333333333333",
+                  name: "Test Org",
                   created_at: now,
                   updated_at: now,
-                  organization: {
-                    id: "33333333-3333-4333-8333-333333333333",
-                    name: "Test Org",
-                    created_at: now,
-                    updated_at: now,
-                    is_active: true,
-                  },
+                  is_active: true,
                 },
-              });
-            }
-            if (/\/me($|\?)|\/profile/.test(url))
-              return empty({
-                id: "test-user",
-                name: "Test User",
-                email: "test@example.com",
-              });
-            if (/\/stats\/account/.test(url))
-              return empty({
-                lifetimeSpend: 0,
-                requests: 0,
-                tokens: 0,
-              });
+              },
+            });
+          }
+          if (/\/me($|\?)|\/profile/.test(url))
+            return empty({
+              id: "test-user",
+              name: "Test User",
+              email: "test@example.com",
+            });
+          if (/\/stats\/account/.test(url))
+            return empty({
+              lifetimeSpend: 0,
+              requests: 0,
+              tokens: 0,
+            });
 
-            // Settings + connectors
-            if (
-              /\/(telegram|whatsapp|twilio|discord|google|microsoft|blooio)\b/.test(
-                url,
-              )
+          // Settings + connectors
+          if (
+            /\/(telegram|whatsapp|twilio|discord|google|microsoft|blooio)\b/.test(
+              url,
             )
-              return empty({ connected: false, account: null });
-            if (/\/organizations\/(members|invites)/.test(url))
-              return empty({ members: [], invites: [], total: 0 });
+          )
+            return empty({ connected: false, account: null });
+          if (/\/organizations\/(members|invites)/.test(url))
+            return empty({ members: [], invites: [], total: 0 });
 
-            // Security / sessions
-            if (/\/sessions($|\?)/.test(url))
-              return empty({ sessions: [], total: 0 });
-            if (/\/security|\/permissions/.test(url))
-              return empty({
-                sessions: [],
-                twoFactor: { enrolled: false },
-                permissions: [],
-              });
+          // Security / sessions
+          if (/\/sessions($|\?)/.test(url))
+            return empty({ sessions: [], total: 0 });
+          if (/\/security|\/permissions/.test(url))
+            return empty({
+              sessions: [],
+              twoFactor: { enrolled: false },
+              permissions: [],
+            });
 
-            // Analytics
-            if (/\/analytics\/breakdown/.test(url))
-              return empty({
-                success: true,
-                data: {
-                  filters: {
-                    startDate: "2026-05-14",
-                    endDate: "2026-05-21",
-                    granularity: "day",
-                    timeRange: "weekly",
-                  },
-                  overallStats: {
-                    totalRequests: 0,
-                    totalInputTokens: 0,
-                    totalOutputTokens: 0,
-                    totalCost: 0,
-                    successRate: 0,
-                  },
-                  timeSeriesData: [],
-                  costTrending: {
-                    currentDailyBurn: 0,
-                    previousDailyBurn: 0,
-                    burnChangePercent: 0,
-                    projectedMonthlyBurn: 0,
-                    daysUntilBalanceZero: null,
-                    monthlyBurnPercent: 0,
-                    monthlyBurnPercentClamped: 0,
-                    burnAlertThresholdExceeded: false,
-                  },
-                  providerBreakdown: [],
-                  modelBreakdown: [],
-                  trends: {
-                    requestsChange: 0,
-                    costChange: 0,
-                    tokensChange: 0,
-                    successRateChange: 0,
-                    period: "week",
-                  },
-                  organization: { creditBalance: "0.00" },
+          // Analytics
+          if (/\/analytics\/breakdown/.test(url))
+            return empty({
+              success: true,
+              data: {
+                filters: {
+                  startDate: "2026-05-14",
+                  endDate: "2026-05-21",
+                  granularity: "day",
+                  timeRange: "weekly",
                 },
-              });
-            if (/\/analytics\/projections/.test(url))
-              return empty({
-                success: true,
-                data: {
-                  historicalData: [],
-                  projections: [],
-                  alerts: [],
-                  creditBalance: 0,
+                overallStats: {
+                  totalRequests: 0,
+                  totalInputTokens: 0,
+                  totalOutputTokens: 0,
+                  totalCost: 0,
+                  successRate: 0,
                 },
-              });
-            if (/\/analytics|\/usage/.test(url))
-              return empty({
-                success: true,
-                data: {
-                  filters: {
-                    startDate: "2026-05-14",
-                    endDate: "2026-05-21",
-                    granularity: "day",
-                    timeRange: "weekly",
-                  },
-                  overallStats: {
-                    totalRequests: 0,
-                    totalInputTokens: 0,
-                    totalOutputTokens: 0,
-                    totalCost: 0,
-                    successRate: 0,
-                  },
-                  timeSeriesData: [],
-                  costTrending: {
-                    currentDailyBurn: 0,
-                    previousDailyBurn: 0,
-                    burnChangePercent: 0,
-                    projectedMonthlyBurn: 0,
-                    daysUntilBalanceZero: null,
-                    monthlyBurnPercent: 0,
-                    monthlyBurnPercentClamped: 0,
-                    burnAlertThresholdExceeded: false,
-                  },
-                  providerBreakdown: [],
-                  modelBreakdown: [],
-                  trends: {
-                    requestsChange: 0,
-                    costChange: 0,
-                    tokensChange: 0,
-                    successRateChange: 0,
-                    period: "week",
-                  },
-                  organization: { creditBalance: "0.00" },
+                timeSeriesData: [],
+                costTrending: {
+                  currentDailyBurn: 0,
+                  previousDailyBurn: 0,
+                  burnChangePercent: 0,
+                  projectedMonthlyBurn: 0,
+                  daysUntilBalanceZero: null,
+                  monthlyBurnPercent: 0,
+                  monthlyBurnPercentClamped: 0,
+                  burnAlertThresholdExceeded: false,
                 },
-              });
-            if (/\/earnings/.test(url))
-              return empty({ available: 0, lifetime: 0, history: [] });
-            if (/\/pricing\/summary/.test(url))
-              return empty({
-                tiers: [],
-                currentTier: null,
-              });
+                providerBreakdown: [],
+                modelBreakdown: [],
+                trends: {
+                  requestsChange: 0,
+                  costChange: 0,
+                  tokensChange: 0,
+                  successRateChange: 0,
+                  period: "week",
+                },
+                organization: { creditBalance: "0.00" },
+              },
+            });
+          if (/\/analytics\/projections/.test(url))
+            return empty({
+              success: true,
+              data: {
+                historicalData: [],
+                projections: [],
+                alerts: [],
+                creditBalance: 0,
+              },
+            });
+          if (/\/analytics|\/usage/.test(url))
+            return empty({
+              success: true,
+              data: {
+                filters: {
+                  startDate: "2026-05-14",
+                  endDate: "2026-05-21",
+                  granularity: "day",
+                  timeRange: "weekly",
+                },
+                overallStats: {
+                  totalRequests: 0,
+                  totalInputTokens: 0,
+                  totalOutputTokens: 0,
+                  totalCost: 0,
+                  successRate: 0,
+                },
+                timeSeriesData: [],
+                costTrending: {
+                  currentDailyBurn: 0,
+                  previousDailyBurn: 0,
+                  burnChangePercent: 0,
+                  projectedMonthlyBurn: 0,
+                  daysUntilBalanceZero: null,
+                  monthlyBurnPercent: 0,
+                  monthlyBurnPercentClamped: 0,
+                  burnAlertThresholdExceeded: false,
+                },
+                providerBreakdown: [],
+                modelBreakdown: [],
+                trends: {
+                  requestsChange: 0,
+                  costChange: 0,
+                  tokensChange: 0,
+                  successRateChange: 0,
+                  period: "week",
+                },
+                organization: { creditBalance: "0.00" },
+              },
+            });
+          if (/\/earnings/.test(url))
+            return empty({ available: 0, lifetime: 0, history: [] });
+          if (/\/pricing\/summary/.test(url))
+            return empty({
+              tiers: [],
+              currentTier: null,
+            });
 
-            // OpenAPI spec — provide a tiny sample so api-explorer can
-            // render at least one endpoint card.
-            if (/\/openapi/.test(url))
-              return empty({
-                openapi: "3.0.0",
-                info: { title: "Eliza Cloud", version: "1" },
-                servers: [{ url: "https://api.eliza.os" }],
-                paths: {
-                  "/v1/chat": {
-                    post: {
-                      summary: "Chat completion",
-                      tags: ["AI Completions"],
-                      responses: {
-                        "200": { description: "Success" },
-                      },
+          // OpenAPI spec — provide a tiny sample so api-explorer can
+          // render at least one endpoint card.
+          if (/\/openapi/.test(url))
+            return empty({
+              openapi: "3.0.0",
+              info: { title: "Eliza Cloud", version: "1" },
+              servers: [{ url: "https://api.eliza.os" }],
+              paths: {
+                "/v1/chat": {
+                  post: {
+                    summary: "Chat completion",
+                    tags: ["AI Completions"],
+                    responses: {
+                      "200": { description: "Success" },
                     },
                   },
                 },
-              });
+              },
+            });
 
-            // Admin (dev-open after the use-admin / Layout patch)
-            if (/\/admin\/moderation/.test(url))
-              return r.fulfill({
-                status: 200,
-                headers: {
-                  "content-type": "application/json",
-                  "X-Is-Admin": "true",
-                  "X-Admin-Role": "super_admin",
-                },
-                json: { isAdmin: true, role: "super_admin" },
-              });
-            if (/\/admin\/metrics/.test(url))
-              return empty({
-                dau: 0,
-                wau: 0,
-                mau: 0,
-                newSignupsToday: 0,
-                newSignups7d: 0,
-                avgMessagesPerUser: 0,
-                platformBreakdown: {},
-                platformDistribution: [],
-                oauthRate: {
-                  total_users: 0,
-                  connected_users: 0,
-                  rate: 0,
-                  ratePercent: 0,
-                  byService: {},
-                },
-                dailyTrend: [],
-                retentionCohorts: [],
-                retentionRates: [],
-              });
-            if (/\/admin\//.test(url)) return empty({ items: [], metrics: {} });
+          // Admin (dev-open after the use-admin / Layout patch)
+          if (/\/admin\/moderation/.test(url))
+            return r.fulfill({
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "X-Is-Admin": "true",
+                "X-Admin-Role": "super_admin",
+              },
+              json: { isAdmin: true, role: "super_admin" },
+            });
+          if (/\/admin\/metrics/.test(url))
+            return empty({
+              dau: 0,
+              wau: 0,
+              mau: 0,
+              newSignupsToday: 0,
+              newSignups7d: 0,
+              avgMessagesPerUser: 0,
+              platformBreakdown: {},
+              platformDistribution: [],
+              oauthRate: {
+                total_users: 0,
+                connected_users: 0,
+                rate: 0,
+                ratePercent: 0,
+                byService: {},
+              },
+              dailyTrend: [],
+              retentionCohorts: [],
+              retentionRates: [],
+            });
+          if (/\/admin\//.test(url)) return empty({ items: [], metrics: {} });
 
-            // Permissive default — empty array works for most list endpoints.
-            return empty([]);
-          });
-        }
+          // Permissive default — empty array works for most list endpoints.
+          return empty([]);
+        });
 
         const consoleErrors: string[] = [];
         const failedRequests: { url: string; status: number }[] = [];
