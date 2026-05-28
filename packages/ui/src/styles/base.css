@@ -30,6 +30,11 @@
   --muted: rgba(0, 0, 0, 0.58);
   --muted-strong: rgba(0, 0, 0, 0.74);
 
+  /* shadcn token aliases */
+  --foreground: var(--text);
+  --background: var(--bg);
+  --muted-foreground: var(--muted);
+
   /* Borders */
   --border: rgba(0, 0, 0, 0.12);
   --border-strong: rgba(0, 0, 0, 0.22);
@@ -48,9 +53,9 @@
   --primary-foreground: var(--brand-white);
 
   /* Status */
-  --ok: var(--brand-blue);
-  --ok-muted: rgba(11, 53, 241, 0.72);
-  --ok-subtle: rgba(11, 53, 241, 0.12);
+  --ok: #22c55e;
+  --ok-muted: rgba(34, 197, 94, 0.72);
+  --ok-subtle: rgba(34, 197, 94, 0.12);
   --destructive: var(--brand-orange);
   --destructive-foreground: var(--brand-white);
   --destructive-subtle: rgba(255, 88, 0, 0.12);
@@ -167,6 +172,11 @@
   --muted: rgba(255, 255, 255, 0.58);
   --muted-strong: rgba(255, 255, 255, 0.74);
 
+  /* shadcn token aliases */
+  --foreground: var(--text);
+  --background: var(--bg);
+  --muted-foreground: var(--muted);
+
   --border: rgba(255, 255, 255, 0.12);
   --border-strong: rgba(255, 255, 255, 0.22);
   --border-hover: var(--brand-orange);
@@ -182,9 +192,9 @@
   --primary: var(--brand-orange);
   --primary-foreground: var(--brand-white);
 
-  --ok: var(--brand-blue);
-  --ok-muted: rgba(11, 53, 241, 0.7);
-  --ok-subtle: rgba(11, 53, 241, 0.12);
+  --ok: #4ade80;
+  --ok-muted: rgba(74, 222, 128, 0.7);
+  --ok-subtle: rgba(74, 222, 128, 0.12);
   --destructive: var(--brand-orange);
   --destructive-foreground: var(--brand-white);
   --destructive-subtle: rgba(255, 88, 0, 0.12);
@@ -241,7 +251,7 @@
   --radius-3xl: var(--radius-xs);
   --radius-full: 9999px;
   --radius: var(--radius-xs);
-  --duration-normal: 200ms;
+  --duration-normal: 150ms;
 
   /* Compact text sizes */
   --text-3xs: 0.5625rem;
