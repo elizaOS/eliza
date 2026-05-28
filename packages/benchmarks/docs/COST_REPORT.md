@@ -25,7 +25,7 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | experience | $0.0081 | $0.0003 | $0.0003 | $0.0003* |
 | framework | $0.0012 | $0.0001 | $0.0001 | $0.0001* |
 | gauntlet | $0.0046 | $0.0010 | $0.0010 | $0.0010* |
-| gsm8k | $0.0049 | $0.0004 | $0.0004 | $0.0004* |
+| gsm8k | $0.0049 | $0.0004 | $0.0004 | $0.0004† |
 | hermes_swe_env | $0.0014 | $0.0003 | $0.0003 | $0.0003* |
 | hermes_tblite | $0.0526 | $0.0123 | $0.0394 | $0.0123* |
 | hermes_terminalbench_2 | $0.0469 | $0.0232 | $0.0765 | $0.0232* |
@@ -37,7 +37,7 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | mind2web | $0.0325 | $0.0006 | $0.0006 | $0.0006* |
 | mint | $0.0015 | $0.0002 | $0.0001 | $0.0002* |
 | mmau | $0.0029 | $0.0002 | $0.0002 | $0.0002* |
-| mmlu | $0.0045 | $0.0003 | $0.0003 | $0.0003* |
+| mmlu | $0.0045 | $0.0003 | $0.0003 | $0.0003† |
 | mt_bench | $0.0089 | $0.0035 | $0.0035 | $0.0035* |
 | openclaw_bench | $0.0016 | $0.0002 | $0.0002 | $0.0002* |
 | orchestrator_lifecycle | $0.0555 | $0.0039 | $0.0029 | $0.0039* |
@@ -77,7 +77,7 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | experience | $0.4282 | $0.0178 | $0.0225 | $0.0178* |
 | framework | $0.0598 | $0.0037 | $0.0037 | $0.0037* |
 | gauntlet | $0.2641 | $0.0531 | $0.0535 | $0.0531* |
-| gsm8k | $0.2714 | $0.0316 | $0.0316 | $0.0316* |
+| gsm8k | $0.2714 | $0.0316 | $0.0316 | $0.0319† |
 | hermes_swe_env | $0.0875 | $0.0270 | $0.0270 | $0.0270* |
 | hermes_tblite | $2.4019 | $0.5602 | $1.8008 | $0.5602* |
 | hermes_terminalbench_2 | $2.1383 | $1.0486 | $3.4676 | $1.0486* |
@@ -89,7 +89,7 @@ Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `
 | mind2web | $1.7517 | $0.0381 | $0.0388 | $0.0381* |
 | mint | $0.0998 | $0.0132 | $0.0097 | $0.0132* |
 | mmau | $0.1704 | $0.0118 | $0.0116 | $0.0118* |
-| mmlu | $0.2259 | $0.0154 | $0.0154 | $0.0154* |
+| mmlu | $0.2259 | $0.0154 | $0.0154 | $0.0154† |
 | mt_bench | $0.6233 | $0.3035 | $0.3035 | $0.3035* |
 | openclaw_bench | $0.0978 | $0.0155 | $0.0155 | $0.0155* |
 | orchestrator_lifecycle | $3.0923 | $0.2053 | $0.1796 | $0.2053* |
