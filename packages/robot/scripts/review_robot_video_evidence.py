@@ -17,8 +17,12 @@ import numpy as np
 
 PKG_ROOT = Path(__file__).resolve().parents[1]
 FINAL_STEP_FALL_TOLERANCE_M = 0.01
-MIN_WALK_FORWARD_PROGRESS_M = 0.05
-MIN_TURN_YAW_RAD = 0.05
+# Minimum net base displacement / yaw to count a locomotion clip as real
+# movement rather than a shuffle-in-place. 0.05 m was indefensibly low (a
+# standing robot's contact jitter clears it); 0.15 m is a genuine step of
+# forward progress even on a short clip.
+MIN_WALK_FORWARD_PROGRESS_M = 0.15
+MIN_TURN_YAW_RAD = 0.15
 
 
 def _safe_stem(path: Path) -> str:
@@ -485,8 +489,14 @@ def review_videos(
         report[f"mean_{field}"] = float(np.mean(values)) if values else None
     report["profiles"] = sorted({review["profile"] for review in reviews})
     report["actions"] = sorted({review["action"] for review in reviews})
+    # "Reviewed good" requires the automated checks to pass (``ok``), not just
+    # the (manually overridable) verdict string. A manual annotation can only
+    # DOWNGRADE a video to needs-work — it can never upgrade a clip whose
+    # physical-progress / telemetry / motion checks failed into the green
+    # aggregate. This closes the hand-annotation escape hatch.
     report["all_videos_reviewed_good"] = bool(reviews) and all(
-        review.get("verdict") == "good" for review in reviews
+        review.get("ok") is True and review.get("verdict") == "good"
+        for review in reviews
     )
     report["telemetry"] = {
         "required": require_telemetry,
