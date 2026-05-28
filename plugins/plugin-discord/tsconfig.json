@@ -1,6 +1,5 @@
 {
 	"compilerOptions": {
-		"baseUrl": ".",
 		"paths": {
 			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
 			"@elizaos/agent/*": ["../../packages/agent/src/*"],

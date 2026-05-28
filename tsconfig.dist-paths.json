@@ -13,6 +13,7 @@
       ],
       "@elizaos/cloud-routing": ["./packages/cloud-routing/dist/index.d.ts"],
       "@elizaos/agent": ["./packages/agent/dist/index.d.ts"],
+      "@elizaos/agent/*": ["./packages/agent/dist/*.d.ts"],
       "@elizaos/shared": ["./packages/shared/dist/index.d.ts"],
       "@elizaos/shared/local-inference": [
         "./packages/shared/src/local-inference/index.ts"

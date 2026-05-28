@@ -38,7 +38,16 @@ async function exists(filePath) {
 }
 
 async function* walk(dir) {
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+  for (const entry of entries) {
     const entryPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       yield* walk(entryPath);
@@ -75,7 +84,15 @@ async function resolveRelativeSpecifier(fromFile, specifier) {
 }
 
 async function rewriteFile(filePath) {
-  const source = await readFile(filePath, "utf8");
+  let source;
+  try {
+    source = await readFile(filePath, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
   const importPattern =
     /(\b(?:from|import)\s*\(?\s*["'])(\.{1,2}\/[^"']+)(["']\)?)/g;
 
@@ -95,7 +112,14 @@ async function rewriteFile(filePath) {
   output += source.slice(lastIndex);
 
   if (changed) {
-    await writeFile(filePath, output, "utf8");
+    try {
+      await writeFile(filePath, output, "utf8");
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        return false;
+      }
+      throw error;
+    }
   }
   return changed;
 }

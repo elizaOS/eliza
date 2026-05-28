@@ -259,6 +259,24 @@ function run(commandName, commandArgs, options = {}) {
   }
 }
 
+function runStatus(commandName, commandArgs, options = {}) {
+  const { cwd = ROOT, env = process.env, label } = options;
+  const invocation = buildInvocation(commandName, commandArgs);
+  const rendered = [invocation.command, ...invocation.args].join(" ");
+  console.log(`[desktop-build] ${label ?? rendered}`);
+
+  const result = spawnSync(invocation.command, invocation.args, {
+    cwd,
+    env,
+    stdio: "inherit",
+  });
+
+  return {
+    command: rendered,
+    status: result.status ?? 1,
+  };
+}
+
 function runCapture(commandName, commandArgs, options = {}) {
   const { cwd = ROOT, env = process.env } = options;
   const invocation = buildInvocation(commandName, commandArgs);
@@ -366,6 +384,11 @@ function resolveBunBinary() {
 function runNode(commandArgs, options = {}) {
   const node = which("node") ?? process.execPath;
   run(node, commandArgs, options);
+}
+
+function runNodeStatus(commandArgs, options = {}) {
+  const node = which("node") ?? process.execPath;
+  return runStatus(node, commandArgs, options);
 }
 
 function runPackageBinary(binary, binaryArgs, options = {}) {
@@ -833,6 +856,51 @@ function desktopRendererBuildEnv() {
   return env;
 }
 
+function runtimeCopyArgs() {
+  return [
+    "--import",
+    "tsx",
+    RUNTIME_COPY_SCRIPT,
+    "--scan-dir",
+    "dist",
+    "--target-dist",
+    "dist",
+    ...excludedOptionalPacks.flatMap((pack) => [
+      "--exclude-optional-pack",
+      pack,
+    ]),
+  ];
+}
+
+function runtimeCopyLabel() {
+  return excludedOptionalPacks.length > 0
+    ? `Bundling runtime node_modules into dist (profile=${buildProfile}, excluding: ${excludedOptionalPacks.join(", ")})`
+    : `Bundling runtime node_modules into dist (profile=${buildProfile})`;
+}
+
+function copyRuntimeNodeModulesWithRetry() {
+  const maxAttempts = 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const result = runNodeStatus(runtimeCopyArgs(), {
+      cwd: ROOT,
+      label:
+        attempt === 1
+          ? runtimeCopyLabel()
+          : `${runtimeCopyLabel()} (retry ${attempt}/${maxAttempts})`,
+    });
+    if (result.status === 0) {
+      return;
+    }
+    if (attempt < maxAttempts) {
+      console.warn(
+        `[desktop-build] ${result.command} exited ${result.status}; retrying runtime node_modules bundle`,
+      );
+      continue;
+    }
+    fail(`${result.command} failed with exit code ${result.status}`, result.status);
+  }
+}
+
 function stageDesktopBuild() {
   ensureAppDirs();
 
@@ -849,28 +917,7 @@ function stageDesktopBuild() {
     label: "Writing build metadata",
   });
 
-  runNode(
-    [
-      "--import",
-      "tsx",
-      RUNTIME_COPY_SCRIPT,
-      "--scan-dir",
-      "dist",
-      "--target-dist",
-      "dist",
-      ...excludedOptionalPacks.flatMap((pack) => [
-        "--exclude-optional-pack",
-        pack,
-      ]),
-    ],
-    {
-      cwd: ROOT,
-      label:
-        excludedOptionalPacks.length > 0
-          ? `Bundling runtime node_modules into dist (profile=${buildProfile}, excluding: ${excludedOptionalPacks.join(", ")})`
-          : `Bundling runtime node_modules into dist (profile=${buildProfile})`,
-    },
-  );
+  copyRuntimeNodeModulesWithRetry();
 
   if (buildWhisper) {
     stageBundledWhisperRuntime();

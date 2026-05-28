@@ -23,12 +23,7 @@
       "@elizaos/plugin-inmemorydb": [
         "../../../plugins/plugin-inmemorydb/dist/index.d.ts"
       ],
-      "@elizaos/plugin-local-inference": [
-        "../../../plugins/plugin-local-inference/src/index.ts"
-      ],
-      "@elizaos/plugin-local-inference/*": [
-        "../../../plugins/plugin-local-inference/src/*"
-      ],
+      "@elizaos/plugin-local-inference": ["./local-inference-plugin.d.ts"],
       "@elizaos/plugin-shell": ["../../../plugins/plugin-shell/dist/index.d.ts"]
     }
   },

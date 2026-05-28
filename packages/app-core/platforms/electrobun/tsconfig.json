@@ -53,6 +53,8 @@
       "@elizaos/plugin-elizacloud/*": [
         "../../../../plugins/plugin-elizacloud/src/*"
       ],
+      "@elizaos/cloud-sdk": ["../../../cloud-sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["../../../cloud-sdk/src/*"],
       "@elizaos/plugin-coding-tools": [
         "../../../../plugins/plugin-coding-tools/src/index.ts"
       ],
