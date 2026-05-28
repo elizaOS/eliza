@@ -228,6 +228,8 @@ const STAGE1_TRUNCATION_REPLY =
 	"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.";
 const CODE_SNIPPET_VALIDITY_INSTRUCTION =
 	"For code snippets, prioritize syntactically valid runnable code over impossible formatting constraints. If a tight line count would require invalid syntax, provide a valid version and briefly note the constraint tradeoff.";
+const COMPACT_CODE_SNIPPET_VALIDITY_INSTRUCTION =
+	"For code snippets, prefer valid runnable syntax over impossible formatting constraints.";
 const DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS = new Set([
 	"shouldRespond",
 	"facts",
@@ -2894,7 +2896,9 @@ function renderMessageHandlerInstructions(
 		template: baseline,
 	}).trim();
 	const renderedWithSharedRules = options?.directMessage
-		? rendered
+		? [rendered, "", `- ${COMPACT_CODE_SNIPPET_VALIDITY_INSTRUCTION}`].join(
+				"\n",
+			)
 		: [
 				rendered,
 				"",

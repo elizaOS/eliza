@@ -137,6 +137,84 @@ describe("executePlannedToolCall", () => {
 		);
 	});
 
+	it("canonicalizes undeclared subaction into the declared discriminator", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "TASKS",
+			parameters: [
+				{
+					name: "action",
+					description: "Task operation",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["create", "provision_workspace"],
+					},
+				},
+			],
+			handler,
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage() },
+			{
+				name: "TASKS",
+				params: {
+					subaction: "provision_workspace",
+					thought: "set up workspace",
+				},
+			},
+		);
+
+		expect(result.success).toBe(true);
+		expect(handler).toHaveBeenCalledWith(
+			expect.any(Object),
+			expect.any(Object),
+			undefined,
+			expect.objectContaining({
+				parameters: { action: "provision_workspace" },
+			}),
+			undefined,
+			undefined,
+		);
+	});
+
+	it("rejects conflicting planner subaction aliases", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "TASKS",
+			parameters: [
+				{
+					name: "action",
+					description: "Task operation",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["create", "provision_workspace"],
+					},
+				},
+			],
+			handler,
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage() },
+			{
+				name: "TASKS",
+				params: {
+					action: "create",
+					subaction: "provision_workspace",
+				},
+			},
+		);
+
+		expect(result.success).toBe(false);
+		expect(String(result.error)).toContain("Unexpected argument 'subaction'");
+		expect(handler).not.toHaveBeenCalled();
+	});
+
 	it("still rejects unknown non-wrapper args", async () => {
 		const handler = vi.fn(async () => ({ success: true }));
 		const action = makeAction({

@@ -473,19 +473,52 @@ export function expandEnumShortForm(
 }
 
 const PLANNER_WRAPPER_ONLY_ARG_KEYS = new Set(["subaction", "thought"]);
+const PLANNER_DISCRIMINATOR_ALIASES = ["action", "op", "operation"] as const;
 
 function dropUndeclaredPlannerWrapperArgs(
 	action: Action,
 	args: Record<string, unknown>,
 ): Record<string, unknown> {
 	let filtered: Record<string, unknown> | undefined;
+	const declaredParameters = action.parameters ?? [];
 
 	for (const key of Object.keys(args)) {
 		if (
 			PLANNER_WRAPPER_ONLY_ARG_KEYS.has(key) &&
-			!(action.parameters ?? []).some((parameter) => parameter.name === key)
+			!declaredParameters.some((parameter) => parameter.name === key)
 		) {
 			filtered ??= { ...args };
+			if (key === "subaction" && typeof args.subaction === "string") {
+				const target = declaredParameters.find((parameter) => {
+					if (
+						!PLANNER_DISCRIMINATOR_ALIASES.includes(
+							parameter.name as (typeof PLANNER_DISCRIMINATOR_ALIASES)[number],
+						)
+					) {
+						return false;
+					}
+					const schema = parameter.schema as {
+						enumValues?: unknown[];
+						enum?: unknown[];
+					};
+					const enumValues = schema.enumValues ?? schema.enum;
+					return (
+						!Array.isArray(enumValues) || enumValues.includes(args.subaction)
+					);
+				});
+				if (target && filtered[target.name] === undefined) {
+					filtered[target.name] = args.subaction;
+					delete filtered[key];
+					continue;
+				}
+				if (
+					target &&
+					filtered[target.name] !== undefined &&
+					filtered[target.name] !== args.subaction
+				) {
+					continue;
+				}
+			}
 			delete filtered[key];
 		}
 	}

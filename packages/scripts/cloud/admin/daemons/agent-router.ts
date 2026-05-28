@@ -100,7 +100,10 @@ export function resolveSandboxRouting(
   }
 
   const host = sandbox.headscale_ip?.trim() || bridgeHost;
-  if (!host || !bridgePort || !Number.isFinite(bridgePort)) return null;
+  if (!host) return null;
+  if (!bridgePort || !Number.isFinite(bridgePort)) {
+    bridgePort = sandbox.web_ui_port;
+  }
 
   const webUiPort = sandbox.web_ui_port;
   return {

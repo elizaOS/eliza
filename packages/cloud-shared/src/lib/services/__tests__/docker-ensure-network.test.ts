@@ -13,7 +13,7 @@ describe("buildEnsureNetworkCmd", () => {
     expect(cmd).toBe(
       "docker network inspect 'containers-isolated' >/dev/null 2>&1 || " +
         "docker network create --driver bridge 'containers-isolated' >/dev/null 2>&1 || " +
-        "docker network inspect 'containers-isolated' >/dev/null 2>&1",
+        "docker network inspect 'containers-isolated' >/dev/null",
     );
   });
 
@@ -22,7 +22,7 @@ describe("buildEnsureNetworkCmd", () => {
     // inspect ... || create ... || inspect ...  → three clauses
     expect(cmd.split("||").length).toBe(3);
     expect(cmd.startsWith("docker network inspect")).toBe(true);
-    expect(cmd.trim().endsWith("docker network inspect 'net' >/dev/null 2>&1")).toBe(true);
+    expect(cmd.trim().endsWith("docker network inspect 'net' >/dev/null")).toBe(true);
   });
 
   test("only ever creates a plain bridge network (no implicit subnet)", () => {

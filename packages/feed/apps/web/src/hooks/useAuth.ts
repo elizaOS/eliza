@@ -95,22 +95,12 @@ export function useAuth(): UseAuthReturn {
   useEffect(() => {
     const token = stewardAuth.getToken();
     if (typeof window !== "undefined") {
-      (
-        window as Window & { __accessToken?: string | null }
-      ).__accessToken = token;
-      (
-        window as Window & {
-          __getAccessToken?: () => Promise<string | null>;
-        }
-      ).__getAccessToken = getAccessToken;
+      window.__accessToken = token;
+      window.__getAccessToken = getAccessToken;
     }
     return () => {
       if (typeof window !== "undefined") {
-        (
-          window as Window & {
-            __getAccessToken?: () => Promise<string | null>;
-          }
-        ).__getAccessToken = undefined;
+        window.__getAccessToken = undefined;
       }
     };
   }, [getAccessToken, stewardAuth]);
@@ -362,9 +352,7 @@ export function useAuth(): UseAuthReturn {
       setDevAuthSession(null);
       clearAuth();
       if (typeof window !== "undefined") {
-        (
-          window as Window & { __accessToken?: string | null }
-        ).__accessToken = null;
+        window.__accessToken = null;
         localStorage.removeItem("feed-auth");
       }
       globalFetchInFlight = null;
@@ -389,9 +377,7 @@ export function useAuth(): UseAuthReturn {
     clearAuth();
 
     if (typeof window !== "undefined") {
-      (
-        window as Window & { __accessToken?: string | null }
-      ).__accessToken = null;
+      window.__accessToken = null;
       removeStorageItem("localStorage", "feed-auth");
     }
 

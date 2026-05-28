@@ -37,6 +37,7 @@ import type {
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
+import { normalizeRepositoryInput } from "../services/repo-input.js";
 import {
   type ResolvedWorkdirRoute,
   resolvePinnedAdapter,
@@ -163,7 +164,12 @@ function requestsDeferredUserReply(text: string): boolean {
 }
 
 function readOp(params: Record<string, unknown>): TaskOp | null {
-  const raw = typeof params.action === "string" ? params.action : undefined;
+  const raw = [
+    params.action,
+    params.op,
+    params.subaction,
+    params.operation,
+  ].find((value): value is string => typeof value === "string");
   if (!raw) return null;
   const normalized = raw.toLowerCase().replace(/-/g, "_");
   return (SUPPORTED_OPS as readonly string[]).includes(normalized)
@@ -1639,6 +1645,7 @@ async function runProvisionWorkspace(
   }
 
   if (repo) {
+    repo = normalizeRepositoryInput(repo);
     const ALLOWED_DOMAINS =
       /^https?:\/\/(github\.com|gitlab\.com|bitbucket\.org)\//i;
     if (!ALLOWED_DOMAINS.test(repo)) {
@@ -2444,6 +2451,24 @@ export const tasksAction: Action & {
       name: "action",
       description:
         "Task operation: create, spawn_agent, send, stop_agent, list_agents, cancel, history, control, share, provision_workspace, submit_workspace, manage_issues, archive, reopen.",
+      required: false,
+      schema: { type: "string" as const, enum: [...SUPPORTED_OPS] },
+    },
+    {
+      name: "op",
+      description: "Planner alias for action.",
+      required: false,
+      schema: { type: "string" as const, enum: [...SUPPORTED_OPS] },
+    },
+    {
+      name: "subaction",
+      description: "Planner alias for action.",
+      required: false,
+      schema: { type: "string" as const, enum: [...SUPPORTED_OPS] },
+    },
+    {
+      name: "operation",
+      description: "Planner alias for action.",
       required: false,
       schema: { type: "string" as const, enum: [...SUPPORTED_OPS] },
     },

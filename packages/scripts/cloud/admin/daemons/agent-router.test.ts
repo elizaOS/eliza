@@ -32,7 +32,7 @@ describe("resolveSandboxRouting", () => {
     });
   });
 
-  it("does not let malformed bridge URL override valid headscale IP", () => {
+  it("routes valid headscale IP even when bridge URL is malformed", () => {
     expect(
       resolveSandboxRouting({
         status: "running",
@@ -40,6 +40,11 @@ describe("resolveSandboxRouting", () => {
         headscale_ip: "100.64.0.21",
         web_ui_port: 20001,
       }),
-    ).toBeNull();
+    ).toEqual({
+      headscaleIp: "100.64.0.21",
+      bridgePort: 20001,
+      webUiPort: 20001,
+      target: "100.64.0.21:20001",
+    });
   });
 });

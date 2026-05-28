@@ -29,9 +29,7 @@ function getOrCreateStewardAuth(): StewardAuth {
     onSessionChange: (session) => {
       // Keep the window-level access token in sync for apiFetch
       if (typeof window !== "undefined") {
-        (
-          window as Window & { __accessToken?: string | null }
-        ).__accessToken = session?.token ?? null;
+        window.__accessToken = session?.token ?? null;
       }
     },
   });
