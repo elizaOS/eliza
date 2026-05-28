@@ -29,7 +29,6 @@ export type ActionDocParameter = {
 	name: string;
 	description: string;
 	descriptionCompressed?: string;
-	compressedDescription?: string;
 	required?: boolean;
 	schema: ActionDocParameterSchema;
 	examples?: readonly ActionDocParameterExampleValue[];
@@ -53,7 +52,6 @@ export type ActionDoc = {
 	name: string;
 	description: string;
 	descriptionCompressed?: string;
-	compressedDescription?: string;
 	similes?: readonly string[];
 	parameters?: readonly ActionDocParameter[];
 	examples?: readonly (readonly ActionDocExampleMessage[])[];
@@ -64,7 +62,6 @@ export type ProviderDoc = {
 	name: string;
 	description: string;
 	descriptionCompressed?: string;
-	compressedDescription?: string;
 	position?: number;
 	dynamic?: boolean;
 };
