@@ -289,11 +289,6 @@ export const escalateAction: Action = {
 	},
 };
 
-// Back-compat alias for the previous canonical export name. Code that already
-// imports `sendToAdminAction` keeps working; new code should import
-// `escalateAction`.
-export const sendToAdminAction = escalateAction;
-
 function getAutonomyService(runtime: IAgentRuntime): AutonomyService | null {
 	return (
 		runtime.getService<AutonomyService>(AUTONOMY_SERVICE_TYPE) ??

@@ -367,9 +367,7 @@ export {
 } from "./voice-budget";
 export {
 	readVoicePresetFile,
-	VOICE_PRESET_HEADER_BYTES,
 	VOICE_PRESET_MAGIC,
-	VOICE_PRESET_VERSION,
 	type VoicePresetFile,
 	VoicePresetFormatError,
 	type VoicePresetSeedPhrase,

@@ -47,7 +47,6 @@ export {
   DexInteractionService,
   default as lpManagerPlugin,
   LP_MANAGER_PLUGIN_NAME,
-  LpManagementAgentAction,
   orcaPlugin,
   PancakeSwapV3LpService,
   pancakeswapPlugin,
