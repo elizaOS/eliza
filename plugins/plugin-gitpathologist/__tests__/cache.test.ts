@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -58,6 +58,13 @@ describe("createReportCache", () => {
     cache.write(report);
     const back = cache.read(report.cacheKey);
     expect(back).toEqual(report);
+  });
+
+  it("does not leave temporary files after a successful write", () => {
+    const cache = createReportCache(dir);
+    cache.write(fakeReport());
+
+    expect(readdirSync(dir).filter((file) => file.endsWith(".tmp"))).toEqual([]);
   });
 
   it("returns null on miss", () => {

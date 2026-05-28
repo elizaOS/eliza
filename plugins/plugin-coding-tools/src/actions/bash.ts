@@ -799,7 +799,7 @@ function isSafeSmallStdoutProjectionCommand(command: string): boolean {
   const normalized = command.replace(/\s+/g, " ").trim();
   if (!normalized) return false;
   if (hasUnquotedShellControlOperator(command)) return false;
-  return /^(?:(?:command\s+-v|pwd|ls|find|grep|rg)\b|git\s+(?:grep|status|branch|rev-parse|log|diff|show|ls-files)\b)/u.test(
+  return /^(?:(?:command\s+-v|pwd|ls|find|grep|rg)\b|git\s+(?:grep|status|branch|rev-parse|ls-files)\b)/u.test(
     normalized,
   );
 }

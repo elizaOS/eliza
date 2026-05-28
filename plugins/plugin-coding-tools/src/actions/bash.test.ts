@@ -1,7 +1,9 @@
 import * as fs from "node:fs/promises";
+import { execFile } from "node:child_process";
 import { createServer } from "node:http";
 import * as os from "node:os";
 import * as path from "node:path";
+import { promisify } from "node:util";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
@@ -23,6 +25,8 @@ import {
   resolveSourceInspectionCommand,
   shellAction,
 } from "./bash.js";
+
+const execFileAsync = promisify(execFile);
 
 interface RuntimeOptions {
   blockedPaths?: string;
@@ -801,6 +805,43 @@ describe("shellAction", () => {
           { command, cwd: tempDir },
         );
 
+        expect(result.userFacingText).toBeUndefined();
+        expect(result.verifiedUserFacing).toBeUndefined();
+      }
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not verify verbose git history or diff stdout", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "shell-git-"));
+    const { runtime } = await makeRuntime();
+
+    try {
+      await execFileAsync("git", ["init"], { cwd: tempDir });
+      await execFileAsync("git", ["config", "user.email", "test@example.com"], {
+        cwd: tempDir,
+      });
+      await execFileAsync("git", ["config", "user.name", "Test User"], {
+        cwd: tempDir,
+      });
+      await fs.writeFile(path.join(tempDir, "file.txt"), "before\n", "utf8");
+      await execFileAsync("git", ["add", "file.txt"], { cwd: tempDir });
+      await execFileAsync("git", ["commit", "-m", "initial"], { cwd: tempDir });
+      await fs.writeFile(path.join(tempDir, "file.txt"), "after\n", "utf8");
+
+      for (const command of ["git diff", "git log --oneline -1"]) {
+        const result = await shellAction.handler?.(
+          runtime,
+          makeMessage(
+            "11111111-aaaa-bbbb-cccc-616161616161",
+            "show me the git output",
+          ),
+          undefined,
+          { command, cwd: tempDir },
+        );
+
+        expect(result.success).toBe(true);
         expect(result.userFacingText).toBeUndefined();
         expect(result.verifiedUserFacing).toBeUndefined();
       }

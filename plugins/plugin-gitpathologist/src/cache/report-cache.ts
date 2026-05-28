@@ -9,7 +9,15 @@
  */
 
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import type { CachedReportSummary, PathologyReport } from "../types.ts";
 
@@ -59,7 +67,9 @@ export function createReportCache(cacheDir: string): ReportCache {
     },
     write(report) {
       const file = pathFor(report.cacheKey);
-      writeFileSync(file, JSON.stringify(report, null, 2), "utf8");
+      const tmp = path.join(cacheDir, `.${report.cacheKey}.${process.pid}.${Date.now()}.tmp`);
+      writeFileSync(tmp, JSON.stringify(report, null, 2), "utf8");
+      renameSync(tmp, file);
     },
     list() {
       if (!existsSync(cacheDir)) return [];
