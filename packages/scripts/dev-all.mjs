@@ -301,28 +301,35 @@ function packageDistReady(packageDir, requiredFiles) {
 }
 
 function buildDefaultPrepareCommands() {
-  const commands = [
-    [
-      "shared i18n keywords",
-      "packages/shared",
-      [bunBin, "run", "build:i18n"],
-      commonEnv,
-    ],
-    [
-      "ui css string modules",
-      "packages/ui",
-      [bunBin, "run", "generate:css-strings"],
-      commonEnv,
-    ],
+  const generateCommands = [
+    {
+      label: "shared i18n keywords",
+      cwd: "packages/shared",
+      command: [bunBin, "run", "build:i18n"],
+      env: commonEnv,
+    },
+    {
+      label: "ui css string modules",
+      cwd: "packages/ui",
+      command: [bunBin, "run", "generate:css-strings"],
+      env: commonEnv,
+    },
+    {
+      label: "cloud dev vars",
+      cwd: ".",
+      command: cloudDevVarsCommand,
+      env: cloudSharedEnv,
+    },
   ];
 
+  const buildCommands = [];
   if (!packageDistReady("packages/shared", ["dist/index.js"])) {
-    commands.push([
-      "shared package build",
-      "packages/shared",
-      [bunBin, "run", "build:dist"],
-      commonEnv,
-    ]);
+    buildCommands.push({
+      label: "shared package build",
+      cwd: "packages/shared",
+      command: [bunBin, "run", "build:dist"],
+      env: commonEnv,
+    });
   }
   if (
     !packageDistReady("packages/ui", [
@@ -330,28 +337,39 @@ function buildDefaultPrepareCommands() {
       "dist/cloud-ui/index.css",
     ])
   ) {
-    commands.push([
-      "ui package build",
-      "packages/ui",
-      [bunBin, "run", "build:dist"],
-      commonEnv,
-    ]);
-  }
-  if (buildNativePlugins) {
-    commands.push([
-      "app native plugin build",
-      "packages/app",
-      [bunBin, "run", "plugin:build"],
-      frontendEnv,
-    ]);
+    buildCommands.push({
+      label: "ui package build",
+      cwd: "packages/ui",
+      command: [bunBin, "run", "build:dist"],
+      env: commonEnv,
+    });
   }
 
-  commands.push(["cloud dev vars", ".", cloudDevVarsCommand, cloudSharedEnv]);
-  return commands;
+  const stages = [generateCommands, buildCommands];
+  if (buildNativePlugins) {
+    stages.push([
+      {
+        label: "app native plugin build",
+        cwd: "packages/app",
+        command: [bunBin, "run", "plugin:build"],
+        env: frontendEnv,
+      },
+    ]);
+  }
+  return stages.filter((stage) => stage.length > 0);
 }
 
 const prepareCommands = fullPrepare
-  ? [["dev:prepare", ".", [bunBin, "run", "dev:prepare"], commonEnv]]
+  ? [
+      [
+        {
+          label: "dev:prepare",
+          cwd: ".",
+          command: [bunBin, "run", "dev:prepare"],
+          env: commonEnv,
+        },
+      ],
+    ]
   : buildDefaultPrepareCommands();
 
 function printPlan() {
@@ -451,6 +469,14 @@ function runOnce(label, cwd, command, env) {
       else reject(new Error(`${label} exited with ${signal ?? code}`));
     });
   });
+}
+
+async function runPrepareStage(stage) {
+  await Promise.all(
+    stage.map(({ label, cwd, command, env }) =>
+      runOnce(label, cwd, command, env),
+    ),
+  );
 }
 
 function prefixStream(stream, label, target) {
@@ -556,8 +582,8 @@ async function main() {
         );
       }
     }
-    for (const [label, cwd, command, env] of prepareCommands) {
-      await runOnce(label, cwd, command, env);
+    for (const stage of prepareCommands) {
+      await runPrepareStage(stage);
     }
   } else {
     console.log("[dev:all] skipping prepare steps");
