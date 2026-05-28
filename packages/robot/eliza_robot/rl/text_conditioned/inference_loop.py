@@ -61,24 +61,36 @@ def _proprio_from_telemetry(
 ) -> np.ndarray:
     """Convert telemetry.basic into the profile-env proprio layout.
 
-    Layout matches `TextConditionedProfileEnv`:
-    gyro(3), gravity(3), velocity_command(3), leg qpos, leg qvel, last_action.
-    Only the trained action joints are included; full-body policy output is
-    handled separately by `TextConditionedPolicy.act(..., output_dim=...)`.
+    Layout matches `TextConditionedProfileEnv._build_obs` exactly::
+
+        gyro(3), gravity(3), velocity_command(3), root_linvel(3),
+        foot_telemetry(8), joint_qpos(n), joint_qvel(n), last_action(n)
+
+    where ``n`` is the number of LEG joints. Fields the real backend does
+    not supply (commanded velocity, base linear velocity, foot contact /
+    slip / gait phase) are left zero — the policy was trained with
+    observation noise + domain randomization, so a zero-filled boundary is
+    tolerated, but the joint positions/velocities MUST land at the indices
+    the policy expects or the deployed behaviour is garbage.
     """
 
     proprio = np.zeros(proprio_dim, dtype=np.float32)
     if latest is None:
         return proprio
 
+    # gyro(3) — angular velocity proxy from IMU.
     if proprio_dim >= 1:
-        proprio[0] = float(latest.get("imu_roll", 0.0))
+        proprio[0] = float(latest.get("imu_roll_rate", latest.get("imu_roll", 0.0)))
     if proprio_dim >= 2:
-        proprio[1] = float(latest.get("imu_pitch", 0.0))
+        proprio[1] = float(latest.get("imu_pitch_rate", latest.get("imu_pitch", 0.0)))
     if proprio_dim >= 3:
         proprio[2] = float(latest.get("imu_yaw_rate", 0.0))
+    # gravity(3) at [3:6] — world up in the body frame; default upright.
     if proprio_dim >= 6:
         proprio[3:6] = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+    # velocity_command(3) at [6:9], root_linvel(3) at [9:12], and
+    # foot_telemetry(8) at [12:20] are not available from telemetry.basic
+    # and remain zero-filled.
 
     action_joints = [j.name for j in profile.kinematics.joints if j.group == "LEG"]
     joint_positions = latest.get("joint_positions") or {}
@@ -88,7 +100,9 @@ def _proprio_from_telemetry(
     if not isinstance(joint_velocities, dict):
         joint_velocities = {}
 
-    qpos_start = 9
+    # joint_qpos / joint_qvel begin after gyro+gravity+vel_cmd+root_linvel
+    # +foot_telemetry = 3+3+3+3+8 = 20 (see TextConditionedProfileEnv).
+    qpos_start = 20
     qvel_start = qpos_start + len(action_joints)
     for i, name in enumerate(action_joints):
         qpos_idx = qpos_start + i
