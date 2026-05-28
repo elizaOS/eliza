@@ -31,6 +31,9 @@ concept_generated_assets:
   solid_handoff_part_count: 258
   solid_assembly_step: "mechanical/e1-phone/out/e1-phone-solid-assembly.step"
   solid_assembly_step_bytes: 5697447
+  solid_handoff_native_terminal_step_export: true
+  solid_handoff_terminal_step_coverage_complete: true
+  solid_handoff_ocp_terminal_step_fallback_required: false
   solid_handoff_ocp_terminal_step_fallback_count: 0
   solid_handoff_ocp_terminal_step_fallback_error: null
   cad_connection_coverage_status: "cad_connection_markers_complete_not_release"
@@ -164,6 +167,9 @@ local_enclosure_cad_ready:
   ready: true
   scope: "generated_evt0_concept_cad_only"
   solid_handoff_generated: true
+  solid_handoff_native_terminal_step_export: true
+  solid_handoff_terminal_step_coverage_complete: true
+  solid_handoff_ocp_terminal_step_fallback_required: false
   solid_handoff_ocp_terminal_step_fallback_count: 0
   solid_handoff_ocp_terminal_step_fallback_complete: false
   cad_connection_coverage_complete: true

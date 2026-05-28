@@ -2,7 +2,7 @@
 
 // e1_axi_lite_interconnect
 //
-// Multi-master AXI-Lite 3-to-3 interconnect with priority arbiter.
+// Multi-master AXI-Lite 3-to-5 interconnect with priority arbiter.
 //
 // Masters (port indices):
 //   0  CPU          - highest priority (ports: m_axil_*)
@@ -13,6 +13,8 @@
 //   DRAM  0x8000_0000 - 0x8FFF_FFFF  (256 MiB aperture)
 //   INTC  0x0C00_0000 - 0x0C00_0FFF  (4 KiB)
 //   DMA   0x1001_0000 - 0x1001_0FFF  (4 KiB)
+//   NPU   0x1002_0000 - 0x1002_0FFF  (4 KiB)
+//   DISP  0x1003_0000 - 0x1003_0FFF  (4 KiB)
 //   Unmapped regions -> SLVERR (last bad address captured in debug reg)
 //
 // Internal debug registers (no external slave port):
@@ -153,6 +155,44 @@ module e1_axi_lite_interconnect #(
     input  logic [31:0] dma_rdata,
     input  logic [1:0]  dma_rresp,
 
+    // Slave - NPU MMIO
+    output logic        npu_awvalid,
+    input  logic        npu_awready,
+    output logic [31:0] npu_awaddr,
+    output logic        npu_wvalid,
+    input  logic        npu_wready,
+    output logic [31:0] npu_wdata,
+    output logic [3:0]  npu_wstrb,
+    input  logic        npu_bvalid,
+    output logic        npu_bready,
+    input  logic [1:0]  npu_bresp,
+    output logic        npu_arvalid,
+    input  logic        npu_arready,
+    output logic [31:0] npu_araddr,
+    input  logic        npu_rvalid,
+    output logic        npu_rready,
+    input  logic [31:0] npu_rdata,
+    input  logic [1:0]  npu_rresp,
+
+    // Slave - Display MMIO
+    output logic        display_awvalid,
+    input  logic        display_awready,
+    output logic [31:0] display_awaddr,
+    output logic        display_wvalid,
+    input  logic        display_wready,
+    output logic [31:0] display_wdata,
+    output logic [3:0]  display_wstrb,
+    input  logic        display_bvalid,
+    output logic        display_bready,
+    input  logic [1:0]  display_bresp,
+    output logic        display_arvalid,
+    input  logic        display_arready,
+    output logic [31:0] display_araddr,
+    input  logic        display_rvalid,
+    output logic        display_rready,
+    input  logic [31:0] display_rdata,
+    input  logic [1:0]  display_rresp,
+
     // Observability / interrupt outputs
     output logic [NUM_MASTERS-1:0] arb_grant,   // one-hot read-channel grant
     output logic [NUM_MASTERS-1:0] timeout_irq  // per-master watchdog pulse
@@ -167,8 +207,10 @@ module e1_axi_lite_interconnect #(
     localparam logic [2:0] SEL_DRAM = 3'h1;
     localparam logic [2:0] SEL_INTC = 3'h2;
     localparam logic [2:0] SEL_DMA  = 3'h3;
-    localparam logic [2:0] SEL_ERR  = 3'h4;  // unmapped -> SLVERR
-    localparam logic [2:0] SEL_DBG  = 3'h5;  // internal debug registers
+    localparam logic [2:0] SEL_NPU  = 3'h4;
+    localparam logic [2:0] SEL_DISP = 3'h5;
+    localparam logic [2:0] SEL_ERR  = 3'h6;  // unmapped -> SLVERR
+    localparam logic [2:0] SEL_DBG  = 3'h7;  // internal debug registers
 
     // Address decode: base address and mask (region_size - 1)
     localparam logic [31:0] DRAM_BASE = 32'h8000_0000;
@@ -177,6 +219,10 @@ module e1_axi_lite_interconnect #(
     localparam logic [31:0] INTC_MASK = 32'h0000_0FFF;  // 4 KiB
     localparam logic [31:0] DMA_BASE  = 32'h1001_0000;
     localparam logic [31:0] DMA_MASK  = 32'h0000_0FFF;  // 4 KiB
+    localparam logic [31:0] NPU_BASE  = 32'h1002_0000;
+    localparam logic [31:0] NPU_MASK  = 32'h0000_0FFF;  // 4 KiB
+    localparam logic [31:0] DISP_BASE = 32'h1003_0000;
+    localparam logic [31:0] DISP_MASK = 32'h0000_0FFF;  // 4 KiB
 
     // Internal debug register addresses
     localparam logic [31:0] DBG_DECODE_ERR_ADDR = 32'h1FFF_FFF0;
@@ -206,6 +252,10 @@ module e1_axi_lite_interconnect #(
             decode_addr = SEL_INTC;
         else if ((addr & ~DMA_MASK) == DMA_BASE)
             decode_addr = SEL_DMA;
+        else if ((addr & ~NPU_MASK) == NPU_BASE)
+            decode_addr = SEL_NPU;
+        else if ((addr & ~DISP_MASK) == DISP_BASE)
+            decode_addr = SEL_DISP;
         else
             decode_addr = SEL_ERR;
     endfunction
@@ -413,6 +463,10 @@ module e1_axi_lite_interconnect #(
         intc_araddr  = 32'h0;
         dma_arvalid  = 1'b0;
         dma_araddr   = 32'h0;
+        npu_arvalid  = 1'b0;
+        npu_araddr   = 32'h0;
+        display_arvalid = 1'b0;
+        display_araddr  = 32'h0;
         ar_slv_fire  = 1'b0;
         ar_is_noslv  = 1'b0;
 
@@ -432,6 +486,16 @@ module e1_axi_lite_interconnect #(
                     dma_arvalid  = 1'b1;
                     dma_araddr   = ar_pip_addr[rd_gidx] - DMA_BASE;
                     ar_slv_fire  = dma_arready;
+                end
+                SEL_NPU: begin
+                    npu_arvalid  = 1'b1;
+                    npu_araddr   = ar_pip_addr[rd_gidx] - NPU_BASE;
+                    ar_slv_fire  = npu_arready;
+                end
+                SEL_DISP: begin
+                    display_arvalid = 1'b1;
+                    display_araddr  = ar_pip_addr[rd_gidx] - DISP_BASE;
+                    ar_slv_fire     = display_arready;
                 end
                 SEL_ERR, SEL_DBG: ar_is_noslv = 1'b1;
                 default: ;
@@ -465,6 +529,10 @@ module e1_axi_lite_interconnect #(
         intc_wvalid  = 1'b0;  intc_wdata  = 32'h0;  intc_wstrb = 4'h0;
         dma_awvalid  = 1'b0;  dma_awaddr  = 32'h0;
         dma_wvalid   = 1'b0;  dma_wdata   = 32'h0;  dma_wstrb  = 4'h0;
+        npu_awvalid  = 1'b0;  npu_awaddr  = 32'h0;
+        npu_wvalid   = 1'b0;  npu_wdata   = 32'h0;  npu_wstrb  = 4'h0;
+        display_awvalid = 1'b0;  display_awaddr = 32'h0;
+        display_wvalid  = 1'b0;  display_wdata  = 32'h0;  display_wstrb = 4'h0;
         aw_slv_fire  = 1'b0;
         aw_is_noslv  = 1'b0;
 
@@ -494,6 +562,22 @@ module e1_axi_lite_interconnect #(
                     dma_wstrb    = w_pip_strb[wr_gidx];
                     aw_slv_fire  = dma_awready && dma_wready;
                 end
+                SEL_NPU: begin
+                    npu_awvalid  = 1'b1;
+                    npu_awaddr   = aw_pip_addr[wr_gidx] - NPU_BASE;
+                    npu_wvalid   = 1'b1;
+                    npu_wdata    = w_pip_data[wr_gidx];
+                    npu_wstrb    = w_pip_strb[wr_gidx];
+                    aw_slv_fire  = npu_awready && npu_wready;
+                end
+                SEL_DISP: begin
+                    display_awvalid = 1'b1;
+                    display_awaddr  = aw_pip_addr[wr_gidx] - DISP_BASE;
+                    display_wvalid  = 1'b1;
+                    display_wdata   = w_pip_data[wr_gidx];
+                    display_wstrb   = w_pip_strb[wr_gidx];
+                    aw_slv_fire     = display_awready && display_wready;
+                end
                 SEL_ERR, SEL_DBG: aw_is_noslv = 1'b1;
                 default: ;
             endcase
@@ -513,6 +597,8 @@ module e1_axi_lite_interconnect #(
         dram_rready = 1'b0;
         intc_rready = 1'b0;
         dma_rready  = 1'b0;
+        npu_rready  = 1'b0;
+        display_rready = 1'b0;
         for (int m = 0; m < NUM_MASTERS; m++) begin
             mo_rvalid[m] = 1'b0;
             mo_rdata[m]  = 32'h0;
@@ -540,6 +626,18 @@ module e1_axi_lite_interconnect #(
                         mo_rresp[m]  = dma_rresp;
                         if (mi_rready[m] && dma_rvalid) dma_rready = 1'b1;
                     end
+                    SEL_NPU: begin
+                        mo_rvalid[m] = npu_rvalid;
+                        mo_rdata[m]  = npu_rdata;
+                        mo_rresp[m]  = npu_rresp;
+                        if (mi_rready[m] && npu_rvalid) npu_rready = 1'b1;
+                    end
+                    SEL_DISP: begin
+                        mo_rvalid[m] = display_rvalid;
+                        mo_rdata[m]  = display_rdata;
+                        mo_rresp[m]  = display_rresp;
+                        if (mi_rready[m] && display_rvalid) display_rready = 1'b1;
+                    end
                     SEL_ERR: begin
                         mo_rvalid[m] = 1'b1;
                         mo_rdata[m]  = 32'hDEAD_BEEF;
@@ -566,6 +664,8 @@ module e1_axi_lite_interconnect #(
         dram_bready = 1'b0;
         intc_bready = 1'b0;
         dma_bready  = 1'b0;
+        npu_bready  = 1'b0;
+        display_bready = 1'b0;
         for (int m = 0; m < NUM_MASTERS; m++) begin
             mo_bvalid[m] = 1'b0;
             mo_bresp[m]  = RESP_OKAY;
@@ -588,6 +688,16 @@ module e1_axi_lite_interconnect #(
                         mo_bvalid[m] = dma_bvalid;
                         mo_bresp[m]  = dma_bresp;
                         if (mi_bready[m] && dma_bvalid) dma_bready = 1'b1;
+                    end
+                    SEL_NPU: begin
+                        mo_bvalid[m] = npu_bvalid;
+                        mo_bresp[m]  = npu_bresp;
+                        if (mi_bready[m] && npu_bvalid) npu_bready = 1'b1;
+                    end
+                    SEL_DISP: begin
+                        mo_bvalid[m] = display_bvalid;
+                        mo_bresp[m]  = display_bresp;
+                        if (mi_bready[m] && display_bvalid) display_bready = 1'b1;
                     end
                     SEL_ERR, SEL_DBG: begin
                         mo_bvalid[m] = 1'b1;
