@@ -496,6 +496,31 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
   });
 
+  it("does not use fabricated quantitative replies when hidden no-result output has unrelated prose", async () => {
+    const context = makeContext({
+      text: "[sub-agent: source count (opencode) — task_complete]\n[tool output: Find matching source files]\nNo files found\n[/tool output]\n[tool output: List project root]\nREADME.md\npackage.json\ntsconfig.json\n[/tool output]\nThe project root contains unrelated files.",
+      messageHandler: {
+        plan: {
+          contexts: ["simple"],
+          reply: "I found 3 source files.",
+          requiresTool: false,
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: true,
+      setContexts: ["automation"],
+      clearReply: true,
+      addCandidateActions: ["TASKS_SEND_TO_AGENT"],
+      addParentActionHints: ["TASKS"],
+      debug: [
+        "sub-agent completion contains failure markers without clear positive evidence; routing back through TASKS for grounded follow-up",
+      ],
+    });
+  });
+
   it("allows positive quantitative completions even when phrased as a count", async () => {
     const context = makeContext({
       text: "[sub-agent: source count (opencode) — task_complete]\nFound 3 matching source files: src/a.ts, src/b.ts, and src/c.ts.",
