@@ -150,6 +150,17 @@ class BraxWalkSkill(BaseSkill):
                     resolved,
                     exc_info=True,
                 )
+        else:
+            # No checkpoint on disk: the skill will HOLD THE DEFAULT POSE, not
+            # walk. Surface this loudly — a "walk" skill that silently stands is
+            # the exact larp this stack is being cleaned of. Callers can load a
+            # checkpoint later via load_checkpoint(); is_loaded reports the truth.
+            logger.warning(
+                "BraxWalkSkill: no checkpoint at %s — skill will hold the default "
+                "pose and NOT walk until load_checkpoint() is called with a trained "
+                "policy (train one via scripts/train_playground_locomotion.py).",
+                resolved,
+            )
 
     def load_checkpoint(self, path: str) -> None:
         """Load Brax checkpoint via ``eliza_robot.sim.mujoco.inference``."""
