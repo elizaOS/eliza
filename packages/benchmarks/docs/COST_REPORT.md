@@ -1,0 +1,118 @@
+# Benchmark cost report
+
+Per-benchmark token totals from `benchmark_results/latest`, priced on Cerebras `gpt-oss-120b` ($0.35/$0.75 per 1M) and Anthropic `claude-opus-4-8` ($15/$75 per 1M).
+
+`*` = smithers row projected from the hermes token profile (no smithers snapshot yet). `†` = smithers measured live.
+
+> **Caveat:** these are the token volumes recorded in the checked-in snapshots, which were captured at the *calibration sample sizes* (e.g. `max_examples=2`), not full datasets. A full-dataset run scales roughly by `(full_N / sample_N)` per benchmark. Treat the totals as the cost of the recorded configuration and a per-token basis for scaling, not as the cost of a complete leaderboard run.
+
+
+## Cost per benchmark — gpt-oss-120b (Cerebras)
+
+| benchmark | eliza | hermes | openclaw | smithers |
+|---|---|---|---|---|
+| abliteration_robustness | $0.0024 | $0.0002 | $0.0002 | $0.0002* |
+| action_calling | $0.0017 | $0.0015 | $0.0015 | $0.0015* |
+| adhdbench | $0.0095 | $0.0005 | $0.0005 | $0.0005* |
+| agentbench | $0.0048 | $0.0002 | $0.0311 | $0.0002* |
+| app_eval | $0.0017 | $0.0012 | $0.0014 | $0.0012* |
+| bfcl | $0.0005 | $0.0004 | $0.0004 | $0.0004* |
+| clawbench | $0.0054 | $0.0021 | $0.0021 | $0.0021* |
+| compactbench | $0.0157 | $0.0245 | $0.0238 | $0.0245* |
+| configbench | $0.0014 | $0.0002 | $0.0002 | $0.0002* |
+| context_bench | $0.0114 | $0.0005 | $0.0005 | $0.0005* |
+| eliza_1 | $0.0115 | $0.0004 | $0.0004 | $0.0004* |
+| experience | $0.0081 | $0.0003 | $0.0003 | $0.0003* |
+| framework | $0.0012 | $0.0001 | $0.0001 | $0.0001* |
+| gauntlet | $0.0046 | $0.0010 | $0.0010 | $0.0010* |
+| gsm8k | $0.0049 | $0.0004 | $0.0004 | $0.0004* |
+| hermes_swe_env | $0.0014 | $0.0003 | $0.0003 | $0.0003* |
+| hermes_tblite | $0.0526 | $0.0123 | $0.0394 | $0.0123* |
+| hermes_terminalbench_2 | $0.0469 | $0.0232 | $0.0765 | $0.0232* |
+| hermes_yc_bench | $0.0022 | — | $0.0291 | $0.0291* |
+| humaneval | $0.0081 | $0.0004 | $0.0004 | $0.0004* |
+| interrupt_bench | $0.0263 | $0.0054 | $0.0053 | $0.0054* |
+| lifeops_bench | $0.0068 | $0.1058 | $0.1056 | $0.1058* |
+| loca_bench | $0.0653 | $0.0322 | $0.0370 | $0.0322* |
+| mind2web | $0.0325 | $0.0006 | $0.0006 | $0.0006* |
+| mint | $0.0015 | $0.0002 | $0.0001 | $0.0002* |
+| mmau | $0.0029 | $0.0002 | $0.0002 | $0.0002* |
+| mmlu | $0.0045 | $0.0003 | $0.0003 | $0.0003* |
+| mt_bench | $0.0089 | $0.0035 | $0.0035 | $0.0035* |
+| openclaw_bench | $0.0016 | $0.0002 | $0.0002 | $0.0002* |
+| orchestrator_lifecycle | $0.0555 | $0.0039 | $0.0029 | $0.0039* |
+| osworld | $0.0000 | $0.0000 | $0.0000 | $0.0000* |
+| realm | $0.0732 | $0.0064 | $0.0069 | $0.0064* |
+| rlm_bench | $0.0128 | $0.0023 | $0.0022 | $0.0023* |
+| scambench | $0.0034 | $0.0003 | $0.0128 | $0.0003* |
+| swe_bench | $0.0039 | $0.0038 | $0.0067 | $0.0038* |
+| swe_bench_orchestrated | $0.0020 | $0.0038 | $0.0044 | $0.0038* |
+| tau_bench | $0.0273 | $0.0126 | $0.0154 | $0.0126* |
+| terminal_bench | $0.0006 | $0.0003 | $0.0002 | $0.0003* |
+| trust | $0.0155 | $0.0019 | $0.0019 | $0.0019* |
+| vending_bench | $0.0131 | $0.0120 | $0.0085 | $0.0120* |
+| vision_language | — | $0.2130 | $0.2130 | $0.2130* |
+| visualwebbench | $0.0008 | $0.0006 | $0.0007 | $0.0006* |
+| voiceagentbench | — | $0.0004 | — | $0.0004* |
+| voicebench | $0.0000 | $0.0000 | $0.0000 | $0.0000* |
+| voicebench_quality | $0.0025 | $0.0002 | $0.0623 | $0.0002* |
+| webshop | $0.0021 | $0.0026 | $0.0026 | $0.0026* |
+| woobench | $0.0272 | $0.0264 | $0.0395 | $0.0264* |
+| **TOTAL** | **$0.59** | **$0.51** | **$0.74** | **$0.54** |
+| **AVG/bench** | $0.0130 | $0.0111 | $0.0161 | $0.0114 |
+| benchmarks counted | 45 | 46 | 46 | 47 |
+
+## Cost per benchmark — opus-4.8 (Anthropic)
+
+| benchmark | eliza | hermes | openclaw | smithers |
+|---|---|---|---|---|
+| abliteration_robustness | $0.1360 | $0.0216 | $0.0216 | $0.0216* |
+| action_calling | $0.0982 | $0.0764 | $0.0766 | $0.0764* |
+| adhdbench | $0.5159 | $0.0251 | $0.0283 | $0.0251* |
+| agentbench | $0.2463 | $0.0101 | $1.3308 | $0.0101* |
+| app_eval | $0.1168 | $0.1197 | $0.1335 | $0.1197* |
+| bfcl | $0.0350 | $0.0217 | $0.0216 | $0.0217* |
+| clawbench | $0.3147 | $0.1388 | $0.1390 | $0.1388* |
+| compactbench | $1.0775 | $1.6126 | $1.5605 | $1.6126* |
+| configbench | $0.0773 | $0.0140 | $0.0142 | $0.0140* |
+| context_bench | $0.5551 | $0.0211 | $0.0213 | $0.0211* |
+| eliza_1 | $0.6037 | $0.0236 | $0.0238 | $0.0236* |
+| experience | $0.4282 | $0.0178 | $0.0225 | $0.0178* |
+| framework | $0.0598 | $0.0037 | $0.0037 | $0.0037* |
+| gauntlet | $0.2641 | $0.0531 | $0.0535 | $0.0531* |
+| gsm8k | $0.2714 | $0.0316 | $0.0316 | $0.0316* |
+| hermes_swe_env | $0.0875 | $0.0270 | $0.0270 | $0.0270* |
+| hermes_tblite | $2.4019 | $0.5602 | $1.8008 | $0.5602* |
+| hermes_terminalbench_2 | $2.1383 | $1.0486 | $3.4676 | $1.0486* |
+| hermes_yc_bench | $0.1071 | — | $1.5372 | $1.5372* |
+| humaneval | $0.4456 | $0.0260 | $0.0260 | $0.0260* |
+| interrupt_bench | $1.5411 | $0.3567 | $0.3446 | $0.3567* |
+| lifeops_bench | $0.3005 | $4.5555 | $4.5480 | $4.5555* |
+| loca_bench | $3.3284 | $1.5272 | $1.7342 | $1.5272* |
+| mind2web | $1.7517 | $0.0381 | $0.0388 | $0.0381* |
+| mint | $0.0998 | $0.0132 | $0.0097 | $0.0132* |
+| mmau | $0.1704 | $0.0118 | $0.0116 | $0.0118* |
+| mmlu | $0.2259 | $0.0154 | $0.0154 | $0.0154* |
+| mt_bench | $0.6233 | $0.3035 | $0.3035 | $0.3035* |
+| openclaw_bench | $0.0978 | $0.0155 | $0.0155 | $0.0155* |
+| orchestrator_lifecycle | $3.0923 | $0.2053 | $0.1796 | $0.2053* |
+| osworld | $0.0005 | $0.0005 | $0.0005 | $0.0005* |
+| realm | $3.3580 | $0.3198 | $0.3096 | $0.3198* |
+| rlm_bench | $0.6664 | $0.1186 | $0.1144 | $0.1186* |
+| scambench | $0.2103 | $0.0139 | $0.5473 | $0.0139* |
+| swe_bench | $0.1865 | $0.1810 | $0.3693 | $0.1810* |
+| swe_bench_orchestrated | $0.1017 | $0.1844 | $0.2364 | $0.1844* |
+| tau_bench | $1.4568 | $0.5832 | $0.7175 | $0.5832* |
+| terminal_bench | $0.0349 | $0.0155 | $0.0132 | $0.0155* |
+| trust | $0.8930 | $0.1256 | $0.1248 | $0.1256* |
+| vending_bench | $0.7989 | $0.5900 | $0.4227 | $0.5900* |
+| vision_language | — | $9.1299 | $9.1299 | $9.1299* |
+| visualwebbench | $0.0477 | $0.0345 | $0.0365 | $0.0345* |
+| voiceagentbench | — | $0.0238 | — | $0.0238* |
+| voicebench | $0.0003 | $0.0003 | $0.0003 | $0.0003* |
+| voicebench_quality | $0.1474 | $0.0164 | $2.6683 | $0.0164* |
+| webshop | $0.1236 | $0.1219 | $0.1224 | $0.1219* |
+| woobench | $1.8356 | $1.5618 | $2.3336 | $1.5618* |
+| **TOTAL** | **$31.07** | **$23.92** | **$34.69** | **$25.45** |
+| **AVG/bench** | $0.6905 | $0.5199 | $0.7541 | $0.5416 |
+| benchmarks counted | 45 | 46 | 46 | 47 |

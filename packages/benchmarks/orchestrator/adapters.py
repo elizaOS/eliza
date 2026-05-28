@@ -70,6 +70,7 @@ IGNORED_BENCHMARK_DIRS = {
     "eliza-format",
     "hermes-adapter",
     "openclaw-adapter",
+    "smithers-adapter",
     "openclaw_benchmark",
     "lib",
     "nl2repo",
@@ -100,6 +101,10 @@ IGNORED_BENCHMARK_DIRS = {
 # OpenClaw comparison unless a future adapter adds a hard exclusion here.
 ALL_HARNESSES: tuple[str, ...] = ("eliza", "openclaw", "hermes")
 AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {}
+# Benchmarks for which a smithers-adapter per-benchmark factory exists. The
+# smithers harness is added to a benchmark's compatibility tuple only when it
+# appears here, so the runner never tries to import a missing smithers factory.
+SMITHERS_BENCHMARKS: frozenset[str] = frozenset({"bfcl"})
 HYPERLIQUID_LIVE_UNAVAILABLE_REASON = (
     "Hyperliquid live execution unavailable "
     "(set HL_PRIVATE_KEY and run with --no-demo); harness not run"
@@ -141,6 +146,15 @@ VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON = (
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
+    base = _base_agent_compatibility_for(benchmark_id)
+    # Add the smithers harness only for benchmarks with a real factory, and
+    # only when the benchmark is runnable at all (base is non-empty).
+    if base and benchmark_id in SMITHERS_BENCHMARKS and "smithers" not in base:
+        return (*base, "smithers")
+    return base
+
+
+def _base_agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
     if benchmark_id == "hyperliquid_bench":
         return ALL_HARNESSES if _has_hyperliquid_live_backend() else ()
     if benchmark_id == "terminal_bench":
@@ -669,6 +683,7 @@ def _make_registry_adapter(
         str((benchmarks_root / "eliza-adapter").resolve()),
         str((benchmarks_root / "hermes-adapter").resolve()),
         str((benchmarks_root / "openclaw-adapter").resolve()),
+        str((benchmarks_root / "smithers-adapter").resolve()),
     ]
     lifeops_bench_path = benchmarks_root / "lifeops-bench"
     if lifeops_bench_path.exists():
@@ -1277,6 +1292,7 @@ def _env_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str,
         str((ctx.benchmarks_root / "eliza-adapter").resolve()),
         str((ctx.benchmarks_root / "hermes-adapter").resolve()),
         str((ctx.benchmarks_root / "openclaw-adapter").resolve()),
+        str((ctx.benchmarks_root / "smithers-adapter").resolve()),
     ]
     env = {
         "PYTHONPATH": os.pathsep.join([*adapter_paths, existing]).rstrip(os.pathsep),
@@ -1441,6 +1457,7 @@ def _env_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, s
         str((ctx.benchmarks_root / "eliza-adapter").resolve()),
         str((ctx.benchmarks_root / "hermes-adapter").resolve()),
         str((ctx.benchmarks_root / "openclaw-adapter").resolve()),
+        str((ctx.benchmarks_root / "smithers-adapter").resolve()),
     ]
     harness = ctx.request.agent.strip().lower()
     model_name = _provider_model_name(ctx.request.provider, ctx.request.model)
