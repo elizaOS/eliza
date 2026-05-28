@@ -41,6 +41,7 @@
       const ipcHost = 'ipc';
       const ipcBase = 'eliza-local-agent://ipc';
       const ipcPathPrefix = `//${ipcHost}`;
+      const localAgentPort = '31337';
 
       function rawUrl(input) {
         try {
@@ -62,6 +63,13 @@
         }
         try {
           const url = new URL(trimmed, window.location?.href ? window.location.href : 'https://eliza.app');
+          if (
+            url.protocol === 'http:' &&
+            url.port === localAgentPort &&
+            (url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '[::1]' || url.hostname === '::1')
+          ) {
+            return (url.pathname || '/') + url.search;
+          }
           if (url.protocol !== ipcProtocol) return null;
           if (url.hostname === ipcHost) return (url.pathname || '/') + url.search;
           if (url.pathname === ipcPathPrefix) return url.search ? `/${url.search}` : '/';

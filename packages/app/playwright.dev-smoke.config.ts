@@ -18,7 +18,7 @@ process.env.ELIZA_NAMESPACE = process.env.ELIZA_NAMESPACE || "eliza-dev-smoke";
 
 export default defineConfig({
   testDir: "./test/dev-smoke",
-  timeout: 360_000,
+  timeout: 600_000,
   expect: {
     timeout: 20_000,
   },

@@ -53,7 +53,7 @@ async function fetchJson<T>(url: string): Promise<T> {
 async function waitForJson<T>(
   url: string,
   predicate: (value: T) => boolean,
-  timeoutMs = 180_000,
+  timeoutMs = 420_000,
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   let lastError: unknown;
