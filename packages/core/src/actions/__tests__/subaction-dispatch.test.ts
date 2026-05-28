@@ -31,6 +31,7 @@ describe("subaction-dispatch", () => {
 		).toBe("list");
 		expect(readSubaction({ subaction: "list" }, { allowed })).toBe("list");
 		expect(readSubaction({ op: "list" }, { allowed })).toBe("list");
+		expect(readSubaction({ action: "list" }, { allowed })).toBe("list");
 		expect(readSubaction({ action: "create" }, { allowed })).toBe("create");
 		expect(readSubaction({ operation: "create" }, { allowed })).toBe("create");
 		expect(readSubaction({ verb: "create" }, { allowed })).toBe("create");
