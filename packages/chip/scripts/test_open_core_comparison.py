@@ -28,8 +28,14 @@ def test_little_core_is_cva6() -> None:
 def test_bpu_axis_is_a_measured_win() -> None:
     verdict = _data()["e1_vs_ariane_verdict"]["branch_prediction"]
     assert verdict["verdict"] == "win"
-    assert verdict["evidence"] == "docs/evidence/cpu_ap/bpu-vs-cva6-mpki.json"
-    assert (ROOT / verdict["evidence"]).exists()
+    # The BPU axis is backed by both the behavioural head-to-head model and its
+    # RTL corroboration, so the evidence is a list of paths.
+    evidence = verdict["evidence"]
+    assert isinstance(evidence, list)
+    assert "docs/evidence/cpu_ap/bpu-vs-cva6-mpki.json" in evidence
+    assert "docs/evidence/cpu_ap/bpu-vs-cva6-mpki-rtl.json" in evidence
+    for path in evidence:
+        assert (ROOT / path).exists()
 
 
 def test_silicon_axis_stays_an_honest_loss() -> None:
