@@ -36,6 +36,14 @@ def sha256_bytes(data: bytes) -> str:
 
 
 class MultiarchBootContractTests(unittest.TestCase):
+    def test_build_script_cleans_mutable_gui_profile_overlay(self) -> None:
+        build_text = (HERE.parent / "build.sh").read_text(encoding="utf-8")
+        self.assertIn(
+            'rm -f "${HERE}/config/package-lists/elizaos-gui.list.chroot"',
+            build_text,
+        )
+        self.assertIn('cp -a "${HERE}/config/profiles/gui/."', build_text)
+
     def write_minimal_kiosk_contract_tree(
         self, root: Path, gui_packages: str, common_packages: str = ""
     ) -> None:
