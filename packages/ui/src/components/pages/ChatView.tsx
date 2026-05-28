@@ -49,6 +49,7 @@ import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
 import { ChatComposer } from "../composites/chat/chat-composer";
+import { ChatEmptyState } from "../composites/chat/chat-empty-state";
 import { ChatComposerShell } from "../composites/chat/chat-composer-shell";
 import { ChatSourceIcon } from "../composites/chat/chat-source";
 import { ChatThreadLayout } from "../composites/chat/chat-thread-layout";
@@ -548,9 +549,11 @@ export function ChatView({
 
   const messagesContent =
     visibleMsgs.length === 0 && !chatSending ? (
-      <div className="flex h-full items-center justify-center px-6 text-center text-xs text-muted">
-        {t("chatview.NoMessagesYet", { defaultValue: "No messages yet." })}
-      </div>
+      <ChatEmptyState
+        agentName={agentName}
+        variant={variant}
+        onSuggestionClick={(suggestion) => setChatInput(suggestion)}
+      />
     ) : (
       <ChatTranscript
         variant={variant}

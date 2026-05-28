@@ -29,6 +29,9 @@ import type {
   SmsMessageSummary,
 } from "../../bridge/native-plugins";
 import { getPlugins } from "../../bridge/plugin-bridge";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 
 type PhonePanel = "dialer" | "recents" | "contacts" | "import" | "transcripts";
 
@@ -111,7 +114,7 @@ function Panel({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded border border-border bg-card p-4 shadow-sm">
+    <section className="rounded-sm border border-border bg-card p-4">
       <div className="mb-4">
         <h2 className="text-base font-semibold text-txt">{title}</h2>
         {description ? (
@@ -137,15 +140,16 @@ function PrimaryButton({
   type?: "button" | "submit";
 }) {
   return (
-    <button
+    <Button
       type={type}
+      variant="default"
+      size="sm"
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-9 items-center justify-center gap-2 rounded border border-border bg-primary px-3 text-sm font-medium text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50"
     >
       {icon}
       <span className="truncate">{children}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -163,15 +167,16 @@ function SecondaryButton({
   type?: "button" | "submit";
 }) {
   return (
-    <button
+    <Button
       type={type}
+      variant="outline"
+      size="sm"
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-9 items-center justify-center gap-2 rounded border border-border bg-bg px-3 text-sm font-medium text-txt disabled:cursor-not-allowed disabled:opacity-50"
     >
       {icon}
       <span className="truncate">{children}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -189,11 +194,10 @@ function TextInput({
   return (
     <label className="grid gap-1 text-sm text-txt">
       <span className="font-medium">{label}</span>
-      <input
+      <Input
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 rounded border border-border bg-bg px-3 text-sm text-txt outline-none focus:border-primary"
       />
     </label>
   );
@@ -213,11 +217,10 @@ function TextArea({
   return (
     <label className="grid gap-1 text-sm text-txt">
       <span className="font-medium">{label}</span>
-      <textarea
+      <Textarea
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="min-h-24 rounded border border-border bg-bg px-3 py-2 text-sm text-txt outline-none focus:border-primary"
       />
     </label>
   );

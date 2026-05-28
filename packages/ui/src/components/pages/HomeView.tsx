@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 
 import { CloudVideoBackground } from "../../backgrounds/CloudVideoBackground";
 import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { useShellControllerContext } from "../shell/ShellControllerContext";
 import { VoiceWaveform } from "../voice/VoiceWaveform";
 
@@ -103,8 +105,8 @@ export function HomeView(): React.JSX.Element {
             </button>
           </div>
 
-          <div className="flex items-center gap-2 rounded-full border border-black/10 bg-white/60 p-2 text-slate-800 shadow-lg backdrop-blur-md">
-            <input
+          <div className="flex items-center gap-2 rounded-full border border-border bg-card/80 p-2 text-txt backdrop-blur-md">
+            <Input
               type="text"
               value={draft}
               onFocus={() => setFocused(true)}
@@ -119,17 +121,18 @@ export function HomeView(): React.JSX.Element {
               placeholder="Ask Eliza..."
               aria-label="Message Eliza"
               data-testid="home-chat-input"
-              className="min-w-0 flex-1 bg-transparent px-3 text-sm text-slate-800 placeholder:text-slate-500 focus:outline-none"
+              className="min-w-0 flex-1 border-0 bg-transparent px-3 text-txt placeholder:text-muted focus-visible:ring-0 focus-visible:ring-offset-0"
             />
-            <button
+            <Button
               type="button"
+              size="icon"
               aria-label="Send message"
               disabled={!canSend}
               onClick={sendDraft}
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-accent text-bg transition-opacity disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="shrink-0 rounded-full text-bg disabled:opacity-45"
             >
               <Send className="h-4 w-4" aria-hidden />
-            </button>
+            </Button>
           </div>
         </div>
       </div>
