@@ -664,7 +664,7 @@ function GraphTooltip({ state }: { state: TooltipState }) {
     return (
       <div
         style={style}
-        className="rounded-xl border border-border/40 bg-card/95 px-3 py-2.5 shadow-lg backdrop-blur-md"
+        className="rounded-sm border border-border/40 bg-card/95 px-3 py-2.5 backdrop-blur-md"
       >
         <div className="flex items-center gap-1.5 text-sm font-semibold text-txt">
           {person.isOwner ? (
@@ -700,7 +700,7 @@ function GraphTooltip({ state }: { state: TooltipState }) {
   return (
     <div
       style={style}
-      className="rounded-xl border border-border/40 bg-card/95 px-3 py-2.5 shadow-lg backdrop-blur-md"
+      className="rounded-sm border border-border/40 bg-card/95 px-3 py-2.5 backdrop-blur-md"
     >
       <div className="text-sm font-semibold text-txt">
         {edge.sourcePersonName} / {edge.targetPersonName}
@@ -1036,7 +1036,7 @@ export function RelationshipsGraphPanel({
         {/* biome-ignore lint/a11y/noStaticElementInteractions: graph container handles tooltip dismiss on mouse leave */}
         <div
           ref={containerRef}
-          className={`${compact ? "max-h-[34rem]" : "max-h-[42rem]"} relative cursor-grab touch-none overflow-auto overscroll-contain rounded-2xl border border-border/26 bg-[radial-gradient(circle_at_top,rgba(240,185,11,0.12),transparent_42%),linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] active:cursor-grabbing`}
+          className={`${compact ? "max-h-[34rem]" : "max-h-[42rem]"} relative cursor-grab touch-none overflow-auto overscroll-contain rounded-sm border border-border/26 bg-[radial-gradient(circle_at_top,rgba(240,185,11,0.12),transparent_42%),linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] active:cursor-grabbing`}
           data-graph-container
           onMouseLeave={hideTooltip}
           onPointerDown={beginPan}
@@ -1217,7 +1217,7 @@ export function RelationshipsGraphPanel({
                       }
                       onMouseMove={(event) => showTooltipForNode(person, event)}
                       onMouseLeave={hideTooltip}
-                      className="h-full w-full rounded-2xl bg-transparent"
+                      className="h-full w-full rounded-sm bg-transparent"
                       aria-label={`Select ${person.displayName}`}
                     />
                   </foreignObject>

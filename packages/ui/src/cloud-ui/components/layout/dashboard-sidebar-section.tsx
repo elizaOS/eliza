@@ -114,7 +114,7 @@ export function DashboardSidebarNavigationSection({
           {section.title}
         </h3>
         <span
-          className="rounded bg-white/18 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/58"
+          className="rounded-sm bg-white/18 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/58"
           style={{
             fontFamily: "var(--font-roboto-mono)",
           }}

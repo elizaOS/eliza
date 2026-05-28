@@ -51,7 +51,7 @@ function SettingsDialogIcon({ plugin }: { plugin: PluginInfo }) {
       <img
         src={imageSrc}
         alt=""
-        className="w-6 h-6 rounded-md object-contain"
+        className="w-6 h-6 rounded-sm object-contain"
         onError={(event) => {
           (event.currentTarget as HTMLImageElement).style.display = "none";
         }}
@@ -200,7 +200,7 @@ export function PluginSettingsDialog({
                 <Button
                   variant="default"
                   size="sm"
-                  className="h-8 px-4 text-xs-tight font-bold tracking-wide shadow-sm"
+                  className="h-8 px-4 text-xs-tight font-bold tracking-wide "
                   disabled={installingPlugins.has(plugin.id)}
                   onClick={() =>
                     void onInstallPlugin(plugin.id, plugin.npmName ?? "")
@@ -238,7 +238,7 @@ export function PluginSettingsDialog({
                       ? "bg-ok text-ok-fg border-ok hover:bg-ok/90"
                       : testResults.get(plugin.id)?.error
                         ? "bg-danger text-danger-fg border-danger hover:bg-danger/90"
-                        : "border-border/40 bg-card/40 backdrop-blur-md shadow-sm hover:border-accent/40"
+                        : "border-border/40 bg-card/40 backdrop-blur-md hover:border-accent/40"
                 }`}
                 disabled={testResults.get(plugin.id)?.loading}
                 onClick={() => void onTestConnection(plugin.id)}
@@ -260,7 +260,7 @@ export function PluginSettingsDialog({
               className={`h-8 px-5 text-xs font-bold tracking-wide transition-all ${
                 saveSuccess
                   ? "bg-ok text-ok-fg hover:bg-ok/90"
-                  : "bg-accent text-accent-fg hover:bg-accent/90 shadow-lg shadow-accent/20"
+                  : "bg-accent text-accent-fg hover:bg-accent/90 "
               }`}
               onClick={() => void onConfigSave(plugin.id)}
               disabled={isSaving}

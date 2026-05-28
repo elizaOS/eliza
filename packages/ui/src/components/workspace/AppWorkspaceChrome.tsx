@@ -66,7 +66,7 @@ export function AppWorkspaceChatCollapseButton({
     <button
       type="button"
       data-testid={testId}
-      className="inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="inline-flex h-6 w-6 items-center justify-center rounded-sm bg-transparent text-muted transition-colors hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       aria-label="Collapse chat"
       onClick={() => chatChrome.collapseChat()}
     >
@@ -92,7 +92,7 @@ function AppWorkspaceChatDockToggleButton({
     <button
       type="button"
       data-testid={testId}
-      className="fixed bottom-2 right-2 z-40 inline-flex h-6 w-6 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="fixed bottom-2 right-2 z-40 inline-flex h-6 w-6 items-center justify-center rounded-sm bg-transparent text-muted transition-colors hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       aria-label={collapsed ? "Open page chat" : "Collapse chat"}
       onClick={() =>
         collapsed ? chatChrome.openChat() : chatChrome.collapseChat()
@@ -129,7 +129,7 @@ function MobileWorkspacePaneSwitcher({
   const showRight = chatAvailable && !sidebarOpen;
   if (!showLeft && !showRight) return null;
   const buttonClassName =
-    "inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/40 bg-card/80 text-muted shadow-sm backdrop-blur transition-colors hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+    "inline-flex h-9 w-9 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted backdrop-blur transition-colors hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
   return (
     <div

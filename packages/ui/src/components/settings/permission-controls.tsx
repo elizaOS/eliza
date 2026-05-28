@@ -459,7 +459,7 @@ export function CapabilityToggle({
 
   return (
     <div
-      className={`flex flex-col gap-3 rounded border px-4 py-3 shadow-sm transition-colors sm:flex-row sm:items-center ${
+      className={`flex flex-col gap-3 rounded-sm border px-4 py-3 transition-colors sm:flex-row sm:items-center ${
         enabled
           ? "border-accent/30 bg-accent/10"
           : "border-border/60 bg-card/92"

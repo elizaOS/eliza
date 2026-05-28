@@ -39,15 +39,15 @@ function methodBadgeClass(method: HttpMethod) {
     "inline-flex items-center rounded-none px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border transition-all";
   switch (method) {
     case "GET":
-      return `${base} bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-[0_0_10px_rgba(52,211,153,0.1)]`;
+      return `${base} bg-emerald-500/10 text-emerald-400 border-emerald-500/30 `;
     case "POST":
-      return `${base} bg-blue-500/10 text-blue-400 border-blue-500/30 shadow-[0_0_10px_rgba(59,130,246,0.1)]`;
+      return `${base} bg-blue-500/10 text-blue-400 border-blue-500/30 `;
     case "PUT":
-      return `${base} bg-amber-500/10 text-amber-400 border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.1)]`;
+      return `${base} bg-amber-500/10 text-amber-400 border-amber-500/30 `;
     case "PATCH":
-      return `${base} bg-violet-500/10 text-violet-400 border-violet-500/30 shadow-[0_0_10px_rgba(139,92,246,0.1)]`;
+      return `${base} bg-violet-500/10 text-violet-400 border-violet-500/30 `;
     case "DELETE":
-      return `${base} bg-rose-500/10 text-rose-400 border-rose-500/30 shadow-[0_0_10px_rgba(244,63,94,0.1)]`;
+      return `${base} bg-rose-500/10 text-rose-400 border-rose-500/30 `;
     default:
       return `${base} bg-white/5 text-white/60 border-white/10`;
   }
@@ -181,7 +181,7 @@ export function ApiRouteExplorerClient({
             <div className="border-b border-white/10 p-4 bg-gradient-to-r from-[#ff5800]/5 to-transparent">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[#ff5800] shadow-[0_0_8px_rgba(255,88,0,0.5)]" />
+                  <div className="w-2 h-2 rounded-full bg-[#ff5800] " />
                   <span className="text-xs font-bold uppercase tracking-[0.18em] text-white/60">
                     Route Explorer
                   </span>
@@ -263,7 +263,7 @@ export function ApiRouteExplorerClient({
                             className={cn(
                               "w-full text-left rounded-none border px-3 py-2.5 transition-all my-1",
                               active
-                                ? "bg-[#ff5800]/10 border-[#ff5800]/40 shadow-[inset_0_0_20px_rgba(255,88,0,0.05)]"
+                                ? "bg-[#ff5800]/10 border-[#ff5800]/40 "
                                 : "border-transparent hover:bg-white/5 hover:border-white/10",
                             )}
                           >

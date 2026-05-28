@@ -294,7 +294,7 @@ function WorkflowGenerationProgress({
 
   return (
     <div
-      className="w-full max-w-md rounded-xl border px-5 py-4 text-sm shadow-lg"
+      className="w-full max-w-md rounded-sm border px-5 py-4 text-sm "
       style={{
         background: chrome.overlayChipBg,
         color: chrome.overlayChipText,
@@ -514,7 +514,7 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
       aria-hidden={!isOpen}
       className={[
         "absolute inset-y-0 right-0 z-30 flex w-72 flex-col",
-        "border-l border-border/40 bg-bg shadow-xl backdrop-blur-[2px]",
+        "border-l border-border/40 bg-bg backdrop-blur-[2px]",
         "transition-transform duration-200 ease-out",
         isOpen ? "translate-x-0" : "translate-x-full",
       ].join(" ")}
@@ -538,7 +538,7 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
           type="button"
           aria-label={t("workflowGraph.closeDrawer")}
           tabIndex={isOpen ? 0 : -1}
-          className="shrink-0 flex h-6 w-6 items-center justify-center rounded text-muted hover:text-txt transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="shrink-0 flex h-6 w-6 items-center justify-center rounded-sm text-muted hover:text-txt transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={onClose}
         >
           <X className="h-3.5 w-3.5" />
@@ -554,7 +554,7 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
                 <div className="text-xs font-semibold uppercase tracking-wider text-muted">
                   Step
                 </div>
-                <div className="rounded bg-bg/40 border border-border/20 px-2 py-2">
+                <div className="rounded-sm bg-bg/40 border border-border/20 px-2 py-2">
                   <p className="text-xs leading-relaxed text-txt/80">
                     {node.notes.trim()}
                   </p>
@@ -574,7 +574,7 @@ function NodeDetailDrawer({ node, onClose, labelId }: NodeDetailDrawerProps) {
                       <div className="text-xs font-medium text-muted/80 font-mono">
                         {key}
                       </div>
-                      <div className="rounded bg-bg/40 border border-border/20 px-2 py-1">
+                      <div className="rounded-sm bg-bg/40 border border-border/20 px-2 py-1">
                         <ParamValue value={val} />
                       </div>
                     </div>
@@ -740,7 +740,7 @@ export function WorkflowGraphViewer({
         ref={containerRef}
         role="img"
         aria-label={ariaLabel}
-        className={`relative overflow-hidden rounded-lg ${borderClass}`}
+        className={`relative overflow-hidden rounded-sm ${borderClass}`}
         style={{ height: 420, background: chrome.canvasBg }}
       >
         {/* Loading skeleton */}
@@ -762,7 +762,7 @@ export function WorkflowGraphViewer({
             {onEmptyStateAction && (
               <button
                 type="button"
-                className="mt-1 rounded-md border border-border/40 bg-bg/40 px-3 py-1.5 text-xs text-txt hover:bg-bg/70 transition-colors"
+                className="mt-1 rounded-sm border border-border/40 bg-bg/40 px-3 py-1.5 text-xs text-txt hover:bg-bg/70 transition-colors"
                 onClick={onEmptyStateAction}
               >
                 {emptyStateActionLabel}
@@ -829,7 +829,7 @@ export function WorkflowGraphViewer({
             aria-label="Full screen"
             className={[
               "absolute top-3 z-20 flex h-7 w-7 items-center justify-center",
-              "rounded border border-border/40 bg-bg/80 text-muted hover:text-txt transition-all duration-200",
+              "rounded-sm border border-border/40 bg-bg/80 text-muted hover:text-txt transition-all duration-200",
               selectedNode ? "right-[calc(18rem_+_0.75rem)]" : "right-3",
             ].join(" ")}
             onClick={() => setFullScreen(true)}
@@ -862,7 +862,7 @@ export function WorkflowGraphViewer({
             <button
               type="button"
               aria-label="Close"
-              className="flex h-7 w-7 items-center justify-center rounded text-muted hover:text-txt transition-colors"
+              className="flex h-7 w-7 items-center justify-center rounded-sm text-muted hover:text-txt transition-colors"
               onClick={() => setFullScreen(false)}
             >
               <X className="h-4 w-4" />

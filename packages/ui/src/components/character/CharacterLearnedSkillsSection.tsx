@@ -93,7 +93,7 @@ export function CharacterLearnedSkillsSection() {
 
   return (
     <section
-      className="flex min-w-0 flex-col gap-4 rounded-2xl border border-border/40 bg-bg/70 px-4 py-4"
+      className="flex min-w-0 flex-col gap-4 rounded-sm border border-border/40 bg-bg/70 px-4 py-4"
       data-testid="character-learned-skills-panel"
     >
       <div className="flex items-start justify-between gap-3">
@@ -108,7 +108,7 @@ export function CharacterLearnedSkillsSection() {
         <Button
           variant="outline"
           size="icon"
-          className="h-8 w-8 rounded-lg"
+          className="h-8 w-8 rounded-sm"
           onClick={() => {
             setActionErrorMessage(null);
             refresh();
@@ -125,7 +125,7 @@ export function CharacterLearnedSkillsSection() {
 
       <div className="flex flex-col gap-4">
         {errorMessage ? (
-          <div className="rounded-xl border border-danger/40 bg-danger/10 px-3 py-2.5 text-xs-tight leading-5 text-danger">
+          <div className="rounded-sm border border-danger/40 bg-danger/10 px-3 py-2.5 text-xs-tight leading-5 text-danger">
             {errorMessage}
           </div>
         ) : null}
@@ -158,7 +158,7 @@ export function CharacterLearnedSkillsSection() {
         ) : null}
 
         {isEmpty ? (
-          <div className="rounded-xl border border-dashed border-border/60 bg-bg-hover/40 px-3 py-3 text-xs-tight leading-5 text-muted">
+          <div className="rounded-sm border border-dashed border-border/60 bg-bg-hover/40 px-3 py-3 text-xs-tight leading-5 text-muted">
             I haven&rsquo;t picked up any abilities yet. Browse the catalog or
             add one by example, and I&rsquo;ll start using it.
           </div>

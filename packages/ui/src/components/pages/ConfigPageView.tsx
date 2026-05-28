@@ -71,7 +71,7 @@ function resolveCustomRpcSelections(
 
 function CloudLoginFallbackLink({ browserUrl }: { browserUrl: string }) {
   return (
-    <div className="w-full max-w-sm rounded border border-border bg-bg/70 p-2 text-left">
+    <div className="w-full max-w-sm rounded-sm border border-border bg-bg/70 p-2 text-left">
       <p className="mb-1 text-2xs font-semibold uppercase text-muted">
         Sign-in window did not open?
       </p>
@@ -339,9 +339,9 @@ export function ConfigPageView({
           variant="ghost"
           data-testid="wallet-rpc-mode-cloud"
           onClick={() => handleModeChange("cloud")}
-          className={`relative flex flex-col items-start gap-1.5 rounded-xl border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
+          className={`relative flex flex-col items-start gap-1.5 rounded-sm border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
             rpcMode === "cloud"
-              ? "border-accent bg-accent/8 shadow-[0_0_20px_rgba(var(--accent-rgb),0.1)]"
+              ? "border-accent bg-accent/8 "
               : "border-border/40 bg-card/30 opacity-50 grayscale hover:opacity-70 hover:grayscale-0"
           }`}
         >
@@ -386,9 +386,9 @@ export function ConfigPageView({
         <Button
           variant="ghost"
           onClick={() => handleModeChange("custom")}
-          className={`relative flex flex-col items-start gap-1.5 rounded-xl border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
+          className={`relative flex flex-col items-start gap-1.5 rounded-sm border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
             rpcMode === "custom"
-              ? "border-accent bg-accent/8 shadow-[0_0_20px_rgba(var(--accent-rgb),0.1)]"
+              ? "border-accent bg-accent/8 "
               : "border-border/40 bg-card/30 opacity-50 grayscale hover:opacity-70 hover:grayscale-0"
           }`}
         >
@@ -457,7 +457,7 @@ export function ConfigPageView({
                 ].map((chain) => (
                   <div
                     key={chain.label}
-                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-bg/50"
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-sm bg-bg/50"
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-ok shrink-0" />
                     <span className="text-xs font-semibold text-txt">
@@ -557,7 +557,7 @@ export function ConfigPageView({
             </div>
             <Button
               variant="outline"
-              className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)_+_2px)] flex items-center gap-1.5 text-xs text-muted hover:text-txt"
+              className="min-h-[2.625rem] px-4 rounded-sm flex items-center gap-1.5 text-xs text-muted hover:text-txt"
               onClick={() => setSecretsOpen(true)}
             >
               <svg
@@ -646,7 +646,7 @@ export function ConfigPageView({
           </div>
 
           {legacyRpcWarning && (
-            <div className="mt-4 rounded-lg border border-warn bg-warn-subtle px-3 py-2 text-xs-tight text-txt">
+            <div className="mt-4 rounded-sm border border-warn bg-warn-subtle px-3 py-2 text-xs-tight text-txt">
               {legacyRpcWarning}
             </div>
           )}
@@ -672,7 +672,7 @@ export function ConfigPageView({
       <Dialog open={secretsOpen} onOpenChange={setSecretsOpen}>
         <DialogContent
           showCloseButton={false}
-          className="w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,48rem)] overflow-hidden rounded-2xl border border-border/70 bg-card/96 p-0 shadow-2xl"
+          className="w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,48rem)] overflow-hidden rounded-sm border border-border/70 bg-card/96 p-0 "
         >
           <div className="flex max-h-[min(88vh,48rem)] flex-col">
             <DialogHeader className="flex flex-row items-center justify-between px-5 py-4">

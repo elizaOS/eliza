@@ -184,7 +184,7 @@ export function DesktopTalkModePanel() {
 
   if (!desktopRuntime) {
     return (
-      <Card className="border-border/60 bg-card/92 shadow-sm">
+      <Card className="border-border/60 bg-card/92 ">
         <CardContent className="px-4 py-4 text-xs leading-5 text-muted">
           {t("voiceconfigview.DesktopTalkModeDesktopOnly")}
         </CardContent>
@@ -193,7 +193,7 @@ export function DesktopTalkModePanel() {
   }
 
   return (
-    <Card className="border-border/60 bg-card/92 shadow-sm">
+    <Card className="border-border/60 bg-card/92 ">
       <CardHeader className="px-4 py-4 pb-0">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -677,7 +677,7 @@ function AsrAdvancedSection({
   }, [currentAsrProvider]);
 
   return (
-    <div className="rounded border border-border/60 bg-card/92 p-4 shadow-sm flex flex-col gap-3">
+    <div className="rounded-sm border border-border/60 bg-card/92 p-4 flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
         <span className="text-xs font-semibold text-muted">
           ASR (speech-to-text) provider
@@ -903,7 +903,7 @@ export function VoiceConfigView() {
 
   if (loading) {
     return (
-      <div className="rounded border border-border/60 bg-card/92 px-4 py-6 text-center text-xs text-muted shadow-sm">
+      <div className="rounded-sm border border-border/60 bg-card/92 px-4 py-6 text-center text-xs text-muted ">
         {t("voiceconfigview.LoadingVoiceConfig")}
       </div>
     );
@@ -916,7 +916,7 @@ export function VoiceConfigView() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded border border-border/60 bg-card/92 p-4 shadow-sm">
+      <div className="rounded-sm border border-border/60 bg-card/92 p-4 ">
         <div className="text-xs font-semibold text-muted">
           {t("voiceconfigview.TTSProvider")}
         </div>
@@ -942,7 +942,7 @@ export function VoiceConfigView() {
           })}
         </div>
       </div>
-      <div className="flex flex-col gap-2 rounded border border-border/60 bg-card/92 px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 rounded-sm border border-border/60 bg-card/92 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <span className="text-xs leading-5 text-txt">
           {currentProvider === "elevenlabs"
             ? `ElevenLabs — ${currentMode === "cloud" ? t("voiceconfigview.ServedViaElizaCloud") : t("voiceconfigview.RequiresApiKey")}`
@@ -961,7 +961,7 @@ export function VoiceConfigView() {
         </span>
       </div>
       {currentProvider === "elevenlabs" && (
-        <div className="rounded border border-border/60 bg-card/92 p-4 shadow-sm flex flex-col gap-4">
+        <div className="rounded-sm border border-border/60 bg-card/92 p-4 flex flex-col gap-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-xs font-semibold text-muted">
               {t("voiceconfigview.APISource")}
@@ -1020,7 +1020,7 @@ export function VoiceConfigView() {
                     variant={active ? "default" : "outline"}
                     className={`h-auto min-h-16 flex-col items-start rounded-sm px-3 py-2.5 text-left transition-all ${
                       active
-                        ? "border-accent/45 bg-accent/12 text-txt shadow-sm"
+                        ? "border-accent/45 bg-accent/12 text-txt "
                         : "border-border/60 bg-bg text-txt hover:border-border-strong hover:bg-bg-hover"
                     }`}
                     onClick={() => handleVoiceSelect(preset.voiceId)}
@@ -1075,17 +1075,17 @@ export function VoiceConfigView() {
         </div>
       )}
       {currentProvider === "edge" && (
-        <div className="rounded border border-border/60 bg-card/92 px-4 py-3 text-xs leading-5 text-muted shadow-sm">
+        <div className="rounded-sm border border-border/60 bg-card/92 px-4 py-3 text-xs leading-5 text-muted ">
           {t("voiceconfigview.EdgeTTSUsesMicros")}
         </div>
       )}
       {currentProvider === "robot-voice" && (
-        <div className="rounded border border-border/60 bg-card/92 px-4 py-3 text-xs leading-5 text-muted shadow-sm">
+        <div className="rounded-sm border border-border/60 bg-card/92 px-4 py-3 text-xs leading-5 text-muted ">
           {t("voiceconfigview.SimpleVoiceUsesYo")}
         </div>
       )}
 
-      <div className="flex items-center justify-between rounded border border-border/60 bg-card/92 px-4 py-3 shadow-sm">
+      <div className="flex items-center justify-between rounded-sm border border-border/60 bg-card/92 px-4 py-3 ">
         <div className="flex flex-col gap-0.5">
           <span className="text-xs font-semibold text-txt">
             Advanced settings

@@ -93,7 +93,7 @@ export function RelationshipsActivityFeed() {
 
   if (error) {
     return (
-      <div className="rounded-2xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+      <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
         {error}
       </div>
     );
@@ -111,7 +111,7 @@ export function RelationshipsActivityFeed() {
         return (
           <div
             key={`${item.personId}-${item.type}-${item.timestamp ?? "none"}-${item.summary}`}
-            className="flex items-center gap-2 rounded-lg border border-border/24 bg-card/28 px-2.5 py-2"
+            className="flex items-center gap-2 rounded-sm border border-border/24 bg-card/28 px-2.5 py-2"
           >
             <span
               role="img"
@@ -146,7 +146,7 @@ export function RelationshipsActivityFeed() {
           type="button"
           size="sm"
           variant="outline"
-          className="h-8 rounded-lg px-3"
+          className="h-8 rounded-sm px-3"
           disabled={loadingMore}
           onClick={loadMore}
         >

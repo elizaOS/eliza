@@ -62,12 +62,12 @@ export function HomePill({
         phase === "booting" && "opacity-60 cursor-not-allowed",
         // Listening: red pulse + accent ring using the brand orange token
         phase === "listening" &&
-          "bg-warn/30 border-warn/60 shadow-[0_0_24px_rgba(var(--accent-rgb),0.55)] animate-pulse",
+          "bg-warn/30 border-warn/60 animate-pulse",
         // Responding: ambient glow on brand orange
         phase === "responding" &&
-          "shadow-[0_0_18px_rgba(var(--accent-rgb),0.35)]",
+          "",
         // Summoned: faint glow
-        phase === "summoned" && "shadow-[0_0_10px_rgba(255,255,255,0.15)]",
+        phase === "summoned" && "",
       )}
     >
       <span
@@ -81,10 +81,10 @@ export function HomePill({
       >
         <span
           className={cn(
-            "h-2.5 w-2.5 rounded-full bg-accent shadow-[0_0_12px_rgba(var(--accent-rgb),0.55)]",
+            "h-2.5 w-2.5 rounded-full bg-accent ",
             phase === "booting" && "bg-muted shadow-none",
             phase === "listening" &&
-              "bg-warn shadow-[0_0_12px_rgba(var(--accent-rgb),0.8)]",
+              "bg-warn ",
           )}
         />
       </span>

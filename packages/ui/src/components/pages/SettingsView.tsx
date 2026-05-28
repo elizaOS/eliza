@@ -51,7 +51,7 @@ const SettingsSection = forwardRef<HTMLElement, SettingsSectionProps>(
           heading={title}
           headingClassName="text-base sm:text-lg font-semibold tracking-tight text-txt-strong"
           bodyClassName={cn("px-4 pb-3 pt-0 sm:px-5 sm:pb-4", bodyClassName)}
-          className={cn("rounded-2xl", className)}
+          className={cn("rounded-sm", className)}
           {...props}
         >
           {children}
@@ -303,7 +303,7 @@ export function SettingsView({
                     <SidebarContent.ItemIcon
                       active={isActive}
                       className={cn(
-                        "mt-0 h-8 w-8 rounded-lg p-1.5",
+                        "mt-0 h-8 w-8 rounded-sm p-1.5",
                         !isActive && toneClass,
                       )}
                     >

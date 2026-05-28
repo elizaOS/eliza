@@ -233,7 +233,7 @@ export function renderRpcProviderButtons<T extends string>(
           <Button
             variant={active ? "default" : "outline"}
             key={provider.id}
-            className={`flex min-h-touch items-center justify-center rounded-lg px-3 py-2 text-center text-xs font-semibold leading-tight shadow-sm ${
+            className={`flex min-h-touch items-center justify-center rounded-sm px-3 py-2 text-center text-xs font-semibold leading-tight ${
               active
                 ? ""
                 : "border-border bg-card text-txt hover:border-accent hover:bg-bg-hover"
@@ -415,7 +415,7 @@ export function CloudServicesSection() {
           }) => (
             <div
               key={key}
-              className={`flex items-center justify-between p-3 border border-border rounded-lg transition-colors ${
+              className={`flex items-center justify-between p-3 border border-border rounded-sm transition-colors ${
                 services[key] ? "bg-accent/5" : ""
               }`}
             >

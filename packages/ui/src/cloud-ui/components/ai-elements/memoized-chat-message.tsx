@@ -170,7 +170,7 @@ function ChatMessageComponent(props: MemoizedChatMessageProps) {
 
           <div className="flex flex-col gap-0.5">
             {isThinking ? (
-              <div className="py-2.5 px-3.5 bg-white/[0.02] border border-white/[0.05] rounded-lg">
+              <div className="py-2.5 px-3.5 bg-white/[0.02] border border-white/[0.05] rounded-sm">
                 <style>{`
                   @keyframes reasoningFadeIn {
                     from {
@@ -286,7 +286,7 @@ function ChatMessageComponent(props: MemoizedChatMessageProps) {
               <>
                 {/* Response-phase reasoning shown above streaming text (Composing indicator) */}
                 {hasStreamingReasoning && (
-                  <div className="mb-2 py-2 px-3 bg-white/[0.02] border border-white/[0.05] rounded-lg">
+                  <div className="mb-2 py-2 px-3 bg-white/[0.02] border border-white/[0.05] rounded-sm">
                     <div className="flex items-center gap-2">
                       <div className="relative">
                         <Loader2 className="h-3 w-3 animate-spin text-[#FF5800]/60" />
@@ -396,7 +396,7 @@ function ChatMessageComponent(props: MemoizedChatMessageProps) {
                           return (
                             <div
                               key={attachment.id}
-                              className="inline-block rounded-lg overflow-hidden border border-white/10 max-w-md"
+                              className="inline-block rounded-sm overflow-hidden border border-white/10 max-w-md"
                             >
                               <Image
                                 src={attachment.url}
@@ -424,7 +424,7 @@ function ChatMessageComponent(props: MemoizedChatMessageProps) {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-6 w-6 p-0 hover:bg-white/10 rounded transition-colors"
+                      className="h-6 w-6 p-0 hover:bg-white/10 rounded-sm transition-colors"
                       onClick={() =>
                         onCopy(
                           message.content.text,
@@ -444,7 +444,7 @@ function ChatMessageComponent(props: MemoizedChatMessageProps) {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-6 w-6 p-0 hover:bg-white/10 rounded transition-colors"
+                        className="h-6 w-6 p-0 hover:bg-white/10 rounded-sm transition-colors"
                         onClick={() => onPlayAudio(message.id)}
                       >
                         {currentPlayingId === message.id && isPlaying ? (
@@ -463,7 +463,7 @@ function ChatMessageComponent(props: MemoizedChatMessageProps) {
       ) : (
         <div className="flex flex-col max-w-[85%] sm:max-w-[75%] group/message items-end">
           {/* User Message */}
-          <div className="py-2 px-3 bg-[#FF5800]/10 border border-[#FF5800]/20 rounded-lg transition-colors hover:bg-[#FF5800]/15 hover:border-[#FF5800]/30 w-fit ml-auto">
+          <div className="py-2 px-3 bg-[#FF5800]/10 border border-[#FF5800]/20 rounded-sm transition-colors hover:bg-[#FF5800]/15 hover:border-[#FF5800]/30 w-fit ml-auto">
             <div className="whitespace-pre-wrap text-[15px] leading-relaxed text-white/95 text-left">
               {message.content.text}
             </div>
@@ -476,7 +476,7 @@ function ChatMessageComponent(props: MemoizedChatMessageProps) {
             <Button
               size="sm"
               variant="ghost"
-              className="h-6 w-6 p-0 hover:bg-white/10 rounded transition-colors"
+              className="h-6 w-6 p-0 hover:bg-white/10 rounded-sm transition-colors"
               onClick={() =>
                 onCopy(
                   message.content.text,

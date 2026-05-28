@@ -1209,7 +1209,7 @@ function InboxChatPanel({
               defaultValue: "{{title}} avatar",
               title: activeInboxChat.title,
             })}
-            className="h-8 w-8 shrink-0 rounded-full border border-border/35 object-cover shadow-[0_10px_18px_-16px_rgba(15,23,42,0.45)]"
+            className="h-8 w-8 shrink-0 rounded-full border border-border/35 object-cover "
           />
         ) : null}
       </div>
@@ -1288,7 +1288,7 @@ function InboxChatPanel({
               onSelectAccount={handleSelectSendAsAccount}
             />
           ) : null}
-          <div className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-2xs leading-snug text-warn">
+          <div className="rounded-sm border border-warn/40 bg-warn/10 px-3 py-2 text-2xs leading-snug text-warn">
             {t("inboxview.AgentSendWarning", {
               defaultValue:
                 "This message will be sent as your agent in {{source}}.",

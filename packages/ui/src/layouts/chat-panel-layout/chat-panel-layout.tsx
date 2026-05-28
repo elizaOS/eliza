@@ -73,7 +73,7 @@ export function ChatPanelLayout({
         className={
           isCompanionDock
             ? "relative flex min-h-0 flex-1 flex-col overflow-visible rounded-sm bg-transparent pointer-events-none"
-            : "relative flex min-h-0 flex-1 flex-col rounded-sm border border-border shadow-sm overflow-hidden bg-card"
+            : "relative flex min-h-0 flex-1 flex-col rounded-sm border border-border overflow-hidden bg-card"
         }
         data-chat-game-shell
       >

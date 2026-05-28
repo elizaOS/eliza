@@ -40,13 +40,13 @@ export function AgentActivityBox({
   if (!sessions || sessions.length === 0) return null;
 
   return (
-    <div className="px-3 py-2 space-y-1 z-[1] mb-2 relative rounded-sm border border-border bg-card shadow-sm">
+    <div className="px-3 py-2 space-y-1 z-[1] mb-2 relative rounded-sm border border-border bg-card ">
       {sessions.map((s) => (
         <button
           key={s.sessionId}
           type="button"
           onClick={() => onSessionClick?.(s.sessionId)}
-          className="flex items-center gap-1.5 min-w-0 w-full text-left cursor-pointer hover:bg-bg-hover rounded px-1 -mx-1 transition-colors"
+          className="flex items-center gap-1.5 min-w-0 w-full text-left cursor-pointer hover:bg-bg-hover rounded-sm px-1 -mx-1 transition-colors"
         >
           <span
             className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${

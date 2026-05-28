@@ -25,7 +25,7 @@ export function DownloadQueue({
 }: DownloadQueueProps) {
   if (downloads.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+      <div className="rounded-sm border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
         No downloads in progress. Start one from Eliza-1 or use explicit custom
         search.
       </div>
@@ -41,7 +41,7 @@ export function DownloadQueue({
         return (
           <li
             key={job.jobId}
-            className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3"
+            className="rounded-sm border border-border bg-card p-4 flex flex-col gap-3"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">

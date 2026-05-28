@@ -26,7 +26,7 @@ export function TrajectoryCacheStats({
         {heading}
       </div>
       {metrics.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border/50 px-4 py-6 text-sm text-muted">
+        <div className="rounded-sm border border-dashed border-border/50 px-4 py-6 text-sm text-muted">
           {emptyLabel}
         </div>
       ) : (

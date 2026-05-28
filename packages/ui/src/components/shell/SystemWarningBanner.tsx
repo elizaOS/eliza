@@ -55,14 +55,14 @@ export function SystemWarningBanner() {
           role="alert"
           aria-live="assertive"
           data-window-titlebar-banner="true"
-          className="shrink-0 z-[9998] flex items-center justify-between gap-3 bg-warn px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] shadow-sm"
+          className="shrink-0 z-[9998] flex items-center justify-between gap-3 bg-warn px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] "
         >
           <span className="truncate">{message}</span>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => dismissSystemWarning(message)}
-            className="shrink-0 rounded px-2 py-0.5 text-xs text-[color:var(--accent-foreground)]/80 hover:bg-black/10"
+            className="shrink-0 rounded-sm px-2 py-0.5 text-xs text-[color:var(--accent-foreground)]/80 hover:bg-black/10"
           >
             x
           </Button>

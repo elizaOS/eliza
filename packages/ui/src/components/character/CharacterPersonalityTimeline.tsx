@@ -97,12 +97,12 @@ function TimelineEntry({ entry }: { entry: CharacterPersonalityHistoryItem }) {
             {open ? (
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 {entry.beforeText ? (
-                  <pre className="max-h-40 overflow-auto rounded-md border border-border/30 bg-bg/50 p-2 text-2xs text-muted">
+                  <pre className="max-h-40 overflow-auto rounded-sm border border-border/30 bg-bg/50 p-2 text-2xs text-muted">
                     {entry.beforeText}
                   </pre>
                 ) : null}
                 {entry.afterText ? (
-                  <pre className="max-h-40 overflow-auto rounded-md border border-border/30 bg-bg/50 p-2 text-2xs text-muted">
+                  <pre className="max-h-40 overflow-auto rounded-sm border border-border/30 bg-bg/50 p-2 text-2xs text-muted">
                     {entry.afterText}
                   </pre>
                 ) : null}

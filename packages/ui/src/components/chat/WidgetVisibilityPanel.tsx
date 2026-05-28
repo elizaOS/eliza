@@ -77,7 +77,7 @@ export function WidgetVisibilityEditor({
                 <li
                   key={rowKey}
                   data-testid={`widget-visibility-row-${rowKey}`}
-                  className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] px-2 py-2 hover:bg-bg-hover/40"
+                  className="flex items-center justify-between gap-3 rounded-sm px-2 py-2 hover:bg-bg-hover/40"
                 >
                   <div className="flex min-w-0 items-center gap-2">
                     {candidate.icon ? (

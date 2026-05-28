@@ -200,12 +200,12 @@ export function RelationshipsWorkspaceView({
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search"
                   aria-label="Search people, aliases, handles"
-                  className="h-9 w-full rounded-lg border border-border/35 bg-card/45 pl-9 pr-10 text-sm text-txt outline-none transition focus:border-accent/55"
+                  className="h-9 w-full rounded-sm border border-border/35 bg-card/45 pl-9 pr-10 text-sm text-txt outline-none transition focus:border-accent/55"
                 />
                 {search ? (
                   <button
                     type="button"
-                    className="absolute right-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition hover:bg-bg-hover hover:text-txt"
+                    className="absolute right-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted transition hover:bg-bg-hover hover:text-txt"
                     onClick={() => setSearch("")}
                     aria-label="Clear relationship search"
                   >
@@ -226,7 +226,7 @@ export function RelationshipsWorkspaceView({
               value={platform}
               onChange={(event) => setPlatform(event.target.value)}
               aria-label="Platform filter"
-              className="h-9 w-full rounded-lg border border-border/35 bg-card/45 pl-9 pr-8 text-sm text-txt outline-none transition focus:border-accent/55"
+              className="h-9 w-full rounded-sm border border-border/35 bg-card/45 pl-9 pr-8 text-sm text-txt outline-none transition focus:border-accent/55"
             >
               <option value="all">All</option>
               {platforms.map((entry) => (
@@ -241,7 +241,7 @@ export function RelationshipsWorkspaceView({
             type="button"
             size="sm"
             variant="outline"
-            className="h-9 w-9 shrink-0 rounded-lg p-0"
+            className="h-9 w-9 shrink-0 rounded-sm p-0"
             onClick={refreshGraph}
             aria-label="Refresh relationships"
           >
@@ -261,7 +261,7 @@ export function RelationshipsWorkspaceView({
     >
       {toolbar}
       {detailError ? (
-        <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+        <div className="rounded-sm border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
           {detailError}
         </div>
       ) : null}
@@ -283,7 +283,7 @@ export function RelationshipsWorkspaceView({
           className={`grid place-items-center ${embedded ? "min-h-[18rem]" : "min-h-[24rem]"}`}
         >
           <div className="w-full max-w-xl px-4 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-accent/25 bg-accent/12 text-accent">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-sm border border-accent/25 bg-accent/12 text-accent">
               <Network className="h-7 w-7" />
             </div>
             <h2 className="mt-4 text-base font-semibold text-txt">
@@ -301,7 +301,7 @@ export function RelationshipsWorkspaceView({
                 return (
                   <div
                     key={item.label}
-                    className="rounded-xl border border-border/24 bg-bg/45 px-3 py-3"
+                    className="rounded-sm border border-border/24 bg-bg/45 px-3 py-3"
                   >
                     <Icon className={`mx-auto h-4 w-4 ${item.tone}`} />
                     <div className="mt-2 text-xs font-semibold text-muted">
@@ -316,7 +316,7 @@ export function RelationshipsWorkspaceView({
       ) : (
         <>
           {graphError ? (
-            <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+            <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
               {graphError}
             </div>
           ) : null}

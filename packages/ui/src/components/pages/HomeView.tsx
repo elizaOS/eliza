@@ -71,7 +71,7 @@ export function HomeView(): React.JSX.Element {
                 <li
                   key={message.id}
                   className={cn(
-                    "truncate rounded-md border border-border/30 bg-bg/45 px-3 py-1.5 text-xs backdrop-blur",
+                    "truncate rounded-sm border border-border/30 bg-bg/45 px-3 py-1.5 text-xs backdrop-blur",
                     message.role === "user"
                       ? "ml-auto max-w-[82%]"
                       : "mr-auto max-w-[82%]",
@@ -81,7 +81,7 @@ export function HomeView(): React.JSX.Element {
                 </li>
               ))}
               {draftPreview.length > 0 ? (
-                <li className="ml-auto max-w-[82%] truncate rounded-md border border-accent/25 bg-accent/10 px-3 py-1.5 text-xs text-txt backdrop-blur">
+                <li className="ml-auto max-w-[82%] truncate rounded-sm border border-accent/25 bg-accent/10 px-3 py-1.5 text-xs text-txt backdrop-blur">
                   {draftPreview}
                 </li>
               ) : null}

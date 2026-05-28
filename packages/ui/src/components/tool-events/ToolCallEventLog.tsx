@@ -112,7 +112,7 @@ export function ToolCallEventLog({
 
   return (
     <div
-      className={`rounded-lg border border-border/50 bg-bg/40 px-4 py-3 ${className}`}
+      className={`rounded-sm border border-border/50 bg-bg/40 px-4 py-3 ${className}`}
       data-testid="tool-call-event-log"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -153,7 +153,7 @@ export function ToolCallEventLog({
           <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
           JSON details
         </summary>
-        <pre className="mt-2 max-h-[24rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-lg border border-border/40 bg-bg/60 px-3 py-3 text-xs leading-6 text-txt">
+        <pre className="mt-2 max-h-[24rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm border border-border/40 bg-bg/60 px-3 py-3 text-xs leading-6 text-txt">
           {formatJson(event)}
         </pre>
       </details>

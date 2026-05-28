@@ -20,7 +20,7 @@ const sidebarRootVariants = cva(
           "relative isolate min-h-0 h-[calc(100%_-_1rem)] w-full shrink-0 rounded-sm border border-border bg-card",
         mobile: "h-full w-full min-w-0 border-0 bg-card shadow-none ring-0",
         "game-modal":
-          "h-full rounded-sm border border-border bg-card shadow-sm",
+          "h-full rounded-sm border border-border bg-card ",
       },
       collapsed: {
         true: "!w-0 !min-w-0 xl:!w-0 xl:!min-w-0 !border-0 !shadow-none !bg-transparent z-40",
@@ -37,18 +37,18 @@ const sidebarRootVariants = cva(
         collapsed: false,
         resizable: false,
         className:
-          "!w-[18.5rem] !min-w-[18.5rem] xl:!w-[20rem] xl:!min-w-[20rem] shadow-sm",
+          "!w-[18.5rem] !min-w-[18.5rem] xl:!w-[20rem] xl:!min-w-[20rem] ",
       },
       {
         variant: "default",
         collapsed: false,
         resizable: true,
-        className: "shadow-sm",
+        className: "",
       },
       {
         variant: "default",
         collapsed: true,
-        className: "shadow-xs",
+        className: "",
       },
     ],
     defaultVariants: {
@@ -89,7 +89,7 @@ const sidebarFooterVariants = cva(
 );
 
 const sidebarControlButtonClassName =
-  "h-11 w-11 rounded-sm border border-border bg-card text-muted-strong shadow-xs transition-colors duration-200 hover:border-border-strong hover:text-txt active:scale-95";
+  "h-11 w-11 rounded-sm border border-border bg-card text-muted-strong transition-colors duration-200 hover:border-border-strong hover:text-txt active:scale-95";
 
 const sidebarMobileHeaderBarClassName =
   "sticky top-0 z-10 flex items-center justify-between bg-card px-3.5 py-2.5";
@@ -799,7 +799,7 @@ export const Sidebar = React.forwardRef<HTMLElement, SidebarProps>(
             type="button"
             data-testid={expandButtonTestId}
             className={cn(
-              "fixed bottom-2 left-2 z-40 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt",
+              "fixed bottom-2 left-2 z-40 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-transparent text-muted transition-colors hover:text-txt",
               collapseButtonClassName,
             )}
             aria-label={expandButtonAriaLabel}

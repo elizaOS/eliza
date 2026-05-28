@@ -194,7 +194,7 @@ export function ConnectorSidebar({
                       ) : (
                         renderResolvedIcon(plugin, {
                           className:
-                            "h-4 w-4 shrink-0 rounded-[var(--radius-sm)] object-contain",
+                            "h-4 w-4 shrink-0 rounded-sm object-contain",
                           emojiClassName: "text-sm",
                         })
                       )}

@@ -44,7 +44,7 @@ export function ConfirmDialog({
         if (!nextOpen) onCancel();
       }}
     >
-      <DialogContent className="max-w-md rounded-sm border-border bg-bg shadow-sm">
+      <DialogContent className="max-w-md rounded-sm border-border bg-bg ">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="whitespace-pre-line text-muted-strong">
@@ -114,7 +114,7 @@ export function PromptDialog({
         if (!nextOpen) onCancel();
       }}
     >
-      <DialogContent className="max-w-md rounded-sm border-border bg-bg shadow-sm">
+      <DialogContent className="max-w-md rounded-sm border-border bg-bg ">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="whitespace-pre-line text-muted-strong">

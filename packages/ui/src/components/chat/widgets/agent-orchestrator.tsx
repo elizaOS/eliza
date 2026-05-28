@@ -183,13 +183,13 @@ function ActivityItemsContent({ events }: { events: ActivityEvent[] }) {
         return (
           <div
             key={event.id}
-            className="flex items-start gap-1.5 rounded-md px-1.5 py-1 transition-colors hover:bg-bg-hover/40"
+            className="flex items-start gap-1.5 rounded-sm px-1.5 py-1 transition-colors hover:bg-bg-hover/40"
           >
             <span className="shrink-0 whitespace-nowrap pt-0.5 text-3xs font-medium tabular-nums text-muted">
               {relativeDuration(event.timestamp)}
             </span>
             <span
-              className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-md ${eventTypeMeta.toneClass}`}
+              className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm ${eventTypeMeta.toneClass}`}
               role="img"
               title={eventTypeMeta.label}
             >
@@ -244,9 +244,9 @@ function AppRunCard({
   const ViewerIcon = run.viewerAttachment === "attached" ? Eye : EyeOff;
 
   return (
-    <div className="rounded-lg border border-border/50 bg-bg-accent/30 p-2">
+    <div className="rounded-sm border border-border/50 bg-bg-accent/30 p-2">
       <div className="flex items-start gap-2">
-        <div className="w-20 shrink-0 overflow-hidden rounded-md border border-white/10 bg-black/10">
+        <div className="w-20 shrink-0 overflow-hidden rounded-sm border border-white/10 bg-black/10">
           <AppHero app={app} className="aspect-[5/4]" imageOnly />
         </div>
         <div className="min-w-0 flex-1">
@@ -423,7 +423,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
       testId="chat-widget-app-runs"
     >
       {error ? (
-        <div className="mb-2 rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs-tight text-danger">
+        <div className="mb-2 rounded-sm border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs-tight text-danger">
           {error}
         </div>
       ) : null}
@@ -461,7 +461,7 @@ function AppRunsWidget(_props: ChatSidebarWidgetProps) {
             </span>
           </div>
           {attentionRuns.length > 0 ? (
-            <div className="rounded-lg border border-warn/30 bg-warn/10 p-2">
+            <div className="rounded-sm border border-warn/30 bg-warn/10 p-2">
               <div className="mb-1.5 flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-[0.08em] text-warn">
                 <AlertTriangle className="h-3 w-3" />
                 Recovery

@@ -12,13 +12,13 @@ import { Switch } from "../ui/switch";
 import { CustomActionEditor } from "./CustomActionEditor";
 
 const CUSTOM_ACTIONS_SHELL_CLASS =
-  "flex h-full min-h-0 flex-col gap-4 rounded-2xl border border-border/60 bg-card/70 p-4 shadow-sm ring-1 ring-border/15 backdrop-blur-sm";
+  "flex h-full min-h-0 flex-col gap-4 rounded-sm border border-border/60 bg-card/70 p-4 ring-1 ring-border/15 backdrop-blur-sm";
 const CUSTOM_ACTIONS_PANEL_CLASS =
-  "rounded-2xl border border-border/45 bg-bg/20 shadow-sm";
+  "rounded-sm border border-border/45 bg-bg/20 ";
 const CUSTOM_ACTIONS_TOOLBAR_BUTTON_CLASS =
-  "h-10 rounded-xl px-3 text-sm shadow-sm";
+  "h-10 rounded-sm px-3 text-sm ";
 const CUSTOM_ACTIONS_INPUT_CLASS =
-  "h-10 rounded-xl border-border/60 bg-bg/55 px-3 text-sm shadow-sm";
+  "h-10 rounded-sm border-border/60 bg-bg/55 px-3 text-sm ";
 
 const HANDLER_BADGE_CLASS: Record<string, string> = {
   http: "border border-info/25 bg-info/10 text-info",
@@ -203,7 +203,7 @@ export function CustomActionsView() {
               variant="default"
               size="sm"
               onClick={handleCreate}
-              className="h-10 rounded-xl px-4 text-sm font-medium shadow-sm"
+              className="h-10 rounded-sm px-4 text-sm font-medium "
             >
               {t("customactionsview.CreateAction")}
             </Button>
@@ -233,10 +233,10 @@ export function CustomActionsView() {
           </div>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted">
-          <span className="rounded-full border border-border/45 bg-bg/30 px-3 py-1.5 shadow-sm">
+          <span className="rounded-full border border-border/45 bg-bg/30 px-3 py-1.5 ">
             {actionCountLabel}
           </span>
-          <span className="rounded-full border border-border/45 bg-bg/30 px-3 py-1.5 shadow-sm">
+          <span className="rounded-full border border-border/45 bg-bg/30 px-3 py-1.5 ">
             {search
               ? t("customactionsview.Filtered")
               : t("customactionsview.AllActions")}
@@ -260,7 +260,7 @@ export function CustomActionsView() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <label
-              className={`${CUSTOM_ACTIONS_TOOLBAR_BUTTON_CLASS} inline-flex cursor-pointer items-center rounded-xl border border-border/60 bg-bg/35 text-muted transition-colors hover:border-border hover:bg-bg/55 hover:text-txt`}
+              className={`${CUSTOM_ACTIONS_TOOLBAR_BUTTON_CLASS} inline-flex cursor-pointer items-center rounded-sm border border-border/60 bg-bg/35 text-muted transition-colors hover:border-border hover:bg-bg/55 hover:text-txt`}
             >
               {t("settings.import")}
               <input
@@ -372,7 +372,7 @@ export function CustomActionsView() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleEdit(action)}
-                    className="h-9 rounded-xl px-3 text-xs bg-bg/35 text-muted hover:bg-bg/55"
+                    className="h-9 rounded-sm px-3 text-xs bg-bg/35 text-muted hover:bg-bg/55"
                   >
                     {t("common.edit")}
                   </Button>
@@ -380,7 +380,7 @@ export function CustomActionsView() {
                     variant="outline"
                     size="sm"
                     onClick={() => handleDelete(action.id, action.name)}
-                    className="h-9 rounded-xl border-danger/35 bg-danger/5 px-3 text-xs text-danger hover:border-danger hover:bg-danger/10"
+                    className="h-9 rounded-sm border-danger/35 bg-danger/5 px-3 text-xs text-danger hover:border-danger hover:bg-danger/10"
                   >
                     {t("common.delete")}
                   </Button>

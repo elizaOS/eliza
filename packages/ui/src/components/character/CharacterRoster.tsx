@@ -114,7 +114,7 @@ export function CharacterRoster({
   if (entries.length === 0) {
     return (
       <div
-        className={`rounded-2xl border p-4 text-sm ${
+        className={`rounded-sm border p-4 text-sm ${
           useWhiteBorders
             ? "border-[var(--first-run-card-border)] bg-[var(--first-run-card-bg)] text-[var(--first-run-text-faint)]"
             : "border-border/40 bg-black/10 text-muted"

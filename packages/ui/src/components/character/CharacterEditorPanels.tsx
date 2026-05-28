@@ -336,7 +336,7 @@ export function CharacterStylePanel({
                     );
                   })
                 ) : (
-                  <div className="rounded-md border border-dashed border-border/40 bg-bg-muted/20 px-3 py-4 text-sm text-muted">
+                  <div className="rounded-sm border border-dashed border-border/40 bg-bg-muted/20 px-3 py-4 text-sm text-muted">
                     {t(STYLE_SECTION_EMPTY_STATES[key].key, {
                       defaultValue:
                         STYLE_SECTION_EMPTY_STATES[key].defaultValue,
@@ -360,11 +360,11 @@ export function CharacterStylePanel({
                       handleAddStyleEntry(key);
                     }
                   }}
-                  className="h-9 min-w-0 flex-1 rounded-md border border-border/40 bg-bg/70 px-3 text-sm text-txt outline-none focus:border-accent"
+                  className="h-9 min-w-0 flex-1 rounded-sm border border-border/40 bg-bg/70 px-3 text-sm text-txt outline-none focus:border-accent"
                 />
                 <button
                   type="button"
-                  className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-accent/35 px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                  className="inline-flex h-9 shrink-0 items-center gap-2 rounded-sm border border-accent/35 px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
                   onClick={() => handleAddStyleEntry(key)}
                   disabled={!pendingStyleEntries[key].trim()}
                   title={t("charactereditor.AddStyleRule", {
@@ -437,7 +437,7 @@ export function CharacterExamplesPanel({
             <div
               // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
               key={`convo-${ci}`}
-              className="group/convo flex flex-col gap-2 rounded-md border border-border/35 bg-bg-muted/15 p-3"
+              className="group/convo flex flex-col gap-2 rounded-sm border border-border/35 bg-bg-muted/15 p-3"
             >
               {convo.examples.map((msg, mi) => (
                 <div
@@ -475,7 +475,7 @@ export function CharacterExamplesPanel({
               <div className="mt-1 flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  className="inline-flex h-8 items-center gap-2 rounded-md border border-border/40 px-2.5 text-xs font-medium text-txt transition-colors hover:bg-bg-muted/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
+                  className="inline-flex h-8 items-center gap-2 rounded-sm border border-border/40 px-2.5 text-xs font-medium text-txt transition-colors hover:bg-bg-muted/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
                   onClick={() => {
                     const agentName =
                       typeof d.name === "string" && d.name.trim()
@@ -523,7 +523,7 @@ export function CharacterExamplesPanel({
             </div>
           ))}
           {normalizedMessageExamples.length === 0 && (
-            <div className="rounded-md border border-dashed border-border/40 bg-bg-muted/20 px-3 py-4 text-sm text-muted">
+            <div className="rounded-sm border border-dashed border-border/40 bg-bg-muted/20 px-3 py-4 text-sm text-muted">
               {t("charactereditor.NoChatExamples", {
                 defaultValue: "No chat examples yet.",
               })}
@@ -532,7 +532,7 @@ export function CharacterExamplesPanel({
         </div>
         <button
           type="button"
-          className="inline-flex h-9 self-start items-center gap-2 rounded-md border border-accent/35 px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
+          className="inline-flex h-9 self-start items-center gap-2 rounded-sm border border-accent/35 px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
           onClick={() => {
             const agentName =
               typeof d.name === "string" && d.name.trim()
@@ -623,7 +623,7 @@ export function CharacterExamplesPanel({
                   setDragPostIndex(null);
                 }}
                 onDragEnd={() => setDragPostIndex(null)}
-                className={`group flex min-w-0 items-start gap-2 rounded-md border p-2.5 transition-opacity ${
+                className={`group flex min-w-0 items-start gap-2 rounded-sm border p-2.5 transition-opacity ${
                   isDuplicate
                     ? "border-warning/50 bg-warning/5"
                     : "border-border/35 bg-bg-muted/15"
@@ -689,7 +689,7 @@ export function CharacterExamplesPanel({
             );
           })}
           {postExamples.length === 0 && (
-            <div className="rounded-md border border-dashed border-border/40 bg-bg-muted/20 px-3 py-4 text-sm text-muted">
+            <div className="rounded-sm border border-dashed border-border/40 bg-bg-muted/20 px-3 py-4 text-sm text-muted">
               {t("charactereditor.NoPostExamples", {
                 defaultValue: "No post examples yet.",
               })}
@@ -697,7 +697,7 @@ export function CharacterExamplesPanel({
           )}
           <button
             type="button"
-            className="mt-1 inline-flex h-9 self-start items-center gap-2 rounded-md border border-accent/35 px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
+            className="mt-1 inline-flex h-9 self-start items-center gap-2 rounded-sm border border-accent/35 px-3 text-sm font-medium text-accent transition-colors hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
             onClick={() => {
               const updated = [...postExamples, ""];
               handleFieldEdit("postExamples", updated);

@@ -265,7 +265,7 @@ function CatalogSkeletonSection({
             {rowDescriptor.cardKeys.map((cardKey) => (
               <div
                 key={cardKey}
-                className="overflow-hidden rounded-2xl border border-border/35 bg-card/72"
+                className="overflow-hidden rounded-sm border border-border/35 bg-card/72"
               >
                 <Skeleton className="aspect-[4/3] w-full rounded-none bg-bg-accent/70" />
                 <div className="space-y-2 px-3 py-3">
@@ -336,7 +336,7 @@ export function AppsCatalogGrid({
   return (
     <div ref={catalogRef} data-testid="apps-catalog-grid">
       {error ? (
-        <div className="mb-4 flex flex-col gap-2 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs-tight text-danger sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-4 flex flex-col gap-2 rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 text-xs-tight text-danger sm:flex-row sm:items-center sm:justify-between">
           <span>{error}</span>
           {onRetry ? (
             <button
@@ -373,7 +373,7 @@ export function AppsCatalogGrid({
           />
         </div>
       ) : visibleApps.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border/35 bg-card/72 px-6 py-16 text-center">
+        <div className="rounded-sm border border-dashed border-border/35 bg-card/72 px-6 py-16 text-center">
           <div className="text-xs font-medium text-muted-strong">
             {searchQuery
               ? t("appsview.NoAppsMatchSearch")
@@ -438,10 +438,10 @@ export function AppsCatalogGrid({
                                 return (
                                   <div
                                     key={app.name}
-                                    className={`group relative overflow-hidden rounded-2xl border bg-card/72 transition-all hover:border-accent/45 focus-within:ring-2 focus-within:ring-accent/35 ${
+                                    className={`group relative overflow-hidden rounded-sm border bg-card/72 transition-all hover:border-accent/45 focus-within:ring-2 focus-within:ring-accent/35 ${
                                       isActive
-                                        ? "border-ok/45 shadow-[0_0_0_1px_rgba(16,185,129,0.25)]"
-                                        : "border-border/35 hover:shadow-[0_8px_24px_-12px_rgba(0,0,0,0.4)]"
+                                        ? "border-ok/45 "
+                                        : "border-border/35 "
                                     }`}
                                   >
                                     <button
@@ -483,7 +483,7 @@ export function AppsCatalogGrid({
                                       ) : null}
                                       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end p-2 pe-10">
                                         <div className="min-w-0 flex-1">
-                                          <div className="truncate text-xs font-semibold text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.6)]">
+                                          <div className="truncate text-xs font-semibold text-white">
                                             {displayName}
                                           </div>
                                         </div>
@@ -492,7 +492,7 @@ export function AppsCatalogGrid({
                                     {isActive ? (
                                       <span
                                         title="Running"
-                                        className="pointer-events-none absolute right-4 top-4 h-2.5 w-2.5 rounded-full bg-ok shadow-[0_0_0_3px_rgba(16,185,129,0.35)]"
+                                        className="pointer-events-none absolute right-4 top-4 h-2.5 w-2.5 rounded-full bg-ok "
                                       />
                                     ) : null}
                                     <button

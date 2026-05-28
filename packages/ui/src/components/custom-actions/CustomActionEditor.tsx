@@ -469,7 +469,7 @@ export function CustomActionEditor({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-lg text-xl leading-none text-muted hover:bg-transparent hover:text-txt"
+            className="h-8 w-8 rounded-sm text-xl leading-none text-muted hover:bg-transparent hover:text-txt"
             onClick={onClose}
             aria-label={t("common.close")}
           >
@@ -480,14 +480,14 @@ export function CustomActionEditor({
         {/* Body */}
         <div className="flex max-h-[min(72vh,44rem)] flex-col gap-4 overflow-y-auto px-5 py-4">
           {formError && (
-            <Banner variant="error" className="rounded-xl text-xs">
+            <Banner variant="error" className="rounded-sm text-xs">
               {formError}
             </Banner>
           )}
 
           {/* AI Generate */}
           {!action && (
-            <div className="flex flex-col gap-2 rounded-xl border border-accent/30 bg-accent/5 p-3">
+            <div className="flex flex-col gap-2 rounded-sm border border-accent/30 bg-accent/5 p-3">
               <span className="text-xs text-txt font-medium">
                 {t("customactioneditor.DescribeWhatYouWa")}
               </span>

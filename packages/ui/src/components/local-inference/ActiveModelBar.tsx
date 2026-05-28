@@ -37,7 +37,7 @@ export function ActiveModelBar({
 
   return (
     <div
-      className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-2 py-1.5 text-xs"
+      className="flex items-center gap-2 rounded-sm border border-primary/30 bg-primary/5 px-2 py-1.5 text-xs"
       title={`${label} · ${status}`}
     >
       <span
@@ -51,7 +51,7 @@ export function ActiveModelBar({
       <Button
         size="sm"
         variant="outline"
-        className="h-7 rounded-md px-2 text-xs"
+        className="h-7 rounded-sm px-2 text-xs"
         onClick={onUnload}
         disabled={busy}
       >

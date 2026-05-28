@@ -35,7 +35,7 @@ export function TimeWindowSection({
                 ],
               })
             }
-            className="w-full h-8 rounded-lg border border-border bg-bg px-2 text-xs text-txt"
+            className="w-full h-8 rounded-sm border border-border bg-bg px-2 text-xs text-txt"
           >
             {HOUR_OPTIONS.map((h) => (
               <option key={h.value} value={h.value}>
@@ -57,7 +57,7 @@ export function TimeWindowSection({
                 ],
               })
             }
-            className="w-full h-8 rounded-lg border border-border bg-bg px-2 text-xs text-txt"
+            className="w-full h-8 rounded-sm border border-border bg-bg px-2 text-xs text-txt"
           >
             {HOUR_OPTIONS.map((h) => (
               <option key={h.value} value={h.value}>
@@ -102,7 +102,7 @@ export function TimeWindowSection({
         <select
           value={config.timezone ?? "UTC"}
           onChange={(e) => onChange({ ...config, timezone: e.target.value })}
-          className="w-full h-8 rounded-lg border border-border bg-bg px-2 text-xs text-txt"
+          className="w-full h-8 rounded-sm border border-border bg-bg px-2 text-xs text-txt"
         >
           {TIMEZONES.map((tz) => (
             <option key={tz} value={tz}>

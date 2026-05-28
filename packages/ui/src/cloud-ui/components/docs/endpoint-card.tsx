@@ -94,7 +94,7 @@ export function EndpointCard<
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              "rounded px-2 py-0.5 text-[10px] font-bold uppercase",
+              "rounded-sm px-2 py-0.5 text-[10px] font-bold uppercase",
               getMethodColor(endpoint.method),
             )}
           >
@@ -144,7 +144,7 @@ export function EndpointCard<
                 {endpoint.tags.slice(0, 2).map((tag) => (
                   <span
                     key={tag}
-                    className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-neutral-300"
+                    className="rounded-sm bg-white/10 px-1.5 py-0.5 text-[10px] text-neutral-300"
                   >
                     {tag}
                   </span>

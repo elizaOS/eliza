@@ -787,7 +787,7 @@ export function VectorGraph3D({
       {/* Tooltip */}
       {hoveredMem && tooltipPos && (
         <div
-          className="absolute pointer-events-none bg-card/95 text-txt backdrop-blur-sm border border-border/30 rounded-lg text-xs-tight px-3 py-2 max-w-[300px] z-10"
+          className="absolute pointer-events-none bg-card/95 text-txt backdrop-blur-sm border border-border/30 rounded-sm text-xs-tight px-3 py-2 max-w-[300px] z-10"
           style={{
             left: tooltipPos.x + 15,
             top: tooltipPos.y + 15,
@@ -1194,7 +1194,7 @@ export function VectorBrowserView({
                   setSelectedMemory(null);
                 }}
               >
-                <SelectTrigger className="w-full h-9 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs shadow-sm transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent">
+                <SelectTrigger className="w-full h-9 rounded-sm border border-border bg-card px-2.5 py-1.5 text-xs transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1211,9 +1211,9 @@ export function VectorBrowserView({
               <Button
                 variant="ghost"
                 size="sm"
-                className={`h-auto min-h-[1.75rem] rounded-lg border px-4 py-1 text-left text-xs font-medium whitespace-normal break-words transition-all duration-300 ${
+                className={`h-auto min-h-[1.75rem] rounded-sm border px-4 py-1 text-left text-xs font-medium whitespace-normal break-words transition-all duration-300 ${
                   viewMode === "list"
-                    ? "border-accent/45 bg-accent/16 text-txt-strong shadow-sm"
+                    ? "border-accent/45 bg-accent/16 text-txt-strong "
                     : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
                 }`}
                 onClick={() => setViewMode("list")}
@@ -1223,9 +1223,9 @@ export function VectorBrowserView({
               <Button
                 variant="ghost"
                 size="sm"
-                className={`h-auto min-h-[1.75rem] rounded-lg border px-4 py-1 text-left text-xs font-medium whitespace-normal break-words transition-all duration-300 ${
+                className={`h-auto min-h-[1.75rem] rounded-sm border px-4 py-1 text-left text-xs font-medium whitespace-normal break-words transition-all duration-300 ${
                   viewMode === "graph"
-                    ? "border-accent/45 bg-accent/16 text-txt-strong shadow-sm"
+                    ? "border-accent/45 bg-accent/16 text-txt-strong "
                     : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
                 }`}
                 onClick={() => setViewMode("graph")}
@@ -1235,9 +1235,9 @@ export function VectorBrowserView({
               <Button
                 variant="ghost"
                 size="sm"
-                className={`h-auto min-h-[1.75rem] rounded-lg border px-4 py-1 text-left text-xs font-medium whitespace-normal break-words transition-all duration-300 ${
+                className={`h-auto min-h-[1.75rem] rounded-sm border px-4 py-1 text-left text-xs font-medium whitespace-normal break-words transition-all duration-300 ${
                   viewMode === "3d"
-                    ? "border-accent/45 bg-accent/16 text-txt-strong shadow-sm"
+                    ? "border-accent/45 bg-accent/16 text-txt-strong "
                     : "border-transparent text-muted-strong hover:border-border/50 hover:bg-bg-hover hover:text-txt"
                 }`}
                 onClick={() => setViewMode("3d")}
@@ -1254,7 +1254,7 @@ export function VectorBrowserView({
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="flex-1 h-10 rounded-xl border border-border/60 bg-card/50 px-3 py-2 text-sm shadow-sm placeholder:text-muted/65 transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent"
+                  className="flex-1 h-10 rounded-sm border border-border/60 bg-card/50 px-3 py-2 text-sm placeholder:text-muted/65 transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent"
                 />
                 <Button variant="default" size="sm" onClick={handleSearch}>
                   {t("common.search")}
@@ -1263,7 +1263,7 @@ export function VectorBrowserView({
             ) : null}
 
             {stats ? (
-              <div className="rounded-2xl border border-border/35 bg-bg/35 px-3 py-3 text-xs-tight text-muted">
+              <div className="rounded-sm border border-border/35 bg-bg/35 px-3 py-3 text-xs-tight text-muted">
                 <div className="font-semibold text-txt">
                   {Number(stats.total).toLocaleString()}{" "}
                   {t("vectorbrowserview.memories")}
@@ -1377,14 +1377,14 @@ export function VectorBrowserView({
   return (
     <PageLayout sidebar={vectorSidebar} contentHeader={contentHeader}>
       {error && !isConnectionError ? (
-        <div className="m-5 rounded-xl border border-danger/35 bg-danger/10 px-4 py-3 text-sm text-danger">
+        <div className="m-5 rounded-sm border border-danger/35 bg-danger/10 px-4 py-3 text-sm text-danger">
           {error}
         </div>
       ) : null}
 
       {isConnectionError ? (
         <div className="flex flex-1 items-center justify-center p-6">
-          <div className="rounded-3xl border border-border/35 bg-bg/35 px-8 py-10 text-center shadow-inner">
+          <div className="rounded-sm border border-border/35 bg-bg/35 px-8 py-10 text-center ">
             <div className="text-base font-semibold text-txt">
               {t("databaseview.DatabaseNotAvailab")}
             </div>
@@ -1418,7 +1418,7 @@ export function VectorBrowserView({
               />
             )}
           </PagePanel>
-          <div className="mt-5 min-h-[18rem] rounded-2xl border border-border/40 bg-card/45">
+          <div className="mt-5 min-h-[18rem] rounded-sm border border-border/40 bg-card/45">
             <MemoryDetailPanel memory={selectedMemory} />
           </div>
         </div>
@@ -1436,7 +1436,7 @@ export function VectorBrowserView({
               />
             )}
           </PagePanel>
-          <div className="mt-5 min-h-[18rem] rounded-2xl border border-border/40 bg-card/45">
+          <div className="mt-5 min-h-[18rem] rounded-sm border border-border/40 bg-card/45">
             <MemoryDetailPanel memory={selectedMemory} />
           </div>
         </div>

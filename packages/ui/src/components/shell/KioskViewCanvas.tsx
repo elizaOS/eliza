@@ -75,7 +75,7 @@ function FloatingViewWindow({
 
   return (
     <div
-      className="absolute flex flex-col overflow-hidden rounded-xl border border-border/50 bg-card shadow-2xl"
+      className="absolute flex flex-col overflow-hidden rounded-sm border border-border/50 bg-card "
       style={{
         left: position.x,
         top: position.y,

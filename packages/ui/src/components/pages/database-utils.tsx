@@ -90,7 +90,7 @@ export function CellPopover({
   return (
     <div
       ref={ref}
-      className="fixed z-50 bg-card/60 backdrop-blur-md border border-border/40 shadow-[0_8px_30px_rgba(var(--accent-rgb),0.15)] rounded-xl p-4 max-w-[500px] max-h-[300px] overflow-auto"
+      className="fixed z-50 bg-card/60 backdrop-blur-md border border-border/40 rounded-sm p-4 max-w-[500px] max-h-[300px] overflow-auto"
       style={{ top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
     >
       <div className="flex items-center justify-between mb-3 pb-2">
@@ -100,13 +100,13 @@ export function CellPopover({
         <Button
           variant="ghost"
           size="icon"
-          className="w-6 h-6 rounded-full transition-[background-color,color,box-shadow] hover:bg-bg-hover hover:text-txt hover:shadow-[0_0_10px_rgba(var(--accent-rgb),0.2)]"
+          className="w-6 h-6 rounded-full transition-[background-color,color,box-shadow] hover:bg-bg-hover hover:text-txt "
           onClick={onClose}
         >
           ×
         </Button>
       </div>
-      <pre className="text-xs text-txt font-mono whitespace-pre-wrap break-all m-0 bg-bg/40 p-3 rounded-lg border border-border/40">
+      <pre className="text-xs text-txt font-mono whitespace-pre-wrap break-all m-0 bg-bg/40 p-3 rounded-sm border border-border/40">
         {value}
       </pre>
     </div>
@@ -133,11 +133,11 @@ export function ResultsGrid({
   const { t } = useApp();
   return (
     <div
-      className="overflow-auto border border-border/40 bg-card/40 backdrop-blur-md rounded-2xl shadow-inner"
+      className="overflow-auto border border-border/40 bg-card/40 backdrop-blur-md rounded-sm "
       style={{ maxHeight: "calc(100vh - 340px)" }}
     >
       <table className="w-full border-collapse text-xs font-mono">
-        <thead className="sticky top-0 z-10 backdrop-blur-xl bg-bg/80 border-b border-border/40 shadow-sm">
+        <thead className="sticky top-0 z-10 backdrop-blur-xl bg-bg/80 border-b border-border/40 ">
           <tr>
             {/* Row number column */}
             <th className="w-[50px] min-w-[50px] px-3 py-2.5 text-2xs text-muted font-medium text-right border-r border-border/40">
@@ -167,7 +167,7 @@ export function ResultsGrid({
                     {meta?.isPrimaryKey && (
                       <Badge
                         variant="outline"
-                        className="border-none bg-accent/16 px-1.5 py-0 text-3xs font-bold text-accent-fg shadow-sm"
+                        className="border-none bg-accent/16 px-1.5 py-0 text-3xs font-bold text-accent-fg "
                       >
                         PK
                       </Badge>
@@ -276,7 +276,7 @@ export function PaginationBar({
         <Button
           variant="outline"
           size="sm"
-          className="h-auto min-h-[1.75rem] whitespace-normal break-words rounded-lg border-border/50 bg-bg/50 py-1 text-left text-xs-tight backdrop-blur-sm transition-[border-color,color,box-shadow] hover:border-accent hover:text-txt hover:shadow-[0_0_10px_rgba(var(--accent-rgb),0.2)]"
+          className="h-auto min-h-[1.75rem] whitespace-normal break-words rounded-sm border-border/50 bg-bg/50 py-1 text-left text-xs-tight backdrop-blur-sm transition-[border-color,color,box-shadow] hover:border-accent hover:text-txt "
           disabled={!hasPrev}
           onClick={onPrev}
         >
@@ -285,7 +285,7 @@ export function PaginationBar({
         <Button
           variant="outline"
           size="sm"
-          className="h-auto min-h-[1.75rem] whitespace-normal break-words rounded-lg border-border/50 bg-bg/50 py-1 text-left text-xs-tight backdrop-blur-sm transition-[border-color,color,box-shadow] hover:border-accent hover:text-txt hover:shadow-[0_0_10px_rgba(var(--accent-rgb),0.2)]"
+          className="h-auto min-h-[1.75rem] whitespace-normal break-words rounded-sm border-border/50 bg-bg/50 py-1 text-left text-xs-tight backdrop-blur-sm transition-[border-color,color,box-shadow] hover:border-accent hover:text-txt "
           disabled={!hasNext}
           onClick={onNext}
         >

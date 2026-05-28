@@ -273,7 +273,7 @@ export function DatabaseView({
         <span
           className={`h-2.5 w-2.5 rounded-full ${
             dbStatus?.connected
-              ? "bg-ok shadow-[0_0_8px_rgba(34,197,94,0.5)]"
+              ? "bg-ok "
               : "bg-danger"
           }`}
         />
@@ -301,7 +301,7 @@ export function DatabaseView({
     <Button
       variant="outline"
       size="sm"
-      className="h-10 w-full justify-start rounded-2xl px-4 text-xs font-semibold border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_16px_24px_-20px_rgba(0,0,0,0.24)]"
+      className="h-10 w-full justify-start rounded-sm px-4 text-xs font-semibold border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
       onClick={async () => {
         const status = await loadStatus();
         if (status?.connected) {
@@ -364,7 +364,7 @@ export function DatabaseView({
           {view === "tables" ? (
             <>
               <div className="space-y-3 pt-4">
-                <div className="text-2xs text-muted uppercase font-bold tracking-widest px-2 bg-bg/50 py-1.5 rounded-lg border border-border/30 inline-flex items-center shadow-inner">
+                <div className="text-2xs text-muted uppercase font-bold tracking-widest px-2 bg-bg/50 py-1.5 rounded-sm border border-border/30 inline-flex items-center ">
                   {t("databaseview.Tables")} ({filteredTables.length})
                 </div>
               </div>
@@ -373,7 +373,7 @@ export function DatabaseView({
                 {loading && tables.length === 0 ? (
                   <PagePanel
                     variant="inset"
-                    className="rounded-2xl px-3 py-4 text-center text-xs text-muted"
+                    className="rounded-sm px-3 py-4 text-center text-xs text-muted"
                   >
                     {t("appsview.Loading")}
                   </PagePanel>
@@ -411,7 +411,7 @@ export function DatabaseView({
               <div className="space-y-3 pt-4">
                 <PagePanel
                   variant="inset"
-                  className="rounded-2xl px-3 py-3 text-xs-tight text-muted"
+                  className="rounded-sm px-3 py-3 text-xs-tight text-muted"
                 >
                   {t("databaseview.QueryWorkspaceInfo", {
                     defaultValue:
@@ -429,7 +429,7 @@ export function DatabaseView({
                     <Button
                       variant="ghost"
                       key={q}
-                      className="h-auto w-full justify-start rounded-2xl px-3 py-2 text-left text-xs-tight font-mono border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_16px_24px_-20px_rgba(0,0,0,0.24)]"
+                      className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left text-xs-tight font-mono border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
                       onClick={() => setQueryText(q)}
                     >
                       <span className="truncate">{q}</span>
@@ -452,7 +452,7 @@ export function DatabaseView({
       >
         <div className="flex min-h-0 flex-1 flex-col w-full">
           {errorMessage ? (
-            <div className="mb-4 rounded-xl border border-danger/35 bg-danger/10 px-4 py-3 text-sm text-danger">
+            <div className="mb-4 rounded-sm border border-danger/35 bg-danger/10 px-4 py-3 text-sm text-danger">
               {errorMessage}
             </div>
           ) : null}
@@ -473,7 +473,7 @@ export function DatabaseView({
               </PagePanel>
 
               <PagePanel.FeatureEmpty
-                className="mt-4 rounded-3xl"
+                className="mt-4 rounded-sm"
                 features={DATABASE_UNAVAILABLE_FEATURES}
                 icon={ServerOff}
                 iconTone="border-danger/25 bg-danger/10 text-danger"
@@ -499,7 +499,7 @@ export function DatabaseView({
 
                   <PagePanel.Empty
                     variant="surface"
-                    className="mt-4 min-h-[18rem] rounded-3xl px-5 py-10"
+                    className="mt-4 min-h-[18rem] rounded-sm px-5 py-10"
                     title={t("databaseview.SelectATable")}
                     description={t("databaseview.ChooseATableFrom")}
                   />
@@ -594,12 +594,12 @@ export function DatabaseView({
   return (
     <div className="flex flex-col h-full gap-4">
       {!showExternalSidebar && (
-        <div className="flex items-center gap-3 p-3 bg-card/60 backdrop-blur-xl border border-border/40 rounded-2xl shadow-sm flex-wrap">
-          <div className="flex items-center gap-2 text-xs text-muted font-medium bg-bg/50 px-3 py-1.5 rounded-lg border border-border/30">
+        <div className="flex items-center gap-3 p-3 bg-card/60 backdrop-blur-xl border border-border/40 rounded-sm flex-wrap">
+          <div className="flex items-center gap-2 text-xs text-muted font-medium bg-bg/50 px-3 py-1.5 rounded-sm border border-border/30">
             {dbStatus ? (
               <>
                 <span
-                  className={`h-2 w-2 rounded-full shadow-[0_0_8px_currentColor] ${dbStatus.connected ? "bg-ok text-ok" : "bg-danger text-danger"}`}
+                  className={`h-2 w-2 rounded-full ${dbStatus.connected ? "bg-ok text-ok" : "bg-danger text-danger"}`}
                 />
                 <span className="tracking-wide">{dbStatus.provider}</span>
                 <span className="opacity-40">·</span>
@@ -619,7 +619,7 @@ export function DatabaseView({
           <Button
             variant="outline"
             size="sm"
-            className="h-auto min-h-[2.25rem] whitespace-normal break-words rounded-xl border-border/50 bg-bg/50 px-4 py-1.5 text-xs font-medium backdrop-blur-md shadow-sm transition-[border-color,color,transform,box-shadow] duration-300 hover:border-accent hover:text-txt hover:shadow-[0_0_15px_rgba(var(--accent-rgb),0.3)]"
+            className="h-auto min-h-[2.25rem] whitespace-normal break-words rounded-sm border-border/50 bg-bg/50 px-4 py-1.5 text-xs font-medium backdrop-blur-md transition-[border-color,color,transform,box-shadow] duration-300 hover:border-accent hover:text-txt "
             onClick={async () => {
               const status = await loadStatus();
               if (status?.connected) {
@@ -633,7 +633,7 @@ export function DatabaseView({
       )}
 
       {dbStatus && !dbStatus.connected && (
-        <div className="p-4 border border-border/40 bg-card/60 backdrop-blur-md rounded-2xl text-muted text-sm shadow-sm">
+        <div className="p-4 border border-border/40 bg-card/60 backdrop-blur-md rounded-sm text-muted text-sm ">
           <p className="m-0 mb-2 font-medium text-txt tracking-wide">
             {t("databaseview.DatabaseNotAvailab")}
           </p>
@@ -644,7 +644,7 @@ export function DatabaseView({
       )}
 
       {errorMessage && (
-        <div className="p-3 border border-danger/50 bg-danger/10 text-danger text-sm rounded-xl mb-2 flex items-center justify-between shadow-[0_0_15px_rgba(231,76,60,0.15)] backdrop-blur-md">
+        <div className="p-3 border border-danger/50 bg-danger/10 text-danger text-sm rounded-sm mb-2 flex items-center justify-between backdrop-blur-md">
           <span className="font-medium tracking-wide">{errorMessage}</span>
           <Button
             variant="ghost"
@@ -662,7 +662,7 @@ export function DatabaseView({
         <div className="flex flex-1 min-h-0 gap-4">
           {(showExternalSidebar || !sidebarCollapsed) && (
             <aside
-              className={`overflow-hidden rounded-2xl border shadow-sm flex min-h-0 w-full shrink-0 flex-col overflow-hidden bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_-1px_0_0_rgba(255,255,255,0.03)] backdrop-blur-md dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),inset_-1px_0_0_rgba(255,255,255,0.02)] ${
+              className={`overflow-hidden rounded-sm border flex min-h-0 w-full shrink-0 flex-col overflow-hidden bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] backdrop-blur-md ${
                 showExternalSidebar
                   ? "w-[21rem] max-w-[352px] shrink-0"
                   : "w-[220px] flex-shrink-0"
@@ -684,7 +684,7 @@ export function DatabaseView({
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-10 w-full justify-start rounded-xl px-4 text-xs font-semibold shadow-sm"
+                        className="h-10 w-full justify-start rounded-sm px-4 text-xs font-semibold "
                         onClick={async () => {
                           const status = await loadStatus();
                           if (status?.connected) {
@@ -705,10 +705,10 @@ export function DatabaseView({
                     placeholder={t("databaseview.FilterTables")}
                     value={sidebarSearch}
                     onChange={(e) => setSidebarSearch(e.target.value)}
-                    className="w-full pr-8 text-xs h-10 rounded-xl border-border/34 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_14px_20px_-20px_rgba(15,23,42,0.12)] focus-visible:border-accent/28 focus-visible:ring-1 focus-visible:ring-accent/24 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_16px_22px_-20px_rgba(0,0,0,0.22)]"
+                    className="w-full pr-8 text-xs h-10 rounded-sm border-border/34 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-sm focus-visible:border-accent/28 focus-visible:ring-1 focus-visible:ring-accent/24 "
                   />
                 </div>
-                <div className="text-2xs text-muted uppercase font-bold tracking-widest px-2 bg-bg/50 py-1.5 rounded-lg border border-border/30 inline-flex items-center shadow-inner">
+                <div className="text-2xs text-muted uppercase font-bold tracking-widest px-2 bg-bg/50 py-1.5 rounded-sm border border-border/30 inline-flex items-center ">
                   {t("databaseview.Tables")} ({filteredTables.length})
                 </div>
                 {loading && tables.length === 0 ? (
@@ -756,7 +756,7 @@ export function DatabaseView({
             <Button
               variant="ghost"
               size="icon"
-              className="my-auto flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-border/40 bg-card/50 shadow-sm text-muted transition-all hover:border-accent/40 hover:bg-bg-hover hover:text-txt"
+              className="my-auto flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-sm border border-border/40 bg-card/50 text-muted transition-all hover:border-accent/40 hover:bg-bg-hover hover:text-txt"
               onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
               title={
                 sidebarCollapsed
@@ -795,7 +795,7 @@ export function DatabaseView({
 
                 <PagePanel.Empty
                   variant="surface"
-                  className="mt-4 min-h-[18rem] rounded-3xl px-5 py-10"
+                  className="mt-4 min-h-[18rem] rounded-sm px-5 py-10"
                   title={t("databaseview.SelectATable")}
                   description={t("databaseview.ChooseATableFrom")}
                 />
@@ -888,7 +888,7 @@ export function DatabaseView({
         /* ── SQL Editor ────────────────────────────────────────── */
         <div className="flex flex-1 min-h-0 gap-4">
           {showExternalSidebar && (
-            <aside className="w-[21rem] max-w-[352px] shrink-0 overflow-hidden rounded-3xl border border-border/34 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_20px_30px_-28px_rgba(15,23,42,0.18)] flex min-h-0 w-full flex-col bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_-1px_0_0_rgba(255,255,255,0.03)] backdrop-blur-md dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),inset_-1px_0_0_rgba(255,255,255,0.02)]">
+            <aside className="w-[21rem] max-w-[352px] shrink-0 overflow-hidden rounded-sm border border-border/34 flex min-h-0 w-full flex-col bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] backdrop-blur-md ">
               <div className="flex min-h-0 flex-1 flex-col px-3 pb-4 pt-3">
                 {sidebarSummary}
                 <div className="space-y-3 pt-4">
@@ -899,7 +899,7 @@ export function DatabaseView({
                 <div className="h-px bg-border/30" />
                 <PagePanel
                   variant="inset"
-                  className="rounded-2xl px-3 py-3 text-xs-tight text-muted"
+                  className="rounded-sm px-3 py-3 text-xs-tight text-muted"
                 >
                   {t("databaseview.QueryWorkspaceInfo", {
                     defaultValue:
@@ -915,7 +915,7 @@ export function DatabaseView({
                       <Button
                         variant="ghost"
                         key={q}
-                        className="h-auto w-full justify-start rounded-2xl px-3 py-2 text-left text-xs-tight font-mono border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_16px_24px_-20px_rgba(0,0,0,0.24)]"
+                        className="h-auto w-full justify-start rounded-sm px-3 py-2 text-left text-xs-tight font-mono border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong "
                         onClick={() => setQueryText(q)}
                       >
                         <span className="truncate">{q}</span>

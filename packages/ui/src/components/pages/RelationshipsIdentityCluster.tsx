@@ -25,7 +25,7 @@ export function RelationshipsIdentityCluster({
         return (
           <li
             key={identity.entityId}
-            className="flex items-center gap-2 rounded-lg border border-border/24 bg-card/30 px-2.5 py-1.5 text-xs"
+            className="flex items-center gap-2 rounded-sm border border-border/24 bg-card/30 px-2.5 py-1.5 text-xs"
           >
             <Fingerprint className="h-3 w-3 shrink-0 text-accent" />
             <span className="shrink-0 rounded-full bg-card/60 px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-[0.1em] text-muted">

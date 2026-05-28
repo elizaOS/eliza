@@ -84,7 +84,7 @@ export function CostAlerts({ costTrending }: CostAlertsProps) {
         <div
           key={alert.title}
           className={cn(
-            "rounded-sm border bg-background/80 p-5 text-sm shadow-sm",
+            "rounded-sm border bg-background/80 p-5 text-sm ",
             toneClasses[alert.type],
           )}
         >

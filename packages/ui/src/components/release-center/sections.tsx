@@ -57,7 +57,7 @@ export function ReleaseStatusSection({
   const currentLabel = tr(t, "releasecenterview.Current", "Current");
 
   return (
-    <section className="rounded border border-border bg-bg-accent p-4">
+    <section className="rounded-sm border border-border bg-bg-accent p-4">
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <StatusPill
           label={tr(t, "releasecenter.AppVersionPill", "App: {{version}}", {
@@ -246,7 +246,7 @@ export function ReleaseNotesSection({
   const defaultReleaseNotesUrl = `${appUrl}/releases/`;
 
   return (
-    <section className="rounded border border-border bg-bg-accent p-4">
+    <section className="rounded-sm border border-border bg-bg-accent p-4">
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-txt">
           {tr(
@@ -337,7 +337,7 @@ export function BuildRuntimeSection({
   const defaultReleaseNotesUrl = `${appUrl}/releases/`;
 
   return (
-    <section className="rounded border border-border bg-bg-accent p-4">
+    <section className="rounded-sm border border-border bg-bg-accent p-4">
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-txt">
           {tr(
@@ -428,7 +428,7 @@ export function SessionControlsSection({
 }) {
   const { t } = useApp();
   return (
-    <section className="rounded border border-border bg-bg-accent p-4">
+    <section className="rounded-sm border border-border bg-bg-accent p-4">
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-txt">
           {tr(
@@ -551,7 +551,7 @@ export function WgpuSurfaceSection({
 }) {
   const { t } = useApp();
   return (
-    <section className="rounded border border-border bg-bg-accent p-4">
+    <section className="rounded-sm border border-border bg-bg-accent p-4">
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-txt">
           {tr(t, "releasecenter.BrowserWgpuSurface", "Browser WGPU Surface")}
@@ -568,7 +568,7 @@ export function WgpuSurfaceSection({
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-3">
           {wgpuTagAvailable ? (
-            <div className="overflow-hidden rounded border border-border bg-black/5">
+            <div className="overflow-hidden rounded-sm border border-border bg-black/5">
               {createElement("electrobun-wgpu", {
                 ref: (node: WgpuTagElement | null) => {
                   wgpuRef.current = node;
@@ -577,7 +577,7 @@ export function WgpuSurfaceSection({
               })}
             </div>
           ) : (
-            <div className="rounded border border-dashed border-border px-4 py-12 text-center text-sm text-muted">
+            <div className="rounded-sm border border-dashed border-border px-4 py-12 text-center text-sm text-muted">
               {tr(
                 t,
                 "releasecenter.WgpuCustomElementUnavailable",
@@ -665,7 +665,7 @@ export function WgpuSurfaceSection({
               tr(t, "releasecenter.NotDetected", "Not detected")
             }
           />
-          <div className="mt-3 rounded-lg border border-border bg-bg-accent px-3 py-2 text-xs text-muted">
+          <div className="mt-3 rounded-sm border border-border bg-bg-accent px-3 py-2 text-xs text-muted">
             {webGpuStatus?.reason ??
               tr(
                 t,

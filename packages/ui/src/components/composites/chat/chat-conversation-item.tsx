@@ -179,7 +179,7 @@ export function ChatConversationItem({
         isGameModal
           ? `group relative flex w-full items-start gap-2 rounded-sm border p-2.5 transition-all sm:gap-3 ${
               isActive
-                ? "border-[color:var(--first-run-accent-border)] bg-[color:var(--first-run-accent-bg)] shadow-[0_14px_28px_rgba(0,0,0,0.2)]"
+                ? "border-[color:var(--first-run-accent-border)] bg-[color:var(--first-run-accent-bg)] "
                 : "border-transparent bg-transparent hover:border-white/10 hover:bg-white/5"
             }`
           : `group relative flex w-full items-center gap-2 px-2.5 py-1 text-left transition-colors duration-100 ${
@@ -218,8 +218,8 @@ export function ChatConversationItem({
           <span
             className={
               isGameModal
-                ? "absolute left-3 top-3 z-[1] h-2 w-2 shrink-0 rounded-full bg-accent shadow-[0_0_10px_rgba(var(--accent-rgb),0.6)] animate-pulse"
-                : "h-1.5 w-1.5 shrink-0 rounded-full bg-accent shadow-[0_0_6px_rgba(var(--accent-rgb),0.4)]"
+                ? "absolute left-3 top-3 z-[1] h-2 w-2 shrink-0 rounded-full bg-accent animate-pulse"
+                : "h-1.5 w-1.5 shrink-0 rounded-full bg-accent "
             }
           />
         ) : null}
@@ -240,7 +240,7 @@ export function ChatConversationItem({
           data-testid="conv-actions"
           aria-label={labels.actions ?? "More actions"}
           className={cn(
-            "h-6 w-6 shrink-0 rounded-[var(--radius-sm)] p-0 text-muted hover:bg-transparent hover:text-txt focus-visible:opacity-100",
+            "h-6 w-6 shrink-0 rounded-sm p-0 text-muted hover:bg-transparent hover:text-txt focus-visible:opacity-100",
             mobile
               ? "opacity-100"
               : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto",
@@ -263,8 +263,8 @@ export function ChatConversationItem({
           aria-label={labels.rename ?? "Rename conversation"}
           className={cn(
             isGameModal
-              ? "h-8 w-8 shrink-0 self-center rounded-lg border border-white/10 bg-black/20 text-[color:var(--first-run-text-muted)] shadow-sm transition-[border-color,background-color,color,opacity] hover:border-[color:var(--first-run-accent-border)] hover:bg-[color:var(--first-run-accent-bg)] hover:text-[color:var(--first-run-text-strong)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-              : "h-8 w-8 shrink-0 rounded-lg hover:text-accent",
+              ? "h-8 w-8 shrink-0 self-center rounded-sm border border-white/10 bg-black/20 text-[color:var(--first-run-text-muted)] transition-[border-color,background-color,color,opacity] hover:border-[color:var(--first-run-accent-border)] hover:bg-[color:var(--first-run-accent-bg)] hover:text-[color:var(--first-run-text-strong)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              : "h-8 w-8 shrink-0 rounded-sm hover:text-accent",
             mobile
               ? "opacity-100"
               : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto",
@@ -287,8 +287,8 @@ export function ChatConversationItem({
           aria-label={labels.delete ?? "Delete conversation"}
           className={cn(
             isGameModal
-              ? "h-8 w-8 shrink-0 self-center rounded-lg border border-white/10 bg-black/20 text-[color:var(--first-run-text-muted)] shadow-sm transition-[border-color,background-color,color,opacity] hover:border-[color:var(--first-run-accent-border)] hover:bg-[color:var(--first-run-accent-bg)] hover:text-[color:var(--first-run-text-strong)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-              : "h-8 w-8 shrink-0 rounded-lg",
+              ? "h-8 w-8 shrink-0 self-center rounded-sm border border-white/10 bg-black/20 text-[color:var(--first-run-text-muted)] transition-[border-color,background-color,color,opacity] hover:border-[color:var(--first-run-accent-border)] hover:bg-[color:var(--first-run-accent-bg)] hover:text-[color:var(--first-run-text-strong)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              : "h-8 w-8 shrink-0 rounded-sm",
             mobile
               ? "opacity-100"
               : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto",
@@ -305,14 +305,14 @@ export function ChatConversationItem({
       ) : null}
 
       {isConfirmingDelete ? (
-        <div className="flex flex-shrink-0 items-center gap-1.5 rounded-sm border border-danger/30 bg-destructive-subtle px-2 py-1 shadow-xs">
+        <div className="flex flex-shrink-0 items-center gap-1.5 rounded-sm border border-danger/30 bg-destructive-subtle px-2 py-1 ">
           <span className="text-2xs font-medium text-danger">
             {labels.deleteConfirm ?? "Delete?"}
           </span>
           <Button
             variant="destructive"
             size="sm"
-            className="h-7 rounded-md px-2 py-0.5 text-2xs shadow-sm disabled:opacity-50"
+            className="h-7 rounded-sm px-2 py-0.5 text-2xs disabled:opacity-50"
             onClick={() => void onConfirmDelete?.()}
             disabled={deleting}
           >
@@ -321,7 +321,7 @@ export function ChatConversationItem({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 rounded-md px-2 py-0.5 text-2xs text-muted-strong shadow-sm hover:border-accent/40 hover:text-txt disabled:opacity-50"
+            className="h-7 rounded-sm px-2 py-0.5 text-2xs text-muted-strong hover:border-accent/40 hover:text-txt disabled:opacity-50"
             onClick={onCancelDelete}
             disabled={deleting}
           >

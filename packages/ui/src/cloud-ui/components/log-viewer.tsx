@@ -232,7 +232,7 @@ export function LogViewer({
 
   return (
     <BrandCard
-      className={cn("relative shadow-lg shadow-black/50", className)}
+      className={cn("relative ", className)}
       cornerSize="sm"
     >
       <div className="relative z-10 space-y-6">

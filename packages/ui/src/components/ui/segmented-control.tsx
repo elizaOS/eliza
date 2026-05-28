@@ -52,7 +52,7 @@ export function SegmentedControl<T extends string>({
             className={cn(
               "relative inline-flex items-center gap-1.5 rounded-sm px-3.5 py-2 text-xs font-semibold transition-colors",
               isActive
-                ? "border border-accent/30 bg-accent-subtle text-txt shadow-xs"
+                ? "border border-accent/30 bg-accent-subtle text-txt "
                 : "border border-transparent text-muted hover:bg-bg-hover hover:text-txt",
               buttonClassName,
               isActive ? activeButtonClassName : inactiveButtonClassName,

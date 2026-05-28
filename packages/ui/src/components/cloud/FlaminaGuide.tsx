@@ -93,7 +93,7 @@ export function FlaminaGuideCard({
 
   return (
     <section
-      className={`rounded-2xl border border-accent/25 bg-card/70 px-4 py-4 text-left shadow-[0_10px_30px_rgba(var(--accent-rgb),0.08)] backdrop-blur-sm ${className}`.trim()}
+      className={`rounded-sm border border-accent/25 bg-card/70 px-4 py-4 text-left backdrop-blur-sm ${className}`.trim()}
     >
       <div className="mb-2 flex items-center gap-2">
         <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-1 text-2xs font-semibold uppercase tracking-[0.16em] text-txt">
@@ -127,7 +127,7 @@ export function FlaminaGuideCard({
             defaultValue: guide.characterImpactDefault,
           })}
         </p>
-        <p className="rounded-xl border border-accent/20 bg-accent/5 px-3 py-2 text-xs-tight text-txt">
+        <p className="rounded-sm border border-accent/20 bg-accent/5 px-3 py-2 text-xs-tight text-txt">
           {t(guide.recommendedKey, { defaultValue: guide.recommendedDefault })}
         </p>
       </div>
@@ -173,7 +173,7 @@ export function DeferredSetupChecklist({
 
   return (
     <section
-      className={`rounded-2xl border border-border/60 bg-card/70 px-4 py-4 shadow-sm backdrop-blur-sm ${className}`.trim()}
+      className={`rounded-sm border border-border/60 bg-card/70 px-4 py-4 backdrop-blur-sm ${className}`.trim()}
     >
       <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -198,7 +198,7 @@ export function DeferredSetupChecklist({
         {tasks.map((task) => (
           <div
             key={task}
-            className="flex flex-col gap-2 rounded-xl border border-border/50 bg-bg/50 px-3 py-3 md:flex-row md:items-center md:justify-between"
+            className="flex flex-col gap-2 rounded-sm border border-border/50 bg-bg/50 px-3 py-3 md:flex-row md:items-center md:justify-between"
           >
             <div>
               <div className="text-sm font-medium text-txt-strong">

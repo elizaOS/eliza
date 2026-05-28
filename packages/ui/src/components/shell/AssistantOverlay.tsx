@@ -129,10 +129,10 @@ export function AssistantOverlay({
         // Size on mobile
         "h-[80vh]",
         // Surface
-        "rounded-t-3xl sm:rounded-3xl",
+        "rounded-t-3xl sm:rounded-sm",
         "bg-bg/95 backdrop-blur-xl",
         "border border-border/40",
-        "shadow-2xl",
+        "",
         // Focus ring on the container (visible only when the container
         // itself is keyboard-focused via Tab cycling)
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg",

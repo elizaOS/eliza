@@ -652,7 +652,7 @@ export function AddAccountDialog({
         ) : null}
 
         {step === "unavailable" ? (
-          <div className="rounded-md border border-border/50 bg-bg-accent/50 px-3 py-2 text-sm text-muted">
+          <div className="rounded-sm border border-border/50 bg-bg-accent/50 px-3 py-2 text-sm text-muted">
             {unavailableCopy}
           </div>
         ) : null}
@@ -660,7 +660,7 @@ export function AddAccountDialog({
         {step === "error" && errorMessage ? (
           <div
             className={cn(
-              "rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive",
+              "rounded-sm border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive",
             )}
             role="alert"
           >

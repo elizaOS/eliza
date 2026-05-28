@@ -45,13 +45,13 @@ export function SearchBar({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-          className="h-9 border-border bg-bg text-sm shadow-sm focus-visible:ring-1 focus-visible:ring-accent"
+          className="h-9 border-border bg-bg text-sm focus-visible:ring-1 focus-visible:ring-accent"
           disabled={searching}
         />
         <Button
           variant="default"
           size="sm"
-          className="h-9 px-4 shadow-sm"
+          className="h-9 px-4 "
           onClick={handleSubmit}
           disabled={!query.trim() || searching}
         >
@@ -95,7 +95,7 @@ export const SidebarSearchBar = React.forwardRef<
           type="text"
           value={value}
           placeholder={inputPlaceholder}
-          className="h-10 w-full rounded-sm border border-border/34 bg-card pl-10 pr-10 text-sm text-txt shadow-xs placeholder:text-muted focus-visible:border-accent/28 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/24 disabled:cursor-not-allowed disabled:opacity-50 "
+          className="h-10 w-full rounded-sm border border-border/34 bg-card pl-10 pr-10 text-sm text-txt placeholder:text-muted focus-visible:border-accent/28 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/24 disabled:cursor-not-allowed disabled:opacity-50 "
           {...props}
         />
         {loading ? (

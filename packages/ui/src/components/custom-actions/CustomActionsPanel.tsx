@@ -231,7 +231,7 @@ export function CustomActionsPanel({
               variant="default"
               size="sm"
               onClick={handleCreate}
-              className="w-full px-3 py-2 h-9 text-sm font-medium shadow-sm"
+              className="w-full px-3 py-2 h-9 text-sm font-medium "
             >
               {t("customactionspanel.NewCustomAction")}
             </Button>
@@ -241,12 +241,12 @@ export function CustomActionsPanel({
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder={t("customactionspanel.SearchByNameDesc")}
-                className="w-full h-8 bg-surface text-xs placeholder:text-muted/50 shadow-sm focus-visible:ring-1 focus-visible:ring-accent"
+                className="w-full h-8 bg-surface text-xs placeholder:text-muted/50 focus-visible:ring-1 focus-visible:ring-accent"
               />
             </div>
 
             {error && (
-              <div className="text-xs text-danger bg-danger/10 border border-danger/30 px-2 py-1 rounded">
+              <div className="text-xs text-danger bg-danger/10 border border-danger/30 px-2 py-1 rounded-sm">
                 {error}
               </div>
             )}
@@ -273,7 +273,7 @@ export function CustomActionsPanel({
               filteredActions.map((action) => (
                 <div
                   key={action.id}
-                  className="border border-border bg-surface rounded p-2 space-y-2"
+                  className="border border-border bg-surface rounded-sm p-2 space-y-2"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -289,7 +289,7 @@ export function CustomActionsPanel({
                     </div>
 
                     <span
-                      className={`text-2xs px-1.5 py-0.5 rounded whitespace-nowrap ${
+                      className={`text-2xs px-1.5 py-0.5 rounded-sm whitespace-nowrap ${
                         HANDLER_TYPE_COLORS[action.handler.type] ||
                         "bg-surface text-muted"
                       }`}

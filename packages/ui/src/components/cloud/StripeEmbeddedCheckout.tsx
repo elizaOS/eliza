@@ -136,7 +136,7 @@ export function StripeEmbeddedCheckout({
 
   if (error) {
     return (
-      <div className="rounded-2xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+      <div className="rounded-sm border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
         {error}
       </div>
     );
@@ -145,7 +145,7 @@ export function StripeEmbeddedCheckout({
   return (
     <div className={className}>
       {loading ? (
-        <div className="rounded-2xl border border-border/50 bg-bg/40 px-4 py-6 text-sm text-muted">
+        <div className="rounded-sm border border-border/50 bg-bg/40 px-4 py-6 text-sm text-muted">
           Loading secure checkout…
         </div>
       ) : null}

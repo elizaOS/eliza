@@ -344,7 +344,7 @@ export function PluginCard({
         {hasParams && !isShowcase ? (
           <>
             <span
-              className={`inline-block w-2 h-2 rounded-full shadow-[0_0_10px_currentColor] shrink-0 ${
+              className={`inline-block w-2 h-2 rounded-full shrink-0 ${
                 allParamsSet
                   ? "bg-ok text-ok"
                   : "bg-destructive text-destructive"
@@ -401,7 +401,7 @@ export function PluginCard({
           <Button
             variant="default"
             size="sm"
-            className="h-7 px-3 text-2xs font-bold tracking-wide shadow-sm max-w-[140px] truncate"
+            className="h-7 px-3 text-2xs font-bold tracking-wide max-w-[140px] truncate"
             disabled={isInstalling || isUpdating || isUninstalling}
             onClick={(e) => {
               e.stopPropagation();

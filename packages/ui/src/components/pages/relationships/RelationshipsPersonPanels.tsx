@@ -252,7 +252,7 @@ function OwnerNameEditor({
       <button
         type="button"
         onClick={() => setEditing(true)}
-        className="group inline-flex items-center gap-2 rounded-md text-left transition hover:bg-card/40"
+        className="group inline-flex items-center gap-2 rounded-sm text-left transition hover:bg-card/40"
         aria-label="Edit owner name"
       >
         <span className="break-words text-[1.75rem] font-semibold leading-tight text-txt">
@@ -276,7 +276,7 @@ function OwnerNameEditor({
         }}
         disabled={saving}
         maxLength={60}
-        className="min-w-0 flex-1 rounded-md border border-accent/40 bg-card/60 px-2 py-1 text-[1.5rem] font-semibold text-txt outline-none focus:border-accent"
+        className="min-w-0 flex-1 rounded-sm border border-accent/40 bg-card/60 px-2 py-1 text-[1.5rem] font-semibold text-txt outline-none focus:border-accent"
         aria-label="Owner name"
       />
       <Button type="submit" size="sm" disabled={saving}>
@@ -316,7 +316,7 @@ function ProfileCard({
       : null);
 
   return (
-    <li className="flex min-w-0 items-center gap-2 rounded-lg border border-border/24 bg-card/30 px-2.5 py-1.5 text-xs">
+    <li className="flex min-w-0 items-center gap-2 rounded-sm border border-border/24 bg-card/30 px-2.5 py-1.5 text-xs">
       {profile.avatarUrl ? (
         <img
           src={profile.avatarUrl}
@@ -439,7 +439,7 @@ export function RelationshipsPersonSummaryPanel({
             <img
               src={avatarUrl}
               alt=""
-              className={`${compact ? "h-10 w-10 rounded-xl" : "h-12 w-12 rounded-2xl"} hidden border border-border/24 object-cover shadow-sm sm:block`}
+              className={`${compact ? "h-10 w-10 rounded-sm" : "h-12 w-12 rounded-sm"} hidden border border-border/24 object-cover sm:block`}
             />
           ) : null}
           <div className="min-w-0">
@@ -541,7 +541,7 @@ export function RelationshipsPersonSummaryPanel({
             return (
               <div
                 key={`${contact.label}:${contact.value}`}
-                className="flex items-center gap-2 rounded-lg border border-border/24 bg-card/30 px-2.5 py-1.5 text-xs"
+                className="flex items-center gap-2 rounded-sm border border-border/24 bg-card/30 px-2.5 py-1.5 text-xs"
               >
                 <Icon className="h-3 w-3 shrink-0 text-accent" />
                 <span className="min-w-0 truncate text-txt">
@@ -554,7 +554,7 @@ export function RelationshipsPersonSummaryPanel({
       ) : null}
 
       {hasProfiles || person.identities.length > 0 ? (
-        <details className="rounded-xl border border-border/24 bg-card/24 px-3 py-2">
+        <details className="rounded-sm border border-border/24 bg-card/24 px-3 py-2">
           <summary
             className="inline-flex cursor-pointer list-none items-center gap-2 rounded-full text-xs-tight font-semibold text-muted transition hover:text-txt"
             title="Profiles and identities"
@@ -646,7 +646,7 @@ export function RelationshipsFactsPanel({
     return (
       <div
         key={fact.id}
-        className="rounded-xl border border-border/24 bg-card/32 px-3 py-2.5"
+        className="rounded-sm border border-border/24 bg-card/32 px-3 py-2.5"
       >
         <div className="flex flex-wrap items-center gap-1.5">
           <IconPill icon={SourceIcon} ariaLabel={`${fact.sourceType} fact`} />
@@ -698,7 +698,7 @@ export function RelationshipsConnectionsPanel({
     return (
       <div
         key={relationship.id}
-        className="rounded-xl border border-border/24 bg-card/32 px-3 py-2"
+        className="rounded-sm border border-border/24 bg-card/32 px-3 py-2"
       >
         <div className="flex flex-wrap items-center gap-1.5">
           <span
@@ -767,7 +767,7 @@ export function RelationshipsConversationsPanel({
   ) => (
     <div
       key={conversation.roomId}
-      className="rounded-xl border border-border/24 bg-card/32 px-3 py-2.5"
+      className="rounded-sm border border-border/24 bg-card/32 px-3 py-2.5"
     >
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 truncate text-sm font-semibold text-txt">
@@ -790,7 +790,7 @@ export function RelationshipsConversationsPanel({
           .map((message) => (
             <div
               key={message.id}
-              className="rounded-lg bg-card/45 px-2.5 py-1.5 text-sm leading-6 text-txt"
+              className="rounded-sm bg-card/45 px-2.5 py-1.5 text-sm leading-6 text-txt"
             >
               {renderInlineSpeaker(message.speaker, message.text, 300)}
             </div>
@@ -845,7 +845,7 @@ export function RelationshipsRelevantMemoriesPanel({
     return (
       <div
         key={memory.id}
-        className="rounded-xl border border-border/24 bg-card/32 px-3 py-2.5"
+        className="rounded-sm border border-border/24 bg-card/32 px-3 py-2.5"
       >
         <div className="flex flex-wrap items-center gap-1.5">
           <IconPill icon={SourceIcon} ariaLabel={memory.sourceType} />
@@ -905,7 +905,7 @@ export function RelationshipsUserPreferencesPanel({
   ) => (
     <div
       key={preference.id}
-      className="rounded-xl border border-border/24 bg-card/32 px-3 py-2.5"
+      className="rounded-sm border border-border/24 bg-card/32 px-3 py-2.5"
     >
       <div className="flex flex-wrap items-center gap-1.5">
         <IconPill icon={Sparkles} ariaLabel="Preference">
@@ -1054,7 +1054,7 @@ export function RelationshipsDocumentsPanel({
     return (
       <div
         key={doc.id}
-        className="rounded-xl border border-border/24 bg-card/32 px-3 py-2.5"
+        className="rounded-sm border border-border/24 bg-card/32 px-3 py-2.5"
       >
         <div className="flex flex-wrap items-center gap-1.5">
           <IconPill icon={FileText} ariaLabel="Document">

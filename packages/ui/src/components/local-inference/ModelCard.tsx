@@ -67,7 +67,7 @@ export function ModelCard({
   const parameterLabel = model.parameterLabel ?? model.params;
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3">
+    <div className="rounded-sm border border-border bg-card p-4 flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="font-semibold truncate">

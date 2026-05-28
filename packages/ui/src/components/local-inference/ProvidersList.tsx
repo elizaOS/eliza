@@ -44,7 +44,7 @@ export function ProvidersList() {
 
   if (error && !providers) {
     return (
-      <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-sm">
+      <div className="rounded-sm border border-rose-500/40 bg-rose-500/10 p-4 text-sm">
         {error}
       </div>
     );
@@ -70,7 +70,7 @@ export function ProvidersList() {
           return (
             <div
               key={p.id}
-              className="rounded-xl border border-border bg-card p-3 flex flex-col gap-2"
+              className="rounded-sm border border-border bg-card p-3 flex flex-col gap-2"
             >
               <div className="flex items-center gap-2">
                 <span
@@ -113,7 +113,7 @@ export function ProvidersList() {
                 {p.configureHref && (
                   <a
                     href={p.configureHref}
-                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted transition-colors hover:bg-bg hover:text-txt"
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-border/60 text-muted transition-colors hover:bg-bg hover:text-txt"
                     title="Configure"
                     aria-label={`Configure ${p.label}`}
                   >

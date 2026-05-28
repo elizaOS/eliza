@@ -90,7 +90,7 @@ export function EditableAccountLabel({
       disabled={disabled}
       title={editTitle}
       className={cn(
-        "group inline-flex min-w-0 items-center gap-1 truncate rounded text-sm font-medium text-txt hover:text-accent disabled:cursor-not-allowed disabled:hover:text-txt",
+        "group inline-flex min-w-0 items-center gap-1 truncate rounded-sm text-sm font-medium text-txt hover:text-accent disabled:cursor-not-allowed disabled:hover:text-txt",
         className,
       )}
     >

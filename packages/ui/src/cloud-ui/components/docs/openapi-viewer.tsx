@@ -12,7 +12,7 @@ export function OpenApiViewer({ value, className }: OpenApiViewerProps) {
   return (
     <div
       className={cn(
-        "w-full min-w-0 max-w-full overflow-hidden rounded-lg border border-white/10 bg-black/40",
+        "w-full min-w-0 max-w-full overflow-hidden rounded-sm border border-white/10 bg-black/40",
         className,
       )}
     >

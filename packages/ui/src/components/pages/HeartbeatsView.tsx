@@ -734,7 +734,7 @@ function HeartbeatsLayout() {
         {showDetailPane ? (
           <button
             type="button"
-            className="mb-3 flex items-center gap-2 rounded-2xl border border-border/30 bg-bg/25 px-4 py-3 text-base font-medium text-muted hover:text-txt md:hidden"
+            className="mb-3 flex items-center gap-2 rounded-sm border border-border/30 bg-bg/25 px-4 py-3 text-base font-medium text-muted hover:text-txt md:hidden"
             onClick={() => {
               setSelectedTriggerId(null);
               setEditorOpen(false);
@@ -931,7 +931,7 @@ function HeartbeatsLayout() {
                   {selectedRuns.map((run) => (
                     <div
                       key={run.triggerRunId}
-                      className="rounded-lg border border-border/30 bg-bg/30 px-4 py-3"
+                      className="rounded-sm border border-border/30 bg-bg/30 px-4 py-3"
                     >
                       <div className="mb-1 flex items-center justify-between gap-2">
                         <StatusBadge
@@ -946,12 +946,12 @@ function HeartbeatsLayout() {
                       </div>
                       <div className="text-xs-tight text-muted/80">
                         {formatDurationMs(run.latencyMs, { t })} &middot;{" "}
-                        <span className="rounded bg-bg/40 px-1 py-0.5 font-mono text-muted/60">
+                        <span className="rounded-sm bg-bg/40 px-1 py-0.5 font-mono text-muted/60">
                           {run.source}
                         </span>
                       </div>
                       {run.error ? (
-                        <div className="mt-2 whitespace-pre-wrap rounded-lg border border-danger/20 bg-danger/10 p-2 font-mono text-xs text-danger/90">
+                        <div className="mt-2 whitespace-pre-wrap rounded-sm border border-danger/20 bg-danger/10 p-2 font-mono text-xs text-danger/90">
                           {run.error}
                         </div>
                       ) : null}

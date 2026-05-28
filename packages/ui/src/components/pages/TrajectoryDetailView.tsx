@@ -577,7 +577,7 @@ export function TrajectoryDetailView({
               defaultValue: "Metadata",
             })}
           </div>
-          <pre className="mt-4 max-h-[20rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-2xl border border-border/50 bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
+          <pre className="mt-4 max-h-[20rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm border border-border/50 bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
             {formatProviderPayload(trajectory.metadata)}
           </pre>
         </PagePanel>
@@ -607,7 +607,7 @@ export function TrajectoryDetailView({
               <button
                 type="button"
                 onClick={() => setActiveStage(null)}
-                className="rounded p-0.5 hover:bg-muted/10"
+                className="rounded-sm p-0.5 hover:bg-muted/10"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -699,7 +699,7 @@ export function TrajectoryDetailView({
                         defaultValue: "Query",
                       })}
                     </div>
-                    <pre className="mt-2 max-h-[18rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-2xl border border-border/50 bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
+                    <pre className="mt-2 max-h-[18rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm border border-border/50 bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
                       {formatProviderPayload(access.query)}
                     </pre>
                   </div>
@@ -710,7 +710,7 @@ export function TrajectoryDetailView({
                       defaultValue: "Data",
                     })}
                   </div>
-                  <pre className="mt-2 max-h-[18rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-2xl border border-border/50 bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
+                  <pre className="mt-2 max-h-[18rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm border border-border/50 bg-bg/60 px-4 py-4 text-xs leading-6 text-txt">
                     {formatProviderPayload(access.data)}
                   </pre>
                 </div>

@@ -114,7 +114,7 @@ export function ApprovedAddressesSection({
             return (
               <div
                 key={entry.address}
-                className="flex items-center gap-2 rounded-lg bg-bg/50 px-3 py-1.5 group"
+                className="flex items-center gap-2 rounded-sm bg-bg/50 px-3 py-1.5 group"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
@@ -122,7 +122,7 @@ export function ApprovedAddressesSection({
                       {entry.address}
                     </span>
                     {chain && (
-                      <span className="text-3xs text-muted bg-muted/10 px-1.5 py-0.5 rounded shrink-0">
+                      <span className="text-3xs text-muted bg-muted/10 px-1.5 py-0.5 rounded-sm shrink-0">
                         {chain}
                       </span>
                     )}

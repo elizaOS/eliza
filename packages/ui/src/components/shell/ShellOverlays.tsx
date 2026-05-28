@@ -92,7 +92,7 @@ export function ShellOverlays({
       <GlobalEmoteOverlay />
       {actionNotice && (
         <div
-          className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-2.5 rounded-lg text-sm font-medium z-[10000] flex items-center gap-2.5 max-w-[min(92vw,28rem)] ${
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-2.5 rounded-sm text-sm font-medium z-[10000] flex items-center gap-2.5 max-w-[min(92vw,28rem)] ${
             actionNotice.tone === "error"
               ? "bg-danger text-white"
               : actionNotice.tone === "success"

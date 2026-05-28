@@ -74,7 +74,7 @@ export function LayoutStoryHeader() {
 export function LayoutStoryFooter() {
   return (
     <div className="mx-auto w-full max-w-[72rem]">
-      <div className="rounded-[1.5rem] border border-border/40 bg-card/75 px-4 py-3 text-sm text-muted shadow-sm">
+      <div className="rounded-sm border border-border/40 bg-card/75 px-4 py-3 text-sm text-muted ">
         Supplementary widget/footer slot
       </div>
     </div>
@@ -124,7 +124,7 @@ export function LayoutStoryContent() {
             {primarySections.map((sectionLabel) => (
               <div
                 key={sectionLabel}
-                className="rounded-2xl border border-border/40 bg-bg/40 p-4"
+                className="rounded-sm border border-border/40 bg-bg/40 p-4"
               >
                 <div className="text-sm font-medium text-txt">
                   {sectionLabel}
@@ -143,11 +143,11 @@ export function LayoutStoryContent() {
             Supporting column
           </div>
           <div className="space-y-2">
-            <div className="rounded-2xl border border-border/40 bg-bg/40 p-4 text-sm text-muted">
+            <div className="rounded-sm border border-border/40 bg-bg/40 p-4 text-sm text-muted">
               Use this area to verify long-form content, summary cards, or
               right-column panels at tablet and desktop breakpoints.
             </div>
-            <div className="rounded-2xl border border-border/40 bg-bg/40 p-4 text-sm text-muted">
+            <div className="rounded-sm border border-border/40 bg-bg/40 p-4 text-sm text-muted">
               On narrow widths the column naturally stacks under the primary
               content.
             </div>

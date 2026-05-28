@@ -30,7 +30,7 @@ export function FormSelect({
     <Select {...props}>
       <SelectTrigger
         className={cn(
-          "h-11 w-full rounded-sm border border-border bg-bg px-4 py-2 text-sm text-txt shadow-xs outline-none transition-colors focus:border-accent focus-visible:border-accent data-[placeholder]:text-muted",
+          "h-11 w-full rounded-sm border border-border bg-bg px-4 py-2 text-sm text-txt outline-none transition-colors focus:border-accent focus-visible:border-accent data-[placeholder]:text-muted",
           triggerClassName,
         )}
       >
@@ -38,7 +38,7 @@ export function FormSelect({
       </SelectTrigger>
       <SelectContent
         className={cn(
-          "rounded-sm border border-border bg-card p-1 shadow-sm",
+          "rounded-sm border border-border bg-card p-1 ",
           contentClassName,
         )}
       >

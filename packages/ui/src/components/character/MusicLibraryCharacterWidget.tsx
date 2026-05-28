@@ -26,7 +26,7 @@ export function MusicLibraryCharacterWidget({ pluginState }: WidgetProps) {
 
   return (
     <section
-      className="rounded-2xl border border-border/40 bg-bg/70 px-4 py-4"
+      className="rounded-sm border border-border/40 bg-bg/70 px-4 py-4"
       data-testid="character-widget-music-library"
     >
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -37,7 +37,7 @@ export function MusicLibraryCharacterWidget({ pluginState }: WidgetProps) {
           </h2>
         </div>
         <span
-          className={`shrink-0 rounded-[var(--radius-sm)] border px-2 py-0.5 text-3xs font-semibold uppercase tracking-[0.12em] ${
+          className={`shrink-0 rounded-sm border px-2 py-0.5 text-3xs font-semibold uppercase tracking-[0.12em] ${
             pluginReady
               ? "border-ok/30 bg-ok/10 text-ok"
               : "border-border/40 bg-bg-accent text-muted"
@@ -50,7 +50,7 @@ export function MusicLibraryCharacterWidget({ pluginState }: WidgetProps) {
         {MUSIC_LIBRARY_COMMANDS.map((command) => (
           <div
             key={command.label}
-            className="min-w-0 rounded-xl border border-border/35 bg-card/45 px-3 py-2"
+            className="min-w-0 rounded-sm border border-border/35 bg-card/45 px-3 py-2"
           >
             <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-txt">
               <span className="text-muted">{command.icon}</span>

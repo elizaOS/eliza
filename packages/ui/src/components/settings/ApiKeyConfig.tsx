@@ -296,7 +296,7 @@ export function ApiKeyConfig({
               // biome-ignore lint/suspicious/noArrayIndexKey: stable per-render order
               key={`err-${i}`}
               role="alert"
-              className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger"
+              className="rounded-sm border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger"
             >
               <span className="font-semibold">{issue.field}</span> —{" "}
               {issue.message}
@@ -307,7 +307,7 @@ export function ApiKeyConfig({
               // biome-ignore lint/suspicious/noArrayIndexKey: stable per-render order
               key={`warn-${i}`}
               role="status"
-              className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn"
+              className="rounded-sm border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn"
             >
               <span className="font-semibold">{issue.field}</span> —{" "}
               {issue.message}
@@ -362,7 +362,7 @@ export function ApiKeyConfig({
           <Button
             variant="outline"
             size="sm"
-            className="h-9 rounded-lg"
+            className="h-9 rounded-sm"
             onClick={() => void handleFetchModels(selectedProvider.id)}
             disabled={modelsFetching}
           >
@@ -384,7 +384,7 @@ export function ApiKeyConfig({
         <Button
           variant="default"
           size="sm"
-          className="h-9 w-full rounded-lg font-semibold sm:w-auto"
+          className="h-9 w-full rounded-sm font-semibold sm:w-auto"
           onClick={() => handlePluginSave(selectedProvider.id)}
           disabled={isSaving}
         >

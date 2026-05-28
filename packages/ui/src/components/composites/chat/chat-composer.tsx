@@ -35,7 +35,7 @@ const inlineTextareaClass =
 const inlineMeasureTextareaClass = `${inlineTextareaClass} pointer-events-none fixed left-0 top-0 z-[-1] opacity-0`;
 
 const inlineComposerSurfaceClass =
-  "border-[color-mix(in_srgb,var(--border)_62%,var(--txt)_38%)] bg-[color-mix(in_srgb,var(--bg)_78%,var(--txt)_16%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ring-1 ring-inset ring-white/15 backdrop-blur-sm";
+  "border-[color-mix(in_srgb,var(--border)_62%,var(--txt)_38%)] bg-[color-mix(in_srgb,var(--bg)_78%,var(--txt)_16%)] ring-1 ring-inset ring-white/15 backdrop-blur-sm";
 
 type InlineTextareaMeasurement = {
   scrollHeight: number;
@@ -509,7 +509,7 @@ export function ChatComposer({
         data-inline-layout={isInlineMultiline ? "stacked" : "single-line"}
         className={
           isInlineMultiline
-            ? `flex min-h-[64px] flex-col gap-1 rounded-[22px] border px-1.5 py-1.5 ${inlineComposerSurfaceClass}`
+            ? `flex min-h-[64px] flex-col gap-1 rounded-sm border px-1.5 py-1.5 ${inlineComposerSurfaceClass}`
             : `flex min-h-[40px] items-center gap-1 rounded-sm border px-1 py-1 ${inlineComposerSurfaceClass}`
         }
       >
@@ -594,7 +594,7 @@ export function ChatComposer({
             isGameModal
               ? `flex items-center justify-center h-[46px] w-[46px] shrink-0 ${
                   voice.isListening
-                    ? "animate-pulse select-none rounded-sm border border-border/28 bg-card text-txt shadow-xs ring-1 ring-inset ring-border transition-all duration-300 active:scale-95 "
+                    ? "animate-pulse select-none rounded-sm border border-border/28 bg-card text-txt ring-1 ring-inset ring-border transition-all duration-300 active:scale-95 "
                     : "select-none rounded-sm border border-transparent bg-transparent text-muted-strong shadow-none ring-0 transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-card hover:text-txt active:scale-95"
                 } ${isComposerLocked ? "opacity-50" : ""}`
               : `h-[38px] w-9 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt ${voice.isListening ? "text-accent hover:text-accent" : ""}`
@@ -669,7 +669,7 @@ export function ChatComposer({
             isGameModal
               ? `flex items-center justify-center h-[46px] w-[46px] shrink-0 ${
                   agentVoiceEnabled
-                    ? "select-none rounded-sm border border-border/28 bg-card text-txt shadow-xs ring-1 ring-inset ring-border transition-all duration-300 active:scale-95 "
+                    ? "select-none rounded-sm border border-border/28 bg-card text-txt ring-1 ring-inset ring-border transition-all duration-300 active:scale-95 "
                     : "select-none rounded-sm border border-transparent bg-transparent text-muted-strong shadow-none ring-0 transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-card hover:text-txt active:scale-95"
                 }`
               : "h-[46px] w-[46px] shrink-0"
@@ -764,7 +764,7 @@ export function ChatComposer({
             isGameModal
               ? `ml-1 flex items-center justify-center rounded-sm transition-all duration-300 select-none active:scale-95 h-[46px] w-[46px] shrink-0 ${
                   hasDraft
-                    ? "select-none rounded-sm border border-border/28 bg-card text-txt shadow-xs ring-1 ring-inset ring-border transition-all duration-300 active:scale-95 "
+                    ? "select-none rounded-sm border border-border/28 bg-card text-txt ring-1 ring-inset ring-border transition-all duration-300 active:scale-95 "
                     : "select-none rounded-sm border border-transparent bg-transparent text-muted-strong shadow-none ring-0 transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-card hover:text-txt active:scale-95 opacity-80"
                 }`
               : isInline

@@ -85,7 +85,7 @@ function FieldRow({
 }): React.ReactElement {
   return (
     <div
-      className="flex items-start justify-between gap-3 rounded-lg border border-border/30 bg-card/30 p-3"
+      className="flex items-start justify-between gap-3 rounded-sm border border-border/30 bg-card/30 p-3"
       data-testid={dataTestId}
     >
       <div className="flex items-start gap-2">
@@ -152,7 +152,7 @@ export function VoiceSection({
             checked={wakeWordEnabled}
             onChange={(e) => onWakeWordToggle?.(e.target.checked)}
             data-testid="voice-section-wake-toggle"
-            className="h-4 w-4 rounded border-border/40"
+            className="h-4 w-4 rounded-sm border-border/40"
             aria-label="Toggle wake word"
           />
           <span className="text-muted">{wakeWordEnabled ? "On" : "Off"}</span>
@@ -171,7 +171,7 @@ export function VoiceSection({
               strategy: e.target.value as VoiceLocalCloudStrategy,
             })
           }
-          className="rounded border border-border/40 bg-bg/50 px-2 py-1 text-xs"
+          className="rounded-sm border border-border/40 bg-bg/50 px-2 py-1 text-xs"
           data-testid="voice-section-strategy-select"
           aria-label="Local vs Cloud strategy"
         >
@@ -182,7 +182,7 @@ export function VoiceSection({
       </FieldRow>
 
       <div
-        className="rounded-lg border border-border/30 bg-card/30 p-3"
+        className="rounded-sm border border-border/30 bg-card/30 p-3"
         data-testid="voice-section-models"
       >
         <div className="mb-2 flex items-center gap-2">
@@ -203,7 +203,7 @@ export function VoiceSection({
       <VoiceProfileSection profilesClient={profilesClient} />
 
       <div
-        className="rounded-lg border border-border/30 bg-card/30 p-3"
+        className="rounded-sm border border-border/30 bg-card/30 p-3"
         data-testid="voice-section-privacy"
       >
         <div className="mb-2 flex items-center gap-2">
@@ -225,7 +225,7 @@ export function VoiceSection({
               updatePrefs({ cloudFirstLineCache: e.target.checked })
             }
             data-testid="voice-section-cloud-cache-toggle"
-            className="h-4 w-4 rounded border-border/40"
+            className="h-4 w-4 rounded-sm border-border/40"
             aria-label="Cloud first-line cache opt-in"
           />
         </label>
@@ -242,7 +242,7 @@ export function VoiceSection({
             checked={prefs.autoLearnVoices}
             onChange={(e) => updatePrefs({ autoLearnVoices: e.target.checked })}
             data-testid="voice-section-auto-learn-toggle"
-            className="h-4 w-4 rounded border-border/40"
+            className="h-4 w-4 rounded-sm border-border/40"
             aria-label="Auto-learn new voices"
           />
         </label>

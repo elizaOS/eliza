@@ -245,13 +245,13 @@ function WidgetPreview({
   );
   if (!Component) {
     return (
-      <div className="rounded-md border border-border/40 bg-card/30 px-3 py-2 text-xs text-muted">
+      <div className="rounded-sm border border-border/40 bg-card/30 px-3 py-2 text-xs text-muted">
         No bundled component for this widget — preview unavailable.
       </div>
     );
   }
   return (
-    <div className="rounded-md border border-border/40 bg-card/30 p-3">
+    <div className="rounded-sm border border-border/40 bg-card/30 p-3">
       <Component pluginId={pluginId} events={[]} clearEvents={() => {}} />
     </div>
   );
@@ -528,10 +528,10 @@ export function AppDetailsView({
             <img
               src={resolveRuntimeImageUrl(resolved.info.heroImage)}
               alt=""
-              className="h-14 w-14 rounded-lg border border-border/40 object-cover"
+              className="h-14 w-14 rounded-sm border border-border/40 object-cover"
             />
           ) : (
-            <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-border/40 bg-card/40 text-xs uppercase text-muted">
+            <div className="flex h-14 w-14 items-center justify-center rounded-sm border border-border/40 bg-card/40 text-xs uppercase text-muted">
               {(resolved.info.displayName ?? resolved.info.name)
                 .slice(0, 2)
                 .toUpperCase()}
@@ -565,7 +565,7 @@ export function AppDetailsView({
 
       <section
         data-testid="app-launch-panel"
-        className="flex flex-col gap-4 rounded-lg border border-border/45 bg-card/30 p-4"
+        className="flex flex-col gap-4 rounded-sm border border-border/45 bg-card/30 p-4"
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex flex-col gap-1">
@@ -642,13 +642,13 @@ export function AppDetailsView({
         ) : null}
 
         {latestFailure ? (
-          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-muted">
+          <div className="rounded-sm border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-muted">
             <span className="font-medium text-destructive">Last failure: </span>
             {latestFailure.errorMessage ?? "Launch failed."}
           </div>
         ) : null}
 
-        <fieldset className="flex flex-col gap-2 rounded-md border border-border/40 bg-bg/20 p-3">
+        <fieldset className="flex flex-col gap-2 rounded-sm border border-border/40 bg-bg/20 p-3">
           <legend className="px-1 text-xs uppercase tracking-[0.14em] text-muted">
             <SettingsIcon className="mr-1 inline h-3 w-3" /> Launch Destination
           </legend>
@@ -730,7 +730,7 @@ export function AppDetailsView({
             {recentRuns.map((run) => (
               <li
                 key={run.runId}
-                className="flex items-center justify-between rounded-md border border-border/40 bg-card/30 px-3 py-1.5"
+                className="flex items-center justify-between rounded-sm border border-border/40 bg-card/30 px-3 py-1.5"
               >
                 <span className="truncate">{run.runId}</span>
                 <span className="ml-2 shrink-0 uppercase tracking-[0.14em]">
@@ -752,7 +752,7 @@ export function AppDetailsView({
             {history.slice(0, 5).map((entry) => (
               <li
                 key={entry.timestamp}
-                className="rounded-md border border-border/40 bg-card/30 px-3 py-1.5"
+                className="rounded-sm border border-border/40 bg-card/30 px-3 py-1.5"
               >
                 <div className="flex items-center justify-between">
                   <span className="text-muted">
@@ -787,7 +787,7 @@ export function AppDetailsView({
               return (
                 <li
                   key={widgetKey}
-                  className="rounded-md border border-border/40 bg-card/30"
+                  className="rounded-sm border border-border/40 bg-card/30"
                 >
                   <div className="flex items-center justify-between gap-3 px-3 py-2">
                     <div className="min-w-0">

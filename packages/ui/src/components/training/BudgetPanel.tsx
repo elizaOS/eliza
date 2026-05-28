@@ -31,7 +31,7 @@ function BudgetGauge({ budget }: { budget: TrainingBudget }) {
 
   return (
     <div className="space-y-1">
-      <div className="h-2 w-full bg-card border border-border rounded overflow-hidden">
+      <div className="h-2 w-full bg-card border border-border rounded-sm overflow-hidden">
         <div
           className={`h-full ${barColor} transition-all`}
           style={{ width: `${pct}%` }}
@@ -63,7 +63,7 @@ export function BudgetPanel({ jobId }: BudgetPanelProps) {
 
   if (loading && !budget) {
     return (
-      <div className="border border-border rounded p-3 bg-card flex items-center gap-2">
+      <div className="border border-border rounded-sm p-3 bg-card flex items-center gap-2">
         <Loader2 className="w-3 h-3 animate-spin" />
         <span className="text-xs text-muted">Loading running cost...</span>
       </div>
@@ -72,7 +72,7 @@ export function BudgetPanel({ jobId }: BudgetPanelProps) {
 
   if (error) {
     return (
-      <div className="border border-border rounded p-3 bg-red-500/10">
+      <div className="border border-border rounded-sm p-3 bg-red-500/10">
         <div className="text-xs text-red-500">Budget unavailable: {error}</div>
       </div>
     );
@@ -80,7 +80,7 @@ export function BudgetPanel({ jobId }: BudgetPanelProps) {
 
   if (!budget) {
     return (
-      <div className="border border-border rounded p-3 bg-card">
+      <div className="border border-border rounded-sm p-3 bg-card">
         <div className="text-xs text-muted">
           No Vast instance provisioned yet — running cost will appear once the
           instance is up.
@@ -96,7 +96,7 @@ export function BudgetPanel({ jobId }: BudgetPanelProps) {
       : "text-green-500";
 
   return (
-    <div className="border border-border rounded p-3 bg-card space-y-3">
+    <div className="border border-border rounded-sm p-3 bg-card space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-xs text-muted uppercase tracking-wide">

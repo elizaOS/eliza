@@ -19,22 +19,22 @@ function settingsSelectTriggerClassName(
 ): string {
   switch (variant) {
     case "filter":
-      return "h-10 rounded-xl border border-border/50 bg-bg/80 px-3 py-2 text-left text-sm text-txt shadow-sm transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent";
+      return "h-10 rounded-sm border border-border/50 bg-bg/80 px-3 py-2 text-left text-sm text-txt transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent";
     case "soft":
-      return "rounded-lg border border-border bg-bg px-2.5 py-1.5 text-xs shadow-sm transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent";
+      return "rounded-sm border border-border bg-bg px-2.5 py-1.5 text-xs transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent";
     case "toolbar":
-      return "h-11 rounded-xl border-border/60 bg-bg/70 text-left shadow-sm";
+      return "h-11 rounded-sm border-border/60 bg-bg/70 text-left ";
     default:
-      return "h-9 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs shadow-sm transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent";
+      return "h-9 rounded-sm border border-border bg-card px-2.5 py-1.5 text-xs transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent";
   }
 }
 
 function settingsInputClassName(variant: SettingsInputVariant): string {
   switch (variant) {
     case "filter":
-      return "h-10 rounded-xl border-border/50 bg-bg/80 text-sm text-txt shadow-sm";
+      return "h-10 rounded-sm border-border/50 bg-bg/80 text-sm text-txt ";
     default:
-      return "h-9 rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-sm transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent";
+      return "h-9 rounded-sm border border-border bg-card px-3 py-2 text-xs transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent";
   }
 }
 
@@ -84,7 +84,7 @@ export function SettingsTextarea({
   return (
     <Textarea
       className={cn(
-        "w-full rounded-xl border border-border/60 bg-bg/55 px-3 py-2 text-xs-tight font-mono shadow-sm transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent",
+        "w-full rounded-sm border border-border/60 bg-bg/55 px-3 py-2 text-xs-tight font-mono transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent",
         className,
       )}
       {...props}
@@ -102,7 +102,7 @@ export function SettingsSegmentedGroup({
   return (
     <div
       className={cn(
-        "flex shrink-0 gap-1 rounded-xl border border-border bg-card/50 p-1",
+        "flex shrink-0 gap-1 rounded-sm border border-border bg-card/50 p-1",
         className,
       )}
       {...props}

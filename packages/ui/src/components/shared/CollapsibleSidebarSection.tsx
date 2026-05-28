@@ -53,7 +53,7 @@ export function CollapsibleSidebarSection({
           aria-expanded={!collapsed}
           aria-controls={bodyId}
           data-testid={`${testIdPrefix}-toggle-${sectionKey}`}
-          className="inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius-sm)] bg-transparent px-1.5 py-1 text-left text-[11px] leading-none font-semibold uppercase tracking-[0.16em] text-muted transition-colors hover:text-txt"
+          className="inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-sm bg-transparent px-1.5 py-1 text-left text-[11px] leading-none font-semibold uppercase tracking-[0.16em] text-muted transition-colors hover:text-txt"
         >
           {icon ? (
             <span className="inline-flex shrink-0 items-center justify-center text-muted">
@@ -78,7 +78,7 @@ export function CollapsibleSidebarSection({
             aria-label={addLabel ?? "Add"}
             title={addLabel}
             data-testid={`${testIdPrefix}-add-${sectionKey}`}
-            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt${hoverHideClass}`}
+            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-transparent text-muted transition-colors hover:text-txt${hoverHideClass}`}
           >
             <Plus className="h-3.5 w-3.5" aria-hidden />
           </button>

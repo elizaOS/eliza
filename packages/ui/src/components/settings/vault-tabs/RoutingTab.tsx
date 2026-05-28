@@ -203,7 +203,7 @@ export function RoutingTab(props: RoutingTabProps) {
   return (
     <div data-testid="routing-tab" className="space-y-4">
       {/* Default profile */}
-      <section className="space-y-2 rounded-md border border-border/40 bg-card/30 p-3">
+      <section className="space-y-2 rounded-sm border border-border/40 bg-card/30 p-3">
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             <p className="text-sm font-medium text-txt">Default profile</p>
@@ -217,7 +217,7 @@ export function RoutingTab(props: RoutingTabProps) {
             onChange={(e) => void onDefaultProfileChange(e.target.value)}
             disabled={saving}
             data-testid="routing-default-profile"
-            className="block h-8 w-40 rounded-md border border-border bg-bg px-2 text-xs text-txt"
+            className="block h-8 w-40 rounded-sm border border-border bg-bg px-2 text-xs text-txt"
           >
             {allProfileIds.map((id) => (
               <option key={id} value={id}>
@@ -235,11 +235,11 @@ export function RoutingTab(props: RoutingTabProps) {
             <p className="text-sm font-medium text-txt">Routing rules</p>
             <p className="text-2xs text-muted">
               Per-context overrides. Match keys exactly (e.g.
-              <code className="mx-1 rounded bg-bg/40 px-1 font-mono">
+              <code className="mx-1 rounded-sm bg-bg/40 px-1 font-mono">
                 OPENROUTER_API_KEY
               </code>
               ) or use wildcards (e.g.
-              <code className="mx-1 rounded bg-bg/40 px-1 font-mono">
+              <code className="mx-1 rounded-sm bg-bg/40 px-1 font-mono">
                 OPENROUTER_*
               </code>
               ).
@@ -248,7 +248,7 @@ export function RoutingTab(props: RoutingTabProps) {
           <Button
             variant="outline"
             size="sm"
-            className="h-8 shrink-0 gap-1 rounded-md px-2"
+            className="h-8 shrink-0 gap-1 rounded-sm px-2"
             onClick={() => setShowAdd((v) => !v)}
             disabled={saving}
             aria-label="Add routing rule"
@@ -259,7 +259,7 @@ export function RoutingTab(props: RoutingTabProps) {
 
         {error && (
           <p
-            className="rounded-md border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs text-danger"
+            className="rounded-sm border border-danger/40 bg-danger/10 px-3 py-1.5 text-xs text-danger"
             aria-live="polite"
             data-testid="routing-tab-error"
           >
@@ -282,7 +282,7 @@ export function RoutingTab(props: RoutingTabProps) {
           <form
             onSubmit={onAddRule}
             data-testid="routing-add-rule-form"
-            className="space-y-2 rounded-md border border-border/50 bg-card/30 p-3"
+            className="space-y-2 rounded-sm border border-border/50 bg-card/30 p-3"
           >
             <div>
               <Label className="text-2xs text-muted">Key pattern</Label>
@@ -309,7 +309,7 @@ export function RoutingTab(props: RoutingTabProps) {
                   onChange={(e) =>
                     setScopeKind(e.target.value as RoutingScopeKind)
                   }
-                  className="block h-8 w-full rounded-md border border-border bg-bg px-2 text-xs text-txt"
+                  className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
                 >
                   <option value="agent">Agent</option>
                   <option value="app">App</option>
@@ -323,7 +323,7 @@ export function RoutingTab(props: RoutingTabProps) {
                   <select
                     value={scopeAgentId}
                     onChange={(e) => setScopeAgentId(e.target.value)}
-                    className="block h-8 w-full rounded-md border border-border bg-bg px-2 text-xs text-txt"
+                    className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
                     required
                   >
                     <option value="">Select agent…</option>
@@ -337,7 +337,7 @@ export function RoutingTab(props: RoutingTabProps) {
                   <select
                     value={scopeAppName}
                     onChange={(e) => setScopeAppName(e.target.value)}
-                    className="block h-8 w-full rounded-md border border-border bg-bg px-2 text-xs text-txt"
+                    className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
                     required
                   >
                     <option value="">Select app…</option>
@@ -354,7 +354,7 @@ export function RoutingTab(props: RoutingTabProps) {
                 <select
                   value={profileId}
                   onChange={(e) => setProfileId(e.target.value)}
-                  className="block h-8 w-full rounded-md border border-border bg-bg px-2 text-xs text-txt"
+                  className="block h-8 w-full rounded-sm border border-border bg-bg px-2 text-xs text-txt"
                   required
                 >
                   <option value="">Select profile…</option>
@@ -371,7 +371,7 @@ export function RoutingTab(props: RoutingTabProps) {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-7 rounded-md px-3 text-xs"
+                className="h-7 rounded-sm px-3 text-xs"
                 onClick={() => setShowAdd(false)}
                 disabled={saving}
               >
@@ -381,7 +381,7 @@ export function RoutingTab(props: RoutingTabProps) {
                 type="submit"
                 variant="default"
                 size="sm"
-                className="h-7 rounded-md px-3 text-xs"
+                className="h-7 rounded-sm px-3 text-xs"
                 disabled={saving || !keyPattern.trim() || !profileId}
               >
                 {saving ? "Saving…" : "Save rule"}
@@ -393,21 +393,21 @@ export function RoutingTab(props: RoutingTabProps) {
         {config.rules.length === 0 ? (
           <div
             data-testid="routing-rules-empty"
-            className="rounded-md border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+            className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
           >
             No routing rules. The default profile applies for every caller.
           </div>
         ) : visibleRules.length === 0 ? (
           <div
             data-testid="routing-rules-no-match"
-            className="rounded-md border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
+            className="rounded-sm border border-dashed border-border/50 bg-card/20 px-3 py-3 text-center text-xs text-muted"
           >
             No rules match "{rulesFilter}".
           </div>
         ) : (
           <table
             data-testid="routing-rules-table"
-            className="w-full table-fixed border-collapse rounded-md border border-border/40 bg-card/30 text-xs"
+            className="w-full table-fixed border-collapse rounded-sm border border-border/40 bg-card/30 text-xs"
           >
             <thead>
               <tr className="text-left text-muted">
@@ -483,7 +483,7 @@ export function RoutingTab(props: RoutingTabProps) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-6 w-6 rounded-md p-0 text-muted hover:text-danger"
+                        className="h-6 w-6 rounded-sm p-0 text-muted hover:text-danger"
                         onClick={() => void onDeleteRule(rule)}
                         aria-label={`Delete rule for ${rule.keyPattern}`}
                       >

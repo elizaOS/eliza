@@ -123,7 +123,7 @@ function renderText(component: ElizaGenUiComponent): React.ReactNode {
     case "h3":
       return <h3 className="text-lg font-semibold">{text}</h3>;
     case "code":
-      return <code className="rounded bg-muted px-1 py-0.5">{text}</code>;
+      return <code className="rounded-sm bg-muted px-1 py-0.5">{text}</code>;
     default:
       return <span>{text}</span>;
   }

@@ -90,8 +90,8 @@ function PipelineNodeButton({
 
   const statusClasses = {
     active: selected
-      ? "border-primary/40 bg-primary/5 ring-2 ring-primary/30 shadow-sm"
-      : "border-border/40 hover:border-border/60 hover:shadow-sm",
+      ? "border-primary/40 bg-primary/5 ring-2 ring-primary/30 "
+      : "border-border/40 hover:border-border/60 ",
     skipped: selected
       ? "border-primary/30 bg-primary/5 ring-2 ring-primary/20 opacity-70"
       : "border-border/25 border-dashed opacity-50 hover:opacity-70",

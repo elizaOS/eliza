@@ -13,7 +13,7 @@ export function DownloadProgress({ job }: DownloadProgressProps) {
   return (
     <div className="w-full">
       <div
-        className="h-2 w-full overflow-hidden rounded bg-muted"
+        className="h-2 w-full overflow-hidden rounded-sm bg-muted"
         role="progressbar"
         aria-valuenow={pct}
         aria-valuemin={0}

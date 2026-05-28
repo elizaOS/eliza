@@ -364,7 +364,7 @@ export function AppsManagementSection() {
 
       {showCreate ? (
         <form
-          className="space-y-2 rounded-md border border-border bg-card p-3"
+          className="space-y-2 rounded-sm border border-border bg-card p-3"
           onSubmit={handleCreateSubmit}
         >
           <div className="space-y-1">
@@ -382,7 +382,7 @@ export function AppsManagementSection() {
               value={createIntent}
               disabled={isCreating}
               onChange={(e) => setCreateIntent(e.target.value)}
-              className="block w-full resize-y rounded-md border border-border bg-bg px-2 py-1.5 text-xs text-txt focus:border-accent focus:outline-none disabled:opacity-50"
+              className="block w-full resize-y rounded-sm border border-border bg-bg px-2 py-1.5 text-xs text-txt focus:border-accent focus:outline-none disabled:opacity-50"
               placeholder={t("settings.sections.apps.intentPlaceholder", {
                 defaultValue:
                   "Describe the experience you want — e.g. a vibe coder for prototyping web apps with Tailwind.",
@@ -403,7 +403,7 @@ export function AppsManagementSection() {
               value={createEditTarget}
               disabled={isCreating}
               onChange={(e) => setCreateEditTarget(e.target.value)}
-              className="block w-full rounded-md border border-border bg-bg px-2 py-1.5 text-xs text-txt focus:border-accent focus:outline-none disabled:opacity-50"
+              className="block w-full rounded-sm border border-border bg-bg px-2 py-1.5 text-xs text-txt focus:border-accent focus:outline-none disabled:opacity-50"
             >
               <option value="">
                 {t("settings.sections.apps.basedOnNone", {
@@ -464,7 +464,7 @@ export function AppsManagementSection() {
 
       {showLoad ? (
         <form
-          className="space-y-2 rounded-md border border-border bg-card p-3"
+          className="space-y-2 rounded-sm border border-border bg-card p-3"
           onSubmit={handleLoadSubmit}
         >
           <div className="space-y-1">
@@ -540,18 +540,18 @@ export function AppsManagementSection() {
           </span>
         </div>
       ) : listStatus.state === "error" ? (
-        <div className="rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">
+        <div className="rounded-sm border border-danger/30 bg-danger/5 px-3 py-2 text-xs text-danger">
           {listStatus.message}
         </div>
       ) : installed.length === 0 ? (
-        <div className="rounded-md border border-border bg-card px-3 py-4 text-center text-xs text-muted">
+        <div className="rounded-sm border border-border bg-card px-3 py-4 text-center text-xs text-muted">
           {t("settings.sections.apps.empty", {
             defaultValue:
               "No apps installed yet. Click 'Create new app' to scaffold one.",
           })}
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-md border border-border">
+        <div className="overflow-x-auto rounded-sm border border-border">
           <table className="w-full text-left text-xs">
             <thead className="bg-bg-hover">
               <tr>

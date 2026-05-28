@@ -106,7 +106,7 @@ export function VoiceTierBanner({
       data-tier={tier}
       data-tone={copy.tone}
       className={cn(
-        "flex items-start gap-3 rounded-lg border px-3 py-3",
+        "flex items-start gap-3 rounded-sm border px-3 py-3",
         TONE_CLASS[copy.tone],
         compact && "py-2 text-xs",
         className,
@@ -114,7 +114,7 @@ export function VoiceTierBanner({
     >
       <span
         className={cn(
-          "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
+          "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm",
           TONE_BADGE_CLASS[copy.tone],
         )}
         aria-hidden="true"

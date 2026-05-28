@@ -140,7 +140,7 @@ export function ContinuousChatToggle({
       data-testid={dataTestId ?? "continuous-chat-toggle"}
       data-mode={value}
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-md border border-border/40 bg-card/30 p-0.5",
+        "inline-flex items-center gap-0.5 rounded-sm border border-border/40 bg-card/30 p-0.5",
         disabled && "opacity-50 pointer-events-none",
         className,
       )}
@@ -165,7 +165,7 @@ export function ContinuousChatToggle({
                     "inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-xs font-medium transition-colors",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-bg",
                     active
-                      ? "bg-accent/15 text-accent-fg dark:text-accent shadow-sm"
+                      ? "bg-accent/15 text-accent-fg dark:text-accent "
                       : "text-muted hover:text-txt hover:bg-bg-hover",
                   )}
                 >

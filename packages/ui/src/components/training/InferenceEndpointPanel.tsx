@@ -20,7 +20,7 @@ function StatsCard({
   unit: string;
 }) {
   return (
-    <div className="border border-border rounded p-2 text-center bg-card/50">
+    <div className="border border-border rounded-sm p-2 text-center bg-card/50">
       <div className="text-xs text-muted mb-1">{label}</div>
       <div className="text-sm font-semibold text-txt-strong">
         {value !== null ? `${value.toFixed(2)} ${unit}` : "—"}
@@ -105,7 +105,7 @@ export function InferenceEndpointPanel() {
 
   if (error) {
     return (
-      <div className="p-4 border border-border rounded bg-red-500/10">
+      <div className="p-4 border border-border rounded-sm bg-red-500/10">
         <div className="text-sm text-red-500">{error}</div>
       </div>
     );
@@ -123,10 +123,10 @@ export function InferenceEndpointPanel() {
   return (
     <div className="space-y-4">
       {showCreate ? (
-        <div className="border border-border rounded p-4 bg-card space-y-3">
+        <div className="border border-border rounded-sm p-4 bg-card space-y-3">
           <div className="text-sm font-semibold">Add Inference Endpoint</div>
           {createErrorMsg && (
-            <div className="text-xs text-red-500 bg-red-500/10 p-2 rounded">
+            <div className="text-xs text-red-500 bg-red-500/10 p-2 rounded-sm">
               {createErrorMsg}
             </div>
           )}
@@ -191,7 +191,7 @@ export function InferenceEndpointPanel() {
           endpoints.map((endpoint: InferenceEndpoint) => (
             <div
               key={endpoint.id}
-              className="border border-border rounded p-3 bg-card space-y-2"
+              className="border border-border rounded-sm p-3 bg-card space-y-2"
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -236,7 +236,7 @@ export function InferenceEndpointPanel() {
             </div>
           ))
         ) : (
-          <div className="text-xs text-muted p-4 text-center border border-border rounded">
+          <div className="text-xs text-muted p-4 text-center border border-border rounded-sm">
             No inference endpoints configured
           </div>
         )}

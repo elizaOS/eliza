@@ -336,13 +336,13 @@ export function AutomationsFeed({
       </div>
 
       {error && (
-        <div className="rounded-lg border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
+        <div className="rounded-sm border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
           {error}
         </div>
       )}
 
       {/* Feed */}
-      <PagePanel variant="inset" className="overflow-hidden rounded-2xl p-0">
+      <PagePanel variant="inset" className="overflow-hidden rounded-sm p-0">
         {loading && !data ? (
           <div className="flex items-center justify-center p-8">
             <Spinner className="h-5 w-5" />
@@ -491,7 +491,7 @@ function FeedRowItem({
           type="button"
           aria-label={row.active ? "Deactivate workflow" : "Activate workflow"}
           onClick={onRunNow}
-          className="rounded-md border border-border/40 px-2 py-1 text-xs text-muted-strong opacity-0 transition-opacity hover:border-border group-hover:opacity-100 focus:opacity-100"
+          className="rounded-sm border border-border/40 px-2 py-1 text-xs text-muted-strong opacity-0 transition-opacity hover:border-border group-hover:opacity-100 focus:opacity-100"
         >
           {row.active ? (
             <Pause className="h-3 w-3" aria-hidden />
@@ -523,7 +523,7 @@ function ChooserSheet({
       />
       <dialog
         open
-        className="relative m-0 w-full max-w-md rounded-2xl border border-border/40 bg-bg p-4 shadow-xl"
+        className="relative m-0 w-full max-w-md rounded-sm border border-border/40 bg-bg p-4 "
         aria-modal="true"
       >
         <h3 className="mb-3 text-base font-semibold text-txt">
@@ -533,7 +533,7 @@ function ChooserSheet({
           <button
             type="button"
             onClick={onChooseTask}
-            className="flex items-start gap-3 rounded-xl border border-border/40 p-3 text-left transition-colors hover:border-accent hover:bg-accent/5"
+            className="flex items-start gap-3 rounded-sm border border-border/40 p-3 text-left transition-colors hover:border-accent hover:bg-accent/5"
           >
             <CheckCircle2
               className="mt-0.5 h-5 w-5 shrink-0 text-blue-400"
@@ -552,7 +552,7 @@ function ChooserSheet({
           <button
             type="button"
             onClick={onChooseWorkflow}
-            className="flex items-start gap-3 rounded-xl border border-border/40 p-3 text-left transition-colors hover:border-accent hover:bg-accent/5"
+            className="flex items-start gap-3 rounded-sm border border-border/40 p-3 text-left transition-colors hover:border-accent hover:bg-accent/5"
           >
             <Workflow
               className="mt-0.5 h-5 w-5 shrink-0 text-violet-400"
@@ -614,7 +614,7 @@ function WorkflowEditorLoader({
   if (loadError) {
     return (
       <div className="p-6">
-        <div className="rounded-lg border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
+        <div className="rounded-sm border border-danger/20 bg-danger/10 p-3 text-sm text-danger">
           {loadError}
         </div>
         <Button variant="ghost" size="sm" className="mt-3" onClick={onCancel}>

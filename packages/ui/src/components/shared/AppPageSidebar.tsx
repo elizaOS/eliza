@@ -214,7 +214,7 @@ export const AppPageSidebar = React.forwardRef<
                 ? `${testId}-collapse-inline`
                 : "page-sidebar-collapse-inline"
             }
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-transparent text-muted transition-colors hover:text-txt"
           >
             <PanelLeftClose className="h-3.5 w-3.5" aria-hidden />
           </button>

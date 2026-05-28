@@ -40,7 +40,7 @@ export function RestartBanner() {
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-[9998] flex flex-col gap-2 rounded-lg px-4 py-3 text-sm font-medium shadow-sm"
+      className="fixed bottom-4 right-4 z-[9998] flex flex-col gap-2 rounded-sm px-4 py-3 text-sm font-medium "
       style={{
         background: "color-mix(in srgb, var(--bg) 95%, var(--accent) 5%)",
         border: "1px solid color-mix(in srgb, var(--accent) 25%, transparent)",
@@ -57,7 +57,7 @@ export function RestartBanner() {
           variant="ghost"
           size="sm"
           onClick={dismissRestartBanner}
-          className="rounded px-3 py-1 text-xs text-muted hover:bg-bg-hover"
+          className="rounded-sm px-3 py-1 text-xs text-muted hover:bg-bg-hover"
         >
           {t("restartbanner.Later")}
         </Button>
@@ -66,7 +66,7 @@ export function RestartBanner() {
           size="sm"
           onClick={handleRestart}
           disabled={restarting}
-          className="rounded px-3 py-1 text-xs font-semibold border-transparent"
+          className="rounded-sm px-3 py-1 text-xs font-semibold border-transparent"
           style={{
             background: "var(--accent)",
             color: "var(--accent-foreground)",

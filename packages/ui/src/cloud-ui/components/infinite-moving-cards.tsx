@@ -90,13 +90,13 @@ export const InfiniteMovingCards = ({
       >
         {items.map((item) => (
           <li
-            className="relative w-[280px] max-w-full shrink-0 rounded-xl border border-border/50 bg-card/50 backdrop-blur-sm px-6 py-5 shadow-sm hover:shadow-md hover:border-border transition-all duration-300"
+            className="relative w-[280px] max-w-full shrink-0 rounded-sm border border-border/50 bg-card/50 backdrop-blur-sm px-6 py-5 hover:border-border transition-all duration-300"
             key={`${item.title}-${item.name}`}
           >
             <div className="flex flex-col gap-3">
               {/* Category badge */}
               <div className="flex items-center justify-between">
-                <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-primary/20">
+                <span className="inline-flex items-center rounded-sm bg-primary/10 px-2 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-primary/20">
                   {item.title}
                 </span>
               </div>

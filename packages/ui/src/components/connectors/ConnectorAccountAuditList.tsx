@@ -86,7 +86,7 @@ export function ConnectorAccountAuditList({
   return (
     <div
       className={cn(
-        "rounded-lg border border-border/45 bg-card/35 text-sm",
+        "rounded-sm border border-border/45 bg-card/35 text-sm",
         className,
       )}
     >
@@ -149,7 +149,7 @@ export function ConnectorAccountAuditList({
                   <span>Account {event.accountId}</span>
                 ) : null}
               </div>
-              <pre className="max-h-24 overflow-auto rounded-md border border-border/30 bg-bg/35 p-2 text-[11px] leading-relaxed text-muted">
+              <pre className="max-h-24 overflow-auto rounded-sm border border-border/30 bg-bg/35 p-2 text-[11px] leading-relaxed text-muted">
                 {metadataPreview(event.metadata)}
               </pre>
             </div>

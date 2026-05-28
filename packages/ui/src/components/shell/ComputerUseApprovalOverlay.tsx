@@ -8,7 +8,7 @@ import { StatusBadge } from "../ui/status-badge";
 const OVERLAY_SHELL_CLASS =
   "fixed inset-0 z-[1002] flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg/75 px-4 py-6 font-body text-txt  sm:px-6";
 const OVERLAY_CARD_CLASS =
-  "relative z-10 w-full max-w-[820px] overflow-hidden border border-border/60 bg-card/95 shadow-[0_30px_120px_rgba(0,0,0,0.36)] ";
+  "relative z-10 w-full max-w-[820px] overflow-hidden border border-border/60 bg-card/95 ";
 const EMPTY_SNAPSHOT: ComputerUseApprovalSnapshot = {
   mode: "full_control",
   pendingCount: 0,
@@ -212,7 +212,7 @@ export function ComputerUseApprovalOverlay() {
             return (
               <div
                 key={approval.id}
-                className="rounded border border-border/50 bg-card/75 p-4 shadow-sm"
+                className="rounded-sm border border-border/50 bg-card/75 p-4 "
               >
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0 flex-1">

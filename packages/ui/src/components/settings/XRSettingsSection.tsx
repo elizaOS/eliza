@@ -27,7 +27,7 @@ function XRSimulatorEmbed() {
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border/50">
+    <div className="overflow-hidden rounded-sm border border-border/50">
       <div className="flex items-center justify-between border-b border-border/40 bg-muted/20 px-3 py-1.5">
         <span className="text-xs font-medium text-muted">
           XR Connect Preview
@@ -67,7 +67,7 @@ function WebXRLauncher() {
   }, []);
 
   return (
-    <div className="rounded-lg border border-border/40 bg-card/40 p-4">
+    <div className="rounded-sm border border-border/40 bg-card/40 p-4">
       <p className="mb-3 text-xs text-muted leading-relaxed">
         Open the XR app in Chrome to use WebXR on desktop. Chrome supports WebXR
         with the <em>Immersive Web Emulator</em> extension for simulator

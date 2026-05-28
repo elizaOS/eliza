@@ -182,7 +182,7 @@ function SubscriptionProviderPanel({
           <Button
             variant="outline"
             size="icon"
-            className="!mt-0 h-8 w-8 rounded-lg"
+            className="!mt-0 h-8 w-8 rounded-sm"
             onClick={onDisconnect}
             disabled={disconnecting}
             aria-label={t("common.disconnect")}
@@ -217,7 +217,7 @@ function SubscriptionProviderPanel({
             <Button
               variant="default"
               size="sm"
-              className="!mt-0 h-9 rounded-lg font-semibold"
+              className="!mt-0 h-9 rounded-sm font-semibold"
               onClick={onStartOauth}
             >
               {loginLabel}
@@ -232,7 +232,7 @@ function SubscriptionProviderPanel({
             {oauthInstructions}
             <Input
               type={oauthInputType}
-              className="h-9 rounded-lg bg-card text-xs"
+              className="h-9 rounded-sm bg-card text-xs"
               placeholder={oauthInputPlaceholder}
               value={oauthCode}
               onChange={(e) => setOauthCode(e.target.value)}
@@ -244,7 +244,7 @@ function SubscriptionProviderPanel({
               <Button
                 variant="default"
                 size="sm"
-                className="!mt-0 h-9 rounded-lg font-semibold"
+                className="!mt-0 h-9 rounded-sm font-semibold"
                 disabled={oauthExchangeBusy || !oauthCode.trim()}
                 onClick={onExchange}
               >
@@ -253,7 +253,7 @@ function SubscriptionProviderPanel({
               <Button
                 variant="outline"
                 size="sm"
-                className="!mt-0 h-9 rounded-lg"
+                className="!mt-0 h-9 rounded-sm"
                 onClick={onResetFlow}
               >
                 {t("settings.subscription.startOver")}
@@ -530,7 +530,7 @@ export function SubscriptionStatus({
           setSetupTokenSuccess(false);
           setAnthropicError("");
         }}
-        className="h-9 rounded-lg bg-card font-mono text-xs"
+        className="h-9 rounded-sm bg-card font-mono text-xs"
       />
       <p className="whitespace-pre-line text-xs-tight text-muted">
         {t("settings.subscription.setupTokenInstructions")}
@@ -542,7 +542,7 @@ export function SubscriptionStatus({
         <Button
           variant="default"
           size="sm"
-          className="!mt-0 h-9 rounded-lg font-semibold"
+          className="!mt-0 h-9 rounded-sm font-semibold"
           disabled={setupTokenSaving || !setupTokenValue.trim()}
           onClick={() => void handleSaveSetupToken()}
         >
@@ -594,9 +594,9 @@ export function SubscriptionStatus({
 
   /* ── OpenAI callback instructions ──────────────────────────────── */
   const openaiInstructions = (
-    <div className="rounded-lg border border-border/40 bg-bg/40 px-3 py-2 text-xs-tight leading-relaxed text-muted">
+    <div className="rounded-sm border border-border/40 bg-bg/40 px-3 py-2 text-xs-tight leading-relaxed text-muted">
       {t("subscriptionstatus.AfterLoggingInYo")}{" "}
-      <code className="rounded border border-border bg-card px-1 text-2xs">
+      <code className="rounded-sm border border-border bg-card px-1 text-2xs">
         {t("subscriptionstatus.localhost1455")}
       </code>
       {t("subscriptionstatus.CopyTheEntireU")}
@@ -627,7 +627,7 @@ export function SubscriptionStatus({
           canDisconnect={false}
           externalNotice={
             anthropicCliDetected && !anthropicConnected ? (
-              <div className="rounded-lg border border-border/40 bg-card/40 px-2.5 py-2 text-xs leading-relaxed">
+              <div className="rounded-sm border border-border/40 bg-card/40 px-2.5 py-2 text-xs leading-relaxed">
                 <div className="font-semibold">
                   {t("subscriptionstatus.ClaudeCodeCliDetectedTitle")}
                 </div>
@@ -651,7 +651,7 @@ export function SubscriptionStatus({
           connectedSummary={t("subscriptionstatus.YourClaudeSubscrip")}
           invalidWarning={t("subscriptionstatus.ClaudeSubscription")}
           warningBanner={
-            <div className="rounded-lg border border-warn/30 bg-warn/5 px-2.5 py-2 text-xs leading-relaxed">
+            <div className="rounded-sm border border-warn/30 bg-warn/5 px-2.5 py-2 text-xs leading-relaxed">
               <span className="font-semibold">
                 {t("subscriptionstatus.ClaudeTosWarningShort")}
               </span>
@@ -710,7 +710,7 @@ export function SubscriptionStatus({
           connectedSummary={t("subscriptionstatus.YourChatGPTSubscri")}
           invalidWarning={t("subscriptionstatus.ChatGPTSubscription")}
           noteWhenConnected={
-            <div className="rounded-lg border border-ok/30 bg-ok/5 px-2.5 py-2 text-xs leading-relaxed">
+            <div className="rounded-sm border border-ok/30 bg-ok/5 px-2.5 py-2 text-xs leading-relaxed">
               {t("subscriptionstatus.CodexAllAccess")}
             </div>
           }
@@ -741,7 +741,7 @@ export function SubscriptionStatus({
       )}
 
       {genericStoredProvider ? (
-        <div className="rounded-lg border border-border/40 bg-card/40 px-3 py-2 text-xs leading-relaxed">
+        <div className="rounded-sm border border-border/40 bg-card/40 px-3 py-2 text-xs leading-relaxed">
           <div className="font-semibold">
             {genericStatus?.available === false
               ? t("subscriptionstatus.ProviderUnavailable", {

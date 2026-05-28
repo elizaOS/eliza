@@ -94,7 +94,7 @@ export function MilestoneCard({
   return (
     <div
       className={cn(
-        "p-4 rounded-xl border transition-colors",
+        "p-4 rounded-sm border transition-colors",
         isComplete
           ? "bg-emerald-500/5 border-emerald-500/30"
           : "bg-neutral-900 border-white/10",

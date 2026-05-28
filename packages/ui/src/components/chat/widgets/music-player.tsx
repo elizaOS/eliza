@@ -153,7 +153,7 @@ export function MusicPlayerSidebarWidget(_props: ChatSidebarWidgetProps) {
           type="button"
           onClick={() => void pollOnce()}
           aria-label="Refresh music player"
-          className="inline-flex h-5 w-5 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
+          className="inline-flex h-5 w-5 items-center justify-center rounded-sm bg-transparent text-muted transition-colors hover:text-txt"
         >
           <RefreshCw className="h-3 w-3" aria-hidden />
         </button>
@@ -167,7 +167,7 @@ export function MusicPlayerSidebarWidget(_props: ChatSidebarWidgetProps) {
               onClick={togglePlayback}
               aria-label={audioPaused ? "Play music" : "Pause music"}
               title={audioPaused ? "Play" : "Pause"}
-              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm bg-transparent text-muted transition-colors hover:text-txt"
             >
               {audioPaused ? (
                 <Play className="h-3.5 w-3.5" aria-hidden />

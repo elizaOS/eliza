@@ -61,7 +61,7 @@ export function ChatSurface({
                 <li
                   key={message.id}
                   className={cn(
-                    "max-w-[80%] rounded-2xl px-3 py-2 text-sm",
+                    "max-w-[80%] rounded-sm px-3 py-2 text-sm",
                     message.role === "user"
                       ? "self-end bg-accent/20 text-txt"
                       : "self-start bg-card/60 text-txt",

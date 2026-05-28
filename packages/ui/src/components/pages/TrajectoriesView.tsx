@@ -566,7 +566,7 @@ export function TrajectoriesView({
         />
       ) : !loading && trajectories.length === 0 ? (
         <PagePanel.FeatureEmpty
-          className="rounded-[1.6rem]"
+          className="rounded-sm"
           features={TRAJECTORY_EMPTY_FEATURES}
           icon={Route}
           title={

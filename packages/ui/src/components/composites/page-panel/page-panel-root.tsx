@@ -3,7 +3,7 @@ import * as React from "react";
 import { cn } from "../../../lib/utils";
 import type { PagePanelProps } from "./page-panel-types";
 
-const BASE_SURFACE = "border border-border bg-card shadow-xs";
+const BASE_SURFACE = "border border-border bg-card ";
 
 export const PagePanelRoot = React.forwardRef<HTMLDivElement, PagePanelProps>(
   function PagePanelRoot(

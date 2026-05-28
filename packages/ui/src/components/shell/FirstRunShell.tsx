@@ -55,7 +55,7 @@ function RuntimeButton(props: {
       type="button"
       onClick={props.onClick}
       className={[
-        "inline-flex min-h-[3.25rem] items-center justify-center gap-2 rounded-lg border px-5 py-3 text-sm font-semibold shadow-[0_16px_32px_rgba(11,53,241,0.12)] transition",
+        "inline-flex min-h-[3.25rem] items-center justify-center gap-2 rounded-sm border px-5 py-3 text-sm font-semibold transition",
         props.active
           ? "border-[#0B35F1] bg-[#0B35F1] text-white"
           : "border-[#0B35F1]/20 bg-white text-[#0B35F1] hover:border-[#0B35F1]/40 hover:bg-[#F7F9FF]",
@@ -82,7 +82,7 @@ function GlassButton(props: {
       onClick={props.onClick}
       disabled={props.disabled}
       className={[
-        "inline-flex min-h-[3rem] min-w-[7rem] items-center justify-center gap-2 rounded-lg border px-5 py-3 text-sm font-semibold shadow-[0_16px_32px_rgba(11,53,241,0.12)] transition disabled:pointer-events-none disabled:opacity-45",
+        "inline-flex min-h-[3rem] min-w-[7rem] items-center justify-center gap-2 rounded-sm border px-5 py-3 text-sm font-semibold transition disabled:pointer-events-none disabled:opacity-45",
         props.variant === "primary"
           ? "border-[#0B35F1] bg-[#0B35F1] text-white hover:bg-[#082ed6]"
           : "border-[#0B35F1]/20 bg-white text-[#0B35F1] hover:border-[#0B35F1]/40 hover:bg-[#F7F9FF]",
@@ -199,7 +199,7 @@ function FirstRunStatus(props: {
 }) {
   if (props.busyText) {
     return (
-      <p className="inline-flex min-h-[2.5rem] items-center justify-center gap-2 rounded-lg border border-[#0B35F1]/15 bg-white px-4 py-2 text-sm text-[#0B35F1]/80 shadow-[0_14px_28px_rgba(11,53,241,0.1)]">
+      <p className="inline-flex min-h-[2.5rem] items-center justify-center gap-2 rounded-sm border border-[#0B35F1]/15 bg-white px-4 py-2 text-sm text-[#0B35F1]/80 ">
         <Loader2 className="h-4 w-4 animate-spin" />
         {props.busyText}
       </p>
@@ -208,7 +208,7 @@ function FirstRunStatus(props: {
   const message = props.error ?? props.cloudError;
   if (!message) return <div className="min-h-[2.5rem]" />;
   return (
-    <p className="max-w-[40rem] rounded-lg border border-red-200 bg-white px-4 py-2 text-center text-sm text-red-700 shadow-[0_14px_28px_rgba(11,53,241,0.1)]">
+    <p className="max-w-[40rem] rounded-sm border border-red-200 bg-white px-4 py-2 text-center text-sm text-red-700 ">
       {message}
     </p>
   );
@@ -378,7 +378,7 @@ function FirstRunControls(props: {
         cloudConnected={props.elizaCloudConnected}
       />
       {props.draft.runtime === "cloud" ? (
-        <div className="flex min-h-[2.5rem] items-center gap-2 rounded-lg border border-[#0B35F1]/15 bg-white px-4 py-2 text-sm text-[#0B35F1]/80 shadow-[0_14px_28px_rgba(11,53,241,0.1)]">
+        <div className="flex min-h-[2.5rem] items-center gap-2 rounded-sm border border-[#0B35F1]/15 bg-white px-4 py-2 text-sm text-[#0B35F1]/80 ">
           <Checkbox
             aria-label="Keep embeddings local"
             checked={props.draft.useLocalEmbeddings}
@@ -442,7 +442,7 @@ export function FirstRunShell({
             <button
               type="button"
               onClick={goBack}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-[#0B35F1]/20 bg-white text-[#0B35F1] shadow-[0_16px_32px_rgba(11,53,241,0.12)] transition hover:border-[#0B35F1]/40 hover:bg-[#F7F9FF]"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-sm border border-[#0B35F1]/20 bg-white text-[#0B35F1] transition hover:border-[#0B35F1]/40 hover:bg-[#F7F9FF]"
               aria-label="Back"
             >
               <ArrowLeft className="h-5 w-5" />

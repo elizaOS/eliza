@@ -150,7 +150,7 @@ export function CustomModelSearch({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <fieldset
-          className="inline-flex h-8 items-center rounded-lg border border-border/60 bg-bg/40 p-0.5"
+          className="inline-flex h-8 items-center rounded-sm border border-border/60 bg-bg/40 p-0.5"
           aria-label="Custom model search provider"
         >
           {SEARCH_PROVIDERS.map((candidate) => {
@@ -166,9 +166,9 @@ export function CustomModelSearch({
                   setResultsRequestKey("");
                   setError(null);
                 }}
-                className={`h-7 rounded-md px-2.5 text-xs font-medium transition-colors ${
+                className={`h-7 rounded-sm px-2.5 text-xs font-medium transition-colors ${
                   activeProvider
-                    ? "bg-card text-txt shadow-sm"
+                    ? "bg-card text-txt "
                     : "text-muted hover:text-txt"
                 }`}
               >
@@ -183,7 +183,7 @@ export function CustomModelSearch({
           onChange={(event) => setQuery(event.target.value)}
           placeholder={provider.placeholder}
           disabled={!provider.searchSupported}
-          className="min-w-64 flex-1 rounded-md border border-border bg-bg/50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-70"
+          className="min-w-64 flex-1 rounded-sm border border-border bg-bg/50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-70"
         />
         {query.trim().length > 0 && (
           <Button
@@ -201,7 +201,7 @@ export function CustomModelSearch({
       </div>
 
       {!provider.searchSupported && provider.unavailableMessage && (
-        <div className="rounded-md border border-border/60 bg-card/50 p-3 text-muted-foreground text-xs">
+        <div className="rounded-sm border border-border/60 bg-card/50 p-3 text-muted-foreground text-xs">
           {provider.unavailableMessage}
         </div>
       )}
@@ -211,7 +211,7 @@ export function CustomModelSearch({
         </div>
       )}
       {error && (
-        <div className="rounded-md border border-rose-500/40 bg-rose-500/10 p-3 text-rose-500 text-xs">
+        <div className="rounded-sm border border-rose-500/40 bg-rose-500/10 p-3 text-rose-500 text-xs">
           {error}
         </div>
       )}

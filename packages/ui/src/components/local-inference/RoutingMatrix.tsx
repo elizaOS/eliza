@@ -134,7 +134,7 @@ export function RoutingMatrix() {
         </h3>
       </header>
       {error ? (
-        <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">
+        <div className="rounded-sm border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">
           {error}
         </div>
       ) : null}
@@ -151,7 +151,7 @@ export function RoutingMatrix() {
           return (
             <div
               key={slot}
-              className="rounded-xl border border-border bg-card p-3 flex flex-col gap-2"
+              className="rounded-sm border border-border bg-card p-3 flex flex-col gap-2"
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium text-sm" title={slot}>
@@ -176,7 +176,7 @@ export function RoutingMatrix() {
                     onChange={(e) =>
                       void handlePolicy(slot, e.target.value as RoutingPolicy)
                     }
-                    className="rounded-md border border-border bg-bg/50 px-2 py-1.5 text-sm"
+                    className="rounded-sm border border-border bg-bg/50 px-2 py-1.5 text-sm"
                   >
                     {POLICIES.map((p) => (
                       <option key={p.value} value={p.value} title={p.hint}>
@@ -196,7 +196,7 @@ export function RoutingMatrix() {
                     onChange={(e) =>
                       void handlePreferred(slot, e.target.value || null)
                     }
-                    className="rounded-md border border-border bg-bg/50 px-2 py-1.5 text-sm disabled:opacity-60"
+                    className="rounded-sm border border-border bg-bg/50 px-2 py-1.5 text-sm disabled:opacity-60"
                   >
                     <option value="">Auto</option>
                     {candidates.map((c) => (

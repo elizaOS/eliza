@@ -27,7 +27,7 @@ export function ConnectionFailedBanner() {
         role="status"
         aria-live="polite"
         data-window-titlebar-banner="true"
-        className="shrink-0 z-[9999] flex items-center gap-3 bg-warn px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] shadow-sm"
+        className="shrink-0 z-[9999] flex items-center gap-3 bg-warn px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] "
       >
         <Spinner
           size={16}
@@ -52,7 +52,7 @@ export function ConnectionFailedBanner() {
         role="alert"
         aria-live="assertive"
         data-window-titlebar-banner="true"
-        className="shrink-0 z-[9999] flex items-center justify-between gap-3 bg-danger px-4 py-2 text-sm font-medium text-white shadow-sm"
+        className="shrink-0 z-[9999] flex items-center justify-between gap-3 bg-danger px-4 py-2 text-sm font-medium text-white "
       >
         <span className="truncate">
           {t("connectionfailedbanner.ConnectionLostAfte")}{" "}
@@ -64,7 +64,7 @@ export function ConnectionFailedBanner() {
             variant="ghost"
             size="sm"
             onClick={dismissBackendDisconnectedBanner}
-            className="rounded px-3 py-1 text-xs text-danger/20 hover:bg-danger hover:text-white"
+            className="rounded-sm px-3 py-1 text-xs text-danger/20 hover:bg-danger hover:text-white"
           >
             {t("common.dismiss")}
           </Button>
@@ -72,7 +72,7 @@ export function ConnectionFailedBanner() {
             variant="secondary"
             size="sm"
             onClick={retryBackendConnection}
-            className="rounded bg-card px-3 py-1 text-xs font-semibold text-destructive hover:bg-bg-hover border-transparent"
+            className="rounded-sm bg-card px-3 py-1 text-xs font-semibold text-destructive hover:bg-bg-hover border-transparent"
           >
             {t("vectorbrowserview.RetryConnection")}
           </Button>

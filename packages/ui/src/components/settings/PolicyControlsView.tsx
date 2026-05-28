@@ -224,7 +224,7 @@ export function PolicyControlsView() {
   return (
     <div className="space-y-0 divide-y divide-border/20">
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 mb-4">
+        <div className="flex items-center gap-2 rounded-sm border border-danger/30 bg-danger/10 px-3 py-2 mb-4">
           <AlertTriangle className="h-4 w-4 text-danger shrink-0" />
           <span className="text-xs text-danger">{error}</span>
         </div>
@@ -621,7 +621,7 @@ function AddressSection({
                 <div className="flex items-center gap-1.5 truncate">
                   <span className="truncate">{addr}</span>
                   {chain && (
-                    <span className="text-3xs text-muted bg-muted/10 px-1.5 py-0.5 rounded shrink-0">
+                    <span className="text-3xs text-muted bg-muted/10 px-1.5 py-0.5 rounded-sm shrink-0">
                       {chain}
                     </span>
                   )}
@@ -692,7 +692,7 @@ function TimeSection({
                 ],
               })
             }
-            className="h-8 rounded-md border border-input bg-bg px-2 text-xs text-txt"
+            className="h-8 rounded-sm border border-input bg-bg px-2 text-xs text-txt"
           >
             {HOUR_FROM_OPTIONS.map((h) => (
               <option key={h.key} value={h.value}>
@@ -714,7 +714,7 @@ function TimeSection({
                 ],
               })
             }
-            className="h-8 rounded-md border border-input bg-bg px-2 text-xs text-txt"
+            className="h-8 rounded-sm border border-input bg-bg px-2 text-xs text-txt"
           >
             {HOUR_TO_OPTIONS.map((h) => (
               <option key={h.key} value={h.value}>
@@ -730,7 +730,7 @@ function TimeSection({
           <button
             key={name}
             type="button"
-            className={`h-7 w-9 rounded text-2xs font-medium transition-colors ${
+            className={`h-7 w-9 rounded-sm text-2xs font-medium transition-colors ${
               days.includes(i)
                 ? "bg-accent/20 text-accent border border-accent/30"
                 : "bg-bg text-muted border border-border/30 hover:border-border/50"
@@ -754,7 +754,7 @@ function TimeSection({
             config.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
           }
           onChange={(e) => onUpdate({ ...config, timezone: e.target.value })}
-          className="h-8 rounded-md border border-input bg-bg px-2 text-xs text-txt w-full"
+          className="h-8 rounded-sm border border-input bg-bg px-2 text-xs text-txt w-full"
         >
           {TIMEZONES.map((tz) => (
             <option key={tz} value={tz}>

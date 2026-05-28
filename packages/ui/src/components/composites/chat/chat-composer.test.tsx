@@ -57,7 +57,6 @@ describe("ChatComposer", () => {
     expect(composer?.className).toContain("border-[color-mix(");
     expect(composer?.className).toContain("bg-[color-mix(");
     expect(composer?.className).toContain("ring-white/15");
-    expect(composer?.className).toContain("shadow-[");
     expect(composer?.className).not.toContain("border-border/35");
     expect(composer?.className).not.toContain("bg-card/45");
   });

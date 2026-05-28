@@ -37,7 +37,7 @@ export function TrajectoryContextDiffList({
         {heading}
       </div>
       {diffs.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border/50 px-4 py-6 text-sm text-muted">
+        <div className="rounded-sm border border-dashed border-border/50 px-4 py-6 text-sm text-muted">
           {emptyLabel}
         </div>
       ) : (
@@ -97,7 +97,7 @@ function DiffMetric({
   value: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-border/40 bg-bg/40 px-3 py-2">
+    <div className="rounded-sm border border-border/40 bg-bg/40 px-3 py-2">
       <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-muted">
         <Icon className="h-3 w-3" />
         {label}

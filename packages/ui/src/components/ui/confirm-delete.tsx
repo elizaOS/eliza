@@ -43,7 +43,7 @@ export function ConfirmDelete({
         className={
           triggerClassName ??
           cn(
-            "rounded-md border border-border px-2 py-1 text-xs text-muted transition-colors hover:border-destructive hover:text-destructive",
+            "rounded-sm border border-border px-2 py-1 text-xs text-muted transition-colors hover:border-destructive hover:text-destructive",
             className,
           )
         }
@@ -64,7 +64,7 @@ export function ConfirmDelete({
         type="button"
         className={
           confirmClassName ??
-          "rounded-md border border-destructive bg-destructive px-2 py-0.5 text-2xs font-medium text-destructive-fg transition-opacity hover:opacity-90 disabled:opacity-50"
+          "rounded-sm border border-destructive bg-destructive px-2 py-0.5 text-2xs font-medium text-destructive-fg transition-opacity hover:opacity-90 disabled:opacity-50"
         }
         onClick={() => {
           onConfirm();
@@ -78,7 +78,7 @@ export function ConfirmDelete({
         type="button"
         className={
           cancelClassName ??
-          "rounded-md border border-border px-2 py-0.5 text-2xs text-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+          "rounded-sm border border-border px-2 py-0.5 text-2xs text-muted transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
         }
         onClick={() => setConfirming(false)}
         disabled={disabled}

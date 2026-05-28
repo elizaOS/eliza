@@ -140,7 +140,7 @@ export function SurfaceCard({
   subtitle?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-border/35 bg-card/74 px-4 py-3 shadow-sm">
+    <div className="rounded-sm border border-border/35 bg-card/74 px-4 py-3 ">
       <div className="text-xs-tight font-medium uppercase tracking-[0.16em] text-muted">
         {label}
       </div>
@@ -168,7 +168,7 @@ export function SurfaceSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-3 rounded-[1.4rem] border border-border/35 bg-card/74 p-4 shadow-sm">
+    <section className="space-y-3 rounded-sm border border-border/35 bg-card/74 p-4 ">
       <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
         {title}
       </div>
@@ -185,7 +185,7 @@ export function SurfaceEmptyState({
   body: string;
 }) {
   return (
-    <div className="rounded-[1.4rem] border border-border/35 bg-card/74 p-4 shadow-sm">
+    <div className="rounded-sm border border-border/35 bg-card/74 p-4 ">
       <div className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted">
         {title}
       </div>

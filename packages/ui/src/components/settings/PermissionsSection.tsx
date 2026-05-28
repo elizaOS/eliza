@@ -241,13 +241,13 @@ function MobileSignalsPermissionsPanel() {
         <Button
           variant="outline"
           size="sm"
-          className="h-9 rounded-lg px-3 text-xs font-semibold"
+          className="h-9 rounded-sm px-3 text-xs font-semibold"
           onClick={refresh}
         >
           {t("common.refresh", { defaultValue: "Refresh" })}
         </Button>
       </header>
-      <div className="divide-y divide-border/40 rounded-lg border border-border/40">
+      <div className="divide-y divide-border/40 rounded-sm border border-border/40">
         {status.setupActions.map((action) => {
           const badge = mobileSetupActionBadge(action);
           const canAct =
@@ -456,7 +456,7 @@ function DesktopPermissionsView() {
               variant="outline"
               size="sm"
               data-testid="permissions-refresh-button"
-              className="h-9 rounded-lg px-3 text-xs font-semibold"
+              className="h-9 rounded-sm px-3 text-xs font-semibold"
               onClick={handleRefresh}
               disabled={refreshing}
             >
@@ -469,7 +469,7 @@ function DesktopPermissionsView() {
           </div>
         </header>
 
-        <div className="divide-y divide-border/40 rounded-lg border border-border/40">
+        <div className="divide-y divide-border/40 rounded-sm border border-border/40">
           {applicablePermissions.map((def) => {
             const state = permissions[def.id];
             return (

@@ -201,7 +201,7 @@ export function PermissionCard({
       <div
         data-testid="permission-card-granted"
         className={cn(
-          "mt-2 inline-flex items-center gap-1.5 rounded-md border border-success/30 bg-success/10 px-2 py-1 text-xs font-medium text-success",
+          "mt-2 inline-flex items-center gap-1.5 rounded-sm border border-success/30 bg-success/10 px-2 py-1 text-xs font-medium text-success",
           className,
         )}
       >
@@ -234,7 +234,7 @@ export function PermissionCard({
       data-status={state.status}
       aria-label={`Permission request: ${title}`}
       className={cn(
-        "mt-2 rounded-lg border border-border/40 bg-bg-accent/60 p-3",
+        "mt-2 rounded-sm border border-border/40 bg-bg-accent/60 p-3",
         className,
       )}
     >

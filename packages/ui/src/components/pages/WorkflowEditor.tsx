@@ -254,7 +254,7 @@ export function WorkflowEditor({
       </div>
 
       {(saveError || lineErrorBanner) && (
-        <div className="rounded-lg border border-danger/20 bg-danger/10 p-2.5 text-xs text-danger">
+        <div className="rounded-sm border border-danger/20 bg-danger/10 p-2.5 text-xs text-danger">
           {saveError ?? lineErrorBanner}
         </div>
       )}
@@ -263,7 +263,7 @@ export function WorkflowEditor({
       <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
         <PagePanel
           variant="inset"
-          className="flex min-h-0 flex-col overflow-hidden rounded-xl p-0"
+          className="flex min-h-0 flex-col overflow-hidden rounded-sm p-0"
         >
           <div className="flex items-center justify-between border-b border-border/40 px-3 py-2 text-xs text-muted-strong">
             <span className="font-medium text-txt">workflow.json</span>
@@ -280,7 +280,7 @@ export function WorkflowEditor({
 
         <PagePanel
           variant="inset"
-          className="flex min-h-0 flex-col overflow-hidden rounded-xl"
+          className="flex min-h-0 flex-col overflow-hidden rounded-sm"
         >
           <div className="border-b border-border/40 px-3 py-2 text-xs font-medium text-txt">
             Graph
@@ -318,7 +318,7 @@ export function WorkflowEditor({
               autoFocus
             />
             {generatorError && (
-              <div className="rounded-md border border-danger/20 bg-danger/10 p-2 text-xs text-danger">
+              <div className="rounded-sm border border-danger/20 bg-danger/10 p-2 text-xs text-danger">
                 {generatorError}
               </div>
             )}

@@ -100,7 +100,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
 
       <div className="flex flex-1 min-h-0 items-center justify-center">
         {!streamAvailable ? (
-          <div className="max-w-lg rounded-3xl border border-border/60 bg-card/94 p-6 text-center shadow-xl backdrop-blur-xl">
+          <div className="max-w-lg rounded-sm border border-border/60 bg-card/94 p-6 text-center backdrop-blur-xl">
             <p className="text-xs-tight uppercase tracking-[0.24em] text-muted">
               {t("streamview.StreamingUnavailabl")}
             </p>
@@ -109,7 +109,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
             </h2>
             <p className="mt-3 text-sm leading-6 text-muted">
               {t("streamview.CouldNotRea")}{" "}
-              <code className="rounded-md border border-border/45 bg-bg-hover px-1.5 py-0.5 text-xs text-txt-strong">
+              <code className="rounded-sm border border-border/45 bg-bg-hover px-1.5 py-0.5 text-xs text-txt-strong">
                 {t("streamview.streamingBase")}
               </code>{" "}
               {t("streamview.pluginThenReload")}
@@ -119,7 +119,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
             </p>
           </div>
         ) : (
-          <div className="max-w-md rounded-3xl border border-border/60 bg-card/94 p-6 text-center shadow-xl backdrop-blur-xl">
+          <div className="max-w-md rounded-sm border border-border/60 bg-card/94 p-6 text-center backdrop-blur-xl">
             <div
               className={`mx-auto mb-4 h-3 w-3 rounded-full ${
                 streamLive

@@ -213,7 +213,7 @@ function MobileChatSurfaceButton({
       title={label}
       data-testid={`chat-mobile-surface-${surface}`}
       onClick={onClick}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/40 bg-card/80 text-muted shadow-sm  transition-colors hover:text-txt"
+      className="inline-flex h-9 w-9 items-center justify-center rounded-sm border border-border/40 bg-card/80 text-muted  transition-colors hover:text-txt"
     >
       <Icon className="h-4 w-4" aria-hidden />
     </button>
@@ -1723,7 +1723,7 @@ export function App() {
             role="status"
             aria-live="polite"
           >
-            <div className="rounded border border-border/60 bg-card/95 px-6 py-5 text-center shadow-sm">
+            <div className="rounded-sm border border-border/60 bg-card/95 px-6 py-5 text-center ">
               <div className="text-base font-semibold text-txt">
                 Shutting down…
               </div>
