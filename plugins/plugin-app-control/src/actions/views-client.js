@@ -7,7 +7,6 @@
  * the full AppControlClient (different concern, different surface).
  */
 import { resolveServerOnlyPort } from "@elizaos/core";
-
 const REQUEST_TIMEOUT_MS = 10_000;
 function getApiBase() {
 	const port = resolveServerOnlyPort(process.env);

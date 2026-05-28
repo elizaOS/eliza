@@ -9,7 +9,6 @@
  */
 import { logger, resolveServerOnlyPort } from "@elizaos/core";
 import { scoreView } from "./views-search.js";
-
 const SHOW_VERBS = [
 	"show",
 	"open",

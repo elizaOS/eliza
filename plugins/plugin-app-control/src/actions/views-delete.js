@@ -19,7 +19,6 @@ import { logger, resolveServerOnlyPort } from "@elizaos/core";
 import { readStringOption } from "../params.js";
 import { isProtected, resolveProtectedApps } from "../protected-apps.js";
 import { scoreView } from "./views-search.js";
-
 /** Core first-party plugins that must never be deleted via the VIEWS action. */
 const CORE_PROTECTED_PLUGIN_NAMES = new Set([
 	"@elizaos/app-core",

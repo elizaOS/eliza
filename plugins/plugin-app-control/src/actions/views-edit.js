@@ -18,7 +18,6 @@ import { logger, spawnWithTrajectoryLink } from "@elizaos/core";
 import { readStringOption } from "../params.js";
 import { isRestrictedPlatform } from "./views.js";
 import { scoreView } from "./views-search.js";
-
 const PLUGINS_DIR_CANDIDATES = ["eliza/plugins", "plugins"];
 // ---------------------------------------------------------------------------
 // View resolution
