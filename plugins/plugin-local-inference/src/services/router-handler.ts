@@ -277,7 +277,7 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
 
 				failedProviders.add(pick.provider);
 				lastError = err;
-				logger.warn(
+				logger.info(
 					`[router] Provider ${pick.provider} failed for ${slot}; trying fallback provider (${err instanceof Error ? err.message : String(err)})`,
 				);
 			}

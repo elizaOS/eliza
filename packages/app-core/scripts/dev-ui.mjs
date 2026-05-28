@@ -9,7 +9,7 @@ console.log(
  * 2. The vite app dev server (port 2138, proxies /api and /ws to 31337)
  *
  * Automatically kills zombie processes on both ports before starting.
- * Waits for the API server to be ready before launching vite so the proxy
+ * Waits for the API port to be open before launching vite so the proxy
  * doesn't flood the terminal with ECONNREFUSED errors.
  *
  * Usage:
@@ -255,6 +255,13 @@ function createDevChildEnv(baseEnv) {
 
 function shellQuoteArg(value) {
   return /^[A-Za-z0-9_./:=+-]+$/.test(value) ? value : JSON.stringify(value);
+}
+
+function appendNodeOption(value, option) {
+  const current = value?.trim();
+  if (!current) return option;
+  if (current.split(/\s+/).includes(option)) return current;
+  return `${current} ${option}`;
 }
 
 function isCodexBundledNode(candidate) {
@@ -741,6 +748,22 @@ function waitForPort(port, { timeout = 300_000, interval = 500 } = {}) {
   });
 }
 
+function isPortListening(port) {
+  return new Promise((resolve) => {
+    const socket = createConnection({ port, host: "127.0.0.1" });
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(value);
+    };
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
+    socket.setTimeout(2000, () => done(false));
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Wait for the agent runtime to be ready (not just the TCP port).
 // Polls GET /api/health and resolves when { ready: true }.
@@ -865,6 +888,8 @@ let shuttingDown = false;
 let vitePluginBuildAttempted = false;
 let viteRestartCount = 0;
 let viteRestartTimer = null;
+let viteHealthTimer = null;
+let viteStartedAt = 0;
 
 function terminateChild(proc, signal = "SIGTERM") {
   if (!proc) return;
@@ -885,6 +910,10 @@ function cleanup(exitCode = 0) {
   if (viteRestartTimer) {
     clearTimeout(viteRestartTimer);
     viteRestartTimer = null;
+  }
+  if (viteHealthTimer) {
+    clearTimeout(viteHealthTimer);
+    viteHealthTimer = null;
   }
 
   setTimeout(() => {
@@ -970,6 +999,7 @@ function startVite() {
       `  ${green(logPrefix)} ${dim("Vite --force (ELIZA_VITE_FORCE=1): re-optimizing deps.")}`,
     );
   }
+  viteStartedAt = Date.now();
   viteProcess = spawn(viteCmd, viteArgs, {
     cwd: path.join(cwd, appDir),
     env: {
@@ -1006,6 +1036,10 @@ function startVite() {
   viteProcess.on("exit", (code, signal) => {
     if (shuttingDown) return;
     viteProcess = null;
+    if (viteHealthTimer) {
+      clearTimeout(viteHealthTimer);
+      viteHealthTimer = null;
+    }
     const exitLabel = signal
       ? `signal ${signal}`
       : `code ${code === null ? "null" : code}`;
@@ -1025,6 +1059,33 @@ function startVite() {
       if (!shuttingDown) startVite();
     }, 400);
   });
+
+  scheduleViteHealthCheck();
+}
+
+function scheduleViteHealthCheck(delayMs = 15_000) {
+  if (viteHealthTimer) clearTimeout(viteHealthTimer);
+  viteHealthTimer = setTimeout(async () => {
+    viteHealthTimer = null;
+    if (shuttingDown || !viteProcess) return;
+
+    const listening = await isPortListening(UI_PORT);
+    if (!listening) {
+      const ageMs = Date.now() - viteStartedAt;
+      if (ageMs > 60_000) {
+        console.log(
+          `  ${green(logPrefix)} ${dim(
+            `Vite process is running but port ${UI_PORT} is not accepting connections — restarting UI.`,
+          )}`,
+        );
+        terminateChild(viteProcess, "SIGTERM");
+        return;
+      }
+    }
+
+    scheduleViteHealthCheck();
+  }, delayMs);
+  viteHealthTimer.unref();
 }
 
 if (uiOnly) {
@@ -1118,6 +1179,10 @@ if (uiOnly) {
     {
       ...childEnv,
       NODE_ENV: "development",
+      NODE_OPTIONS: appendNodeOption(
+        childEnv.NODE_OPTIONS,
+        "--disable-warning=ExperimentalWarning",
+      ),
       ELIZA_NAMESPACE: cliName,
       ELIZA_API_PORT: String(API_PORT),
       ELIZA_UI_PORT: String(UI_PORT),
@@ -1173,7 +1238,6 @@ if (uiOnly) {
   });
 
   apiSupervisor.start();
-  startVite();
 
   const startTime = Date.now();
   let phase = "port";
@@ -1194,6 +1258,7 @@ if (uiOnly) {
       process.stdout.write(
         `\r  ${green(logPrefix)} ${green(`API port open`)} ${dim(`(${portElapsed}s)`)}          \n`,
       );
+      startVite();
       phase = "agent";
       return waitForAgentReady(API_PORT);
     })

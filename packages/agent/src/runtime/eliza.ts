@@ -1703,7 +1703,7 @@ export async function autoFetchCloudGithubToken(
     if (!res.ok) {
       // 404 = no GitHub connection for this agent, which is fine
       if (res.status !== 404) {
-        logger.warn(
+        logger.info(
           `[eliza] Failed to fetch cloud GitHub token: ${res.status}`,
         );
       }
@@ -1721,7 +1721,7 @@ export async function autoFetchCloudGithubToken(
       `[eliza] Fetched GitHub token from cloud for @${body.data.githubUsername || "unknown"}`,
     );
   } catch (err) {
-    logger.warn(`[eliza] Could not fetch cloud GitHub token: ${err}`);
+    logger.info(`[eliza] Could not fetch cloud GitHub token: ${err}`);
   }
 }
 
