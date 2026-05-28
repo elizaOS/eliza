@@ -47,6 +47,8 @@ module e1x3d_tile #(
   logic core_tx_valid;
   logic [PAYLOAD_BITS-1:0] core_tx_payload;
   logic core_rx_ready;
+  logic [63:0] unused_x2;
+  logic [63:0] unused_x3;
 
   // External fabric index -> router port. 0..3 are N/E/S/W; 4 -> UP(5); 5 -> DOWN(6).
   function automatic int fabric_to_router(input int ext);
@@ -114,8 +116,8 @@ module e1x3d_tile #(
     .wavelet_payload_o(core_tx_payload),
     .pc_o(core_pc_o),
     .x1_o(core_x1_o),
-    .x2_o(),
-    .x3_o(),
+    .x2_o(unused_x2),
+    .x3_o(unused_x3),
     .halted_o(core_halted_o),
     .active_o(core_active_o)
   );
@@ -123,5 +125,5 @@ module e1x3d_tile #(
   assign core_x10_o = u_core.regs[10];
   assign repaired_drop_o = |router_drop;
   logic unused_core_status;
-  assign unused_core_status = core_rx_ready;
+  assign unused_core_status = core_rx_ready ^ (^unused_x2) ^ (^unused_x3);
 endmodule

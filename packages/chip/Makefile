@@ -351,7 +351,7 @@ e1x-wafer-mesh-evidence:
 e1x-wafer-mesh-test:
 	@$(PYTHON) -m pytest scripts/test_e1x_wafer_mesh_model.py -q
 
-.PHONY: e1x-rtl-contract-check e1x-rtl-contract-test e1x-benchmark e1x-benchmark-test e1x-repair-rom-cocotb e1x-repair-rom-cocotb-test e1x-core-cocotb e1x-core-cocotb-test e1x-tile-cocotb e1x-tile-cocotb-test e1x-fabric-cocotb e1x-fabric-cocotb-test
+.PHONY: e1x-rtl-contract-check e1x-rtl-contract-test e1x-benchmark e1x-benchmark-test e1x-repair-rom-cocotb e1x-repair-rom-cocotb-test e1x-core-cocotb e1x-core-cocotb-test e1x-pe-core-cocotb e1x-pe-core-cocotb-test e1x-tile-cocotb e1x-tile-cocotb-test e1x-fabric-cocotb e1x-fabric-cocotb-test e1x-credit-router-cocotb e1x-credit-router-cocotb-test e1x-dft-cocotb e1x-dft-cocotb-test e1x-dft-strategy e1x-formal e1x-formal-test
 
 e1x-rtl-contract-check:
 	@$(PYTHON) scripts/check_e1x_rtl_contract.py
@@ -377,6 +377,12 @@ e1x-core-cocotb:
 e1x-core-cocotb-test:
 	@$(PYTHON) -m pytest scripts/test_e1x_core_cocotb.py -q
 
+e1x-pe-core-cocotb:
+	@$(PYTHON) scripts/check_e1x_pe_core_cocotb.py
+
+e1x-pe-core-cocotb-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_pe_core_cocotb.py -q
+
 e1x-tile-cocotb:
 	@$(PYTHON) scripts/check_e1x_tile_cocotb.py
 
@@ -388,6 +394,47 @@ e1x-fabric-cocotb:
 
 e1x-fabric-cocotb-test:
 	@$(PYTHON) -m pytest scripts/test_e1x_fabric_cocotb.py -q
+
+.PHONY: e1x3d-wafer-stack-evidence e1x3d-scaled-model-evidence e1x3d-model-test e1x3d-benchmark e1x3d-fabric-cocotb e1x3d-fabric-cocotb-test
+
+e1x3d-wafer-stack-evidence:
+	@$(PYTHON) scripts/generate_e1x3d_wafer_stack_evidence.py
+
+e1x3d-scaled-model-evidence:
+	@$(PYTHON) scripts/generate_e1x3d_scaled_model_evidence.py
+
+e1x3d-model-test:
+	@$(PYTHON) -m pytest scripts/test_e1x3d_wafer_model.py -q
+
+e1x3d-benchmark:
+	@$(PYTHON) scripts/check_e1x3d_benchmark.py
+
+e1x3d-fabric-cocotb:
+	@$(PYTHON) scripts/check_e1x3d_fabric_cocotb.py
+
+e1x3d-fabric-cocotb-test:
+	@$(PYTHON) -m pytest scripts/test_e1x3d_fabric_cocotb.py -q
+
+e1x-credit-router-cocotb:
+	@$(PYTHON) scripts/check_e1x_credit_router_cocotb.py
+
+e1x-credit-router-cocotb-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_credit_router_cocotb.py -q
+
+e1x-dft-cocotb:
+	@$(PYTHON) scripts/check_e1x_dft_cocotb.py
+
+e1x-dft-cocotb-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_dft_cocotb.py -q
+
+e1x-dft-strategy:
+	@$(PYTHON) scripts/check_e1x_dft_strategy.py
+
+e1x-formal:
+	@$(PYTHON) scripts/check_e1x_formal.py
+
+e1x-formal-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_formal.py -q
 
 benchmark-sim-metrics-test:
 	@$(PYTHON) scripts/test_simulator_arch_metrics.py
@@ -1784,6 +1831,7 @@ software-bsp-test:
 	@$(PYTHON) scripts/test_software_bsp_checks.py
 	@$(PYTHON) scripts/test_software_bsp_evidence.py
 	@$(PYTHON) scripts/test_software_bsp_scope.py
+	@$(PYTHON) scripts/test_linux_bsp_contract.py
 
 evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check product-check-status-test benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-test software-bsp-scope-test cpu-ap-scope-test npu-scope-test renode-status-test cocotb cocotb-npu cocotb-contract cocotb-cpu cocotb-cross-domain synth verilator formal record-tool-versions strict-release-gate-test
 	@echo "evidence regression tests complete"
