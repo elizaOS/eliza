@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react";
 import type { ColumnInfo } from "../../api";
 import { useApp } from "../../state";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { CodeBlock } from "../ui/code-block";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 
 export type DbView = "tables" | "query";
 export type SortDir = "asc" | "desc" | null;
@@ -78,38 +79,23 @@ export function CellPopover({
   onClose: () => void;
 }) {
   const { t } = useApp();
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [onClose]);
 
   return (
-    <div
-      ref={ref}
-      className="fixed z-50 bg-card/60 backdrop-blur-md border border-border/40 rounded-sm p-4 max-w-[500px] max-h-[300px] overflow-auto"
-      style={{ top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
+    <Dialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
     >
-      <div className="flex items-center justify-between mb-3 pb-2">
-        <span className="text-xs text-muted uppercase font-bold tracking-wider">
-          {t("databaseview.CellValue")}
-        </span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="w-6 h-6 rounded-full transition-[background-color,color,box-shadow] hover:bg-bg-hover hover:text-txt "
-          onClick={onClose}
-        >
-          ×
-        </Button>
-      </div>
-      <pre className="text-xs text-txt font-mono whitespace-pre-wrap break-all m-0 bg-bg/40 p-3 rounded-sm border border-border/40">
-        {value}
-      </pre>
-    </div>
+      <DialogContent className="max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle className="text-xs uppercase tracking-wider text-muted">
+            {t("databaseview.CellValue")}
+          </DialogTitle>
+        </DialogHeader>
+        <CodeBlock value={value} wrap copyable className="max-h-[300px]" />
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -187,7 +173,7 @@ export function ResultsGrid({
           {rows.map((row, i) => (
             <tr
               key={JSON.stringify(row)}
-              className="border-b border-border/20 hover:bg-accent/10 transition-colors group"
+              className="border-b border-border/20 hover:bg-bg-hover transition-colors group"
             >
               <td className="px-3 py-2 text-2xs text-muted text-right border-r border-border/30 bg-bg/20 tabular-nums group-hover:text-txt/70 transition-colors">
                 {i + 1}

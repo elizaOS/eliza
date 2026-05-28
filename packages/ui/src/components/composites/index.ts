@@ -1,5 +1,6 @@
 export * from "../ui/admin-dialog";
 export * from "../ui/banner";
+export * from "../ui/code-block";
 export * from "../ui/confirm-delete";
 export * from "../ui/confirm-dialog";
 export * from "../ui/connection-status";

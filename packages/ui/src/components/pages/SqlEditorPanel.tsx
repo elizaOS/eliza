@@ -97,7 +97,7 @@ export function SqlEditorPanel({
               <Button
                 variant="ghost"
                 key={q}
-                className="w-full px-4 py-3 h-auto justify-start text-xs-tight font-mono text-txt text-left rounded-none hover:bg-accent/10 hover:text-txt transition-colors truncate"
+                className="w-full px-4 py-3 h-auto justify-start text-xs-tight font-mono text-txt text-left rounded-none hover:bg-bg-hover hover:text-txt transition-colors truncate"
                 onClick={() => setQueryText(q)}
               >
                 <span className="truncate opacity-80 group-hover:opacity-100">

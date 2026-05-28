@@ -12,6 +12,7 @@
 import { Plus, X } from "lucide-react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import type { DesktopTab } from "../../hooks/useDesktopTabs";
+import { navActiveClassHorizontal } from "../composites/sidebar/nav-active";
 
 export interface DesktopTabBarProps {
   tabs: DesktopTab[];
@@ -38,7 +39,7 @@ function TabButton({
     <div
       className={`group relative flex min-w-0 max-w-[160px] shrink-0 items-center gap-1.5 rounded-sm border px-2.5 py-1 text-xs font-medium transition-colors ${
         active
-          ? "border-accent/40 bg-accent/10 text-accent"
+          ? `border-border/40 ${navActiveClassHorizontal}`
           : "border-border/40 bg-card/60 text-muted hover:border-border hover:text-txt"
       }`}
     >

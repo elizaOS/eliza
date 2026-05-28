@@ -46,18 +46,32 @@ import {
 import { TrajectoryDetailView } from "./TrajectoryDetailView";
 
 const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
-  active: { bg: "rgba(59, 130, 246, 0.15)", fg: "rgb(59, 130, 246)" },
+  // active uses the --info status color (blue is a legitimate status here).
+  active: {
+    bg: "color-mix(in srgb, var(--info) 15%, transparent)",
+    fg: "var(--info)",
+  },
   completed: { bg: "rgba(34, 197, 94, 0.15)", fg: "rgb(34, 197, 94)" },
   error: { bg: "rgba(239, 68, 68, 0.15)", fg: "rgb(239, 68, 68)" },
 };
 
 const SOURCE_COLORS: Record<string, { bg: string; fg: string }> = {
-  chat: { bg: "rgba(99, 102, 241, 0.15)", fg: "rgb(99, 102, 241)" },
+  // Source tags are decorative — route blue/indigo/violet through accent/muted.
+  chat: {
+    bg: "color-mix(in srgb, var(--accent) 15%, transparent)",
+    fg: "var(--accent)",
+  },
   autonomy: { bg: "rgba(245, 158, 11, 0.15)", fg: "rgb(245, 158, 11)" },
   telegram: { bg: "rgba(34, 197, 94, 0.15)", fg: "rgb(34, 197, 94)" },
-  discord: { bg: "rgba(88, 101, 242, 0.15)", fg: "rgb(88, 101, 242)" },
+  discord: {
+    bg: "color-mix(in srgb, var(--muted) 15%, transparent)",
+    fg: "var(--muted)",
+  },
   api: { bg: "rgba(156, 163, 175, 0.15)", fg: "rgb(156, 163, 175)" },
-  orchestrator: { bg: "rgba(168, 85, 247, 0.15)", fg: "rgb(168, 85, 247)" },
+  orchestrator: {
+    bg: "color-mix(in srgb, var(--muted) 15%, transparent)",
+    fg: "var(--muted)",
+  },
 };
 
 const TRAJECTORY_EMPTY_FEATURES = [

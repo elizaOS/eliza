@@ -20,6 +20,7 @@ import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import { getOverlayApp } from "../apps/overlay-app-registry";
 import { CloudStatusBadge } from "../cloud/CloudStatusBadge";
 import { OwnerBadge } from "../composites/OwnerBadge";
+import { navActiveClassHorizontal } from "../composites/sidebar/nav-active";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
 import { Button } from "../ui/button";
@@ -43,11 +44,11 @@ const NAV_LABEL_I18N_KEY: Record<string, string> = {
 };
 
 const TOPBAR_ICON_BUTTON_CLASSNAME =
-  "relative inline-flex h-[2.375rem] w-[2.375rem] min-h-[2.375rem] min-w-[2.375rem] shrink-0 items-center justify-center rounded-sm border border-transparent bg-transparent text-muted transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2 after:bottom-0 after:h-[3px] after:rounded-t-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150 hover:after:opacity-55";
-const TOPBAR_ICON_BUTTON_ACTIVE_CLASSNAME = "text-accent after:opacity-100";
+  "relative inline-flex h-[2.375rem] w-[2.375rem] min-h-[2.375rem] min-w-[2.375rem] shrink-0 items-center justify-center rounded-sm border border-transparent bg-transparent text-muted transition-colors duration-150 hover:text-txt";
+const TOPBAR_ICON_BUTTON_ACTIVE_CLASSNAME = navActiveClassHorizontal;
 const TOPBAR_RIGHT_ICON_BUTTON_CLASSNAME =
   "inline-flex h-[2.375rem] w-[2.375rem] min-h-[2.375rem] min-w-[2.375rem] shrink-0 items-center justify-center rounded-sm border border-transparent !bg-transparent text-muted shadow-none ring-0 transition-colors duration-150 hover:!bg-transparent hover:text-txt active:!bg-transparent data-[state=open]:!bg-transparent";
-const TOPBAR_RIGHT_ICON_BUTTON_ACTIVE_CLASSNAME = "text-accent";
+const TOPBAR_RIGHT_ICON_BUTTON_ACTIVE_CLASSNAME = navActiveClassHorizontal;
 const MAC_TITLEBAR_PADDING_STYLE: CSSProperties = {
   paddingInlineStart:
     "max(env(safe-area-inset-left, 0px), var(--eliza-macos-frame-left-inset, 80px))",

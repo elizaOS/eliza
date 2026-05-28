@@ -447,7 +447,7 @@ function FeedRowItem({
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
       >
         <Icon
-          className={`h-4 w-4 shrink-0 ${row.kind === "workflow" ? "text-violet-400" : "text-blue-400"}`}
+          className={`h-4 w-4 shrink-0 ${row.kind === "workflow" ? "text-accent" : "text-info"}`}
           aria-hidden
         />
         <div className="min-w-0 flex-1">
@@ -536,7 +536,7 @@ function ChooserSheet({
             className="flex items-start gap-3 rounded-sm border border-border/40 p-3 text-left transition-colors hover:border-accent hover:bg-accent/5"
           >
             <CheckCircle2
-              className="mt-0.5 h-5 w-5 shrink-0 text-blue-400"
+              className="mt-0.5 h-5 w-5 shrink-0 text-info"
               aria-hidden
             />
             <div>
@@ -555,7 +555,7 @@ function ChooserSheet({
             className="flex items-start gap-3 rounded-sm border border-border/40 p-3 text-left transition-colors hover:border-accent hover:bg-accent/5"
           >
             <Workflow
-              className="mt-0.5 h-5 w-5 shrink-0 text-violet-400"
+              className="mt-0.5 h-5 w-5 shrink-0 text-accent"
               aria-hidden
             />
             <div>

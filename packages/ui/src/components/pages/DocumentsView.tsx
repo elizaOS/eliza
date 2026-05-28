@@ -122,7 +122,7 @@ function SearchResultListItem({
       type="button"
       aria-current={active ? "page" : undefined}
       className={`group flex w-full items-start px-0 py-3 text-left transition-colors ${
-        active ? "bg-transparent" : "bg-transparent hover:bg-white/[0.03]"
+        active ? "bg-transparent" : "bg-transparent hover:bg-bg-hover"
       }`}
     >
       <span
@@ -187,7 +187,7 @@ function DocumentListItem({
   return (
     <div
       className={`group relative flex w-full transition-colors ${
-        active ? "bg-transparent" : "bg-transparent hover:bg-white/[0.03]"
+        active ? "bg-transparent" : "bg-transparent hover:bg-bg-hover"
       }`}
     >
       <button

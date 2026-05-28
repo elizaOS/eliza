@@ -3,6 +3,7 @@ export * from "./sidebar-collapsed-rail";
 export * from "./sidebar-content";
 export * from "./sidebar-filter-bar";
 export * from "./sidebar-header";
+export * from "./nav-active";
 export * from "./sidebar-header-stack";
 export * from "./sidebar-panel";
 export * from "./sidebar-root";

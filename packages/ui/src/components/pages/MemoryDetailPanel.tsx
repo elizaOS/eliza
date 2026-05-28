@@ -1,5 +1,6 @@
 import { useApp } from "../../state";
 import { PagePanel } from "../composites/page-panel";
+import { CodeBlock } from "../ui/code-block";
 import type { MemoryRecord } from "./vector-browser-utils";
 
 export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
@@ -104,9 +105,12 @@ export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
               {" · "}
               {memory.embedding.length} {t("vectorbrowserview.dimensions")}
             </div>
-            <div className="mt-3 max-h-[16rem] overflow-auto rounded-sm border border-border/35 bg-bg/35 p-3 text-xs-tight leading-6 text-muted">
-              [{memory.embedding.map((v) => v.toFixed(6)).join(", ")}]
-            </div>
+            <CodeBlock
+              value={`[${memory.embedding.map((v) => v.toFixed(6)).join(", ")}]`}
+              wrap
+              copyable
+              className="mt-3 max-h-[16rem]"
+            />
           </section>
         ) : null}
 
@@ -114,9 +118,12 @@ export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
           <summary className="cursor-pointer text-xs-tight font-bold uppercase tracking-[0.16em] text-muted/60 hover:text-txt">
             {t("vectorbrowserview.RawRecord")}
           </summary>
-          <div className="mt-3 max-h-[18rem] overflow-auto rounded-sm border border-border/35 bg-bg/35 p-3 font-mono text-xs-tight leading-6 text-muted">
-            {JSON.stringify(memory.raw, null, 2)}
-          </div>
+          <CodeBlock
+            value={JSON.stringify(memory.raw, null, 2)}
+            wrap
+            copyable
+            className="mt-3 max-h-[18rem]"
+          />
         </details>
       </div>
     </div>

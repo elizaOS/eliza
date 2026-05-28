@@ -606,7 +606,7 @@ function GraphIconButton({
 function GraphLegend() {
   const items: Array<{ icon: ReactNode; label: string }> = [
     {
-      icon: <Crown className="h-3.5 w-3.5 text-[rgba(99,102,241,0.86)]" />,
+      icon: <Crown className="h-3.5 w-3.5 text-accent" />,
       label: "Owner",
     },
     {
@@ -668,7 +668,7 @@ function GraphTooltip({ state }: { state: TooltipState }) {
       >
         <div className="flex items-center gap-1.5 text-sm font-semibold text-txt">
           {person.isOwner ? (
-            <Crown className="h-3.5 w-3.5 text-[rgba(99,102,241,0.86)]" />
+            <Crown className="h-3.5 w-3.5 text-accent" />
           ) : null}
           {person.displayName}
         </div>
@@ -1069,8 +1069,8 @@ export function RelationshipsGraphPanel({
                 cy="35%"
                 r="70%"
               >
-                <stop offset="0%" stopColor="rgba(199,210,255,0.98)" />
-                <stop offset="100%" stopColor="rgba(99,102,241,0.86)" />
+                <stop offset="0%" stopColor="var(--accent-hover)" />
+                <stop offset="100%" stopColor="var(--accent)" />
               </radialGradient>
             </defs>
 
@@ -1153,7 +1153,7 @@ export function RelationshipsGraphPanel({
                       <circle
                         r={radius + 11}
                         fill="transparent"
-                        stroke="rgba(99,102,241,0.56)"
+                        stroke="var(--accent)"
                         strokeWidth={2}
                         strokeDasharray="5 4"
                       />
@@ -1169,7 +1169,7 @@ export function RelationshipsGraphPanel({
                         selected
                           ? "rgba(255,255,255,0.96)"
                           : isOwner
-                            ? "rgba(99,102,241,0.78)"
+                            ? "var(--accent)"
                             : "rgba(28,34,43,0.56)"
                       }
                       strokeWidth={selected ? 3.5 : isOwner ? 2.5 : 1.5}
