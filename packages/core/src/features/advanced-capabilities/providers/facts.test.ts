@@ -114,6 +114,36 @@ describe("factsProvider keyword retrieval", () => {
 		expect(result.text).toContain("the user prefers aisle seats");
 	});
 
+	it("surfaces a durable fact on direct recall even when keywords do not BM25-match", async () => {
+		// Live regression on 2026-05-28 (tj-8e3d5c79321002): user stored
+		// "my car's name is Bertha" then later asked "whats my cars name?".
+		// BM25 scored 0 (no stemming for cars->car, and the only shared term
+		// "name" had ~0 IDF across the small fact pool), so the durable fact
+		// was filtered out and the bot answered "I don't have any info about a
+		// car name for you." Durable identity facts are few and high-value;
+		// when relevance ranking surfaces none, fall back to recent durable
+		// facts so direct recall works.
+		const runtime = makeRuntime({
+			facts: [
+				memory("fact-1", "my car's name is Bertha, a 1998 Civic", {
+					kind: "durable",
+					category: "identity",
+					confidence: 0.9,
+					keywords: ["car", "name", "bertha", "civic"],
+				}),
+			],
+		});
+
+		const result = await factsProvider.get(
+			runtime,
+			memory("msg-current", "whats my cars name?"),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.text).toContain("Bertha");
+		expect(result.text).not.toContain("No facts available");
+	});
+
 	it("applies current-fact time weighting after keyword relevance", async () => {
 		// bun's vitest compat layer doesn't implement vi.useFakeTimers /
 		// vi.setSystemTime, so pin Date.now() directly. This is the only
