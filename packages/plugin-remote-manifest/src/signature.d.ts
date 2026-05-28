@@ -14,26 +14,37 @@
 import type { AuditDispatcher, KmsClient } from "@elizaos/security";
 export declare const PLUGIN_MANIFEST_KEY: string;
 export interface PluginSignaturePayload {
-    /** Lower-case hex SHA-256 of the tarball. */
-    hash: string;
-    /** Base64 Ed25519 signature over the raw hash bytes. */
-    signature: string;
-    /** Optional human-readable signer label; not trusted, audit-only. */
-    signer?: string;
+  /** Lower-case hex SHA-256 of the tarball. */
+  hash: string;
+  /** Base64 Ed25519 signature over the raw hash bytes. */
+  signature: string;
+  /** Optional human-readable signer label; not trusted, audit-only. */
+  signer?: string;
 }
 export interface VerifyPluginArtifactInput {
-    pluginId: string;
-    version: string;
-    tarballPath: string;
-    /** Manifest-declared signature payload. */
-    signature: PluginSignaturePayload;
-    kms: KmsClient;
-    auditDispatcher?: AuditDispatcher;
-    actorId?: string;
+  pluginId: string;
+  version: string;
+  tarballPath: string;
+  /** Manifest-declared signature payload. */
+  signature: PluginSignaturePayload;
+  kms: KmsClient;
+  auditDispatcher?: AuditDispatcher;
+  actorId?: string;
 }
 export declare class PluginSignatureError extends Error {
-    readonly code: "HASH_MISMATCH" | "BAD_SIGNATURE" | "MISSING_HASH" | "MISSING_SIGNATURE";
-    constructor(message: string, code: "HASH_MISMATCH" | "BAD_SIGNATURE" | "MISSING_HASH" | "MISSING_SIGNATURE");
+  readonly code:
+    | "HASH_MISMATCH"
+    | "BAD_SIGNATURE"
+    | "MISSING_HASH"
+    | "MISSING_SIGNATURE";
+  constructor(
+    message: string,
+    code:
+      | "HASH_MISMATCH"
+      | "BAD_SIGNATURE"
+      | "MISSING_HASH"
+      | "MISSING_SIGNATURE",
+  );
 }
 export declare function sha256File(path: string): Promise<string>;
 /**
@@ -43,5 +54,7 @@ export declare function sha256File(path: string): Promise<string>;
  * failure event on rejection. On success, emits a `plugin.install`
  * success event.
  */
-export declare function verifyPluginArtifact(input: VerifyPluginArtifactInput): Promise<void>;
+export declare function verifyPluginArtifact(
+  input: VerifyPluginArtifactInput,
+): Promise<void>;
 //# sourceMappingURL=signature.d.ts.map
