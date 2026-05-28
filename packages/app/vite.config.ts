@@ -1005,17 +1005,17 @@ function asyncLocalStoragePatchPlugin(): Plugin {
 }
 
 function isIgnoredWorkspaceGeneratedOutput(normalizedFile: string): boolean {
-	return (
-		normalizedFile.includes("/packages/app/.vite/") ||
-		normalizedFile.includes("/.turbo/") ||
-		normalizedFile.includes("/.wrangler/") ||
-		normalizedFile.includes("/packages/agent/data/") ||
-		normalizedFile.includes("/packages/agent/.elizadb/") ||
-		normalizedFile.includes("/packages/examples/") ||
-		normalizedFile.includes("/packages/feed/") ||
-		normalizedFile.includes("/output/generated-cad/") ||
-		normalizedFile.includes("/packages/robot/") ||
-		normalizedFile.includes("/src/i18n/generated/") ||
+  return (
+    normalizedFile.includes("/packages/app/.vite/") ||
+    normalizedFile.includes("/.turbo/") ||
+    normalizedFile.includes("/.wrangler/") ||
+    normalizedFile.includes("/packages/agent/data/") ||
+    normalizedFile.includes("/packages/agent/.elizadb/") ||
+    normalizedFile.includes("/packages/examples/") ||
+    normalizedFile.includes("/packages/feed/") ||
+    normalizedFile.includes("/output/generated-cad/") ||
+    normalizedFile.includes("/packages/robot/") ||
+    normalizedFile.includes("/src/i18n/generated/") ||
     normalizedFile.endsWith(".d.ts") ||
     normalizedFile.endsWith(".d.ts.map") ||
     normalizedFile.endsWith(".log") ||
