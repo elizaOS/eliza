@@ -78,7 +78,7 @@ export async function trackExternalShare(
 
   const token =
     typeof window !== "undefined"
-      ? ((window as { __privyAccessToken?: string }).__privyAccessToken ?? null)
+      ? ((window as { __accessToken?: string }).__accessToken ?? null)
       : null;
   if (!token) {
     logger.warn(

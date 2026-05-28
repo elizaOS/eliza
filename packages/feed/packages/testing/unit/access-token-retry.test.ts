@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 import {
   getAccessTokenWithRetry,
   isRetryableAccessTokenError,
-} from "../../../apps/web/src/lib/auth/privyAccessToken";
+} from "../../../apps/web/src/lib/auth/accessToken";
 
 describe("access token retry", () => {
   beforeEach(() => {

@@ -32,8 +32,8 @@ export interface ApiFetchOptions extends RequestInit {
 /**
  * Get a fresh access token
  *
- * Retrieves a fresh Steward access token via the `__privyGetAccessToken` compat shim
- * (set by StewardAuthProvider). Always calls getAccessToken() on-demand which
+ * Retrieves a fresh Steward access token via StewardAuthProvider. Always calls
+ * getAccessToken() on-demand which
  * automatically refreshes tokens nearing expiration.
  *
  * @returns Access token or null if unavailable
@@ -45,15 +45,14 @@ export async function getAccessToken(): Promise<string | null> {
     return devSession.accessToken;
   }
 
-  // TODO: Phase 3 — rename window.__privyGetAccessToken to window.__getAccessToken
   const authWindow = window as Window & {
-    __privyGetAccessToken?: () => Promise<string | null>;
+    __getAccessToken?: () => Promise<string | null>;
   };
 
   // ALWAYS call getAccessToken() on-demand - it auto-refreshes expired tokens
-  if (authWindow.__privyGetAccessToken) {
+  if (authWindow.__getAccessToken) {
     try {
-      const token = await authWindow.__privyGetAccessToken();
+      const token = await authWindow.__getAccessToken();
       return token;
     } catch (error) {
       logger.warn(

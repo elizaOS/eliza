@@ -36,7 +36,7 @@ interface UploadErrorResponse {
 
 /**
  * Upload a file to /api/upload/image and return the public URL.
- * Uses apiFetch for auth (Privy token) and 401 retry.
+ * Uses apiFetch for auth (access token) and 401 retry.
  * @param file - Image file to upload
  * @param type - 'profile' or 'cover'
  * @returns The public URL of the uploaded image

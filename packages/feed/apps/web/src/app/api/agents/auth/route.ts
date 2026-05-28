@@ -6,7 +6,7 @@
  *
  * @description
  * Secure authentication endpoint for autonomous Feed agents. Provides
- * session-based authentication without requiring user Privy tokens. Agent
+ * session-based authentication without requiring user access tokens. Agent
  * credentials are validated against environment variables, and successful
  * authentication returns a time-limited session token.
  *

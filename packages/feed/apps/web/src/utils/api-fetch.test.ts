@@ -9,7 +9,7 @@ function setWindow(getAccessToken?: () => Promise<string | null>) {
   Object.defineProperty(globalThis, "window", {
     configurable: true,
     value: {
-      __privyGetAccessToken: getAccessToken,
+      __getAccessToken: getAccessToken,
       localStorage: {
         getItem: (key: string) => storage.get(key) ?? null,
         setItem: (key: string, value: string) => {

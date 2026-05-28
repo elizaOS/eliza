@@ -142,19 +142,19 @@ describe("Logout State Cleanup", () => {
 describe("Logout Function Behavior", () => {
   test("should document expected logout sequence", () => {
     const expectedSequence = [
-      "1. Call Privy logout()",
+      "1. Call Steward logout()",
       "2. Call clearAuth() to reset Zustand state",
-      "3. Clear window.__privyAccessToken",
+      "3. Clear window.__accessToken",
       "4. Remove feed-auth from localStorage",
-      "5. Clear all privy: prefixed localStorage keys",
-      "6. Clear all privy: prefixed sessionStorage keys",
+      "5. Clear auth localStorage keys",
+      "6. Clear auth sessionStorage keys",
       "7. Clear module-level state (linkedSocialUsers, etc)",
       "8. Clear any pending timeouts",
     ];
 
     // This test documents the expected behavior
     expect(expectedSequence).toHaveLength(8);
-    expect(expectedSequence[0]).toContain("Privy");
+    expect(expectedSequence[0]).toContain("Steward");
     expect(expectedSequence[expectedSequence.length - 1]).toContain("timeout");
   });
 });

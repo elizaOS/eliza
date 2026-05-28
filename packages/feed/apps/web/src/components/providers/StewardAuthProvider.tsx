@@ -27,13 +27,11 @@ function getOrCreateStewardAuth(): StewardAuth {
     // Persist session across page reloads
     storage: typeof localStorage !== "undefined" ? localStorage : undefined,
     onSessionChange: (session) => {
-      // TODO: Phase 3 — rename __privyAccessToken to __accessToken once all
-      // consumers have migrated off the legacy Privy naming.
       // Keep the window-level access token in sync for apiFetch
       if (typeof window !== "undefined") {
         (
-          window as Window & { __privyAccessToken?: string | null }
-        ).__privyAccessToken = session?.token ?? null;
+          window as Window & { __accessToken?: string | null }
+        ).__accessToken = session?.token ?? null;
       }
     },
   });

@@ -83,8 +83,8 @@ export async function installSynpressDevAuth(
     ({ storageKey, authSession }) => {
       window.localStorage.setItem(storageKey, JSON.stringify(authSession));
       (
-        window as Window & { __privyAccessToken?: string | null }
-      ).__privyAccessToken = authSession.accessToken;
+        window as Window & { __accessToken?: string | null }
+      ).__accessToken = authSession.accessToken;
     },
     {
       storageKey: PLAYWRIGHT_DEV_AUTH_STORAGE_KEY,
@@ -97,8 +97,8 @@ export async function installSynpressDevAuth(
     ({ storageKey, authSession }) => {
       window.localStorage.setItem(storageKey, JSON.stringify(authSession));
       (
-        window as Window & { __privyAccessToken?: string | null }
-      ).__privyAccessToken = authSession.accessToken;
+        window as Window & { __accessToken?: string | null }
+      ).__accessToken = authSession.accessToken;
     },
     {
       storageKey: PLAYWRIGHT_DEV_AUTH_STORAGE_KEY,

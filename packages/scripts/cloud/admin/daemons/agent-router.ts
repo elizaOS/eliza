@@ -72,32 +72,51 @@ interface RoutingResponse {
   target: string;
 }
 
-export async function resolveAgentRouting(
-  agentId: string,
-): Promise<RoutingResponse | null> {
-  const { agentSandboxesRepository } = await loadDeps();
-  const sandbox = await agentSandboxesRepository.findById(agentId);
-  if (!sandbox || sandbox.status !== "running") return null;
-  if (!sandbox.bridge_url || !sandbox.web_ui_port) return null;
+interface SandboxRoutingFields {
+  status: string;
+  bridge_url?: string | null;
+  headscale_ip?: string | null;
+  web_ui_port?: number | null;
+}
 
-  let parsed: URL;
-  try {
-    parsed = new URL(sandbox.bridge_url);
-  } catch {
+export function resolveSandboxRouting(
+  sandbox: SandboxRoutingFields | null | undefined,
+): RoutingResponse | null {
+  if (!sandbox || sandbox.status !== "running" || !sandbox.web_ui_port) {
     return null;
   }
 
-  if (!parsed.port) return null;
-  const host = parsed.hostname;
-  const bridgePort = Number.parseInt(parsed.port, 10);
-  const webUiPort = sandbox.web_ui_port;
+  let bridgePort: number | null = null;
+  let bridgeHost: string | null = null;
+  if (sandbox.bridge_url) {
+    try {
+      const parsed = new URL(sandbox.bridge_url);
+      bridgeHost = parsed.hostname || null;
+      bridgePort = parsed.port ? Number.parseInt(parsed.port, 10) : null;
+    } catch {
+      bridgeHost = null;
+      bridgePort = null;
+    }
+  }
 
+  const host = sandbox.headscale_ip?.trim() || bridgeHost;
+  if (!host || !bridgePort || !Number.isFinite(bridgePort)) return null;
+
+  const webUiPort = sandbox.web_ui_port;
   return {
     headscaleIp: host,
     bridgePort,
     webUiPort,
     target: `${host}:${webUiPort}`,
   };
+}
+
+export async function resolveAgentRouting(
+  agentId: string,
+): Promise<RoutingResponse | null> {
+  const { agentSandboxesRepository } = await loadDeps();
+  const sandbox = await agentSandboxesRepository.findById(agentId);
+  return resolveSandboxRouting(sandbox);
 }
 
 const AGENT_ID_RE =

@@ -91,28 +91,26 @@ export function useAuth(): UseAuthReturn {
     return stewardAuth.getToken() ?? null;
   }, [devAuthSession, stewardAuth]);
 
-  // TODO: Phase 3 — rename window.__privyAccessToken / __privyGetAccessToken
-  // to window.__accessToken / __getAccessToken once all consumers have migrated.
-  // Keep window-level token in sync for apiFetch legacy compatibility
+  // Keep window-level token helpers in sync for apiFetch.
   useEffect(() => {
     const token = stewardAuth.getToken();
     if (typeof window !== "undefined") {
       (
-        window as Window & { __privyAccessToken?: string | null }
-      ).__privyAccessToken = token;
+        window as Window & { __accessToken?: string | null }
+      ).__accessToken = token;
       (
         window as Window & {
-          __privyGetAccessToken?: () => Promise<string | null>;
+          __getAccessToken?: () => Promise<string | null>;
         }
-      ).__privyGetAccessToken = getAccessToken;
+      ).__getAccessToken = getAccessToken;
     }
     return () => {
       if (typeof window !== "undefined") {
         (
           window as Window & {
-            __privyGetAccessToken?: () => Promise<string | null>;
+            __getAccessToken?: () => Promise<string | null>;
           }
-        ).__privyGetAccessToken = undefined;
+        ).__getAccessToken = undefined;
       }
     };
   }, [getAccessToken, stewardAuth]);
@@ -365,8 +363,8 @@ export function useAuth(): UseAuthReturn {
       clearAuth();
       if (typeof window !== "undefined") {
         (
-          window as Window & { __privyAccessToken?: string | null }
-        ).__privyAccessToken = null;
+          window as Window & { __accessToken?: string | null }
+        ).__accessToken = null;
         localStorage.removeItem("feed-auth");
       }
       globalFetchInFlight = null;
@@ -392,8 +390,8 @@ export function useAuth(): UseAuthReturn {
 
     if (typeof window !== "undefined") {
       (
-        window as Window & { __privyAccessToken?: string | null }
-      ).__privyAccessToken = null;
+        window as Window & { __accessToken?: string | null }
+      ).__accessToken = null;
       removeStorageItem("localStorage", "feed-auth");
     }
 

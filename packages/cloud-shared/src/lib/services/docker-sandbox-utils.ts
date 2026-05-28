@@ -64,7 +64,7 @@ export function shellQuote(value: string): string {
  */
 export function buildEnsureNetworkCmd(network: string): string {
   const net = shellQuote(network);
-  return `docker network inspect ${net} >/dev/null 2>&1 || docker network create --driver bridge ${net} >/dev/null 2>&1 || docker network inspect ${net} >/dev/null 2>&1`;
+  return `docker network inspect ${net} >/dev/null 2>&1 || docker network create --driver bridge ${net} >/dev/null 2>&1 || docker network inspect ${net} >/dev/null`;
 }
 
 // ---------------------------------------------------------------------------

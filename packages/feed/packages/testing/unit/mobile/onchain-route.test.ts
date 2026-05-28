@@ -21,7 +21,7 @@ function extractPrivyToken(request: {
 
   const token = headerToken ?? cookieToken;
   if (!token) {
-    throw new Error("Authentication required: no Privy token found.");
+    throw new Error("Authentication required: no access token found.");
   }
   return token;
 }

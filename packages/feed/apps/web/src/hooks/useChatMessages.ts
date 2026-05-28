@@ -8,7 +8,7 @@ import {
   type ReplyToMessage,
 } from "@/components/chats/types";
 import { useAuth } from "@/hooks/useAuth";
-import { getAccessTokenSafely } from "@/lib/auth/privyAccessToken";
+import { getAccessTokenSafely } from "@/lib/auth/accessToken";
 import { setCachedMessages } from "@/lib/chat/message-store";
 import { CHAT_PAGE_SIZE } from "@/lib/constants";
 import { useAuthStore } from "@/stores/authStore";

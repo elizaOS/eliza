@@ -565,15 +565,15 @@ async function authenticateWithPrivy(
     });
     console.log("✅ Authentication successful - user menu visible");
   } catch (_error) {
-    // Fallback: check for Privy token in localStorage as secondary verification
-    type WindowWithPrivyToken = Window & {
-      __privyAccessToken?: unknown;
+    // Fallback: check for access token in localStorage as secondary verification
+    type WindowWithAccessToken = Window & {
+      __accessToken?: unknown;
     };
     const hasToken = await page.evaluate(() => {
-      const win = window as WindowWithPrivyToken;
+      const win = window as WindowWithAccessToken;
       return (
         window.localStorage.getItem("privy:token") !== null ||
-        win.__privyAccessToken !== undefined
+        win.__accessToken !== undefined
       );
     });
 

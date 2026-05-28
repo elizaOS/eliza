@@ -29,7 +29,7 @@ import {
 } from "@/hooks/useChatMessages";
 import { useSSEChannel } from "@/hooks/useSSE";
 import { useToggleReaction } from "@/hooks/useToggleReaction";
-import { getAccessTokenSafely } from "@/lib/auth/privyAccessToken";
+import { getAccessTokenSafely } from "@/lib/auth/accessToken";
 import { getUserDisplayName } from "@/lib/user-display";
 import { useAuthStore } from "@/stores/authStore";
 

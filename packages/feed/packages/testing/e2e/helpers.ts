@@ -136,13 +136,13 @@ export async function authenticateWithPrivy(page: Page) {
     }
   }
 
-  type WindowWithPrivyToken = Window & {
-    __privyAccessToken?: unknown;
+  type WindowWithAccessToken = Window & {
+    __accessToken?: unknown;
   };
   await page.waitForFunction(
     () => {
-      const win = window as WindowWithPrivyToken;
-      const hasAccessToken = win.__privyAccessToken;
+      const win = window as WindowWithAccessToken;
+      const hasAccessToken = win.__accessToken;
       if (hasAccessToken) return true;
 
       const hasUserMenu =

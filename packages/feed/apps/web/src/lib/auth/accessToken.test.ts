@@ -2,9 +2,9 @@ import { describe, expect, it, mock } from "bun:test";
 import {
   getAccessTokenSafely,
   getAccessTokenWithRetry,
-} from "./privyAccessToken";
+} from "./accessToken";
 
-describe("privyAccessToken", () => {
+describe("accessToken", () => {
   it("returns the token when the getter succeeds", async () => {
     await expect(
       getAccessTokenSafely(() => Promise.resolve("token-123")),
