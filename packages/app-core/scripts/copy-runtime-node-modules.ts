@@ -96,6 +96,14 @@ const TAR_SAFE_BASENAME_MAX = Number.parseInt(
   process.env.ELIZA_RUNTIME_TAR_SAFE_BASENAME_MAX ?? "100",
   10,
 );
+const RUNTIME_COPY_LOCK_TIMEOUT_MS = Number.parseInt(
+  process.env.ELIZA_RUNTIME_COPY_LOCK_TIMEOUT_MS ?? "600000",
+  10,
+);
+const RUNTIME_COPY_LOCK_STALE_MS = Number.parseInt(
+  process.env.ELIZA_RUNTIME_COPY_LOCK_STALE_MS ?? "1800000",
+  10,
+);
 const PLATFORM_ALIASES = new Map<string, string>([
   ["android", "android"],
   ["aix", "aix"],
@@ -156,8 +164,15 @@ function parseArgs(argv: string[]): Options {
     if (!arg.startsWith("--")) continue;
     const [rawKey, inlineValue] = arg.slice(2).split("=", 2);
     const key = rawKey.trim();
-    const value = inlineValue;
-    if (!inlineValue) i += 1;
+    let value = inlineValue;
+    if (value === undefined) {
+      const next = argv[i + 1];
+      if (next && !next.startsWith("--")) {
+        value = next;
+        i += 1;
+      }
+    }
+    if (value === undefined) continue;
     opts[key] = value;
   }
 
@@ -172,6 +187,14 @@ function readJson<T>(filePath: string): T {
 
 function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function isEnoentError(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      (error as { code?: string }).code === "ENOENT",
+  );
 }
 
 function isRetryableRemoveError(error: unknown): boolean {
@@ -200,10 +223,99 @@ function rmRecursive(pathToRemove: string): void {
       });
       return;
     } catch (error) {
-      if (!isRetryableRemoveError(error) || attempt === maxAttempts - 1) {
+      if (!isRetryableRemoveError(error)) {
         throw error;
       }
+      if (attempt === maxAttempts - 1) break;
       sleepSync(100 * (attempt + 1));
+    }
+  }
+
+  if (!fs.existsSync(pathToRemove)) {
+    return;
+  }
+
+  const parentDir = path.dirname(pathToRemove);
+  const tombstone = path.join(
+    parentDir,
+    `.${path.basename(pathToRemove)}.delete-${process.pid}-${Date.now()}`,
+  );
+  try {
+    fs.renameSync(pathToRemove, tombstone);
+  } catch (error) {
+    if (!fs.existsSync(pathToRemove)) {
+      return;
+    }
+    throw error;
+  }
+
+  try {
+    fs.rmSync(tombstone, {
+      force: true,
+      maxRetries: 10,
+      recursive: true,
+      retryDelay: 100,
+    });
+  } catch (error) {
+    console.warn(
+      `[runtime-copy] warning: moved retry-resistant path aside but could not fully remove ${tombstone}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+function acquireRuntimeCopyLock(targetDist: string): () => void {
+  const lockDir = path.join(targetDist, ".runtime-copy.lock");
+  const startedAt = Date.now();
+
+  while (true) {
+    try {
+      fs.mkdirSync(lockDir, { recursive: false });
+      fs.writeFileSync(
+        path.join(lockDir, "owner.json"),
+        `${JSON.stringify(
+          {
+            pid: process.pid,
+            startedAt: new Date().toISOString(),
+            targetDist,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      return () => {
+        fs.rmSync(lockDir, { force: true, recursive: true });
+      };
+    } catch (error) {
+      if (
+        !error ||
+        typeof error !== "object" ||
+        (error as { code?: string }).code !== "EEXIST"
+      ) {
+        throw error;
+      }
+
+      let ageMs = 0;
+      try {
+        ageMs = Date.now() - fs.statSync(lockDir).mtimeMs;
+      } catch (statError) {
+        if (isEnoentError(statError)) {
+          continue;
+        }
+        throw statError;
+      }
+
+      if (ageMs > RUNTIME_COPY_LOCK_STALE_MS) {
+        rmRecursive(lockDir);
+        continue;
+      }
+
+      if (Date.now() - startedAt > RUNTIME_COPY_LOCK_TIMEOUT_MS) {
+        throw new Error(
+          `[runtime-copy] timed out waiting for runtime copy lock: ${lockDir}`,
+        );
+      }
+
+      sleepSync(250);
     }
   }
 }
@@ -694,7 +806,17 @@ function pruneCopiedPackageDir(name: string, packageDir: string): void {
   if (!fs.existsSync(packageDir)) return;
 
   const visit = (currentDir: string): void => {
-    for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    } catch (error) {
+      if (isEnoentError(error)) {
+        return;
+      }
+      throw error;
+    }
+
+    for (const entry of entries) {
       const entryPath = path.join(currentDir, entry.name);
       const relativePath = path.relative(packageDir, entryPath);
 
@@ -736,7 +858,10 @@ function pruneCopiedPackageDir(name: string, packageDir: string): void {
 
       if (entry.isDirectory()) {
         visit(entryPath);
-        if (fs.readdirSync(entryPath).length === 0) {
+        if (
+          fs.existsSync(entryPath) &&
+          fs.readdirSync(entryPath).length === 0
+        ) {
           fs.rmdirSync(entryPath);
         }
       }
@@ -745,6 +870,54 @@ function pruneCopiedPackageDir(name: string, packageDir: string): void {
 
   // Prune known multi-platform native payload directories after the copy lands.
   visit(packageDir);
+}
+
+function copyPackageDirSync(
+  name: string,
+  sourceDir: string,
+  copyDest: string,
+  destIsInsideSource: boolean,
+): void {
+  const sourceDistDir = path.join(sourceDir, "dist");
+  const maxAttempts = 5;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      fs.cpSync(sourceDir, copyDest, {
+        recursive: true,
+        force: true,
+        dereference: true,
+        filter: (entry) => {
+          if (!shouldCopyPackageEntry(entry, name, sourceDir)) {
+            return false;
+          }
+          if (name === "@elizaos/app-core") {
+            const relativeEntry = path
+              .relative(sourceDir, entry)
+              .split(path.sep)
+              .join("/");
+            if (shouldSkipPackagedAppCoreEntry(relativeEntry)) {
+              return false;
+            }
+          }
+          if (!destIsInsideSource) {
+            return true;
+          }
+          const relativeToDist = path.relative(sourceDistDir, entry);
+          return (
+            relativeToDist !== "" &&
+            (relativeToDist.startsWith("..") || path.isAbsolute(relativeToDist))
+          );
+        },
+      });
+      return;
+    } catch (error) {
+      if (!isEnoentError(error) || attempt === maxAttempts - 1) {
+        throw error;
+      }
+      rmRecursive(copyDest);
+      sleepSync(100 * (attempt + 1));
+    }
+  }
 }
 
 function copyPackageDir(
@@ -764,34 +937,7 @@ function copyPackageDir(
   const copyDest = destIsInsideSource
     ? fs.mkdtempSync(path.join(os.tmpdir(), "eliza-runtime-package-copy-"))
     : dest;
-  const sourceDistDir = path.join(sourceDir, "dist");
-  fs.cpSync(sourceDir, copyDest, {
-    recursive: true,
-    force: true,
-    dereference: true,
-    filter: (entry) => {
-      if (!shouldCopyPackageEntry(entry, name, sourceDir)) {
-        return false;
-      }
-      if (name === "@elizaos/app-core") {
-        const relativeEntry = path
-          .relative(sourceDir, entry)
-          .split(path.sep)
-          .join("/");
-        if (shouldSkipPackagedAppCoreEntry(relativeEntry)) {
-          return false;
-        }
-      }
-      if (!destIsInsideSource) {
-        return true;
-      }
-      const relativeToDist = path.relative(sourceDistDir, entry);
-      return (
-        relativeToDist !== "" &&
-        (relativeToDist.startsWith("..") || path.isAbsolute(relativeToDist))
-      );
-    },
-  });
+  copyPackageDirSync(name, sourceDir, copyDest, destIsInsideSource);
   if (destIsInsideSource) {
     fs.renameSync(copyDest, dest);
   }
@@ -1933,177 +2079,184 @@ function main(): void {
   }
 
   buildBunPackageIndex();
+  const releaseRuntimeCopyLock = acquireRuntimeCopyLock(targetDist);
 
-  rmRecursive(targetNodeModules);
-  fs.mkdirSync(targetNodeModules, { recursive: true });
+  try {
+    rmRecursive(targetNodeModules);
+    fs.mkdirSync(targetNodeModules, { recursive: true });
 
-  const alwaysBundled = new Set(
-    discoverAlwaysBundledPackages(PACKAGE_JSON_PATH),
-  );
-  for (const packageName of BASELINE_BUNDLED_RUNTIME_PACKAGES) {
-    if (alwaysBundled.has(packageName)) {
-      continue;
-    }
-    if (resolvePackage(packageName, null, ROOT, { includeWorkspace: false })) {
-      alwaysBundled.add(packageName);
-    }
-  }
-  const rootDependencySpecs = new Map(
-    getRuntimeDependencyEntries(PACKAGE_JSON_PATH).map((entry) => [
-      entry.name,
-      entry.spec,
-    ]),
-  );
-  const filteredOptionalPlugins = new Set<string>();
-  const discovered = new Set(
-    discoverRuntimePackages(scanDir).filter((packageName) => {
-      const shouldBundle = shouldBundleDiscoveredPackage(
-        packageName,
-        alwaysBundled,
-      );
-      if (!shouldBundle) {
-        filteredOptionalPlugins.add(packageName);
+    const alwaysBundled = new Set(
+      discoverAlwaysBundledPackages(PACKAGE_JSON_PATH),
+    );
+    for (const packageName of BASELINE_BUNDLED_RUNTIME_PACKAGES) {
+      if (alwaysBundled.has(packageName)) {
+        continue;
       }
-      return shouldBundle;
-    }),
-  );
-  const queue: QueueEntry[] = [...new Set([...alwaysBundled, ...discovered])]
-    .sort()
-    .map((name) => ({
-      name,
-      spec: rootDependencySpecs.get(name) ?? null,
-      requesterDir: ROOT,
-      requesterDestDir: targetDist,
-    }));
-
-  const copiedDestinations = new Set<string>();
-  const copiedNames = new Set<string>();
-  const missingAlwaysBundled = new Set<string>();
-  const missingDiscovered = new Set<string>();
-  const topLevelVersions = new Map<string, string | null>();
-
-  while (queue.length > 0) {
-    const request = queue.shift();
-    if (!request) continue;
-
-    const { name, spec, requesterDir, requesterDestDir } = request;
-    if (
-      !name ||
-      DEP_SKIP.has(name) ||
-      !isPackageNameCompatibleWithCurrentPlatform(name)
-    ) {
-      continue;
-    }
-
-    const resolved = resolvePackage(name, spec, requesterDir);
-    if (!resolved) {
-      if (alwaysBundled.has(name)) {
-        missingAlwaysBundled.add(name);
-      } else {
-        missingDiscovered.add(name);
+      if (
+        resolvePackage(packageName, null, ROOT, { includeWorkspace: false })
+      ) {
+        alwaysBundled.add(packageName);
       }
-      continue;
     }
-
-    if (!isPackageCompatibleWithCurrentPlatform(resolved.packageJsonPath)) {
-      missingAlwaysBundled.delete(name);
-      missingDiscovered.delete(name);
-      continue;
-    }
-
-    const resolvedVersion = getPackageVersion(resolved.packageJsonPath);
-    const copyTargetNodeModules = selectCopyTargetNodeModules({
-      name,
-      requesterDestDir,
-      rootDestDir: targetDist,
-      targetNodeModules,
-      topLevelVersions,
-      resolvedVersion,
-    });
-    const destination = packagePath(name, copyTargetNodeModules);
-
-    if (copiedDestinations.has(destination)) {
-      missingAlwaysBundled.delete(name);
-      missingDiscovered.delete(name);
-      copiedNames.add(name);
-      continue;
-    }
-
-    if (
-      !copyPackageDir(
+    const rootDependencySpecs = new Map(
+      getRuntimeDependencyEntries(PACKAGE_JSON_PATH).map((entry) => [
+        entry.name,
+        entry.spec,
+      ]),
+    );
+    const filteredOptionalPlugins = new Set<string>();
+    const discovered = new Set(
+      discoverRuntimePackages(scanDir).filter((packageName) => {
+        const shouldBundle = shouldBundleDiscoveredPackage(
+          packageName,
+          alwaysBundled,
+        );
+        if (!shouldBundle) {
+          filteredOptionalPlugins.add(packageName);
+        }
+        return shouldBundle;
+      }),
+    );
+    const queue: QueueEntry[] = [...new Set([...alwaysBundled, ...discovered])]
+      .sort()
+      .map((name) => ({
         name,
-        resolved.sourceDir,
-        copyTargetNodeModules,
-        targetDist,
-      )
-    ) {
-      if (alwaysBundled.has(name)) {
-        missingAlwaysBundled.add(name);
-      } else {
-        missingDiscovered.add(name);
-      }
-      continue;
-    }
+        spec: rootDependencySpecs.get(name) ?? null,
+        requesterDir: ROOT,
+        requesterDestDir: targetDist,
+      }));
 
-    missingAlwaysBundled.delete(name);
-    missingDiscovered.delete(name);
-    copiedDestinations.add(destination);
-    copiedNames.add(name);
-    if (copyTargetNodeModules === targetNodeModules) {
-      topLevelVersions.set(name, resolvedVersion);
-    }
+    const copiedDestinations = new Set<string>();
+    const copiedNames = new Set<string>();
+    const missingAlwaysBundled = new Set<string>();
+    const missingDiscovered = new Set<string>();
+    const topLevelVersions = new Map<string, string | null>();
 
-    for (const dep of getRuntimeDependencyEntries(resolved.packageJsonPath)) {
-      if (shouldSkipPackagedDependency(name, dep.name)) {
+    while (queue.length > 0) {
+      const request = queue.shift();
+      if (!request) continue;
+
+      const { name, spec, requesterDir, requesterDestDir } = request;
+      if (
+        !name ||
+        DEP_SKIP.has(name) ||
+        !isPackageNameCompatibleWithCurrentPlatform(name)
+      ) {
         continue;
       }
 
-      // Same filter as initial discovery: non-alwaysBundled plugins are
-      // post-release-installable and must not enter the transitive walk.
-      // Without this, a peerDep on an optional plugin drags its entire
-      // deep tree (e.g. @solana/codecs* nested 8 levels) into the bundle
-      // and trips assertTarSafeRuntimePaths.
-      if (!shouldBundleDiscoveredPackage(dep.name, alwaysBundled)) {
-        filteredOptionalPlugins.add(dep.name);
+      const resolved = resolvePackage(name, spec, requesterDir);
+      if (!resolved) {
+        if (alwaysBundled.has(name)) {
+          missingAlwaysBundled.add(name);
+        } else {
+          missingDiscovered.add(name);
+        }
         continue;
       }
 
-      queue.push({
-        name: dep.name,
-        spec: dep.spec,
-        requesterDir: resolved.sourceDir,
-        requesterDestDir: destination,
+      if (!isPackageCompatibleWithCurrentPlatform(resolved.packageJsonPath)) {
+        missingAlwaysBundled.delete(name);
+        missingDiscovered.delete(name);
+        continue;
+      }
+
+      const resolvedVersion = getPackageVersion(resolved.packageJsonPath);
+      const copyTargetNodeModules = selectCopyTargetNodeModules({
+        name,
+        requesterDestDir,
+        rootDestDir: targetDist,
+        targetNodeModules,
+        topLevelVersions,
+        resolvedVersion,
       });
+      const destination = packagePath(name, copyTargetNodeModules);
+
+      if (copiedDestinations.has(destination)) {
+        missingAlwaysBundled.delete(name);
+        missingDiscovered.delete(name);
+        copiedNames.add(name);
+        continue;
+      }
+
+      if (
+        !copyPackageDir(
+          name,
+          resolved.sourceDir,
+          copyTargetNodeModules,
+          targetDist,
+        )
+      ) {
+        if (alwaysBundled.has(name)) {
+          missingAlwaysBundled.add(name);
+        } else {
+          missingDiscovered.add(name);
+        }
+        continue;
+      }
+
+      missingAlwaysBundled.delete(name);
+      missingDiscovered.delete(name);
+      copiedDestinations.add(destination);
+      copiedNames.add(name);
+      if (copyTargetNodeModules === targetNodeModules) {
+        topLevelVersions.set(name, resolvedVersion);
+      }
+
+      for (const dep of getRuntimeDependencyEntries(resolved.packageJsonPath)) {
+        if (shouldSkipPackagedDependency(name, dep.name)) {
+          continue;
+        }
+
+        // Same filter as initial discovery: non-alwaysBundled plugins are
+        // post-release-installable and must not enter the transitive walk.
+        // Without this, a peerDep on an optional plugin drags its entire
+        // deep tree (e.g. @solana/codecs* nested 8 levels) into the bundle
+        // and trips assertTarSafeRuntimePaths.
+        if (!shouldBundleDiscoveredPackage(dep.name, alwaysBundled)) {
+          filteredOptionalPlugins.add(dep.name);
+          continue;
+        }
+
+        queue.push({
+          name: dep.name,
+          spec: dep.spec,
+          requesterDir: resolved.sourceDir,
+          requesterDestDir: destination,
+        });
+      }
     }
-  }
 
-  copyPgliteCompatibilityAssets(targetDist);
-  assertTarSafeRuntimePaths(targetDist);
-  assertRequiredBundledPackagesLanded(targetNodeModules, alwaysBundled);
+    copyPgliteCompatibilityAssets(targetDist);
+    assertTarSafeRuntimePaths(targetDist);
+    assertRequiredBundledPackagesLanded(targetNodeModules, alwaysBundled);
 
-  console.log(
-    `[runtime-copy] bundled ${copiedNames.size} package(s) into ${targetNodeModules}`,
-  );
-  for (const name of [...copiedNames].sort()) {
-    console.log(`  copied ${name}`);
-  }
-
-  if (missingAlwaysBundled.size > 0) {
-    throw new Error(
-      `[runtime-copy] missing installed runtime package(s): ${[...missingAlwaysBundled].sort().join(", ")}`,
-    );
-  }
-
-  if (missingDiscovered.size > 0) {
-    console.warn(
-      `[runtime-copy] skipped unresolved optional package(s): ${[...missingDiscovered].sort().join(", ")}`,
-    );
-  }
-
-  if (filteredOptionalPlugins.size > 0) {
     console.log(
-      `[runtime-copy] excluded post-release plugin package(s): ${[...filteredOptionalPlugins].sort().join(", ")}`,
+      `[runtime-copy] bundled ${copiedNames.size} package(s) into ${targetNodeModules}`,
     );
+    for (const name of [...copiedNames].sort()) {
+      console.log(`  copied ${name}`);
+    }
+
+    if (missingAlwaysBundled.size > 0) {
+      throw new Error(
+        `[runtime-copy] missing installed runtime package(s): ${[...missingAlwaysBundled].sort().join(", ")}`,
+      );
+    }
+
+    if (missingDiscovered.size > 0) {
+      console.warn(
+        `[runtime-copy] skipped unresolved optional package(s): ${[...missingDiscovered].sort().join(", ")}`,
+      );
+    }
+
+    if (filteredOptionalPlugins.size > 0) {
+      console.log(
+        `[runtime-copy] excluded post-release plugin package(s): ${[...filteredOptionalPlugins].sort().join(", ")}`,
+      );
+    }
+  } finally {
+    releaseRuntimeCopyLock();
   }
 }
 
