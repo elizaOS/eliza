@@ -20,6 +20,19 @@ const compatibilityFiles = [
     content: "{}\n",
   },
   {
+    file: path.join(tempDistDir, "server", "middleware-manifest.json"),
+    content: `${JSON.stringify(
+      {
+        version: 3,
+        middleware: {},
+        functions: {},
+        sortedMiddleware: [],
+      },
+      null,
+      2,
+    )}\n`,
+  },
+  {
     file: path.join(tempDistDir, "server", "app-paths-manifest.json"),
     content: `${JSON.stringify(
       {
