@@ -369,6 +369,30 @@ describe("validateManifest — contract rejections", () => {
 		expect(result.ok).toBe(false);
 	});
 
+	it("rejects a passing MTP eval without measured numbers", () => {
+		const m = baseManifest();
+		m.evals.mtp = { acceptanceRate: null, speedup: null, passed: true };
+		const result = validateManifest(m);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.errors.some((e) => e.includes("evals.mtp.passed"))).toBe(
+				true,
+			);
+		}
+	});
+
+	it("rejects strict releases when MTP eval did not pass", () => {
+		const m = baseManifest();
+		m.evals.mtp = { acceptanceRate: 0.5, speedup: null, passed: false };
+		const result = validateManifest(m);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.errors.some((e) => e.includes("evals.mtp.passed"))).toBe(
+				true,
+			);
+		}
+	});
+
 	it("rejects component files without matching lineage and eval gates", () => {
 		const m = baseManifest();
 		m.lineage.asr = undefined;

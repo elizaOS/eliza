@@ -249,6 +249,7 @@ export class CodingWorkspaceService {
   private githubAuthInProgress: Promise<GitHubPatClientInstance> | null = null;
   private serviceConfig: CodingWorkspaceConfig;
   private workspaces: Map<string, WorkspaceResult> = new Map();
+  private ambientCredentialWorkspaceIds = new Set<string>();
   private labels: Map<string, string> = new Map(); // label -> workspaceId
   private scratchBySession: Map<string, ScratchWorkspaceRecord> = new Map();
   private scratchCleanupTimers: Map<string, ReturnType<typeof setTimeout>> =
@@ -419,6 +420,12 @@ export class CodingWorkspaceService {
       repo,
       options.userCredentials,
     );
+    const usesAmbientGitHubToken =
+      !options.userCredentials &&
+      userCredentials?.provider === "github" &&
+      userCredentials.type !== "ssh" &&
+      typeof userCredentials.token === "string" &&
+      userCredentials.token.length > 0;
     const defaultBranchToken =
       userCredentials?.type === "pat" || userCredentials?.type === "oauth"
         ? userCredentials.token
@@ -447,6 +454,10 @@ export class CodingWorkspaceService {
     };
 
     const workspace = await this.workspaceService.provision(workspaceConfig);
+    if (usesAmbientGitHubToken) {
+      await this.removeAmbientCredentialHelper(workspace.path);
+      this.ambientCredentialWorkspaceIds.add(workspace.id);
+    }
     const result: WorkspaceResult = {
       id: workspace.id,
       path: workspace.path,
@@ -531,8 +542,21 @@ export class CodingWorkspaceService {
     if (!workspace) {
       throw new Error(`Workspace ${workspaceId} not found`);
     }
-    await gitPush(workspace.path, workspace.branch, options, (msg) =>
-      this.log(msg),
+    const ambientCredentials = this.ambientCredentialWorkspaceIds.has(
+      workspaceId,
+    )
+      ? this.resolveUserCredentials(workspace.repo, undefined)
+      : undefined;
+    const ambientToken =
+      ambientCredentials?.type === "pat" || ambientCredentials?.type === "oauth"
+        ? ambientCredentials.token
+        : undefined;
+    await gitPush(
+      workspace.path,
+      workspace.branch,
+      options,
+      (msg) => this.log(msg),
+      gitHubTokenEnv(workspace.repo, ambientToken),
     );
     this.log(`Pushed workspace ${workspaceId}`);
   }
@@ -873,6 +897,19 @@ export class CodingWorkspaceService {
       return { type: "pat", token: githubToken, provider: "github" };
     }
     return undefined;
+  }
+
+  private async removeAmbientCredentialHelper(workspacePath: string) {
+    const helperDir = path.join(workspacePath, ".git-workspace");
+    await fs.rm(helperDir, { recursive: true, force: true }).catch(() => {});
+    await new Promise<void>((resolve) => {
+      execFile(
+        "git",
+        ["config", "--unset-all", "credential.helper"],
+        { cwd: workspacePath, timeout: 10_000 },
+        () => resolve(),
+      );
+    });
   }
 
   /** Read a key from the config file's env section (live, no restart needed). */

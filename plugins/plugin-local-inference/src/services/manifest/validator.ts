@@ -290,8 +290,18 @@ function collectContractErrors(
 		}
 		if (!m.evals.mtp) {
 			errors.push(`evals.mtp: required for MTP-enabled tier ${m.tier}`);
-		} else if (strictRelease && !m.evals.mtp.passed) {
-			errors.push("evals.mtp.passed: false");
+		} else {
+			if (
+				m.evals.mtp.passed &&
+				(m.evals.mtp.acceptanceRate == null || m.evals.mtp.speedup == null)
+			) {
+				errors.push(
+					"evals.mtp.passed: cannot be true when acceptanceRate or speedup is null (needs-hardware bench)",
+				);
+			}
+			if (strictRelease && !m.evals.mtp.passed) {
+				errors.push("evals.mtp.passed: false");
+			}
 		}
 	} else if (m.files.mtp.length > 0) {
 		errors.push(`files.mtp: unsupported for non-MTP tier ${m.tier}`);
