@@ -15,12 +15,12 @@ import {
   type UpdateTodoInput,
 } from "../service.js";
 import {
+  TODO_ACTIONS,
   TODO_FAILURE_TEXT_PREFIX,
-  TODO_OPS,
   TODO_STATUSES,
   TODOS_CONTEXTS,
   type Todo,
-  type TodoOp,
+  type TodoActionName,
   type TodoStatus,
 } from "../types.js";
 
@@ -97,10 +97,12 @@ function readStatus(value: unknown): TodoStatus | undefined {
   return undefined;
 }
 
-function readOp(value: unknown): TodoOp | undefined {
+function readAction(value: unknown): TodoActionName | undefined {
   const s = readString(value)?.toLowerCase();
   if (!s) return undefined;
-  if ((TODO_OPS as readonly string[]).includes(s)) return s as TodoOp;
+  if ((TODO_ACTIONS as readonly string[]).includes(s)) {
+    return s as TodoActionName;
+  }
   return undefined;
 }
 
@@ -189,19 +191,19 @@ async function emit(
   }
 }
 
-interface OpHandlerArgs {
+interface ActionHandlerArgs {
   service: TodosService;
   scope: ScopeContext;
   params: TodoActionParameters;
   callback: HandlerCallback | undefined;
 }
 
-async function opWrite({
+async function actionWrite({
   service,
   scope,
   params,
   callback,
-}: OpHandlerArgs): Promise<ActionResult> {
+}: ActionHandlerArgs): Promise<ActionResult> {
   const parsed = parseTodoList(params.todos);
   if (!parsed.ok) {
     return failure("invalid_param", parsed.message);
@@ -243,12 +245,12 @@ async function opWrite({
   };
 }
 
-async function opCreate({
+async function actionCreate({
   service,
   scope,
   params,
   callback,
-}: OpHandlerArgs): Promise<ActionResult> {
+}: ActionHandlerArgs): Promise<ActionResult> {
   const content = readString(params.content);
   if (!content) {
     return failure("missing_param", "content is required for action=create");
@@ -282,12 +284,12 @@ async function opCreate({
   };
 }
 
-async function opUpdate({
+async function actionUpdate({
   service,
   scope,
   params,
   callback,
-}: OpHandlerArgs): Promise<ActionResult> {
+}: ActionHandlerArgs): Promise<ActionResult> {
   const id = readString(params.id);
   if (!id) {
     return failure("missing_param", "id is required for action=update");
@@ -329,8 +331,8 @@ async function opUpdate({
   };
 }
 
-async function opSetStatus(
-  args: OpHandlerArgs,
+async function actionSetStatus(
+  args: ActionHandlerArgs,
   status: TodoStatus,
   verb: string,
 ): Promise<ActionResult> {
@@ -356,12 +358,12 @@ async function opSetStatus(
   };
 }
 
-async function opDelete({
+async function actionDelete({
   service,
   scope,
   params,
   callback,
-}: OpHandlerArgs): Promise<ActionResult> {
+}: ActionHandlerArgs): Promise<ActionResult> {
   const id = readString(params.id);
   if (!id) {
     return failure("missing_param", "id is required for action=delete");
@@ -388,12 +390,12 @@ async function opDelete({
   };
 }
 
-async function opList({
+async function actionList({
   service,
   scope,
   params,
   callback,
-}: OpHandlerArgs): Promise<ActionResult> {
+}: ActionHandlerArgs): Promise<ActionResult> {
   const includeCompleted = readBoolean(params.includeCompleted) ?? false;
   const limit = readNumber(params.limit);
   const filter: Parameters<TodosService["list"]>[0] = {
@@ -417,11 +419,11 @@ async function opList({
   };
 }
 
-async function opClear({
+async function actionClear({
   service,
   scope,
   callback,
-}: OpHandlerArgs): Promise<ActionResult> {
+}: ActionHandlerArgs): Promise<ActionResult> {
   const filter: { entityId: string; agentId: string; roomId?: string } = {
     entityId: scope.entityId,
     agentId: scope.agentId,
@@ -494,7 +496,7 @@ export const todoAction: Action = {
       description:
         "Action: write, create, update, complete, cancel, delete, list, clear.",
       required: true,
-      schema: { type: "string" as const, enum: [...TODO_OPS] },
+      schema: { type: "string" as const, enum: [...TODO_ACTIONS] },
     },
     {
       name: "id",
@@ -568,11 +570,11 @@ export const todoAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const params = (options?.parameters ?? {}) as TodoActionParameters;
-    const op = readOp(params.action ?? params.subaction ?? params.op);
-    if (!op) {
+    const action = readAction(params.action ?? params.subaction ?? params.op);
+    if (!action) {
       return failure(
         "missing_param",
-        `action is required (one of: ${TODO_OPS.join(", ")})`,
+        `action is required (one of: ${TODO_ACTIONS.join(", ")})`,
       );
     }
     const scope = readScope(runtime, message);
@@ -580,24 +582,24 @@ export const todoAction: Action = {
       return failure("missing_param", scope.error);
     }
     const service = getTodosService(runtime);
-    const args: OpHandlerArgs = { service, scope, params, callback };
-    switch (op) {
+    const args: ActionHandlerArgs = { service, scope, params, callback };
+    switch (action) {
       case "write":
-        return opWrite(args);
+        return actionWrite(args);
       case "create":
-        return opCreate(args);
+        return actionCreate(args);
       case "update":
-        return opUpdate(args);
+        return actionUpdate(args);
       case "complete":
-        return opSetStatus(args, "completed", "complete");
+        return actionSetStatus(args, "completed", "complete");
       case "cancel":
-        return opSetStatus(args, "cancelled", "cancel");
+        return actionSetStatus(args, "cancelled", "cancel");
       case "delete":
-        return opDelete(args);
+        return actionDelete(args);
       case "list":
-        return opList(args);
+        return actionList(args);
       case "clear":
-        return opClear(args);
+        return actionClear(args);
     }
   },
   examples: [

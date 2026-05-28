@@ -232,10 +232,10 @@ describe("TODO action", () => {
     delete process.env.ELIZA_PARENT_TRAJECTORY_STEP_ID;
   });
 
-  describe("op=write", () => {
+  describe("action=write", () => {
     it("writes a mixed list and renders markdown", async () => {
       const result = await invoke(runtime, {
-        op: "write",
+        action: "write",
         todos: [
           { content: "first task", status: "pending" },
           { content: "doing now", status: "in_progress" },
@@ -252,12 +252,12 @@ describe("TODO action", () => {
 
     it("returns previous list as oldTodos and reconciles by id", async () => {
       await invoke(runtime, {
-        op: "write",
+        action: "write",
         todos: [{ content: "original", status: "pending" }],
       });
       const originalId = service.rows[0]!.id;
       const result = await invoke(runtime, {
-        op: "write",
+        action: "write",
         todos: [
           { id: originalId, content: "original", status: "completed" },
           { content: "added", status: "pending" },
@@ -273,7 +273,7 @@ describe("TODO action", () => {
 
     it("rejects invalid status", async () => {
       const result = await invoke(runtime, {
-        op: "write",
+        action: "write",
         todos: [{ content: "foo", status: "weird" }],
       });
       expect(result.success).toBe(false);
@@ -283,17 +283,17 @@ describe("TODO action", () => {
     it("captures parentTrajectoryStepId from env on new rows", async () => {
       process.env.ELIZA_PARENT_TRAJECTORY_STEP_ID = "parent-step-99";
       await invoke(runtime, {
-        op: "write",
+        action: "write",
         todos: [{ content: "child task", status: "pending" }],
       });
       expect(service.rows[0]!.parentTrajectoryStepId).toBe("parent-step-99");
     });
   });
 
-  describe("op=create", () => {
+  describe("action=create", () => {
     it("creates a single todo scoped to entityId", async () => {
       const result = await invoke(runtime, {
-        op: "create",
+        action: "create",
         content: "Add tests",
         activeForm: "Adding tests",
       });
@@ -310,21 +310,21 @@ describe("TODO action", () => {
     });
 
     it("requires content", async () => {
-      const result = await invoke(runtime, { op: "create" });
+      const result = await invoke(runtime, { action: "create" });
       expect(result.success).toBe(false);
       expect(result.text).toContain("missing_param");
     });
   });
 
-  describe("op=update", () => {
+  describe("action=update", () => {
     it("updates content/status by id", async () => {
       await invoke(runtime, {
-        op: "create",
+        action: "create",
         content: "draft",
       });
       const id = service.rows[0]!.id;
       const result = await invoke(runtime, {
-        op: "update",
+        action: "update",
         id,
         content: "final",
         status: "in_progress",
@@ -352,7 +352,7 @@ describe("TODO action", () => {
         completedAt: null,
       });
       const result = await invoke(runtime, {
-        op: "update",
+        action: "update",
         id: "foreign",
         content: "hijacked",
       });
@@ -361,53 +361,53 @@ describe("TODO action", () => {
     });
   });
 
-  describe("op=complete / cancel", () => {
+  describe("action=complete / cancel", () => {
     it("complete sets status=completed and completedAt", async () => {
-      await invoke(runtime, { op: "create", content: "ship it" });
+      await invoke(runtime, { action: "create", content: "ship it" });
       const id = service.rows[0]!.id;
-      const result = await invoke(runtime, { op: "complete", id });
+      const result = await invoke(runtime, { action: "complete", id });
       expect(result.success).toBe(true);
       expect(service.rows[0]!.status).toBe("completed");
       expect(service.rows[0]!.completedAt).toBeInstanceOf(Date);
     });
 
     it("cancel sets status=cancelled", async () => {
-      await invoke(runtime, { op: "create", content: "drop" });
+      await invoke(runtime, { action: "create", content: "drop" });
       const id = service.rows[0]!.id;
-      const result = await invoke(runtime, { op: "cancel", id });
+      const result = await invoke(runtime, { action: "cancel", id });
       expect(result.success).toBe(true);
       expect(service.rows[0]!.status).toBe("cancelled");
     });
   });
 
-  describe("op=delete", () => {
+  describe("action=delete", () => {
     it("hard-deletes by id", async () => {
-      await invoke(runtime, { op: "create", content: "gone" });
+      await invoke(runtime, { action: "create", content: "gone" });
       const id = service.rows[0]!.id;
-      const result = await invoke(runtime, { op: "delete", id });
+      const result = await invoke(runtime, { action: "delete", id });
       expect(result.success).toBe(true);
       expect(service.rows.length).toBe(0);
     });
   });
 
-  describe("op=list", () => {
+  describe("action=list", () => {
     it("returns user's pending+in_progress by default", async () => {
-      await invoke(runtime, { op: "create", content: "a" });
-      await invoke(runtime, { op: "create", content: "b" });
+      await invoke(runtime, { action: "create", content: "a" });
+      await invoke(runtime, { action: "create", content: "b" });
       const id = service.rows[1]!.id;
-      await invoke(runtime, { op: "complete", id });
-      const result = await invoke(runtime, { op: "list" });
+      await invoke(runtime, { action: "complete", id });
+      const result = await invoke(runtime, { action: "list" });
       expect(result.success).toBe(true);
       const data = result.data as { todos: unknown[] };
       expect(data.todos.length).toBe(1);
     });
 
     it("includeCompleted=true returns everything", async () => {
-      await invoke(runtime, { op: "create", content: "a" });
+      await invoke(runtime, { action: "create", content: "a" });
       const id = service.rows[0]!.id;
-      await invoke(runtime, { op: "complete", id });
+      await invoke(runtime, { action: "complete", id });
       const result = await invoke(runtime, {
-        op: "list",
+        action: "list",
         includeCompleted: true,
       });
       const data = result.data as { todos: unknown[] };
@@ -415,25 +415,25 @@ describe("TODO action", () => {
     });
   });
 
-  describe("op=clear", () => {
+  describe("action=clear", () => {
     it("removes all todos for the user in this room", async () => {
-      await invoke(runtime, { op: "create", content: "a" });
-      await invoke(runtime, { op: "create", content: "b" });
-      const result = await invoke(runtime, { op: "clear" });
+      await invoke(runtime, { action: "create", content: "a" });
+      await invoke(runtime, { action: "create", content: "b" });
+      const result = await invoke(runtime, { action: "clear" });
       expect(result.success).toBe(true);
       expect(service.rows.length).toBe(0);
     });
   });
 
   describe("validation", () => {
-    it("rejects missing op", async () => {
+    it("rejects missing action", async () => {
       const result = await invoke(runtime, {});
       expect(result.success).toBe(false);
       expect(result.text).toContain("missing_param");
     });
 
-    it("rejects unknown op", async () => {
-      const result = await invoke(runtime, { op: "destroy" });
+    it("rejects unknown action", async () => {
+      const result = await invoke(runtime, { action: "destroy" });
       expect(result.success).toBe(false);
       expect(result.text).toContain("missing_param");
     });
@@ -441,7 +441,7 @@ describe("TODO action", () => {
     it("requires entityId on the message", async () => {
       const result = await invoke(
         runtime,
-        { op: "list" },
+        { action: "list" },
         makeMessage({ entityId: undefined }),
       );
       expect(result.success).toBe(false);
@@ -449,31 +449,31 @@ describe("TODO action", () => {
     });
   });
 
-  describe("canonical action discriminator", () => {
-    it("accepts action:create as the canonical discriminator", async () => {
+  describe("legacy op discriminator", () => {
+    it("accepts legacy op:create for back-compat", async () => {
       const result = await invoke(runtime, {
-        action: "create",
-        content: "Add tests via canonical name",
+        op: "create",
+        content: "Add tests via legacy name",
       });
       expect(result.success).toBe(true);
-      expect(service.rows[0]?.content).toBe("Add tests via canonical name");
+      expect(service.rows[0]?.content).toBe("Add tests via legacy name");
     });
 
-    it("accepts action:write equivalently to op:write", async () => {
-      const result = await invoke(runtime, {
-        action: "write",
-        todos: [{ content: "via action", status: "pending" }],
-      });
-      expect(result.success).toBe(true);
-      expect(service.rows.length).toBe(1);
-    });
-
-    it("still accepts legacy op:list for back-compat", async () => {
+    it("accepts legacy subaction:list for back-compat", async () => {
       await invoke(runtime, { action: "create", content: "alpha" });
-      const result = await invoke(runtime, { op: "list" });
+      const result = await invoke(runtime, { subaction: "list" });
       expect(result.success).toBe(true);
       const data = result.data as { todos: unknown[] };
       expect(data.todos.length).toBe(1);
+    });
+
+    it("keeps op in result data for legacy consumers", async () => {
+      const result = await invoke(runtime, {
+        action: "create",
+        content: "Include legacy result field",
+      });
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({ action: "create", op: "create" });
     });
   });
 });

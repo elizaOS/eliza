@@ -26,7 +26,7 @@ describe("LocationManager", () => {
   it("logs failed IP geolocation providers before returning no position", async () => {
     globalThis.fetch = vi.fn(async () => {
       throw new Error("network down");
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     await expect(
       new LocationManager().getCurrentPosition(),
