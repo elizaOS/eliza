@@ -110,6 +110,32 @@ if (
   }
 }
 
+if (
+  playwrightArgs.includes("--config") &&
+  playwrightArgs.some((value) =>
+    value.includes("playwright.dev-smoke.config.ts"),
+  )
+) {
+  const reservedPorts = new Set();
+
+  if (!env.ELIZA_DEV_SMOKE_API_PORT) {
+    const apiPort = await getDistinctFreePort(reservedPorts);
+    env.ELIZA_DEV_SMOKE_API_PORT = String(apiPort);
+    env.ELIZA_API_PORT = String(apiPort);
+  }
+  reservedPorts.add(Number(env.ELIZA_DEV_SMOKE_API_PORT));
+
+  if (!env.ELIZA_DEV_SMOKE_UI_PORT) {
+    const uiPort = await getDistinctFreePort(reservedPorts);
+    env.ELIZA_DEV_SMOKE_UI_PORT = String(uiPort);
+    env.ELIZA_UI_PORT = String(uiPort);
+  }
+
+  env.ELIZA_DEV_SMOKE_STATE_DIR =
+    env.ELIZA_DEV_SMOKE_STATE_DIR ||
+    fs.mkdtempSync(path.join(os.tmpdir(), "eliza-dev-smoke-"));
+}
+
 const child = spawn(resolvePlaywrightCommand(), ["test", ...playwrightArgs], {
   cwd: appDir,
   env,

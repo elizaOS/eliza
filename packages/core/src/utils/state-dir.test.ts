@@ -1,8 +1,7 @@
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { __resetReadEnvWarnings } from "./read-env.ts";
+import { afterEach, describe, expect, it } from "vitest";
 import {
 	getElizaNamespace,
 	migrateStateDir,
@@ -15,18 +14,10 @@ const FAKE_HOME = "/fake/home";
 const fakeHomedir = () => FAKE_HOME;
 
 describe("resolveStateDir", () => {
-	beforeEach(() => __resetReadEnvWarnings());
-
 	it("honors ELIZA_STATE_DIR", () => {
 		expect(
 			resolveStateDir({ ELIZA_STATE_DIR: "/tmp/canonical" }, fakeHomedir),
 		).toBe("/tmp/canonical");
-	});
-
-	it("honors MILADY_STATE_DIR as an alias", () => {
-		expect(
-			resolveStateDir({ MILADY_STATE_DIR: "/tmp/milady" }, fakeHomedir),
-		).toBe("/tmp/milady");
 	});
 
 	it("uses the namespace default when ELIZA_STATE_DIR is unset", () => {

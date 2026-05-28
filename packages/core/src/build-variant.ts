@@ -26,7 +26,7 @@ let resolvedVariant: BuildVariant | null = null;
 
 function readVariantFromEnv(): BuildVariant {
 	if (typeof process === "undefined") return "direct";
-	const raw = readEnv("ELIZA_BUILD_VARIANT", []) ?? "";
+	const raw = readEnv("ELIZA_BUILD_VARIANT") ?? "";
 	const normalized = raw.trim().toLowerCase();
 	if (VARIANT_VALUES.has(normalized as BuildVariant)) {
 		return normalized as BuildVariant;

@@ -1,97 +1,42 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { logger } from "../logger.ts";
-import { __resetReadEnvWarnings, readEnv, readEnvBool } from "./read-env.ts";
+import { describe, expect, it } from "vitest";
+import { readEnv, readEnvBool } from "./read-env.ts";
 
 describe("readEnv", () => {
-	beforeEach(() => __resetReadEnvWarnings());
-	afterEach(() => vi.restoreAllMocks());
-
-	it("prefers the canonical key over legacy aliases", () => {
-		const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-		expect(
-			readEnv("ELIZA_FOO", ["LEGACY_FOO"], {
-				env: { ELIZA_FOO: "canon", LEGACY_FOO: "legacy" },
-			}),
-		).toBe("canon");
-		expect(warn).not.toHaveBeenCalled();
-	});
-
-	it("falls back to a legacy alias and warns exactly once per alias", () => {
-		const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-		const env = { LEGACY_FOO: "legacy" };
-		expect(readEnv("ELIZA_FOO", ["LEGACY_FOO"], { env })).toBe("legacy");
-		expect(readEnv("ELIZA_FOO", ["LEGACY_FOO"], { env })).toBe("legacy");
-		expect(warn).toHaveBeenCalledTimes(1);
-		expect(String(warn.mock.calls[0]?.[0])).toContain("LEGACY_FOO");
-		expect(String(warn.mock.calls[0]?.[0])).toContain("ELIZA_FOO");
-	});
-
-	it("honors multiple aliases newest-first", () => {
-		vi.spyOn(logger, "warn").mockImplementation(() => {});
-		expect(
-			readEnv("ELIZA_X", ["LEGACY_X", "OLD_X"], { env: { OLD_X: "oldest" } }),
-		).toBe("oldest");
+	it("reads the canonical key", () => {
+		expect(readEnv("ELIZA_FOO", { env: { ELIZA_FOO: "canon" } })).toBe(
+			"canon",
+		);
 	});
 
 	it("returns the default when nothing is set", () => {
-		expect(
-			readEnv("ELIZA_NOPE", ["LEGACY_NOPE"], { env: {}, defaultValue: "d" }),
-		).toBe("d");
-		expect(readEnv("ELIZA_NOPE", ["LEGACY_NOPE"], { env: {} })).toBeUndefined();
+		expect(readEnv("ELIZA_NOPE", { env: {}, defaultValue: "d" })).toBe("d");
+		expect(readEnv("ELIZA_NOPE", { env: {} })).toBeUndefined();
 	});
 
 	it("treats whitespace-only values as unset", () => {
-		vi.spyOn(logger, "warn").mockImplementation(() => {});
 		expect(
-			readEnv("ELIZA_FOO", ["LEGACY_FOO"], {
-				env: { ELIZA_FOO: "   ", LEGACY_FOO: "legacy" },
+			readEnv("ELIZA_FOO", {
+				env: { ELIZA_FOO: "   " },
+				defaultValue: "default",
 			}),
-		).toBe("legacy");
-	});
-
-	it("silent option suppresses the deprecation warning", () => {
-		const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-		expect(
-			readEnv("ELIZA_FOO", ["LEGACY_FOO"], {
-				env: { LEGACY_FOO: "legacy" },
-				silent: true,
-			}),
-		).toBe("legacy");
-		expect(warn).not.toHaveBeenCalled();
+		).toBe("default");
 	});
 });
 
 describe("readEnvBool", () => {
-	beforeEach(() => __resetReadEnvWarnings());
-	afterEach(() => vi.restoreAllMocks());
-
 	it("parses common truthy/falsy values", () => {
 		for (const v of ["1", "true", "TRUE", "yes", "on"]) {
-			expect(readEnvBool("ELIZA_FLAG", [], { env: { ELIZA_FLAG: v } })).toBe(
-				true,
-			);
+			expect(readEnvBool("ELIZA_FLAG", { env: { ELIZA_FLAG: v } })).toBe(true);
 		}
 		for (const v of ["0", "false", "no", "off"]) {
-			expect(readEnvBool("ELIZA_FLAG", [], { env: { ELIZA_FLAG: v } })).toBe(
-				false,
-			);
+			expect(readEnvBool("ELIZA_FLAG", { env: { ELIZA_FLAG: v } })).toBe(false);
 		}
 	});
 
 	it("returns the default when unset", () => {
-		expect(readEnvBool("ELIZA_FLAG", [], { env: {} })).toBe(false);
-		expect(readEnvBool("ELIZA_FLAG", [], { env: {}, defaultValue: true })).toBe(
+		expect(readEnvBool("ELIZA_FLAG", { env: {} })).toBe(false);
+		expect(readEnvBool("ELIZA_FLAG", { env: {}, defaultValue: true })).toBe(
 			true,
 		);
-	});
-
-	it("honors legacy aliases with a deprecation warning", () => {
-		const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
-		expect(
-			readEnvBool("ELIZA_FLAG", ["LEGACY_FLAG"], {
-				env: { LEGACY_FLAG: "1" },
-			}),
-		).toBe(true);
-		expect(warn).toHaveBeenCalledTimes(1);
 	});
 });

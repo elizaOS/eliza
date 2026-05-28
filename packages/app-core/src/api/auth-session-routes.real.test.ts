@@ -531,6 +531,22 @@ describe("P1 session routes (real pglite)", () => {
     );
     expect(requiredLocalAuthOk).toBe(false);
     expect(requiredLocalAuth.status()).toBe(401);
+
+    reset();
+    const requiredLocalAuthWithToken = fakeRes();
+    const requiredLocalAuthWithTokenOk = await ensureCompatApiAuthorizedAsync(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/secure",
+        headers: {
+          host: "localhost:31337",
+          authorization: "Bearer configured-token-value",
+        },
+      }),
+      requiredLocalAuthWithToken.res,
+      { store: harness.store },
+    );
+    expect(requiredLocalAuthWithTokenOk).toBe(true);
   });
 
   it("route auth rejects localhost trust when proxy headers report remote clients", async () => {

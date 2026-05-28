@@ -136,9 +136,7 @@ export function resolveStateDir(
 		globalThis as { process?: { env?: Record<string, string | undefined> } }
 	).process?.env ?? {},
 ): string {
-	const explicit =
-		readBrowserEnv(env, "ELIZA_STATE_DIR") ??
-		readBrowserEnv(env, "MILADY_STATE_DIR");
+	const explicit = readBrowserEnv(env, "ELIZA_STATE_DIR");
 	if (explicit) return explicit;
 	const namespace = getElizaNamespace(env);
 	const xdgStateHome = readBrowserEnv(env, "XDG_STATE_HOME");
