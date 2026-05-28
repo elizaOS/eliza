@@ -48,9 +48,21 @@ function assertString(value, name) {
  * @param {Record<string, unknown>} value
  * @param {string} name
  */
-function assertDescriptionCompressed(value, name) {
+function assertCompressedDescriptionAliases(value, name) {
   if (value.descriptionCompressed !== undefined) {
     assertString(value.descriptionCompressed, `${name}.descriptionCompressed`);
+  }
+  if (value.compressedDescription !== undefined) {
+    assertString(value.compressedDescription, `${name}.compressedDescription`);
+  }
+  if (
+    typeof value.descriptionCompressed === "string" &&
+    typeof value.compressedDescription === "string" &&
+    value.descriptionCompressed !== value.compressedDescription
+  ) {
+    throw new Error(
+      `${name}.descriptionCompressed and ${name}.compressedDescription must match when both are provided`,
+    );
   }
 }
 
@@ -157,7 +169,7 @@ function assertActionParameter(param, name) {
   assertRecord(param, name);
   assertString(param.name, `${name}.name`);
   assertString(param.description, `${name}.description`);
-  assertDescriptionCompressed(param, name);
+  assertCompressedDescriptionAliases(param, name);
   if (param.required !== undefined) {
     assertBoolean(param.required, `${name}.required`);
   }
@@ -176,7 +188,7 @@ function assertActionDoc(action, name) {
   assertRecord(action, name);
   assertString(action.name, `${name}.name`);
   assertString(action.description, `${name}.description`);
-  assertDescriptionCompressed(action, name);
+  assertCompressedDescriptionAliases(action, name);
   if (action.similes !== undefined) {
     assertArray(action.similes, `${name}.similes`);
     for (let i = 0; i < action.similes.length; i++) {
@@ -206,7 +218,7 @@ function assertProviderDoc(provider, name) {
   assertRecord(provider, name);
   assertString(provider.name, `${name}.name`);
   assertString(provider.description, `${name}.description`);
-  assertDescriptionCompressed(provider, name);
+  assertCompressedDescriptionAliases(provider, name);
   if (
     provider.position !== undefined &&
     typeof provider.position !== "number"
@@ -360,10 +372,14 @@ function loadSpecs(dir, corePath, kind) {
  * @param {Record<string, unknown>} doc
  * @returns {string | undefined}
  */
-function getCompressedDescription(doc) {
+function getCompressedAlias(doc) {
   const preferred = doc.descriptionCompressed;
   if (typeof preferred === "string" && preferred.trim()) {
     return preferred;
+  }
+  const alias = doc.compressedDescription;
+  if (typeof alias === "string" && alias.trim()) {
+    return alias;
   }
   return undefined;
 }
@@ -376,7 +392,7 @@ function normalizeCompressedDescription(doc) {
     return;
   }
   doc.descriptionCompressed =
-    getCompressedDescription(doc) ?? compressPromptDescription(doc.description);
+    getCompressedAlias(doc) ?? compressPromptDescription(doc.description);
 }
 
 /**
@@ -484,6 +500,7 @@ export type ActionDocParameter = {
   name: string;
   description: string;
   descriptionCompressed?: string;
+  compressedDescription?: string;
   required?: boolean;
   schema: ActionDocParameterSchema;
   examples?: readonly ActionDocParameterExampleValue[];
@@ -507,6 +524,7 @@ export type ActionDoc = {
   name: string;
   description: string;
   descriptionCompressed?: string;
+  compressedDescription?: string;
   similes?: readonly string[];
   parameters?: readonly ActionDocParameter[];
   examples?: readonly (readonly ActionDocExampleMessage[])[];
@@ -517,6 +535,7 @@ export type ProviderDoc = {
   name: string;
   description: string;
   descriptionCompressed?: string;
+  compressedDescription?: string;
   position?: number;
   dynamic?: boolean;
 };

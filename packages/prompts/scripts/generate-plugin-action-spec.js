@@ -1239,6 +1239,9 @@ function sanitizeParameters(value) {
     if (typeof raw.descriptionCompressed === "string") {
       param.descriptionCompressed = raw.descriptionCompressed;
     }
+    if (typeof raw.compressedDescription === "string") {
+      param.compressedDescription = raw.compressedDescription;
+    }
     params.push(param);
   }
   return params;
