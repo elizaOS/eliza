@@ -7598,5 +7598,4 @@ export declare class ElizaCloudPublicRoutesClient {
     options?: PublicRouteCallOptions<"PUT /api/v1/user/avatar">,
   ): Promise<Response>;
 }
-export {};
 //# sourceMappingURL=public-routes.d.ts.map
