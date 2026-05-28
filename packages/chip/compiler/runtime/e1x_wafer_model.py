@@ -443,6 +443,56 @@ def model_load_plan(config: E1XConfig, model: QuantizedModelSpec, blocked_cores:
     }
 
 
+def _packed_w4_sample_word(seed: str, word_index: int) -> int:
+    digest = blake2s(f"{seed}|w4|{word_index}".encode(), digest_size=4).digest()
+    value = int.from_bytes(digest, "big")
+    word = 0
+    for lane in range(8):
+        word |= ((value >> (lane * 4)) & 0xF) << (lane * 4)
+    return word
+
+
+def _sram_loader_checksum(words: list[dict[str, int]]) -> int:
+    checksum = 0
+    for entry in words:
+        checksum = (((checksum << 1) | (checksum >> 31)) & 0xFFFF_FFFF) ^ int(entry["word"]) ^ int(entry["word_addr"])
+    return checksum & 0xFFFF_FFFF
+
+
+def model_shard_sample_artifact(config: E1XConfig, model: QuantizedModelSpec, load: dict[str, int | float | bool | str]) -> dict:
+    word_bytes = config.fabric_payload_bits // 8
+    capacity_bytes = config.local_sram_kib_per_core * 1024
+    word_count = capacity_bytes // word_bytes
+    shard_bytes = int(load["weight_shard_bytes_per_core"])
+    sample_word_count = min(64, ceil(shard_bytes / word_bytes))
+    words = [
+        {"word_addr": idx, "word": _packed_w4_sample_word(model.name, idx)}
+        for idx in range(sample_word_count)
+    ]
+    words.append({"word_addr": word_count - 1, "word": _packed_w4_sample_word(model.name, word_count - 1)})
+    artifact = {
+        "schema": "eliza.e1x.quantized_model_shard_sample.v1",
+        "chip": config.name,
+        "model": model.name,
+        "bits_per_weight": model.bits_per_weight,
+        "fabric_payload_bits": config.fabric_payload_bits,
+        "word_bytes": word_bytes,
+        "local_sram_kib_per_core": config.local_sram_kib_per_core,
+        "capacity_bytes": capacity_bytes,
+        "capacity_words": word_count,
+        "reserved_runtime_bytes_per_core": 4 * 1024,
+        "per_core_model_capacity_bytes": int(load["per_core_model_capacity_bytes"]),
+        "weight_shard_bytes_per_core": shard_bytes,
+        "sampled_word_count": len(words),
+        "expected_loaded_bytes": len(words) * word_bytes,
+        "expected_checksum": _sram_loader_checksum(words),
+        "placement_successful": bool(load["placement_successful"]),
+        "words": words,
+    }
+    artifact["artifact_sha256"] = artifact_sha256(artifact)
+    return artifact
+
+
 def _trace_word(parts: tuple[object, ...]) -> int:
     digest = blake2s("|".join(str(part) for part in parts).encode(), digest_size=8).digest()
     return int.from_bytes(digest, "big") & ((1 << 63) - 1)
@@ -536,6 +586,43 @@ def model_execution_plan(
         "golden_trace_match": True,
         "layer_trace_sample": layer_trace,
     }
+
+
+def model_execution_trace_artifact(
+    config: E1XConfig,
+    model: QuantizedModelSpec,
+    run: QuantizedRunSpec,
+    scenario: DefectScenario,
+    execution: dict[str, int | float | bool | str | list[dict[str, int | str]]],
+    repair_manifest: dict,
+    model_shard_sample: dict,
+) -> dict:
+    artifact = {
+        "schema": "eliza.e1x.quantized_model_execution_trace.v1",
+        "chip": config.name,
+        "model": model.name,
+        "run": run.name,
+        "scenario": scenario.name,
+        "source_repair_manifest_sha256": repair_manifest["artifact_sha256"],
+        "source_model_shard_sample_sha256": model_shard_sample["artifact_sha256"],
+        "execution_successful": bool(execution["execution_successful"]),
+        "golden_trace_match": bool(execution["golden_trace_match"]),
+        "prefill_tokens": int(execution["prefill_tokens"]),
+        "decode_tokens": int(execution["decode_tokens"]),
+        "transformer_layers": int(execution["transformer_layers"]),
+        "load_cycles": int(execution["load_cycles"]),
+        "prefill_cycles": int(execution["prefill_cycles"]),
+        "decode_cycles": int(execution["decode_cycles"]),
+        "total_cycles": int(execution["total_cycles"]),
+        "prefill_ms": float(execution["prefill_ms"]),
+        "decode_tokens_per_second": float(execution["decode_tokens_per_second"]),
+        "activation_wavelets": int(execution["activation_wavelets"]),
+        "average_execution_hops": float(execution["average_execution_hops"]),
+        "output_checksum": int(execution["output_checksum"]),
+        "layer_trace_sample": execution["layer_trace_sample"],
+    }
+    artifact["artifact_sha256"] = artifact_sha256(artifact)
+    return artifact
 
 
 def defect_scenario_report(config: E1XConfig, scenario: DefectScenario, model: QuantizedModelSpec) -> dict:
@@ -685,6 +772,7 @@ def build_scaled_8gb_report(config: E1XConfig | None = None, model: QuantizedMod
     high_defect_map = defect_map_artifact(cfg, HIGH_DEFECT_SCENARIO)
     high_repair_manifest = repair_manifest_artifact(cfg, HIGH_DEFECT_SCENARIO, high_defect_map)
     high_repair_rom = repair_rom_artifact(high_repair_manifest)
+    high_model_shard_sample = model_shard_sample_artifact(cfg, model, high["model_load"])
     normal_execution = model_execution_plan(
         cfg,
         model,
@@ -700,6 +788,15 @@ def build_scaled_8gb_report(config: E1XConfig | None = None, model: QuantizedMod
         HIGH_DEFECT_SCENARIO,
         high["model_load"],
         float(high["average_extra_hops_per_neighbor"]),
+    )
+    high_execution_trace = model_execution_trace_artifact(
+        cfg,
+        model,
+        SCALED_8GB_RUN,
+        HIGH_DEFECT_SCENARIO,
+        high_execution,
+        high_repair_manifest,
+        high_model_shard_sample,
     )
     e1 = e1_baseline_summary()
     target_cycles = int(high_execution["total_cycles"])
@@ -727,6 +824,8 @@ def build_scaled_8gb_report(config: E1XConfig | None = None, model: QuantizedMod
         ),
         "high_failure_repair_rom_words": int(high_repair_rom["total_word_count"]),
         "high_failure_repair_rom_sha256": high_repair_rom["artifact_sha256"],
+        "high_failure_model_shard_sample_sha256": high_model_shard_sample["artifact_sha256"],
+        "high_failure_execution_trace_sha256": high_execution_trace["artifact_sha256"],
         "architecture": {
             "name": cfg.name,
             "logical_rows": cfg.logical_rows,
@@ -780,6 +879,20 @@ def build_scaled_8gb_report(config: E1XConfig | None = None, model: QuantizedMod
                 "word_bits": high_repair_rom["word_bits"],
                 "total_word_count": high_repair_rom["total_word_count"],
                 "rom_words_sha256": high_repair_rom["rom_words_sha256"],
+            },
+            "high_failure_model_shard_sample": {
+                "schema": high_model_shard_sample["schema"],
+                "artifact_sha256": high_model_shard_sample["artifact_sha256"],
+                "sampled_word_count": high_model_shard_sample["sampled_word_count"],
+                "expected_loaded_bytes": high_model_shard_sample["expected_loaded_bytes"],
+                "expected_checksum": high_model_shard_sample["expected_checksum"],
+            },
+            "high_failure_execution_trace": {
+                "schema": high_execution_trace["schema"],
+                "artifact_sha256": high_execution_trace["artifact_sha256"],
+                "output_checksum": high_execution_trace["output_checksum"],
+                "total_cycles": high_execution_trace["total_cycles"],
+                "decode_tokens_per_second": high_execution_trace["decode_tokens_per_second"],
             },
         },
         "comparison": {

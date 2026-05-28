@@ -23,10 +23,14 @@
 module e1_bootrom #(
     parameter ROM_HEX = "build/boot-rom/e1_secure_boot_rom.hex"
 ) (
-    input  logic [5:0]  addr,
+    input  logic [13:0] addr,
     output logic [31:0] rdata
 );
-    localparam int unsigned WORDS = 64;
+    // The debug bridge exposes the low ROM words through the v0 MMIO map, but
+    // the generated secure mask ROM may be up to 64 KiB.  Keep the simulated
+    // storage sized to the secure ROM aperture so $readmemh never truncates or
+    // fails on a valid generated image.
+    localparam int unsigned WORDS = 16 * 1024;
 
     logic [31:0] mem [WORDS];
 

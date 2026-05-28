@@ -13,6 +13,8 @@ DRAM_LAST_WORD = 0x8000_0FFC
 DRAM_FIRST_OUT_OF_MODEL = 0x8000_1000
 INTC_BASE = 0x0C00_0000
 DMA_BASE = 0x1001_0000
+NPU_BASE = 0x1002_0000
+DISPLAY_BASE = 0x1003_0000
 DBG_DECODE_ERR_ADDR = 0x1FFF_FFF0
 UNMAPPED_READ_VALUE = 0xDEAD_BEEF
 MAX_HANDSHAKE_CYCLES = 32
@@ -478,6 +480,15 @@ async def wait_dma_done(dut, timeout_cycles=100):
     raise AssertionError("DMA did not complete")
 
 
+async def wait_npu_done(dut, timeout_cycles=20):
+    for _ in range(timeout_cycles):
+        data, resp = await axil_read32(dut, NPU_BASE + 0x0C)
+        assert resp == RESP_OKAY
+        if data & 0x2:
+            return data
+    raise AssertionError("NPU did not complete")
+
+
 @cocotb.test()
 async def dma_bus_master_copies_dram_and_reports_counters(dut):
     await start_contract_test(dut)
@@ -541,3 +552,59 @@ async def dma_non_dram_targets_fault_without_mmio_side_effects(dut):
     mask, resp = await axil_read32(dut, 0x0C00_0008)
     assert resp == 0
     assert mask == 0
+
+    assert await axil_write32(dut, NPU_BASE + 0x00, 0xAA55_0001) == RESP_OKAY
+    assert await axil_write32(dut, DISPLAY_BASE + 0x00, DRAM_BASE + 0x180) == RESP_OKAY
+    assert await axil_write32(dut, DRAM_BASE + 0xA0, 0xFFFF_0000) == RESP_OKAY
+
+    assert await axil_write32(dut, DMA_BASE + 0x0C, 2) == RESP_OKAY
+    assert await axil_write32(dut, DMA_BASE + 0x00, DRAM_BASE + 0xA0) == RESP_OKAY
+    assert await axil_write32(dut, DMA_BASE + 0x04, NPU_BASE + 0x00) == RESP_OKAY
+    assert await axil_write32(dut, DMA_BASE + 0x08, 4) == RESP_OKAY
+    assert await axil_write32(dut, DMA_BASE + 0x0C, 1) == RESP_OKAY
+    _, status = await wait_dma_done(dut)
+    assert status & 0x6 == 0x6
+    data, resp = await axil_read32(dut, NPU_BASE + 0x00)
+    assert resp == RESP_OKAY
+    assert data == 0xAA55_0001
+
+    assert await axil_write32(dut, DMA_BASE + 0x0C, 2) == RESP_OKAY
+    assert await axil_write32(dut, DMA_BASE + 0x00, DRAM_BASE + 0xA0) == RESP_OKAY
+    assert await axil_write32(dut, DMA_BASE + 0x04, DISPLAY_BASE + 0x00) == RESP_OKAY
+    assert await axil_write32(dut, DMA_BASE + 0x08, 4) == RESP_OKAY
+    assert await axil_write32(dut, DMA_BASE + 0x0C, 1) == RESP_OKAY
+    _, status = await wait_dma_done(dut)
+    assert status & 0x6 == 0x6
+    data, resp = await axil_read32(dut, DISPLAY_BASE + 0x00)
+    assert resp == RESP_OKAY
+    assert data == DRAM_BASE + 0x180
+    write_coverage_artifact({"dma_npu_display_mmio_no_side_effect"})
+
+
+@cocotb.test()
+async def linux_contract_exposes_npu_and_display_mmio_targets(dut):
+    await start_contract_test(dut)
+
+    assert await axil_write32(dut, NPU_BASE + 0x00, 0x11) == RESP_OKAY
+    assert await axil_write32(dut, NPU_BASE + 0x04, 0x22) == RESP_OKAY
+    assert await axil_write32(dut, NPU_BASE + 0x10, 0x0) == RESP_OKAY
+    assert await axil_write32(dut, NPU_BASE + 0x0C, 0x1) == RESP_OKAY
+    status = await wait_npu_done(dut)
+    assert status & 0x4 == 0
+    data, resp = await axil_read32(dut, NPU_BASE + 0x08)
+    assert resp == RESP_OKAY
+    assert data == 0x33
+
+    assert await axil_write32(dut, DISPLAY_BASE + 0x00, DRAM_BASE + 0x100) == RESP_OKAY
+    assert await axil_write32(dut, DISPLAY_BASE + 0x04, (2 << 16) | 3) == RESP_OKAY
+    fb_base, resp = await axil_read32(dut, DISPLAY_BASE + 0x00)
+    assert resp == RESP_OKAY
+    assert fb_base == DRAM_BASE + 0x100
+    geometry, resp = await axil_read32(dut, DISPLAY_BASE + 0x04)
+    assert resp == RESP_OKAY
+    assert geometry == ((2 << 16) | 3)
+
+    data, resp = await axil_read32(dut, DISPLAY_BASE + 0x1000)
+    assert resp == RESP_SLVERR
+    assert data == UNMAPPED_READ_VALUE
+    write_coverage_artifact({"linux_contract_npu_mmio", "linux_contract_display_mmio"})

@@ -418,6 +418,21 @@ def build_report(
             "development_route_count": objective_local_progress["development_route_count"],
             "development_segment_count": objective_local_progress["development_segment_count"],
             "development_via_count": objective_local_progress["development_via_count"],
+            "development_controlled_impedance_route_count": objective_local_progress[
+                "development_controlled_impedance_route_count"
+            ],
+            "development_route_classification_gap_count": objective_local_progress[
+                "development_route_classification_gap_count"
+            ],
+            "development_route_segment_trace_bound_count": objective_local_progress[
+                "development_route_segment_trace_bound_count"
+            ],
+            "development_missing_net_count": objective_local_progress[
+                "development_missing_net_count"
+            ],
+            "development_route_traceability_complete": objective_local_progress[
+                "development_route_traceability_complete"
+            ],
             "development_required_shared_net_category_count": objective_local_progress[
                 "development_required_shared_net_category_count"
             ],
@@ -536,6 +551,20 @@ def build_report(
             "cad_connection_represented_net_count_total": objective_local_progress[
                 "cad_connection_represented_net_count_total"
             ],
+            "cad_connection_represented_route_count_total": objective_local_progress[
+                "cad_connection_represented_route_count_total"
+            ],
+            "cad_connection_represented_route_record_count_total": objective_local_progress[
+                "cad_connection_represented_route_record_count_total"
+            ],
+            "cad_connection_represented_route_classification_gap_count": objective_local_progress[
+                "cad_connection_represented_route_classification_gap_count"
+            ],
+            "cad_connection_all_represented_routes_have_layer_source_and_class": (
+                objective_local_progress[
+                    "cad_connection_all_represented_routes_have_layer_source_and_class"
+                ]
+            ),
             "cad_connection_record_count": objective_local_progress["cad_connection_record_count"],
             "cad_connection_represented_net_list_total": objective_local_progress[
                 "cad_connection_represented_net_list_total"

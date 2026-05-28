@@ -1,6 +1,6 @@
 # Interconnect contract
 
-`rtl/interconnect/e1_axi_lite_interconnect.sv` is the first synthesizable interconnect scaffold for the Linux-capable SoC contract. It connects one CPU-side AXI-Lite manager port to DRAM, interrupt-controller, and DMA-control target ports. `rtl/interconnect/e1_linux_soc_contract.sv` also arbitrates the prototype DMA AXI-Lite master onto the same DRAM model used by CPU-side traffic.
+`rtl/interconnect/e1_axi_lite_interconnect.sv` is the first synthesizable interconnect scaffold for the Linux-capable SoC contract. It connects one CPU-side AXI-Lite manager port to DRAM, interrupt-controller, DMA-control, NPU, and display target ports. `rtl/interconnect/e1_linux_soc_contract.sv` also arbitrates the prototype DMA AXI-Lite master onto the same DRAM model used by CPU-side traffic.
 
 ## Decode map
 
@@ -8,6 +8,8 @@
 | ---: | --- | --- |
 | `0x0C00_0000` - `0x0C00_0FFF` | Interrupt controller | `e1_interrupt_controller` |
 | `0x1001_0000` - `0x1001_0FFF` | DMA control | `e1_dma` MMIO target wrapper |
+| `0x1002_0000` - `0x1002_0FFF` | NPU control | `e1_npu` MMIO target wrapper |
+| `0x1003_0000` - `0x1003_0FFF` | Display control | `e1_display` MMIO target wrapper |
 | `0x8000_0000` - `0x8FFF_FFFF` | DRAM aperture | `e1_axi_lite_dram` model |
 | Other | Decode error | AXI-Lite `DECERR`, read data `0xDEAD_BEEF` |
 
@@ -17,7 +19,7 @@ The existing e1-chip top remains a separate single-cycle MMIO validation design 
 
 The scaffold supports one outstanding read and one outstanding write transaction. The write address and write data channels may arrive independently, but the interconnect issues a target-side write only after both channels have been accepted. This intentionally avoids a full bus fabric while preserving the externally visible channel timing, response codes, and address decode rules needed by firmware and OS planning.
 
-The DMA/CPU merge point in `rtl/interconnect/e1_linux_soc_contract.sv` is a fixed CPU-priority mux into the SRAM-backed DRAM model. It is not a cache-coherent fabric, not a QoS arbiter, and not evidence for bandwidth fairness, latency bounds, burst behavior, ordering between independent masters, or starvation freedom. Any future production fabric must add explicit arbitration policy, outstanding transaction limits, response-ordering rules, performance counters, and contended latency/bandwidth evidence before CPU, DMA, display, NPU, camera/ISP, or GPU/2D traffic claims can be made.
+The DMA/CPU merge point in `rtl/interconnect/e1_linux_soc_contract.sv` is a fixed CPU-priority mux into the SRAM-backed DRAM model. NPU and display are exposed here as software-visible MMIO targets only; the NPU descriptor master fails closed in this scaffold, and display framebuffer reads are not routed through a production memory fabric. It is not a cache-coherent fabric, not a QoS arbiter, and not evidence for bandwidth fairness, latency bounds, burst behavior, ordering between independent masters, or starvation freedom. Any future production fabric must add explicit arbitration policy, outstanding transaction limits, response-ordering rules, performance counters, and contended latency/bandwidth evidence before CPU, DMA, display, NPU, camera/ISP, or GPU/2D traffic claims can be made.
 
 It is also not an AXI4 or TileLink implementation. The current path has no
 burst length, transaction IDs/source IDs, TileLink channel semantics, atomic

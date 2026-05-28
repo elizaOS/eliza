@@ -1115,6 +1115,26 @@ def utc_now() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def provenance_safe_text(value: str) -> str:
+    safe = value.replace(str(ROOT), "<repo>")
+    home = os.environ.get("HOME")
+    if home:
+        safe = safe.replace(home, "<home>")
+    safe = safe.replace("/var/tmp/", "<var-tmp>/")
+    safe = safe.replace("/tmp/", "<tmp>/")
+    return safe
+
+
+def provenance_safe_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: provenance_safe_value(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe_value(child) for child in value]
+    if isinstance(value, str):
+        return provenance_safe_text(value)
+    return value
+
+
 def shell_arg(path: str | Path) -> str:
     return shlex.quote(str(path))
 
@@ -1460,18 +1480,19 @@ def external_preflight_report(args: argparse.Namespace) -> dict[str, Any]:
 
 def run_external_preflight(args: argparse.Namespace) -> int:
     report = external_preflight_report(args)
+    output_report = provenance_safe_value(report)
     if args.write_report:
         output = Path(args.output).expanduser() if args.output else LOCAL_EXTERNAL_PREFLIGHT_REPORT
         if not output.is_absolute():
             output = ROOT / output
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+        output.write_text(json.dumps(output_report, indent=2, sort_keys=True) + "\n")
         print(f"wrote {rel(output)}")
     if args.json:
-        print(json.dumps(report, indent=2, sort_keys=True))
+        print(json.dumps(output_report, indent=2, sort_keys=True))
     else:
         print(f"external BSP preflight: {report['status']}")
-        for target in report["targets"]:
+        for target in output_report["targets"]:
             print(f"{target['target']}: {target['status']}")
             for blocker in target.get("blockers", []):
                 print(f"  [BLOCKED] {blocker}")

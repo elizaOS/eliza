@@ -91,6 +91,7 @@ ANDROID_TARGET_PREFIXES = (
     "/apex/",
     "/data/",
 )
+HOST_LOCAL_PATH = re.compile(r"/(?:home|Users|tmp|var/folders)/[^\s\"']+")
 LAUNCHER_AGENT_MARKERS = {
     "package_install": ("pm path",),
     "role_holder": ("cmd role holders", "role holders"),
@@ -483,6 +484,33 @@ def repo_rel(path: Path) -> str:
         return path.relative_to(REPO_ROOT).as_posix()
     except ValueError:
         return str(path)
+
+
+def generated_utc() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def provenance_safe_text(value: str) -> str:
+    sanitized = value
+    replacements = (
+        (str(ROOT), repo_rel(ROOT)),
+        (str(WORKSPACE), repo_rel(WORKSPACE)),
+        (str(REPO_ROOT), ""),
+        (str(AOSP_WORKSPACE), "$AOSP_WORKSPACE"),
+    )
+    for source, replacement in replacements:
+        sanitized = sanitized.replace(source, replacement.rstrip("/"))
+    return HOST_LOCAL_PATH.sub(lambda match: Path(match.group(0)).name, sanitized)
+
+
+def provenance_safe_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: provenance_safe_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe_value(item) for item in value]
+    if isinstance(value, str):
+        return provenance_safe_text(value)
+    return value
 
 
 def add_if(
@@ -2206,7 +2234,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
 
 def payload(findings: list[Finding], evidence: dict[str, object]) -> dict[str, Any]:
     blockers = [finding for finding in findings if finding.severity == "blocker"]
-    blocker_rows = [asdict(finding) for finding in blockers]
+    blocker_rows = [provenance_safe_value(asdict(finding)) for finding in blockers]
     dependency_counts: dict[str, int] = {}
     for finding in blockers:
         dependency_counts[finding.blocker_dependency] = (
@@ -2214,13 +2242,14 @@ def payload(findings: list[Finding], evidence: dict[str, object]) -> dict[str, A
         )
     return {
         "schema": SCHEMA,
+        "generated_utc": generated_utc(),
         "status": "pass" if not blockers else "blocked",
         "claim_boundary": CLAIM_BOUNDARY,
         "summary": {"blockers": len(blockers), "findings": len(findings)},
         "blockers": blocker_rows,
         "blocker_dependency_counts": dependency_counts,
-        "findings": [asdict(finding) for finding in findings],
-        "evidence": evidence,
+        "findings": [provenance_safe_value(asdict(finding)) for finding in findings],
+        "evidence": provenance_safe_value(evidence),
     }
 
 

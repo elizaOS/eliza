@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import datetime as dt
 import hashlib
 import json
 import os
@@ -35,6 +36,7 @@ PAYLOAD_ENV = "CHIPYARD_LINUX_BINARY"
 LARGE_LOG_SAMPLE_HEAD_BYTES = 4 * 1024 * 1024
 LARGE_LOG_SAMPLE_TAIL_BYTES = 64 * 1024 * 1024
 LARGE_LOG_FULL_READ_LIMIT_BYTES = LARGE_LOG_SAMPLE_HEAD_BYTES + LARGE_LOG_SAMPLE_TAIL_BYTES
+HOST_LOCAL_PATH = re.compile(r"/(?:home|Users|tmp|var/folders)/[^\s\"']+")
 
 REQUIRED_GENERATED_ARTIFACTS = (
     OUT_DIR / "eliza_rocket_ap.v",
@@ -268,6 +270,32 @@ def rel(path: Path) -> str:
         return str(path.relative_to(ROOT))
     except ValueError:
         return str(path)
+
+
+def generated_utc() -> str:
+    return dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def provenance_safe_text(value: str) -> str:
+    sanitized = value
+    replacements = (
+        (str(ROOT), "packages/chip"),
+        (str(ROOT.parent), "packages"),
+        (str(ROOT.parent.parent), "."),
+    )
+    for source, replacement in replacements:
+        sanitized = sanitized.replace(source, replacement.rstrip("/"))
+    return HOST_LOCAL_PATH.sub(lambda match: Path(match.group(0)).name, sanitized)
+
+
+def provenance_safe_value(value):
+    if isinstance(value, dict):
+        return {key: provenance_safe_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe_value(item) for item in value]
+    if isinstance(value, str):
+        return provenance_safe_text(value)
+    return value
 
 
 def newest_simulator_mtime(metadata: dict[str, object]) -> float:
@@ -2650,6 +2678,7 @@ def write_report(status: str, blockers: list[str], payload: str | None) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     report = {
         "schema": "eliza.chipyard_verilator_linux_smoke.v1",
+        "generated_utc": generated_utc(),
         "status": status,
         "simulator_path": "external/chipyard/sims/verilator",
         "config": CONFIG,
@@ -2695,6 +2724,7 @@ def write_report(status: str, blockers: list[str], payload: str | None) -> None:
             "boot evidence."
         ),
     }
+    report = provenance_safe_value(report)
     for output in (REPORT, REPORT_MIRROR):
         output.parent.mkdir(parents=True, exist_ok=True)
         tmp = output.with_suffix(".json.tmp")

@@ -105,7 +105,7 @@ areas:
         partial_closure_evidence:
           - verify/cocotb/test_mmio_decode_error.py (unmapped-address DECERR sweep for reads/writes and post-DECERR liveness)
           - verify/cocotb/test_reset_domain_cleanup.py (post-reset register defaults and handshake-signal idle)
-        current_evidence: Debug-MMIO top routes fixed device windows and a small internal DRAM array; Linux contract fabric routes only DRAM, DMA MMIO, and interrupt-controller windows. Unmapped-MMIO DECERR sweep and reset-domain idle checks added as cocotb scaffolds.
+        current_evidence: Debug-MMIO top routes fixed device windows and a small internal DRAM array; Linux contract fabric routes DRAM, interrupt-controller, DMA MMIO, NPU MMIO, and display MMIO windows. Unmapped-MMIO DECERR sweep, reset-domain idle checks, CPU-side NPU/display MMIO round trips, and DMA-to-NPU/display no-side-effect containment are covered by cocotb contract scaffolds.
         blocking_gate: Full SoC routing, ordering, coherency, and multi-master claims remain blocked.
         closure_evidence: Address map generated from the platform contract with protocol assertions, backpressure coverage, error response tests, and arbitration coverage across all masters.
         work_order: Add complete SoC address routing, ordering, and arbitration coverage beyond the current contract windows.
@@ -114,13 +114,19 @@ areas:
         category: incomplete_subsystem
         severity: high
         affected_paths:
+          - rtl/interconnect/e1_axi_lite_interconnect.sv
           - rtl/interconnect/e1_linux_soc_contract.sv
           - rtl/display/e1_display.sv
           - rtl/npu/e1_npu.sv
-        current_evidence: Linux-capable contract wrapper does not expose display and NPU target wrappers under the software-visible routing policy.
-        blocking_gate: Linux scaffold cannot claim complete device coverage.
+          - verify/cocotb/test_cpu_mem_intc_contract.py
+          - docs/arch/memory-map.md
+          - docs/arch/interconnect.md
+          - scripts/check_platform_contract.py
+          - scripts/test_platform_contract_linux_decode.py
+        current_evidence: Mitigated for Linux-contract MMIO exposure. The AXI-Lite scaffold decodes 0x1002_0000 NPU control and 0x1003_0000 display control windows, instantiates e1_npu/e1_display MMIO target wrappers, and covers both paths in verify/cocotb/test_cpu_mem_intc_contract.py (`linux_contract_npu_mmio`, `linux_contract_display_mmio`, `dma_npu_display_mmio_no_side_effect`). `make platform-contract-check` now also verifies the Linux AXI-Lite decoder bases against the generated CPU-variant platform contract and carries a stale-NPU-base regression. NPU descriptor-master traffic still fails closed and display framebuffer reads are not routed through production DRAM.
+        blocking_gate: Full Linux device coverage still requires production NPU/display memory-fabric paths, IOMMU/coherency policy, and QoS/bandwidth evidence.
         closure_evidence: NPU and display AXI-Lite target wrappers are routed, tested for decode errors, and checked against generated software headers.
-        work_order: Add AXI-Lite target wrappers for display and NPU under the Linux-capable contract map once the software-visible routing policy is frozen.
+        work_order: Mitigated for AXI-Lite MMIO routing and generated-artifact address drift; keep production device coverage blocked until memory-fabric and IOMMU/coherency evidence lands.
       - id: interconnect-axi-lite-proof-coverage
         status: open
         category: proof_gap
@@ -129,11 +135,17 @@ areas:
           - verify/formal/e1_soc_top_formal.sv
           - scripts/yosys_formal_top_structural.ys
           - scripts/run_formal.sh
+          - verify/formal/e1_axi_lite_dram.sby
+          - verify/formal/e1_axi_lite_dram_bind.sv
+          - verify/formal/e1_axi_lite_interconnect.sby
+          - verify/formal/e1_axi_lite_interconnect_bind.sv
         partial_closure_evidence:
           - verify/properties/axi_lite_protocol.sv (parametric AXI-Lite property pack ready for bind to debug bridge, interconnect, DRAM, DMA master, and interrupt-controller paths)
           - verify/properties/README.md (bind usage and SymbiYosys harness instructions)
           - verify/properties/dma_axil_bind.sv + verify/properties/dma_axil.sby (first concrete bind targeting the DMA master)
-        current_evidence: Top formal proves a few structural facts with shallow BMC or Yosys check fallback; it does not use an AXI-Lite property set.
+          - verify/formal/e1_axi_lite_dram_bind.sv + verify/formal/e1_axi_lite_dram.sby (AXI-Lite property bind for the DRAM target)
+          - verify/formal/e1_axi_lite_interconnect_bind.sv + verify/formal/e1_axi_lite_interconnect.sby (AXI-Lite property bind for the CPU-facing interconnect path, updated for NPU/display target ports)
+        current_evidence: Top formal still proves a few structural facts with shallow BMC or Yosys check fallback. `make formal` now includes SBY AXI-Lite property tasks for DMA, DRAM, and the CPU-facing interconnect path when SymbiYosys is available, and the formal manifest tracks those jobs separately; fallback manifests label the AXI-Lite SBY jobs as blocked rather than equivalent.
         blocking_gate: Formal pass must be reported as shallow structural coverage only.
         closure_evidence: AXI-Lite assume/assert coverage for valid-ready stability, response liveness under bounded fairness, unmapped DECERR paths, and independent read/write channel stalls.
         work_order: Add reusable AXI-Lite properties and bind them to debug bridge, interconnect, DRAM, DMA master, and interrupt-controller paths.
@@ -155,10 +167,17 @@ areas:
           - rtl/top/e1_soc_top.sv
           - rtl/interconnect/e1_linux_soc_contract.sv
           - verify/cocotb/test_cpu_mem_intc_contract.py
+          - verify/cocotb/dma/test_dma_long_transfer.py
+          - verify/cocotb/dma/Makefile
+          - scripts/check_dma_long_transfer_coverage.py
+          - scripts/test_dma_long_transfer_coverage.py
+          - Makefile
           - verify/formal/e1_dma_formal.sv
         partial_closure_evidence:
-          - verify/cocotb/dma/test_dma_long_transfer.py (1 KiB transfer, partial-tail byte strobes, unaligned-programming error, completion IRQ, SLVERR propagation; not yet wired into make cocotb)
-        current_evidence: DMA is a word-copy AXI-Lite master with status/error counters; pad-level top connects it to a 4 KiB internal DRAM array, not a production memory hierarchy.
+          - verify/cocotb/dma/test_dma_long_transfer.py (1 KiB transfer, partial-tail byte strobes, unaligned-programming error, completion IRQ, SLVERR propagation; now wired into make cocotb-dma)
+          - scripts/check_dma_long_transfer_coverage.py (fails closed unless the machine-readable long-transfer coverage artifact includes every required contract and its non-production boundary)
+          - build/reports/dma_long_transfer_cocotb_coverage.json (machine-readable long-transfer coverage contracts)
+        current_evidence: DMA is a word-copy AXI-Lite master with status/error counters. `make cocotb-dma` now runs both the randomized standalone DMA suite and the long-transfer suite, then validates the long-transfer coverage artifact for 1 KiB transfers, partial-tail byte strobes, unaligned-programming error, completion IRQ, and read-SLVERR propagation. Pad-level top still connects DMA to a 4 KiB internal DRAM array, not a production memory hierarchy.
         blocking_gate: DMA throughput, coherency, burst, cache interaction, and software-driver performance claims remain blocked.
         closure_evidence: Verified production memory target, long transfer tests, partial-beat behavior, backpressure permutations, coherency policy, interrupt completion, and error injection coverage.
         work_order: Verify DMA against the production memory hierarchy, coherency policy, and long burst behavior.

@@ -26,3 +26,8 @@ def test_e1x_benchmark_gate_passes() -> None:
     assert report["summary"]["high_failure_prefill_ms"] > 0
     assert report["summary"]["high_failure_decode_tokens_per_second"] > 0
     assert report["summary"]["high_failure_output_checksum"] > 0
+    assert (
+        report["summary"]["high_failure_execution_trace_output_checksum"]
+        == report["summary"]["high_failure_output_checksum"]
+    )
+    assert report["summary"]["high_failure_execution_trace_total_cycles"] > 0

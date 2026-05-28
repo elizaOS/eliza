@@ -1,0 +1,75 @@
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] Removing directory '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_dram.3615632_bmc'.
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] Copy '/home/shaw/milady/eliza/packages/chip/verify/properties/axi_lite_protocol.sv' to '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_dram.3615632_bmc/src/axi_lite_protocol.sv'.
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] Copy '/home/shaw/milady/eliza/packages/chip/rtl/memory/e1_axi_lite_dram.sv' to '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_dram.3615632_bmc/src/e1_axi_lite_dram.sv'.
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] Copy '/home/shaw/milady/eliza/packages/chip/verify/formal/e1_axi_lite_dram_bind.sv' to '/home/shaw/milady/eliza/packages/chip/build/formal/e1_axi_lite_dram.3615632_bmc/src/e1_axi_lite_dram_bind.sv'.
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: smtbmc z3
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_1: smtbmc bitwuzla
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] base: starting process "cd build/formal/e1_axi_lite_dram.3615632_bmc/src; yosys -ql ../model/design.log ../model/design.ys"
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] base: Warning: Replacing memory \mem with list of registers. See e1_axi_lite_dram.sv:86
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] base: finished (returncode=0)
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] prep: starting process "cd build/formal/e1_axi_lite_dram.3615632_bmc/model; yosys -ql design_prep.log design_prep.ys"
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] prep: finished (returncode=0)
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] smt2: starting process "cd build/formal/e1_axi_lite_dram.3615632_bmc/model; yosys -ql design_smt2.log design_smt2.ys"
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] smt2: finished (returncode=0)
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: starting process "cd build/formal/e1_axi_lite_dram.3615632_bmc; yosys-smtbmc -s z3 --presat --noprogress -t 24  --append 0 --dump-vcd engine_0/trace.vcd --dump-yw engine_0/trace.yw --dump-vlogtb engine_0/trace_tb.v --dump-smtc engine_0/trace.smtc model/design_smt2.smt2"
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_1: starting process "cd build/formal/e1_axi_lite_dram.3615632_bmc; yosys-smtbmc -s bitwuzla --presat --unroll --noprogress -t 24  --append 0 --dump-vcd engine_1/trace.vcd --dump-yw engine_1/trace.yw --dump-vlogtb engine_1/trace_tb.v --dump-smtc engine_1/trace.smtc model/design_smt2.smt2"
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Solver: z3
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 0..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 0..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 1..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 1..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 2..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 2..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 3..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 3..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 4..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 4..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 5..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 5..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 6..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 6..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 7..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 7..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 8..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 8..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 9..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 9..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 10..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 10..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 11..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 11..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 12..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 12..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 13..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 13..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 14..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 14..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 15..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 15..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 16..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 16..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 17..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 17..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 18..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 18..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 19..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 19..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 20..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 20..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 21..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 21..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 22..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 22..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assumptions in step 23..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Checking assertions in step 23..
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: ##   0:00:00  Status: passed
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: finished (returncode=0)
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_0: Status returned by engine: pass
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] engine_1: terminating process
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] summary: Elapsed clock time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] summary: Elapsed process time [H:MM:SS (secs)]: 0:00:00 (0)
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] summary: engine_0 (smtbmc z3) returned pass
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] summary: engine_0 did not produce any traces
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] summary: engine_1 (smtbmc bitwuzla) did not return a status
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] summary: engine_1 did not produce any traces
+SBY 13:30:25 [build/formal/e1_axi_lite_dram.3615632_bmc] DONE (PASS, rc=0)

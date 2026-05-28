@@ -345,7 +345,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertEqual(blocked_file["blocker_category"], "planned_incomplete_evidence")
         self.assertEqual(
             blocked_file["expected_output_files"],
-            ["docs/evidence/android/security/tampered_boot_rejection.log"],
+            ["packages/chip/docs/evidence/android/security/tampered_boot_rejection.log"],
         )
         self.assertTrue(blocked_file["capture_commands"])
         self.assertFalse(
@@ -382,7 +382,15 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         ][0]
         self.assertEqual(
             blocked_file["expected_output_files"],
-            ["docs/evidence/android/peripherals/rear_camera_sim.log"],
+            ["packages/chip/docs/evidence/android/peripherals/rear_camera_sim.log"],
+        )
+        self.assertEqual(
+            blocked_file["package_relative_expected_path"],
+            "docs/evidence/android/peripherals/rear_camera_sim.log",
+        )
+        self.assertEqual(
+            blocked_file["repo_relative_expected_path"],
+            "packages/chip/docs/evidence/android/peripherals/rear_camera_sim.log",
         )
         self.assertFalse(blocked_file["release_credit"])
         self.assertTrue(
@@ -700,7 +708,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertTrue(all(row["release_credit"] is False for row in plan))
         security = plan[0]
         self.assertIn(
-            "docs/evidence/android/security/rollback_rejection.log",
+            "packages/chip/docs/evidence/android/security/rollback_rejection.log",
             security["expected_output_files"],
         )
         self.assertTrue(
@@ -721,7 +729,7 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
         self.assertFalse(any("<lab command" in command for command in security["capture_commands"]))
         power = plan[1]
         self.assertIn(
-            "docs/evidence/android/power/sustained_npu_power_thermal_trace.json",
+            "packages/chip/docs/evidence/android/power/sustained_npu_power_thermal_trace.json",
             power["expected_output_files"],
         )
         self.assertTrue(

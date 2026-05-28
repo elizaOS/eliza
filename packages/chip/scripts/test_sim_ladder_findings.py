@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER_PATH = ROOT / "scripts/run_sim_ladder.py"
@@ -48,9 +49,64 @@ def test_all_pass_has_no_findings() -> None:
     print("PASS sim ladder pass has no findings")
 
 
+def test_provenance_safe_value_sanitizes_host_local_paths() -> None:
+    raw = {
+        "log_tail": [
+            f"g++ -I{run_sim_ladder.ROOT / 'external/oss-cad-suite/include'}",
+            "Leaving directory '/tmp/e1-sim'",
+            "scratch /var/tmp/e1-ladder",
+        ]
+    }
+
+    sanitized = run_sim_ladder.provenance_safe_value(raw)
+    encoded = str(sanitized)
+
+    if str(run_sim_ladder.ROOT) in encoded:
+        raise AssertionError(encoded)
+    if "/tmp/" in encoded or "/var/tmp/" in encoded:
+        raise AssertionError(encoded)
+    if "<repo>/external/oss-cad-suite/include" not in encoded:
+        raise AssertionError(encoded)
+    if "<tmp>/e1-sim" not in encoded:
+        raise AssertionError(encoded)
+    if "<var-tmp>/e1-ladder" not in encoded:
+        raise AssertionError(encoded)
+    print("PASS sim ladder provenance sanitizer strips host-local paths")
+
+
+def test_passing_step_drops_log_tail() -> None:
+    completed = subprocess_result(stdout="PASS=1 FAIL=0\n", returncode=0)
+    with mock.patch.object(run_sim_ladder.subprocess, "run", return_value=completed):
+        result = run_sim_ladder.run_step(
+            {
+                "name": "fake",
+                "command": ["true"],
+                "required_artifacts": [],
+            }
+        )
+
+    if result["status"] != "pass":
+        raise AssertionError(result)
+    if result["log_tail"] != []:
+        raise AssertionError(result["log_tail"])
+    print("PASS sim ladder drops passing log tails")
+
+
+def subprocess_result(*, stdout: str, returncode: int):
+    class Completed:
+        pass
+
+    completed = Completed()
+    completed.stdout = stdout
+    completed.returncode = returncode
+    return completed
+
+
 def main() -> None:
     test_failed_step_emits_finding_and_missing_artifact()
     test_all_pass_has_no_findings()
+    test_provenance_safe_value_sanitizes_host_local_paths()
+    test_passing_step_drops_log_tail()
 
 
 if __name__ == "__main__":

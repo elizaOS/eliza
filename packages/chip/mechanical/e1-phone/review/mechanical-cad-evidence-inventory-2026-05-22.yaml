@@ -46,6 +46,12 @@ concept_generated_assets:
   cad_connection_solid_step_part_bytes_total: 1501919
   cad_connection_represented_net_count_total: 150
   cad_connection_represented_route_count_total: 153
+  cad_connection_represented_route_record_count_total: 153
+  cad_connection_represented_route_records_with_layer_count_total: 153
+  cad_connection_represented_route_records_with_source_domain_count_total: 153
+  cad_connection_represented_route_records_with_route_class_count_total: 153
+  cad_connection_represented_route_classification_gap_count: 0
+  cad_connection_all_represented_routes_have_layer_source_and_class: true
   cad_connection_represented_route_length_total_mm: 5884.076
   cad_connection_represented_controlled_impedance_route_count_total: 55
   cad_connection_record_count: 32
@@ -385,6 +391,12 @@ review_gate_inventory:
     connection_solid_step_part_bytes_total: 1501919
     represented_net_count_total: 150
     represented_route_count_total: 153
+    represented_route_record_count_total: 153
+    represented_route_records_with_layer_count_total: 153
+    represented_route_records_with_source_domain_count_total: 153
+    represented_route_records_with_route_class_count_total: 153
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     represented_route_length_total_mm: 5884.076
     represented_controlled_impedance_route_count_total: 55
     all_represented_nets_have_route_trace: true
@@ -437,6 +449,7 @@ review_gate_inventory:
     cad_connection_all_records_have_represented_routes: true
     cad_connection_all_represented_nets_match_routed_nets: true
     cad_connection_all_represented_routes_match_counts: true
+    cad_connection_all_represented_routes_have_layer_source_and_class: true
   step_validation:
     path: "mechanical/e1-phone/review/step-validation.json"
     present: true

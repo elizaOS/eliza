@@ -15,13 +15,13 @@ Snapshot: updated 2026-05-27 from current local gate output; generated-artifact 
 | real-world-release-gates | `PASS` | `command_pass` | `none` |
 | rtl-source | `PASS` | `source_present` | `none` |
 | synthesis | `PASS` | `generated_artifact` | `none` |
-| cocotb | `PASS` | `generated_artifact` | `none` |
+| cocotb | `BLOCK` | `regen_required` | `make cocotb cocotb-npu cocotb-contract cocotb-cpu` |
 | verilator | `PASS` | `generated_artifact` | `none` |
 | formal | `PASS` | `generated_artifact` | `none` |
 | qemu | `PASS` | `generated_artifact` | `none` |
 | renode | `PASS` | `generated_artifact` | `none` |
 | npu-ml-proof | `PASS` | `generated_artifact` | `none` |
-| minimum-linux-npu-target | `PASS` | `generated_artifact` | `none` |
+| minimum-linux-npu-target | `BLOCK` | `tool_blocker` | `make minimum-linux-npu-target-strict` |
 | pd-contract | `PASS` | `command_pass` | `none` |
 | product-package | `BLOCK` | `release_blocker` | `close package/FPGA/KiCad/PD/manufacturing release blockers or keep product claim below fabrication` |
 | benchmarks | `PASS` | `generated_artifact` | `none` |

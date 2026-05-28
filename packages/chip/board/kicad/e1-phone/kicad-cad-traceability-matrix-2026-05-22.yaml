@@ -25,6 +25,13 @@ summary:
   all_pinout_bound_footprints_have_terminal_contract: true
   cad_connection_count: 32
   cad_connection_represented_net_count_total: 150
+  cad_connection_represented_route_count_total: 153
+  cad_connection_represented_route_record_count_total: 153
+  cad_connection_represented_route_records_with_layer_count_total: 153
+  cad_connection_represented_route_records_with_source_domain_count_total: 153
+  cad_connection_represented_route_records_with_route_class_count_total: 153
+  cad_connection_represented_route_classification_gap_count: 0
+  cad_connection_all_represented_routes_have_layer_source_and_class: true
   cad_connection_visual_route_span_total_mm: 456.0
   cad_connection_terminal_marker_count: 64
   cad_connection_terminal_pair_count: 32
@@ -2152,6 +2159,28 @@ cad_connection_traceability:
   - DISP_TE
   - TOUCH_I2C_SCL
   - TOUCH_I2C_SDA
+  represented_route_count: 14
+  represented_route_ids:
+  - DISPLAY_DSI0_P
+  - DISPLAY_DSI0_N
+  - DISPLAY_DSI1_P
+  - DISPLAY_DSI1_N
+  - DISPLAY_DSI_CLK_P
+  - DISPLAY_DSI_CLK_N
+  - DISPLAY_DSI2_P
+  - DISPLAY_DSI2_N
+  - DISPLAY_DSI3_P
+  - DISPLAY_DSI3_N
+  - DISPLAY_RESET
+  - DISPLAY_TE
+  - TOUCH_I2C_SCL
+  - TOUCH_I2C_SDA
+  represented_route_record_count: 14
+  represented_route_records_with_layer_count: 14
+  represented_route_records_with_source_domain_count: 14
+  represented_route_records_with_route_class_count: 14
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: display_touch_fpc_from_terminal
   from_terminal_step: mechanical/e1-phone/out/display_touch_fpc_from_terminal.step
   from_terminal_step_bytes: 15647
@@ -2212,6 +2241,27 @@ cad_connection_traceability:
   - CAM0_MCLK
   - CAM0_I2C_SCL
   - CAM0_I2C_SDA
+  represented_route_count: 13
+  represented_route_ids:
+  - CSI0_P
+  - CSI0_N
+  - CSI0_CLK_P
+  - CSI0_CLK_N
+  - CSI0_D1_P
+  - CSI0_D1_N
+  - CSI0_D2_P
+  - CSI0_D2_N
+  - CSI0_D3_P
+  - CSI0_D3_N
+  - CAM0_MCLK
+  - CAM0_I2C_SCL
+  - CAM0_I2C_SDA
+  represented_route_record_count: 13
+  represented_route_records_with_layer_count: 13
+  represented_route_records_with_source_domain_count: 13
+  represented_route_records_with_route_class_count: 13
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: rear_camera_csi_fpc_from_terminal
   from_terminal_step: mechanical/e1-phone/out/rear_camera_csi_fpc_from_terminal.step
   from_terminal_step_bytes: 15699
@@ -2267,6 +2317,23 @@ cad_connection_traceability:
   - CAM1_MCLK
   - CAM1_I2C_SCL
   - CAM1_I2C_SDA
+  represented_route_count: 9
+  represented_route_ids:
+  - CSI1_CLK_P
+  - CSI1_CLK_N
+  - CSI1_D0_P
+  - CSI1_D0_N
+  - CSI1_D1_P
+  - CSI1_D1_N
+  - CAM1_MCLK
+  - CAM1_I2C_SCL
+  - CAM1_I2C_SDA
+  represented_route_record_count: 9
+  represented_route_records_with_layer_count: 9
+  represented_route_records_with_source_domain_count: 9
+  represented_route_records_with_route_class_count: 9
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: front_camera_csi_fpc_from_terminal
   from_terminal_step: mechanical/e1-phone/out/front_camera_csi_fpc_from_terminal.step
   from_terminal_step_bytes: 15699
@@ -2312,6 +2379,17 @@ cad_connection_traceability:
   - PWR_KEY_N
   - VOL_UP_N
   - VOL_DOWN_N
+  represented_route_count: 3
+  represented_route_ids:
+  - AON_WAKE
+  - VOL_UP
+  - VOL_DOWN
+  represented_route_record_count: 3
+  represented_route_records_with_layer_count: 3
+  represented_route_records_with_source_domain_count: 3
+  represented_route_records_with_route_class_count: 3
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: side_key_flex_from_terminal
   from_terminal_step: mechanical/e1-phone/out/side_key_flex_from_terminal.step
   from_terminal_step_bytes: 15673
@@ -2352,6 +2430,18 @@ cad_connection_traceability:
   - SYS
   - BAT_NTC
   - BAT_ID
+  represented_route_count: 4
+  represented_route_ids:
+  - BATTERY_VBAT
+  - BATTERY_SYS
+  - BAT_NTC
+  - BAT_ID
+  represented_route_record_count: 4
+  represented_route_records_with_layer_count: 4
+  represented_route_records_with_source_domain_count: 4
+  represented_route_records_with_route_class_count: 4
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: battery_lead_flex_from_terminal
   from_terminal_step: mechanical/e1-phone/out/battery_lead_flex_from_terminal.step
   from_terminal_step_bytes: 15647
@@ -2394,6 +2484,19 @@ cad_connection_traceability:
   - USB_CC2
   - USB_DP
   - USB_DN
+  represented_route_count: 5
+  represented_route_ids:
+  - USB_VBUS
+  - USB_CC1
+  - USB_CC2
+  - USB_DP
+  - USB_DN
+  represented_route_record_count: 5
+  represented_route_records_with_layer_count: 5
+  represented_route_records_with_source_domain_count: 5
+  represented_route_records_with_route_class_count: 5
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: usb_c_escape_tail_from_terminal
   from_terminal_step: mechanical/e1-phone/out/usb_c_escape_tail_from_terminal.step
   from_terminal_step_bytes: 15673
@@ -2437,6 +2540,19 @@ cad_connection_traceability:
   - USB_CC2
   - USB_DP
   - USB_DN
+  represented_route_count: 5
+  represented_route_ids:
+  - USB_VBUS
+  - USB_CC1
+  - USB_CC2
+  - USB_DP
+  - USB_DN
+  represented_route_record_count: 5
+  represented_route_records_with_layer_count: 5
+  represented_route_records_with_source_domain_count: 5
+  represented_route_records_with_route_class_count: 5
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: usb_c_to_pd_controller_escape_from_terminal
   from_terminal_step: mechanical/e1-phone/out/usb_c_to_pd_controller_escape_from_terminal.step
   from_terminal_step_bytes: 15664
@@ -2484,6 +2600,23 @@ cad_connection_traceability:
   - CHG_I2C_SCL
   - CHG_I2C_SDA
   - CHG_IRQ_N
+  represented_route_count: 9
+  represented_route_ids:
+  - USB_VBUS
+  - BATTERY_SYS
+  - USBPD_I2C_SCL
+  - USBPD_I2C_SDA
+  - USBPD_IRQ
+  - USBPD_RESET
+  - CHG_I2C_SCL
+  - CHG_I2C_SDA
+  - CHG_IRQ
+  represented_route_record_count: 9
+  represented_route_records_with_layer_count: 9
+  represented_route_records_with_source_domain_count: 9
+  represented_route_records_with_route_class_count: 9
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: pd_controller_to_charger_control_from_terminal
   from_terminal_step: mechanical/e1-phone/out/pd_controller_to_charger_control_from_terminal.step
   from_terminal_step_bytes: 15673
@@ -2530,6 +2663,18 @@ cad_connection_traceability:
   - SYS
   - BAT_NTC
   - BAT_ID
+  represented_route_count: 4
+  represented_route_ids:
+  - BATTERY_VBAT
+  - BATTERY_SYS
+  - BAT_NTC
+  - BAT_ID
+  represented_route_record_count: 4
+  represented_route_records_with_layer_count: 4
+  represented_route_records_with_source_domain_count: 4
+  represented_route_records_with_route_class_count: 4
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: charger_to_battery_power_sense_from_terminal
   from_terminal_step: mechanical/e1-phone/out/charger_to_battery_power_sense_from_terminal.step
   from_terminal_step_bytes: 15699
@@ -2569,6 +2714,16 @@ cad_connection_traceability:
   represented_nets:
   - DISP_AVDD_5V5
   - DISP_AVEE_N5V5
+  represented_route_count: 2
+  represented_route_ids:
+  - DISP_AVDD
+  - DISP_AVEE
+  represented_route_record_count: 2
+  represented_route_records_with_layer_count: 2
+  represented_route_records_with_source_domain_count: 2
+  represented_route_records_with_route_class_count: 2
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: display_bias_power_flex_from_terminal
   from_terminal_step: mechanical/e1-phone/out/display_bias_power_flex_from_terminal.step
   from_terminal_step_bytes: 15673
@@ -2607,6 +2762,17 @@ cad_connection_traceability:
   - CAM_AVDD_2V8
   - CAM_DVDD_1V2
   - CAM0_RESET_N
+  represented_route_count: 3
+  represented_route_ids:
+  - CAM_AVDD
+  - CAM_DVDD
+  - CAM0_RESET
+  represented_route_record_count: 3
+  represented_route_records_with_layer_count: 3
+  represented_route_records_with_source_domain_count: 3
+  represented_route_records_with_route_class_count: 3
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: rear_camera_power_flex_from_terminal
   from_terminal_step: mechanical/e1-phone/out/rear_camera_power_flex_from_terminal.step
   from_terminal_step_bytes: 15673
@@ -2646,6 +2812,17 @@ cad_connection_traceability:
   - CAM_AVDD_2V8
   - CAM_DVDD_1V2
   - CAM1_RESET_N
+  represented_route_count: 3
+  represented_route_ids:
+  - CAM_AVDD
+  - CAM_DVDD
+  - CAM1_RESET
+  represented_route_record_count: 3
+  represented_route_records_with_layer_count: 3
+  represented_route_records_with_source_domain_count: 3
+  represented_route_records_with_route_class_count: 3
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: front_camera_power_flex_from_terminal
   from_terminal_step: mechanical/e1-phone/out/front_camera_power_flex_from_terminal.step
   from_terminal_step_bytes: 15673
@@ -2699,6 +2876,31 @@ cad_connection_traceability:
   - BT_UART_CTS_N
   - BT_UART_RTS_N
   - WIFI_HOST_WAKE
+  represented_route_count: 17
+  represented_route_ids:
+  - WIFI_PCIE_TX_P
+  - WIFI_PCIE_TX_N
+  - WIFI_PCIE_RX_P
+  - WIFI_PCIE_RX_N
+  - WIFI_ENABLE
+  - BT_ENABLE
+  - WIFI_SDIO_CLK
+  - WIFI_SDIO_CMD
+  - WIFI_SDIO_D0
+  - WIFI_SDIO_D1
+  - WIFI_SDIO_D2
+  - WIFI_SDIO_D3
+  - BT_UART_TX
+  - BT_UART_RX
+  - BT_UART_CTS
+  - BT_UART_RTS
+  - WIFI_HOST_WAKE
+  represented_route_record_count: 17
+  represented_route_records_with_layer_count: 17
+  represented_route_records_with_source_domain_count: 17
+  represented_route_records_with_route_class_count: 17
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: wifi_bt_host_control_from_terminal
   from_terminal_step: mechanical/e1-phone/out/wifi_bt_host_control_from_terminal.step
   from_terminal_step_bytes: 15673
@@ -2757,6 +2959,22 @@ cad_connection_traceability:
   - CELL_PCIE_RX_N
   - CELL_RESET_N
   - CELL_W_DISABLE_N
+  represented_route_count: 8
+  represented_route_ids:
+  - CELL_USB2_DP
+  - CELL_USB2_DN
+  - CELL_PCIE_TX_P
+  - CELL_PCIE_TX_N
+  - CELL_PCIE_RX_P
+  - CELL_PCIE_RX_N
+  - CELL_RESET
+  - CELL_DISABLE
+  represented_route_record_count: 8
+  represented_route_records_with_layer_count: 8
+  represented_route_records_with_source_domain_count: 8
+  represented_route_records_with_route_class_count: 8
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: cellular_host_control_from_terminal
   from_terminal_step: mechanical/e1-phone/out/cellular_host_control_from_terminal.step
   from_terminal_step_bytes: 15699
@@ -2800,6 +3018,16 @@ cad_connection_traceability:
   represented_nets:
   - SPK_P
   - SPK_N
+  represented_route_count: 2
+  represented_route_ids:
+  - SPEAKER_P
+  - SPEAKER_N
+  represented_route_record_count: 2
+  represented_route_records_with_layer_count: 2
+  represented_route_records_with_source_domain_count: 2
+  represented_route_records_with_route_class_count: 2
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: bottom_speaker_lead_pair_from_terminal
   from_terminal_step: mechanical/e1-phone/out/bottom_speaker_lead_pair_from_terminal.step
   from_terminal_step_bytes: 15673
@@ -2837,6 +3065,16 @@ cad_connection_traceability:
   represented_nets:
   - PDM_CLK
   - PDM_DAT
+  represented_route_count: 2
+  represented_route_ids:
+  - PDM_CLK
+  - PDM_DAT
+  represented_route_record_count: 2
+  represented_route_records_with_layer_count: 2
+  represented_route_records_with_source_domain_count: 2
+  represented_route_records_with_route_class_count: 2
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: bottom_microphone_flex_from_terminal
   from_terminal_step: mechanical/e1-phone/out/bottom_microphone_flex_from_terminal.step
   from_terminal_step_bytes: 15647
@@ -2874,6 +3112,16 @@ cad_connection_traceability:
   represented_nets:
   - PDM_CLK
   - PDM_DAT
+  represented_route_count: 2
+  represented_route_ids:
+  - PDM_CLK
+  - PDM_DAT
+  represented_route_record_count: 2
+  represented_route_records_with_layer_count: 2
+  represented_route_records_with_source_domain_count: 2
+  represented_route_records_with_route_class_count: 2
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: top_microphone_flex_from_terminal
   from_terminal_step: mechanical/e1-phone/out/top_microphone_flex_from_terminal.step
   from_terminal_step_bytes: 15621
@@ -2911,6 +3159,16 @@ cad_connection_traceability:
   represented_nets:
   - SPK_P
   - SPK_N
+  represented_route_count: 2
+  represented_route_ids:
+  - SPEAKER_P
+  - SPEAKER_N
+  represented_route_record_count: 2
+  represented_route_records_with_layer_count: 2
+  represented_route_records_with_source_domain_count: 2
+  represented_route_records_with_route_class_count: 2
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: earpiece_receiver_lead_flex_from_terminal
   from_terminal_step: mechanical/e1-phone/out/earpiece_receiver_lead_flex_from_terminal.step
   from_terminal_step_bytes: 15647
@@ -2947,6 +3205,16 @@ cad_connection_traceability:
   represented_net_count: 1
   represented_nets:
   - HAPTIC_OUT
+  represented_route_count: 2
+  represented_route_ids:
+  - HAPTIC_OUT_A
+  - HAPTIC_OUT_B
+  represented_route_record_count: 2
+  represented_route_records_with_layer_count: 2
+  represented_route_records_with_source_domain_count: 2
+  represented_route_records_with_route_class_count: 2
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: haptic_flex_from_terminal
   from_terminal_step: mechanical/e1-phone/out/haptic_flex_from_terminal.step
   from_terminal_step_bytes: 15647
@@ -2983,6 +3251,16 @@ cad_connection_traceability:
   represented_nets:
   - SENSOR_I2C_SCL
   - SENSOR_I2C_SDA
+  represented_route_count: 2
+  represented_route_ids:
+  - SENSOR_I2C_SCL
+  - SENSOR_I2C_SDA
+  represented_route_record_count: 2
+  represented_route_records_with_layer_count: 2
+  represented_route_records_with_source_domain_count: 2
+  represented_route_records_with_route_class_count: 2
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: sensor_hub_i2c_flex_from_terminal
   from_terminal_step: mechanical/e1-phone/out/sensor_hub_i2c_flex_from_terminal.step
   from_terminal_step_bytes: 15699
@@ -3027,6 +3305,23 @@ cad_connection_traceability:
   - ESIM_CLK
   - ESIM_RST
   - ESIM_IO
+  represented_route_count: 9
+  represented_route_ids:
+  - USIM_VCC
+  - USIM_CLK
+  - USIM_RST
+  - USIM_IO
+  - USIM_DET
+  - ESIM_VCC
+  - ESIM_CLK
+  - ESIM_RST
+  - ESIM_IO
+  represented_route_record_count: 9
+  represented_route_records_with_layer_count: 9
+  represented_route_records_with_source_domain_count: 9
+  represented_route_records_with_route_class_count: 9
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: sim_esim_signal_flex_from_terminal
   from_terminal_step: mechanical/e1-phone/out/sim_esim_signal_flex_from_terminal.step
   from_terminal_step_bytes: 15699
@@ -3073,6 +3368,18 @@ cad_connection_traceability:
   - NFC_RF_N
   - NFC_IRQ_N
   - NFC_EN
+  represented_route_count: 4
+  represented_route_ids:
+  - NFC_RF_P_LOOP
+  - NFC_RF_N_LOOP
+  - NFC_IRQ
+  - NFC_ENABLE
+  represented_route_record_count: 4
+  represented_route_records_with_layer_count: 4
+  represented_route_records_with_source_domain_count: 4
+  represented_route_records_with_route_class_count: 4
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: nfc_loop_antenna_flex_from_terminal
   from_terminal_step: mechanical/e1-phone/out/nfc_loop_antenna_flex_from_terminal.step
   from_terminal_step_bytes: 15699
@@ -3119,6 +3426,23 @@ cad_connection_traceability:
   - CAM1_MCLK
   - LPDDR_CK_P
   - LPDDR_CK_N
+  represented_route_count: 9
+  represented_route_ids:
+  - USB_DP
+  - USB_DN
+  - DISPLAY_RESET
+  - TOUCH_I2C_SCL
+  - TOUCH_I2C_SDA
+  - CAM0_MCLK
+  - CAM1_MCLK
+  - LPDDR_CK_P
+  - LPDDR_CK_N
+  represented_route_record_count: 9
+  represented_route_records_with_layer_count: 9
+  represented_route_records_with_source_domain_count: 9
+  represented_route_records_with_route_class_count: 9
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: compute_som_sodimm_carrier_from_terminal
   from_terminal_step: mechanical/e1-phone/out/compute_som_sodimm_carrier_from_terminal.step
   from_terminal_step_bytes: 15673
@@ -3162,6 +3486,16 @@ cad_connection_traceability:
   represented_net_count: 1
   represented_nets:
   - GND
+  represented_route_count: 2
+  represented_route_ids:
+  - GND_STITCH_TOP
+  - GND_STITCH_BOTTOM
+  represented_route_record_count: 2
+  represented_route_records_with_layer_count: 2
+  represented_route_records_with_source_domain_count: 2
+  represented_route_records_with_route_class_count: 2
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: soc_shield_ground_spring_from_terminal
   from_terminal_step: mechanical/e1-phone/out/soc_shield_ground_spring_from_terminal.step
   from_terminal_step_bytes: 15673
@@ -3198,6 +3532,17 @@ cad_connection_traceability:
   represented_nets:
   - GND
   - SHIELD_GND
+  represented_route_count: 3
+  represented_route_ids:
+  - GND_STITCH_TOP
+  - GND_STITCH_BOTTOM
+  - SHIELD_GND_USB
+  represented_route_record_count: 3
+  represented_route_records_with_layer_count: 3
+  represented_route_records_with_source_domain_count: 3
+  represented_route_records_with_route_class_count: 3
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: radio_shield_ground_spring_from_terminal
   from_terminal_step: mechanical/e1-phone/out/radio_shield_ground_spring_from_terminal.step
   from_terminal_step_bytes: 15673
@@ -3234,6 +3579,15 @@ cad_connection_traceability:
   represented_net_count: 1
   represented_nets:
   - CELL_RF_MAIN
+  represented_route_count: 1
+  represented_route_ids:
+  - CELL_MAIN_RF
+  represented_route_record_count: 1
+  represented_route_records_with_layer_count: 1
+  represented_route_records_with_source_domain_count: 1
+  represented_route_records_with_route_class_count: 1
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: cellular_main_rf_feed_from_terminal
   from_terminal_step: mechanical/e1-phone/out/cellular_main_rf_feed_from_terminal.step
   from_terminal_step_bytes: 15699
@@ -3269,6 +3623,15 @@ cad_connection_traceability:
   represented_net_count: 1
   represented_nets:
   - CELL_RF_DIV
+  represented_route_count: 1
+  represented_route_ids:
+  - CELL_DIV_RF
+  represented_route_record_count: 1
+  represented_route_records_with_layer_count: 1
+  represented_route_records_with_source_domain_count: 1
+  represented_route_records_with_route_class_count: 1
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: cellular_diversity_rf_feed_from_terminal
   from_terminal_step: mechanical/e1-phone/out/cellular_diversity_rf_feed_from_terminal.step
   from_terminal_step_bytes: 15699
@@ -3305,6 +3668,16 @@ cad_connection_traceability:
   represented_nets:
   - CELL_RF_DIV
   - RF_VBAT
+  represented_route_count: 2
+  represented_route_ids:
+  - CELL_DIV_RF
+  - RF_VBAT_TP
+  represented_route_record_count: 2
+  represented_route_records_with_layer_count: 2
+  represented_route_records_with_source_domain_count: 2
+  represented_route_records_with_route_class_count: 2
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: cellular_antenna_aperture_tuner_from_terminal
   from_terminal_step: mechanical/e1-phone/out/cellular_antenna_aperture_tuner_from_terminal.step
   from_terminal_step_bytes: 15699
@@ -3341,6 +3714,15 @@ cad_connection_traceability:
   represented_net_count: 1
   represented_nets:
   - CELL_GNSS_RF
+  represented_route_count: 1
+  represented_route_ids:
+  - GNSS_RF
+  represented_route_record_count: 1
+  represented_route_records_with_layer_count: 1
+  represented_route_records_with_source_domain_count: 1
+  represented_route_records_with_route_class_count: 1
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: cellular_gnss_rf_feed_from_terminal
   from_terminal_step: mechanical/e1-phone/out/cellular_gnss_rf_feed_from_terminal.step
   from_terminal_step_bytes: 15699
@@ -3376,6 +3758,15 @@ cad_connection_traceability:
   represented_net_count: 1
   represented_nets:
   - WIFI_BT_RF0
+  represented_route_count: 1
+  represented_route_ids:
+  - WIFI_RF0
+  represented_route_record_count: 1
+  represented_route_records_with_layer_count: 1
+  represented_route_records_with_source_domain_count: 1
+  represented_route_records_with_route_class_count: 1
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: wifi_bt_rf0_feed_from_terminal
   from_terminal_step: mechanical/e1-phone/out/wifi_bt_rf0_feed_from_terminal.step
   from_terminal_step_bytes: 15647
@@ -3411,6 +3802,15 @@ cad_connection_traceability:
   represented_net_count: 1
   represented_nets:
   - WIFI_BT_RF1
+  represented_route_count: 1
+  represented_route_ids:
+  - WIFI_RF1
+  represented_route_record_count: 1
+  represented_route_records_with_layer_count: 1
+  represented_route_records_with_source_domain_count: 1
+  represented_route_records_with_route_class_count: 1
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: wifi_bt_rf1_feed_from_terminal
   from_terminal_step: mechanical/e1-phone/out/wifi_bt_rf1_feed_from_terminal.step
   from_terminal_step_bytes: 15673
@@ -3453,6 +3853,22 @@ cad_connection_traceability:
   - I2S_DIN
   - PDM_CLK
   - PDM_DAT
+  represented_route_count: 8
+  represented_route_ids:
+  - USB_DP
+  - USB_DN
+  - I2S_BCLK
+  - I2S_LRCLK
+  - I2S_DOUT
+  - I2S_DIN
+  - PDM_CLK
+  - PDM_DAT
+  represented_route_record_count: 8
+  represented_route_records_with_layer_count: 8
+  represented_route_records_with_source_domain_count: 8
+  represented_route_records_with_route_class_count: 8
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   from_terminal_part: split_interconnect_side_flex_from_terminal
   from_terminal_step: mechanical/e1-phone/out/split_interconnect_side_flex_from_terminal.step
   from_terminal_step_bytes: 15647

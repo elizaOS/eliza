@@ -227,6 +227,32 @@ class SoftwareBspEvidenceTest(unittest.TestCase):
             result.stdout,
         )
 
+    def test_external_preflight_output_sanitizes_host_local_paths(self) -> None:
+        raw = {
+            "host": {"cwd": str(check_software_bsp.ROOT), "tmp": "/tmp/e1-mmio-smoke"},
+            "targets": [
+                {
+                    "tree": str(check_software_bsp.ROOT / "external/linux"),
+                    "blockers": [
+                        f"missing {check_software_bsp.ROOT / 'external/linux/Kconfig'}"
+                    ],
+                    "commands": [
+                        f"run {check_software_bsp.ROOT / 'external/linux'} /var/tmp/evidence"
+                    ],
+                }
+            ],
+        }
+
+        sanitized = check_software_bsp.provenance_safe_value(raw)
+        encoded = json.dumps(sanitized, sort_keys=True)
+
+        self.assertNotIn(str(check_software_bsp.ROOT), encoded)
+        self.assertNotIn("/tmp/", encoded)
+        self.assertNotIn("/var/tmp/", encoded)
+        self.assertIn("<repo>/external/linux", encoded)
+        self.assertIn("<tmp>/e1-mmio-smoke", encoded)
+        self.assertIn("<var-tmp>/evidence", encoded)
+
     def test_placeholder_or_failed_log_cannot_pass_validation(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)

@@ -51,6 +51,24 @@ def test_next_command_uses_exact_located_payload() -> None:
         raise AssertionError(command)
 
 
+def test_report_provenance_sanitizer_strips_host_local_paths() -> None:
+    payload = {
+        "payload": "/home/shaw/milady/eliza/packages/chip/external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk",
+        "dtc_output": "/home/shaw/milady/eliza/packages/chip/build/chipyard/eliza_rocket/generated-src/foo.dts:90: warning",
+        "tmp": "/tmp/simulator-chipyard.harness-ElizaRocketConfig +loadmem=/tmp/eliza-e1-linux-smoke-bin-nodisk",
+    }
+
+    sanitized = smoke.provenance_safe_value(payload)
+    text = json.dumps(sanitized)
+    if "/home/shaw" in text or "/tmp/" in text:
+        raise AssertionError(text)
+    if sanitized["payload"] != (
+        "packages/chip/external/chipyard/software/firemarshal/images/firechip/"
+        "eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk"
+    ):
+        raise AssertionError(sanitized)
+
+
 def test_non_container_absolute_path_is_not_flagged_by_this_gate() -> None:
     text = "VM_PREFIX = /opt/conda/bin\n"
     roots = smoke.detect_stale_absolute_roots(text, Path("/Users/example/npu_experiment"), False)
@@ -1287,6 +1305,8 @@ def main() -> int:
         test_detects_container_paths_when_host_is_not_container_mount,
         test_allows_container_paths_when_running_inside_container_mount,
         test_allow_env_semantics_suppress_container_path_block,
+        test_next_command_uses_exact_located_payload,
+        test_report_provenance_sanitizer_strips_host_local_paths,
         test_non_container_absolute_path_is_not_flagged_by_this_gate,
         test_path_rewrite_replaces_work_root_deterministically,
         test_path_repair_check_and_rewrite_modes,

@@ -19,13 +19,15 @@ The CPU/interconnect scaffold is separate from the e1-chip debug MMIO path. It u
 | --- | ---: | ---: | --- |
 | Interrupt controller | `0x0C00_0000` | `4 KiB` | PLIC-style source pending, enable, claim/complete scaffold |
 | DMA control scaffold | `0x1001_0000` | `4 KiB` | AXI-Lite DMA control target; DMA master is arbitrated onto the DRAM model |
+| NPU control scaffold | `0x1002_0000` | `4 KiB` | AXI-Lite NPU control target; descriptor-master traffic fails closed in this scaffold |
+| Display control scaffold | `0x1003_0000` | `4 KiB` | AXI-Lite display control target; framebuffer scanout is not routed to production DRAM here |
 | DRAM aperture | `0x8000_0000` | `256 MiB` | External DRAM controller/PHY boundary; current RTL model implements a small test memory |
 
 Unmapped AXI-Lite scaffold accesses return `DECERR`; reads also return `0xDEAD_BEEF`.
 
 The `256 MiB` row is the software-visible aperture contract, not implemented capacity. The current SRAM-backed RTL model under that aperture implements only `4 KiB`; accesses within `0x8000_0000` - `0x8FFF_FFFF` but outside the 4 KiB model return DRAM-model `SLVERR`, not AXI-Lite decode `DECERR`. The tiny CPU execution test uses the DRAM aperture as instruction and data memory. The current DRAM model implements aligned 32-bit words with byte strobes; the CPU subset only generates aligned `LW` and `SW`.
 
-The Linux-capable scaffold routes DMA master traffic only to the DRAM model. DMA access attempts outside the DRAM aperture must fail with a memory error and must not update MMIO targets. This is a local containment check, not an IOMMU or coherency implementation.
+The Linux-capable scaffold routes DMA master traffic only to the DRAM model. DMA access attempts outside the DRAM aperture must fail with a memory error and must not update MMIO targets. NPU and display are software-visible MMIO targets in this map, but NPU descriptor-master traffic and display framebuffer reads are not production DRAM fabric evidence. This is a local containment check, not an IOMMU or coherency implementation.
 
 The map is also not a complete boot-memory map. The current reset ROM entry is
 the e1-chip identity ROM, and no boot SRAM region, ROM-to-SRAM copy contract,

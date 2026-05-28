@@ -7,11 +7,15 @@ from pathlib import Path
 
 from compiler.runtime.e1x_wafer_model import (
     HIGH_DEFECT_SCENARIO,
+    SCALED_8GB_MODEL,
+    SCALED_8GB_RUN,
     E1XConfig,
     build_e1x_report,
     build_scaled_8gb_report,
     defect_map_artifact,
     deterministic_defects,
+    model_execution_trace_artifact,
+    model_shard_sample_artifact,
     repair_manifest_artifact,
     repair_rom_artifact,
     scaled_8gb_config,
@@ -97,6 +101,7 @@ def test_scaled_8gb_profile_loads_quantized_model_under_high_defects() -> None:
     assert execution["golden_trace_match"] is True
     assert execution["decode_tokens"] == 128
     assert len(execution["layer_trace_sample"]) == 8
+    assert report["high_failure_execution_trace_sha256"]
     high = report["defect_testing"]["scenarios"][1]
     assert high["scenario"] == "high_failure_rate_repair_stress"
     assert high["blocked_core_count"] > report["defect_testing"]["scenarios"][0]["blocked_core_count"]
@@ -128,6 +133,32 @@ def test_scaled_8gb_defect_map_and_repair_manifest_handoff() -> None:
     assert repair_rom["total_word_count"] == 8 + repair_rom["remap_word_count"] + repair_rom["route_sample_word_count"]
 
 
+def test_scaled_execution_trace_links_repair_and_model_shard() -> None:
+    config = scaled_8gb_config()
+    report = build_scaled_8gb_report()
+    defect_map = defect_map_artifact(config, HIGH_DEFECT_SCENARIO)
+    repair_manifest = repair_manifest_artifact(config, HIGH_DEFECT_SCENARIO, defect_map)
+    high = report["defect_testing"]["scenarios"][1]
+    model_shard = model_shard_sample_artifact(config, SCALED_8GB_MODEL, high["model_load"])
+    execution = report["model_execution"][HIGH_DEFECT_SCENARIO.name]
+
+    trace = model_execution_trace_artifact(
+        config,
+        SCALED_8GB_MODEL,
+        SCALED_8GB_RUN,
+        HIGH_DEFECT_SCENARIO,
+        execution,
+        repair_manifest,
+        model_shard,
+    )
+
+    assert trace["schema"] == "eliza.e1x.quantized_model_execution_trace.v1"
+    assert trace["source_repair_manifest_sha256"] == repair_manifest["artifact_sha256"]
+    assert trace["source_model_shard_sample_sha256"] == model_shard["artifact_sha256"]
+    assert trace["output_checksum"] == report["high_failure_output_checksum"]
+    assert trace["artifact_sha256"] == report["high_failure_execution_trace_sha256"]
+
+
 def test_scaled_generator_writes_repair_handoff_sidecars(tmp_path: Path) -> None:
     out = tmp_path / "scaled.json"
     result = subprocess.run(
@@ -152,6 +183,12 @@ def test_scaled_generator_writes_repair_handoff_sidecars(tmp_path: Path) -> None
     )
     repair_rom_path = Path(file_report["repair_handoff"]["high_failure_repair_rom"]["path"])
     repair_rom_hex_path = Path(file_report["repair_handoff"]["high_failure_repair_rom"]["hex_path"])
+    model_shard_path = Path(
+        file_report["repair_handoff"]["high_failure_model_shard_sample"]["path"]
+    )
+    execution_trace_path = Path(
+        file_report["repair_handoff"]["high_failure_execution_trace"]["path"]
+    )
     if not defect_map_path.is_absolute():
         defect_map_path = ROOT / defect_map_path
     if not repair_manifest_path.is_absolute():
@@ -160,9 +197,15 @@ def test_scaled_generator_writes_repair_handoff_sidecars(tmp_path: Path) -> None
         repair_rom_path = ROOT / repair_rom_path
     if not repair_rom_hex_path.is_absolute():
         repair_rom_hex_path = ROOT / repair_rom_hex_path
+    if not model_shard_path.is_absolute():
+        model_shard_path = ROOT / model_shard_path
+    if not execution_trace_path.is_absolute():
+        execution_trace_path = ROOT / execution_trace_path
     defect_map = json.loads(defect_map_path.read_text(encoding="utf-8"))
     repair_manifest = json.loads(repair_manifest_path.read_text(encoding="utf-8"))
     repair_rom = json.loads(repair_rom_path.read_text(encoding="utf-8"))
+    model_shard = json.loads(model_shard_path.read_text(encoding="utf-8"))
+    execution_trace = json.loads(execution_trace_path.read_text(encoding="utf-8"))
 
     assert defect_map["artifact_sha256"] == file_report["high_failure_defect_map_sha256"]
     assert repair_manifest["artifact_sha256"] == file_report["high_failure_repair_manifest_sha256"]
@@ -170,6 +213,11 @@ def test_scaled_generator_writes_repair_handoff_sidecars(tmp_path: Path) -> None
     assert repair_rom["artifact_sha256"] == file_report["high_failure_repair_rom_sha256"]
     assert repair_rom["source_repair_manifest_sha256"] == repair_manifest["artifact_sha256"]
     assert repair_rom_hex_path.read_text(encoding="utf-8").splitlines() == repair_rom["words"]
+    assert model_shard["artifact_sha256"] == file_report["high_failure_model_shard_sample_sha256"]
+    assert execution_trace["artifact_sha256"] == file_report["high_failure_execution_trace_sha256"]
+    assert execution_trace["source_repair_manifest_sha256"] == repair_manifest["artifact_sha256"]
+    assert execution_trace["source_model_shard_sample_sha256"] == model_shard["artifact_sha256"]
+    assert execution_trace["output_checksum"] == file_report["high_failure_output_checksum"]
 
 
 def test_repair_rom_compiler_round_trips_manifest(tmp_path: Path) -> None:

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -100,6 +101,28 @@ class ChipOsEnvironmentPreflightTests(unittest.TestCase):
                 "android_release_manifest_validator",
             }.issubset(paths)
         )
+
+    def test_output_report_sanitizes_host_local_paths_and_adds_timestamp(self) -> None:
+        report = {
+            "schema": preflight.SCHEMA,
+            "status": "pass",
+            "environment": [
+                {
+                    "name": "AOSP_DIR",
+                    "value": "/home/shaw/aosp",
+                    "command_hint": {
+                        "capture_command": "/home/shaw/milady/eliza/packages/chip/script.sh /home/shaw/aosp"
+                    },
+                }
+            ],
+            "tools": [{"path": "/home/shaw/Android/Sdk/platform-tools/adb"}],
+        }
+
+        output = preflight.report_for_output(report)
+        text = json.dumps(output)
+        self.assertRegex(output["generated_utc"], r"^\d{4}-\d{2}-\d{2}T")
+        self.assertNotIn("/home/shaw", text)
+        self.assertIn("$AOSP_DIR", text)
 
 
 if __name__ == "__main__":

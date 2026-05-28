@@ -432,7 +432,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         peripherals = {row["capture_area"]: row for row in prioritized}["peripherals"]
         self.assertTrue(
             any(
-                path.endswith("docs/evidence/android/peripherals/cellular_5g_lte_sim.log")
+                path.endswith("cellular_5g_lte_sim.log")
                 for path in peripherals["expected_output_files"]
             )
         )
@@ -445,7 +445,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         security = {row["capture_area"]: row for row in prioritized}["security_lifecycle"]
         self.assertTrue(
             any(
-                path.endswith("docs/evidence/android/security/rollback_rejection.log")
+                path.endswith("rollback_rejection.log")
                 for path in security["expected_output_files"]
             )
         )
@@ -464,7 +464,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         power = {row["capture_area"]: row for row in prioritized}["power_thermal"]
         self.assertTrue(
             any(
-                path.endswith("docs/evidence/android/power/sustained_npu_power_thermal_trace.json")
+                path.endswith("sustained_npu_power_thermal_trace.json")
                 for path in power["expected_output_files"]
             )
         )
@@ -673,6 +673,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        self.assertRegex(report["generated_utc"], r"^\d{4}-\d{2}-\d{2}T")
 
     def test_staged_chip_archive_integrity_suppresses_stale_product_out_blocker(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1280,6 +1281,27 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             {finding["code"] for finding in report["findings"]},
         )
         self.assertEqual(report["evidence"]["expected_android_package"], "ai.milady.milady")
+
+    def test_report_provenance_sanitizer_strips_host_local_paths(self) -> None:
+        payload = {
+            "path": "/home/shaw/aosp/out/target/product/eliza_ai_soc/vendor.img",
+            "repo": "/home/shaw/milady/eliza/packages/chip/docs/evidence/android/log.txt",
+            "command": "AOSP_DIR=/home/shaw/aosp python3 /home/shaw/milady/eliza/packages/chip/scripts/check.py",
+            "nested": ["/tmp/aosp/out/target/product/eliza_ai_soc/system.img"],
+        }
+
+        sanitized = gate.provenance_safe_value(payload)
+
+        self.assertNotIn("/home/shaw", json.dumps(sanitized))
+        self.assertNotIn("/tmp/aosp", json.dumps(sanitized))
+        self.assertEqual(
+            sanitized["path"],
+            "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc/vendor.img",
+        )
+        self.assertEqual(
+            sanitized["repo"],
+            "packages/chip/docs/evidence/android/log.txt",
+        )
 
 
 class PatchStack:

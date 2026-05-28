@@ -247,6 +247,24 @@ def build_report() -> dict[str, Any]:
             "visual_route_span_mm": record.get("visual_route_span_mm"),
             "represented_net_count": record.get("represented_net_count"),
             "represented_nets": record.get("represented_nets", record.get("nets", [])),
+            "represented_route_count": record.get("represented_route_count"),
+            "represented_route_ids": record.get("represented_route_ids", []),
+            "represented_route_record_count": record.get("represented_route_record_count"),
+            "represented_route_records_with_layer_count": record.get(
+                "represented_route_records_with_layer_count"
+            ),
+            "represented_route_records_with_source_domain_count": record.get(
+                "represented_route_records_with_source_domain_count"
+            ),
+            "represented_route_records_with_route_class_count": record.get(
+                "represented_route_records_with_route_class_count"
+            ),
+            "represented_route_classification_gap_count": record.get(
+                "represented_route_classification_gap_count"
+            ),
+            "all_represented_routes_have_layer_source_and_class": record.get(
+                "all_represented_routes_have_layer_source_and_class"
+            ),
             "from_terminal_part": record.get("from_terminal_part"),
             "from_terminal_step": record.get("from_terminal_step"),
             "from_terminal_step_bytes": record.get("from_terminal_step_bytes"),
@@ -276,6 +294,12 @@ def build_report() -> dict[str, Any]:
             not row["pass"]
             or row["represented_nets"] != row["nets"]
             or int(row.get("represented_net_count") or 0) != len(row["represented_nets"])
+            or int(row.get("represented_route_count") or 0)
+            != len(row.get("represented_route_ids") or [])
+            or int(row.get("represented_route_record_count") or 0)
+            != int(row.get("represented_route_count") or 0)
+            or int(row.get("represented_route_classification_gap_count") or 0) != 0
+            or row.get("all_represented_routes_have_layer_source_and_class") is not True
         ):
             incomplete_connections.append(str(row["id"]))
         cad_rows.append(row)
@@ -392,6 +416,36 @@ def build_report() -> dict[str, Any]:
             "cad_connection_count": len(connection_records),
             "cad_connection_represented_net_count_total": sum(
                 int(record.get("represented_net_count") or len(record.get("nets", [])))
+                for record in connection_records
+            ),
+            "cad_connection_represented_route_count_total": sum(
+                int(record.get("represented_route_count") or 0) for record in connection_records
+            ),
+            "cad_connection_represented_route_record_count_total": sum(
+                int(record.get("represented_route_record_count") or 0)
+                for record in connection_records
+            ),
+            "cad_connection_represented_route_records_with_layer_count_total": sum(
+                int(record.get("represented_route_records_with_layer_count") or 0)
+                for record in connection_records
+            ),
+            "cad_connection_represented_route_records_with_source_domain_count_total": sum(
+                int(record.get("represented_route_records_with_source_domain_count") or 0)
+                for record in connection_records
+            ),
+            "cad_connection_represented_route_records_with_route_class_count_total": sum(
+                int(record.get("represented_route_records_with_route_class_count") or 0)
+                for record in connection_records
+            ),
+            "cad_connection_represented_route_classification_gap_count": sum(
+                int(record.get("represented_route_classification_gap_count") or 0)
+                for record in connection_records
+            ),
+            "cad_connection_all_represented_routes_have_layer_source_and_class": bool(
+                connection_records
+            )
+            and all(
+                record.get("all_represented_routes_have_layer_source_and_class") is True
                 for record in connection_records
             ),
             "cad_connection_visual_route_span_total_mm": round(

@@ -18,6 +18,7 @@ REPORT = ROOT / "build/reports/e1x_rtl_contract.json"
 RTL_FILES = [
     ROOT / "rtl/e1x/e1x_pkg.sv",
     ROOT / "rtl/e1x/e1x_mesh_router.sv",
+    ROOT / "rtl/e1x/e1x_local_sram_shard_loader.sv",
     ROOT / "rtl/e1x/e1x_repair_aware_router.sv",
     ROOT / "rtl/e1x/e1x_repair_mmio_programmer.sv",
     ROOT / "rtl/e1x/e1x_repair_rom_loader.sv",
@@ -25,6 +26,7 @@ RTL_FILES = [
     ROOT / "rtl/e1x/e1x_repair_route_table.sv",
     ROOT / "rtl/e1x/e1x_repair_routed_router.sv",
     ROOT / "rtl/e1x/e1x_repair_routed_tile.sv",
+    ROOT / "rtl/e1x/e1x_repair_mmio_routed_tile.sv",
     ROOT / "rtl/e1x/e1x_tiny_core_contract.sv",
     ROOT / "rtl/e1x/e1x_tile.sv",
 ]
@@ -125,6 +127,29 @@ def structural_checks() -> list[dict[str, str]]:
             "detail": "router exposes route table, port disable, repair enable, and repaired-drop output"
             if not missing_terms
             else "missing terms: " + ", ".join(missing_terms),
+        }
+    )
+    local_sram_loader = (ROOT / "rtl/e1x/e1x_local_sram_shard_loader.sv").read_text(
+        encoding="utf-8"
+    )
+    local_sram_terms = (
+        "LOCAL_SRAM_KIB",
+        "load_word_addr_i",
+        "load_word_i",
+        "capacity_bytes_o",
+        "loaded_bytes_o",
+        "checksum_o",
+        "overflow_o",
+        "local_sram",
+    )
+    missing_local_sram_terms = [term for term in local_sram_terms if term not in local_sram_loader]
+    checks.append(
+        {
+            "id": "e1x_local_sram_loader_supports_quantized_shards",
+            "status": "pass" if not missing_local_sram_terms else "fail",
+            "detail": "local SRAM shard loader exposes capacity, loaded-byte, checksum, and overflow evidence"
+            if not missing_local_sram_terms
+            else "missing terms: " + ", ".join(missing_local_sram_terms),
         }
     )
     repair_rom = (ROOT / "rtl/e1x/e1x_repair_rom_loader.sv").read_text(encoding="utf-8")
@@ -285,6 +310,29 @@ def structural_checks() -> list[dict[str, str]]:
             else "missing terms: " + ", ".join(missing_repair_routed_tile_terms),
         }
     )
+    repair_mmio_routed_tile = (ROOT / "rtl/e1x/e1x_repair_mmio_routed_tile.sv").read_text(
+        encoding="utf-8"
+    )
+    repair_mmio_routed_tile_terms = (
+        "e1x_repair_mmio_programmer",
+        "e1x_repair_routed_tile",
+        "mmio_write_valid_i",
+        "mmio_read_valid_i",
+        "repair_programmer_words_pushed_o",
+        "repair_override_used_o",
+    )
+    missing_repair_mmio_routed_tile_terms = [
+        term for term in repair_mmio_routed_tile_terms if term not in repair_mmio_routed_tile
+    ]
+    checks.append(
+        {
+            "id": "e1x_repair_mmio_routed_tile_binds_programmer_to_tile",
+            "status": "pass" if not missing_repair_mmio_routed_tile_terms else "fail",
+            "detail": "MMIO repair-routed tile connects firmware-style repair loading to tile fabric repair"
+            if not missing_repair_mmio_routed_tile_terms
+            else "missing terms: " + ", ".join(missing_repair_mmio_routed_tile_terms),
+        }
+    )
     return checks
 
 
@@ -327,6 +375,7 @@ def verilator_check() -> dict[str, str]:
         "-Wno-UNUSEDSIGNAL",
         "-Wno-BLKSEQ",
         str(ROOT / "rtl/e1x/e1x_mesh_router.sv"),
+        str(ROOT / "rtl/e1x/e1x_local_sram_shard_loader.sv"),
         str(ROOT / "rtl/e1x/e1x_repair_aware_router.sv"),
         str(ROOT / "rtl/e1x/e1x_repair_mmio_programmer.sv"),
         str(ROOT / "rtl/e1x/e1x_repair_rom_loader.sv"),
@@ -334,6 +383,7 @@ def verilator_check() -> dict[str, str]:
         str(ROOT / "rtl/e1x/e1x_repair_route_table.sv"),
         str(ROOT / "rtl/e1x/e1x_repair_routed_router.sv"),
         str(ROOT / "rtl/e1x/e1x_repair_routed_tile.sv"),
+        str(ROOT / "rtl/e1x/e1x_repair_mmio_routed_tile.sv"),
         str(ROOT / "rtl/e1x/e1x_tiny_core_contract.sv"),
         str(ROOT / "rtl/e1x/e1x_tile.sv"),
         "--top-module",

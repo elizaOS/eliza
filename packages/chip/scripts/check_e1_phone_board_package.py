@@ -15231,6 +15231,7 @@ def check_component_model_directory_filesystem_coverage() -> None:
             "local_discrete_step_bytes",
             "local_discrete_step_import_status",
             "local_discrete_step_solid_type",
+            "local_discrete_step_imported_as_solid",
             "local_discrete_step_bbox_matches_envelope",
             "expected_supplier_step_file",
             "supplier_sourcing_lane",
@@ -15252,6 +15253,10 @@ def check_component_model_directory_filesystem_coverage() -> None:
             imported_solid_count += 1
         if record.get("local_discrete_step_solid_type") != "Solid":
             raise SystemExit(f"component model local STEP not a solid: {reference}")
+        if record.get("local_discrete_step_imported_as_solid") is not True:
+            raise SystemExit(
+                f"component model local STEP imported-as-solid flag stale: {reference}"
+            )
         if record.get("local_discrete_step_bbox_matches_envelope") is True:
             bbox_match_count += 1
         local_step_bytes_total += local_step_bytes
@@ -15598,6 +15603,24 @@ def check_kicad_cad_stub_audit() -> None:
         "cad_connection_coverage_represented_net_count_total": coverage[
             "represented_net_count_total"
         ],
+        "cad_connection_coverage_represented_route_record_count_total": coverage[
+            "represented_route_record_count_total"
+        ],
+        "cad_connection_coverage_represented_route_records_with_layer_count_total": coverage[
+            "represented_route_records_with_layer_count_total"
+        ],
+        "cad_connection_coverage_represented_route_records_with_source_domain_count_total": (
+            coverage["represented_route_records_with_source_domain_count_total"]
+        ),
+        "cad_connection_coverage_represented_route_records_with_route_class_count_total": (
+            coverage["represented_route_records_with_route_class_count_total"]
+        ),
+        "cad_connection_coverage_represented_route_classification_gap_count": coverage[
+            "represented_route_classification_gap_count"
+        ],
+        "cad_connection_coverage_all_represented_routes_have_layer_source_and_class": coverage[
+            "all_represented_routes_have_layer_source_and_class"
+        ],
         "cad_connection_coverage_record_count": len(coverage["connections"]),
         "cad_connection_coverage_represented_net_list_total": sum(
             len(connection.get("represented_nets") or [])
@@ -15638,6 +15661,12 @@ def check_kicad_cad_stub_audit() -> None:
         "passing_connection_solid_step_part_set_count",
         "connection_solid_step_part_bytes_total",
         "represented_net_count_total",
+        "represented_route_record_count_total",
+        "represented_route_records_with_layer_count_total",
+        "represented_route_records_with_source_domain_count_total",
+        "represented_route_records_with_route_class_count_total",
+        "represented_route_classification_gap_count",
+        "all_represented_routes_have_layer_source_and_class",
         "controlled_impedance_connection_count",
         "controlled_impedance_requirement_defined_count",
         "bend_radius_requirement_defined_count",
@@ -15672,6 +15701,24 @@ def check_kicad_cad_stub_audit() -> None:
             "pinout_bound_footprint_count"
         ),
         "routed_output_candidate_traceability_cad_connection_count": "cad_connection_count",
+        "routed_output_candidate_traceability_cad_connection_represented_route_count_total": (
+            "cad_connection_represented_route_count_total"
+        ),
+        "routed_output_candidate_traceability_cad_connection_represented_route_record_count_total": (
+            "cad_connection_represented_route_record_count_total"
+        ),
+        "routed_output_candidate_traceability_cad_connection_represented_route_records_with_layer_count_total": (
+            "cad_connection_represented_route_records_with_layer_count_total"
+        ),
+        "routed_output_candidate_traceability_cad_connection_represented_route_records_with_source_domain_count_total": (
+            "cad_connection_represented_route_records_with_source_domain_count_total"
+        ),
+        "routed_output_candidate_traceability_cad_connection_represented_route_records_with_route_class_count_total": (
+            "cad_connection_represented_route_records_with_route_class_count_total"
+        ),
+        "routed_output_candidate_traceability_cad_connection_represented_route_classification_gap_count": (
+            "cad_connection_represented_route_classification_gap_count"
+        ),
         "routed_output_candidate_traceability_explicit_support_pattern_count": (
             "explicit_support_pattern_count"
         ),
@@ -15706,6 +15753,10 @@ def check_kicad_cad_stub_audit() -> None:
         (
             "routed_output_candidate_traceability_all_support_patterns_have_explicit_provenance",
             "all_support_patterns_have_explicit_provenance",
+        ),
+        (
+            "routed_output_candidate_traceability_cad_connection_all_represented_routes_have_layer_source_and_class",
+            "cad_connection_all_represented_routes_have_layer_source_and_class",
         ),
     ]:
         if state[audit_key] != trace_summary[trace_key]:

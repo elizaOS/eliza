@@ -60,37 +60,80 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
     defect_map = handoff.get("high_failure_defect_map")
     repair_manifest = handoff.get("high_failure_repair_manifest")
     repair_rom = handoff.get("high_failure_repair_rom")
-    if not isinstance(defect_map, dict) or not isinstance(repair_manifest, dict) or not isinstance(repair_rom, dict):
-        return False, "scaled E1X repair handoff missing defect map, repair manifest, or repair ROM", {}
+    model_shard_sample = handoff.get("high_failure_model_shard_sample")
+    model_execution_trace = handoff.get("high_failure_execution_trace")
+    if (
+        not isinstance(defect_map, dict)
+        or not isinstance(repair_manifest, dict)
+        or not isinstance(repair_rom, dict)
+        or not isinstance(model_shard_sample, dict)
+        or not isinstance(model_execution_trace, dict)
+    ):
+        return False, "scaled E1X handoff missing repair/model execution sidecars", {}
     defect_map_path = _required_repo_file(defect_map.get("path"))
     repair_manifest_path = _required_repo_file(repair_manifest.get("path"))
     repair_rom_path = _required_repo_file(repair_rom.get("path"))
     repair_rom_hex_path = _required_repo_file(repair_rom.get("hex_path"))
+    model_shard_sample_path = _required_repo_file(model_shard_sample.get("path"))
+    model_execution_trace_path = _required_repo_file(model_execution_trace.get("path"))
     if (
         defect_map_path is None
         or repair_manifest_path is None
         or repair_rom_path is None
         or repair_rom_hex_path is None
+        or model_shard_sample_path is None
+        or model_execution_trace_path is None
     ):
-        return False, "scaled E1X repair handoff sidecar path is missing or invalid", {}
+        return False, "scaled E1X handoff sidecar path is missing or invalid", {}
     defect_map_data = json.loads(defect_map_path.read_text(encoding="utf-8"))
     repair_manifest_data = json.loads(repair_manifest_path.read_text(encoding="utf-8"))
     repair_rom_data = json.loads(repair_rom_path.read_text(encoding="utf-8"))
+    model_shard_sample_data = json.loads(model_shard_sample_path.read_text(encoding="utf-8"))
+    model_execution_trace_data = json.loads(
+        model_execution_trace_path.read_text(encoding="utf-8")
+    )
     if defect_map_data.get("artifact_sha256") != defect_map.get("artifact_sha256"):
         return False, "defect-map sidecar sha does not match scaled report", {}
     if repair_manifest_data.get("artifact_sha256") != repair_manifest.get("artifact_sha256"):
         return False, "repair-manifest sidecar sha does not match scaled report", {}
     if repair_rom_data.get("artifact_sha256") != repair_rom.get("artifact_sha256"):
         return False, "repair-ROM sidecar sha does not match scaled report", {}
+    if model_shard_sample_data.get("artifact_sha256") != model_shard_sample.get("artifact_sha256"):
+        return False, "model-shard sidecar sha does not match scaled report", {}
+    if (
+        model_execution_trace_data.get("artifact_sha256")
+        != model_execution_trace.get("artifact_sha256")
+    ):
+        return False, "execution-trace sidecar sha does not match scaled report", {}
     if repair_manifest_data.get("source_defect_map_sha256") != defect_map_data.get("artifact_sha256"):
         return False, "repair manifest does not reference the defect-map artifact", {}
     if repair_rom_data.get("source_repair_manifest_sha256") != repair_manifest_data.get("artifact_sha256"):
         return False, "repair ROM does not reference the repair-manifest artifact", {}
+    if (
+        model_execution_trace_data.get("source_repair_manifest_sha256")
+        != repair_manifest_data.get("artifact_sha256")
+    ):
+        return False, "execution trace does not reference the repair-manifest artifact", {}
+    if (
+        model_execution_trace_data.get("source_model_shard_sample_sha256")
+        != model_shard_sample_data.get("artifact_sha256")
+    ):
+        return False, "execution trace does not reference the model-shard artifact", {}
+    if model_execution_trace_data.get("output_checksum") != scaled_metrics.get(
+        "high_failure_output_checksum"
+    ):
+        return False, "execution trace output checksum does not match scaled report", {}
+    if model_execution_trace_data.get("golden_trace_match") is not True:
+        return False, "execution trace did not match golden trace", {}
     rom_hex_words = repair_rom_hex_path.read_text(encoding="utf-8").strip().splitlines()
     if rom_hex_words != repair_rom_data.get("words"):
         return False, "repair-ROM hex image does not match JSON ROM words", {}
     if not _file_sha256_is_stable(defect_map_path) or not _file_sha256_is_stable(repair_manifest_path) or not _file_sha256_is_stable(repair_rom_path):
         return False, "repair handoff sidecars are empty or unreadable", {}
+    if not _file_sha256_is_stable(model_shard_sample_path):
+        return False, "model-shard sidecar is empty or unreadable", {}
+    if not _file_sha256_is_stable(model_execution_trace_path):
+        return False, "execution-trace sidecar is empty or unreadable", {}
     summary = {
         "claim_level": str(report.get("claim_level")),
         "base_logical_cores": int(base_metrics["architecture"]["logical_cores"]),
@@ -112,6 +155,16 @@ def inspect_benchmark_report() -> tuple[bool, str, dict[str, int | float | str]]
             len(repair_manifest_data["sampled_routes"])
         ),
         "high_failure_repair_rom_words": int(repair_rom_data["total_word_count"]),
+        "high_failure_model_shard_sample_words": int(model_shard_sample_data["sampled_word_count"]),
+        "high_failure_model_shard_sample_checksum": int(
+            model_shard_sample_data["expected_checksum"]
+        ),
+        "high_failure_execution_trace_output_checksum": int(
+            model_execution_trace_data["output_checksum"]
+        ),
+        "high_failure_execution_trace_total_cycles": int(
+            model_execution_trace_data["total_cycles"]
+        ),
     }
     return True, "E1X base and scaled model-load benchmarks passed", summary
 
@@ -181,6 +234,7 @@ def main() -> int:
         "evidence_paths": [
             "benchmarks/configs/benchmark_plan.json",
             f"benchmarks/results/{REPORT_ID}/report.json",
+            "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_model_execution_trace.json",
         ],
         "checks": checks,
         "summary": {**metrics, "check_count": len(checks), "failing_check_count": len(failures)},

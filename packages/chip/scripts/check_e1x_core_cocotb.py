@@ -10,19 +10,64 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_core_cocotb.json"
-RESULT_XML = ROOT / "verify/cocotb/results/e1x_tiny_core_tb_test_e1x_tiny_core.xml"
-EXPECTED_TESTS = {
-    "tiny_core_executes_minimal_rv64i_integer_program",
-    "tiny_core_accumulates_wavelets_into_local_register",
-    "tiny_core_ecall_halts_fetch_and_wavelet_ingress",
+GENERATED_MODEL_SHARD_SAMPLE_JSON = (
+    ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_model_shard_sample.json"
+)
+RUNS = {
+    "tiny_core": {
+        "top": "e1x_tiny_core_tb",
+        "module": "test_e1x_tiny_core",
+        "result": ROOT / "verify/cocotb/results/e1x_tiny_core_tb_test_e1x_tiny_core.xml",
+        "expected": {
+            "tiny_core_executes_minimal_rv64i_integer_program",
+            "tiny_core_accumulates_wavelets_into_local_register",
+            "tiny_core_ecall_halts_fetch_and_wavelet_ingress",
+        },
+    },
+    "local_sram_shard_loader": {
+        "top": "e1x_local_sram_shard_loader_tb",
+        "module": "test_e1x_local_sram_shard_loader",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_local_sram_shard_loader_tb_test_e1x_local_sram_shard_loader.xml",
+        "expected": {
+            "local_sram_loader_accepts_quantized_weight_shard_and_reports_checksum",
+            "local_sram_loader_flags_out_of_capacity_shard_write_and_clear_recovers",
+        },
+    },
+    "generated_model_shard_loader": {
+        "top": "e1x_local_sram_shard_loader_tb",
+        "module": "test_e1x_generated_model_shard_loader",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_local_sram_shard_loader_tb_test_e1x_generated_model_shard_loader.xml",
+        "expected": {
+            "generated_high_failure_model_shard_loads_into_rtl_local_sram",
+        },
+        "env": {
+            "E1X_MODEL_SHARD_SAMPLE_JSON": str(GENERATED_MODEL_SHARD_SAMPLE_JSON),
+        },
+    },
 }
 
 
-def run_cocotb() -> tuple[bool, str]:
+def ensure_generated_model_shard_sample() -> None:
+    if GENERATED_MODEL_SHARD_SAMPLE_JSON.is_file():
+        return
+    subprocess.run(
+        ["scripts/generate_e1x_scaled_model_evidence.py"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+
+def run_cocotb(top: str, module: str, extra_env: dict[str, str] | None = None) -> tuple[bool, str]:
     env = os.environ.copy()
     env["COCOTB_DIR"] = "verify/cocotb/e1x"
-    env["COCOTB_TOPLEVEL"] = "e1x_tiny_core_tb"
-    env["COCOTB_MODULE"] = "test_e1x_tiny_core"
+    env["COCOTB_TOPLEVEL"] = top
+    env["COCOTB_MODULE"] = module
+    if extra_env:
+        env.update(extra_env)
     proc = subprocess.run(
         ["scripts/run_cocotb.sh"],
         cwd=ROOT,
@@ -36,15 +81,15 @@ def run_cocotb() -> tuple[bool, str]:
     return True, "cocotb command completed"
 
 
-def parse_results() -> tuple[bool, str, dict[str, int]]:
-    if not RESULT_XML.is_file():
-        return False, f"missing cocotb result {RESULT_XML.relative_to(ROOT)}", {}
-    root = ET.fromstring(RESULT_XML.read_text(encoding="utf-8", errors="ignore"))
+def parse_results(result_xml: Path, expected_tests: set[str]) -> tuple[bool, str, dict[str, int]]:
+    if not result_xml.is_file():
+        return False, f"missing cocotb result {result_xml.relative_to(ROOT)}", {}
+    root = ET.fromstring(result_xml.read_text(encoding="utf-8", errors="ignore"))
     cases = list(root.iter("testcase"))
     names = {case.attrib.get("name", "") for case in cases}
     failures = sum(1 for case in cases if case.find("failure") is not None)
     errors = sum(1 for case in cases if case.find("error") is not None)
-    missing = sorted(EXPECTED_TESTS - names)
+    missing = sorted(expected_tests - names)
     counts = {
         "testcases": len(cases),
         "failures": failures,
@@ -57,20 +102,41 @@ def parse_results() -> tuple[bool, str, dict[str, int]]:
 
 
 def main() -> int:
-    command_ok, command_detail = run_cocotb()
-    results_ok, results_detail, counts = parse_results() if command_ok else (False, "not run", {})
-    checks = [
-        {
-            "id": "e1x_tiny_core_cocotb_command",
-            "status": "pass" if command_ok else "fail",
-            "detail": command_detail,
-        },
-        {
-            "id": "e1x_tiny_core_cocotb_results",
-            "status": "pass" if results_ok else "fail",
-            "detail": results_detail,
-        },
-    ]
+    ensure_generated_model_shard_sample()
+    checks = []
+    aggregate_counts = {"testcases": 0, "failures": 0, "errors": 0, "missing_expected_tests": 0}
+    for run_id, run in RUNS.items():
+        extra_env = run.get("env")
+        if extra_env is not None and not isinstance(extra_env, dict):
+            raise TypeError("invalid E1X core cocotb env table")
+        command_ok, command_detail = run_cocotb(
+            str(run["top"]),
+            str(run["module"]),
+            {str(key): str(value) for key, value in extra_env.items()} if extra_env else None,
+        )
+        result_path = run["result"]
+        expected = run["expected"]
+        if not isinstance(result_path, Path) or not isinstance(expected, set):
+            raise TypeError("invalid E1X core cocotb run table")
+        results_ok, results_detail, counts = (
+            parse_results(result_path, expected) if command_ok else (False, "not run", {})
+        )
+        for key in aggregate_counts:
+            aggregate_counts[key] += int(counts.get(key, 0))
+        checks.extend(
+            [
+                {
+                    "id": f"e1x_{run_id}_cocotb_command",
+                    "status": "pass" if command_ok else "fail",
+                    "detail": command_detail,
+                },
+                {
+                    "id": f"e1x_{run_id}_cocotb_results",
+                    "status": "pass" if results_ok else "fail",
+                    "detail": results_detail,
+                },
+            ]
+        )
     failures = [check for check in checks if check["status"] != "pass"]
     report = {
         "schema": "eliza.gate_status.v1",
@@ -78,16 +144,23 @@ def main() -> int:
         "status": "PASS" if not failures else "BLOCKED",
         "as_of": datetime.now(UTC).isoformat(),
         "subsystem": "e1x",
-        "claim_boundary": "E1X tiny-core RV64I subset cocotb verification only; not full RISC-V compliance, compiler/runtime, PD, DFT, package, or silicon evidence.",
+        "claim_boundary": "E1X tiny-core and local SRAM shard-loader cocotb verification only; not full RISC-V compliance, full model compiler/runtime, PD, DFT, package, or silicon evidence.",
         "evidence_paths": [
             "rtl/e1x/e1x_tiny_core_contract.sv",
+            "rtl/e1x/e1x_local_sram_shard_loader.sv",
             "verify/cocotb/e1x/e1x_tiny_core_tb.sv",
+            "verify/cocotb/e1x/e1x_local_sram_shard_loader_tb.sv",
             "verify/cocotb/e1x/test_e1x_tiny_core.py",
+            "verify/cocotb/e1x/test_e1x_local_sram_shard_loader.py",
+            "verify/cocotb/e1x/test_e1x_generated_model_shard_loader.py",
+            "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_model_shard_sample.json",
             "verify/cocotb/results/e1x_tiny_core_tb_test_e1x_tiny_core.xml",
+            "verify/cocotb/results/e1x_local_sram_shard_loader_tb_test_e1x_local_sram_shard_loader.xml",
+            "verify/cocotb/results/e1x_local_sram_shard_loader_tb_test_e1x_generated_model_shard_loader.xml",
         ],
         "checks": checks,
         "summary": {
-            **counts,
+            **aggregate_counts,
             "check_count": len(checks),
             "failing_check_count": len(failures),
         },

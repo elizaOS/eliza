@@ -993,6 +993,67 @@ class BuildReportTests(unittest.TestCase):
             phase_map["chip_pd_signoff"]["acceptance_commands"],
         )
 
+    def test_chip_blocker_actions_use_structured_release_reports(self) -> None:
+        report = agg.build_report(
+            [
+                agg.GateResult(
+                    name="pd-signoff-check",
+                    status="BLOCKED",
+                    evidence="STATUS: BLOCKED PD signoff",
+                    subsystem="pd",
+                    tier="pd",
+                    script="scripts/check_pd_signoff.py",
+                ),
+                agg.GateResult(
+                    name="pd-release-evidence-check",
+                    status="BLOCKED",
+                    evidence="STATUS: BLOCKED PD release evidence",
+                    subsystem="pd",
+                    tier="pd",
+                    script="scripts/check_pd_release_evidence.py",
+                ),
+                agg.GateResult(
+                    name="pdk-access-gate",
+                    status="BLOCKED",
+                    evidence="STATUS: BLOCKED PDK access gate",
+                    subsystem="process",
+                    tier="pd",
+                    script="scripts/check_pdk_access_gate.py",
+                ),
+                agg.GateResult(
+                    name="io-cell-contract-check",
+                    status="BLOCKED",
+                    evidence="STATUS: BLOCKED io_cell_contract",
+                    subsystem="pd",
+                    tier="pd",
+                    script="scripts/check_io_cell_contract.py",
+                ),
+                agg.GateResult(
+                    name="antenna-metadata-release-check",
+                    status="BLOCKED",
+                    evidence="STATUS: BLOCKED antenna metadata check",
+                    subsystem="pd",
+                    tier="pd",
+                    script="scripts/check_antenna_metadata.py",
+                    args=("--release",),
+                ),
+            ]
+        )
+
+        actions = {
+            row["name"]: row["next_action"]
+            for row in report["blocker_action_plan"]["actionable_external_dependency"]
+        }
+        self.assertIn("Closest run:", actions["pd-signoff-check"])
+        self.assertIn("Top blocker buckets:", actions["pd-release-evidence-check"])
+        self.assertIn("advanced targets blocked", actions["pdk-access-gate"])
+        self.assertIn("Classes blocked:", actions["io-cell-contract-check"])
+        self.assertIn("pins blocked:", actions["antenna-metadata-release-check"])
+        self.assertNotIn(
+            "Inspect the checker report",
+            "\n".join(actions.values()),
+        )
+
     def test_chip_release_gates_use_nested_repo_generation_taxonomy(self) -> None:
         paths = (
             agg.PD_SIGNOFF_REPORT_PATH,
@@ -1035,6 +1096,12 @@ class BuildReportTests(unittest.TestCase):
                             "blocked_repo_generation_count": 19,
                             "repo_generatable_now_count": 0,
                         },
+                        "findings": [
+                            {
+                                "dependency_type": "repo_artifact_generation",
+                                "message": "missing FPGA release evidence: bitstream",
+                            }
+                        ],
                     }
                 ),
                 encoding="utf-8",

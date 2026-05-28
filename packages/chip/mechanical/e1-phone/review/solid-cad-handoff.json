@@ -6522,6 +6522,12 @@
     "bend_radius_requirement_defined_count": 32,
     "supplier_release_required_connection_count": 32,
     "release_credit": false,
+    "represented_route_record_count_total": 153,
+    "represented_route_records_with_layer_count_total": 153,
+    "represented_route_records_with_source_domain_count_total": 153,
+    "represented_route_records_with_route_class_count_total": 153,
+    "represented_route_classification_gap_count": 0,
+    "all_represented_routes_have_layer_source_and_class": true,
     "connections": [
       {
         "id": "display_touch_fpc",
@@ -6971,7 +6977,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 14,
+        "represented_route_records_with_layer_count": 14,
+        "represented_route_records_with_source_domain_count": 14,
+        "represented_route_records_with_route_class_count": 14,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "rear_camera_csi_fpc",
@@ -7399,7 +7411,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 13,
+        "represented_route_records_with_layer_count": 13,
+        "represented_route_records_with_source_domain_count": 13,
+        "represented_route_records_with_route_class_count": 13,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "front_camera_csi_fpc",
@@ -7719,7 +7737,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 9,
+        "represented_route_records_with_layer_count": 9,
+        "represented_route_records_with_source_domain_count": 9,
+        "represented_route_records_with_route_class_count": 9,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "side_key_flex",
@@ -7882,7 +7906,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 3,
+        "represented_route_records_with_layer_count": 3,
+        "represented_route_records_with_source_domain_count": 3,
+        "represented_route_records_with_route_class_count": 3,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "battery_lead_flex",
@@ -8071,7 +8101,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 4,
+        "represented_route_records_with_layer_count": 4,
+        "represented_route_records_with_source_domain_count": 4,
+        "represented_route_records_with_route_class_count": 4,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "usb_c_escape_tail",
@@ -8308,7 +8344,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 5,
+        "represented_route_records_with_layer_count": 5,
+        "represented_route_records_with_source_domain_count": 5,
+        "represented_route_records_with_route_class_count": 5,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "usb_c_to_pd_controller_escape",
@@ -8545,7 +8587,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 5,
+        "represented_route_records_with_layer_count": 5,
+        "represented_route_records_with_source_domain_count": 5,
+        "represented_route_records_with_route_class_count": 5,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "pd_controller_to_charger_control",
@@ -8847,7 +8895,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 9,
+        "represented_route_records_with_layer_count": 9,
+        "represented_route_records_with_source_domain_count": 9,
+        "represented_route_records_with_route_class_count": 9,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "charger_to_battery_power_sense",
@@ -9036,7 +9090,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 4,
+        "represented_route_records_with_layer_count": 4,
+        "represented_route_records_with_source_domain_count": 4,
+        "represented_route_records_with_route_class_count": 4,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "display_bias_power_flex",
@@ -9173,7 +9233,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 2,
+        "represented_route_records_with_layer_count": 2,
+        "represented_route_records_with_source_domain_count": 2,
+        "represented_route_records_with_route_class_count": 2,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "rear_camera_power_flex",
@@ -9333,7 +9399,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 3,
+        "represented_route_records_with_layer_count": 3,
+        "represented_route_records_with_source_domain_count": 3,
+        "represented_route_records_with_route_class_count": 3,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "front_camera_power_flex",
@@ -9493,7 +9565,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 3,
+        "represented_route_records_with_layer_count": 3,
+        "represented_route_records_with_source_domain_count": 3,
+        "represented_route_records_with_route_class_count": 3,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "wifi_bt_host_control",
@@ -10010,7 +10088,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 17,
+        "represented_route_records_with_layer_count": 17,
+        "represented_route_records_with_source_domain_count": 17,
+        "represented_route_records_with_route_class_count": 17,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "cellular_host_control",
@@ -10299,7 +10383,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 8,
+        "represented_route_records_with_layer_count": 8,
+        "represented_route_records_with_source_domain_count": 8,
+        "represented_route_records_with_route_class_count": 8,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "bottom_speaker_lead_pair",
@@ -10432,7 +10522,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 2,
+        "represented_route_records_with_layer_count": 2,
+        "represented_route_records_with_source_domain_count": 2,
+        "represented_route_records_with_route_class_count": 2,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "bottom_microphone_flex",
@@ -10565,7 +10661,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 2,
+        "represented_route_records_with_layer_count": 2,
+        "represented_route_records_with_source_domain_count": 2,
+        "represented_route_records_with_route_class_count": 2,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "top_microphone_flex",
@@ -10698,7 +10800,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 2,
+        "represented_route_records_with_layer_count": 2,
+        "represented_route_records_with_source_domain_count": 2,
+        "represented_route_records_with_route_class_count": 2,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "earpiece_receiver_lead_flex",
@@ -10831,7 +10939,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 2,
+        "represented_route_records_with_layer_count": 2,
+        "represented_route_records_with_source_domain_count": 2,
+        "represented_route_records_with_route_class_count": 2,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "haptic_flex",
@@ -10961,7 +11075,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 2,
+        "represented_route_records_with_layer_count": 2,
+        "represented_route_records_with_source_domain_count": 2,
+        "represented_route_records_with_route_class_count": 2,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "sensor_hub_i2c_flex",
@@ -11094,7 +11214,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 2,
+        "represented_route_records_with_layer_count": 2,
+        "represented_route_records_with_source_domain_count": 2,
+        "represented_route_records_with_route_class_count": 2,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "sim_esim_signal_flex",
@@ -11381,7 +11507,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 9,
+        "represented_route_records_with_layer_count": 9,
+        "represented_route_records_with_source_domain_count": 9,
+        "represented_route_records_with_route_class_count": 9,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "nfc_loop_antenna_flex",
@@ -11558,7 +11690,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 4,
+        "represented_route_records_with_layer_count": 4,
+        "represented_route_records_with_source_domain_count": 4,
+        "represented_route_records_with_route_class_count": 4,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "compute_som_sodimm_carrier",
@@ -11872,7 +12010,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 9,
+        "represented_route_records_with_layer_count": 9,
+        "represented_route_records_with_source_domain_count": 9,
+        "represented_route_records_with_route_class_count": 9,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "soc_shield_ground_spring",
@@ -12020,7 +12164,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 2,
+        "represented_route_records_with_layer_count": 2,
+        "represented_route_records_with_source_domain_count": 2,
+        "represented_route_records_with_route_class_count": 2,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "radio_shield_ground_spring",
@@ -12196,7 +12346,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 3,
+        "represented_route_records_with_layer_count": 3,
+        "represented_route_records_with_source_domain_count": 3,
+        "represented_route_records_with_route_class_count": 3,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "cellular_main_rf_feed",
@@ -12314,7 +12470,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 1,
+        "represented_route_records_with_layer_count": 1,
+        "represented_route_records_with_source_domain_count": 1,
+        "represented_route_records_with_route_class_count": 1,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "cellular_diversity_rf_feed",
@@ -12432,7 +12594,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 1,
+        "represented_route_records_with_layer_count": 1,
+        "represented_route_records_with_source_domain_count": 1,
+        "represented_route_records_with_route_class_count": 1,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "cellular_antenna_aperture_tuner",
@@ -12573,7 +12741,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 2,
+        "represented_route_records_with_layer_count": 2,
+        "represented_route_records_with_source_domain_count": 2,
+        "represented_route_records_with_route_class_count": 2,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "cellular_gnss_rf_feed",
@@ -12691,7 +12865,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 1,
+        "represented_route_records_with_layer_count": 1,
+        "represented_route_records_with_source_domain_count": 1,
+        "represented_route_records_with_route_class_count": 1,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "wifi_bt_rf0_feed",
@@ -12811,7 +12991,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 1,
+        "represented_route_records_with_layer_count": 1,
+        "represented_route_records_with_source_domain_count": 1,
+        "represented_route_records_with_route_class_count": 1,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "wifi_bt_rf1_feed",
@@ -12931,7 +13117,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 1,
+        "represented_route_records_with_layer_count": 1,
+        "represented_route_records_with_source_domain_count": 1,
+        "represented_route_records_with_route_class_count": 1,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       },
       {
         "id": "split_interconnect_side_flex",
@@ -13219,7 +13411,13 @@
         "controlled_impedance_requirement_defined": true,
         "bend_radius_requirement_defined": true,
         "release_credit": false,
-        "pass": true
+        "pass": true,
+        "represented_route_record_count": 8,
+        "represented_route_records_with_layer_count": 8,
+        "represented_route_records_with_source_domain_count": 8,
+        "represented_route_records_with_route_class_count": 8,
+        "represented_route_classification_gap_count": 0,
+        "all_represented_routes_have_layer_source_and_class": true
       }
     ]
   },

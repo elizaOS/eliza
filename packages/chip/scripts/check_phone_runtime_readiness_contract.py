@@ -26,6 +26,7 @@ import check_radio_sensor_pmic_scope
 import check_security_lifecycle_scope
 
 ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = ROOT.parents[1]
 REPORT = ROOT / "build/reports/phone_runtime_readiness_contract.json"
 ANDROID_APK_PAYLOAD_REPORT = ROOT / "build/reports/android_system_apk_payload.json"
 PLANNED_EVIDENCE_TEMPLATE_MANIFEST = (
@@ -305,21 +306,43 @@ def rel(path: Path) -> str:
         return str(path)
 
 
+def repo_rel(path: Path) -> str:
+    try:
+        return path.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def repo_output_path(package_relative_path: str) -> str:
+    if package_relative_path.startswith("/"):
+        return package_relative_path
+    return f"packages/chip/{package_relative_path}"
+
+
+def pwd_repo_output_path(package_relative_path: str) -> str:
+    if package_relative_path.startswith("/"):
+        return package_relative_path
+    return f"$(pwd)/{repo_output_path(package_relative_path)}"
+
+
 def evidence_capture_plan(path: Path) -> dict[str, Any]:
     """Return exact operator commands for collecting a required evidence file."""
     relative = rel(path)
+    repo_relative = repo_rel(path)
     contract = live_capture_contract(relative)
     base = {
-        "expected_output_files": [relative],
+        "expected_output_files": [repo_relative],
         "release_credit": False,
         "prerequisites": [
+            "run capture_commands from the repository root",
             "booted eliza_ai_soc Android target reachable over adb",
             "CHIP_ANDROID_ADB_HOSTPORT set to the chip emulator adb host:port",
             "current staged system APK payload report generated",
         ],
         "validation_command": PHONE_RUNTIME_VALIDATION_COMMAND,
         "validation_commands": [PHONE_RUNTIME_VALIDATION_COMMAND],
-        "repo_relative_expected_path": relative,
+        "repo_relative_expected_path": repo_relative,
+        "package_relative_expected_path": relative,
         "expected_file_schema": contract.get(
             "expected_file_schema",
             "runtime evidence file satisfying required_tokens, forbidden_tokens, or json_expectations",
@@ -347,9 +370,9 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
         "docs/evidence/android/eliza_launcher_runtime_evidence.json": {
             **base,
             "expected_output_files": [
-                "docs/evidence/android/eliza_launcher_runtime_evidence.json",
-                "docs/evidence/android/eliza_launcher_runtime_logcat.txt",
-                "docs/evidence/android/eliza_launcher_runtime_transcript.log",
+                "packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json",
+                "packages/chip/docs/evidence/android/eliza_launcher_runtime_logcat.txt",
+                "packages/chip/docs/evidence/android/eliza_launcher_runtime_transcript.log",
             ],
             "capture_commands": [
                 "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
@@ -359,16 +382,16 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
                     "--artifact-id android-chip-riscv64-zip "
                     "--target-label chip-riscv64 "
                     "--expected-cpu-abi riscv64 "
-                    "--output docs/evidence/android/eliza_launcher_runtime_evidence.json "
-                    "--logcat docs/evidence/android/eliza_launcher_runtime_logcat.txt "
-                    "--transcript docs/evidence/android/eliza_launcher_runtime_transcript.log"
+                    "--output $(pwd)/packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json "
+                    "--logcat $(pwd)/packages/chip/docs/evidence/android/eliza_launcher_runtime_logcat.txt "
+                    "--transcript $(pwd)/packages/chip/docs/evidence/android/eliza_launcher_runtime_transcript.log"
                 ),
                 (
                     "python3 packages/chip/scripts/check_android_launcher_runtime_evidence.py "
                     "--expected-artifact-id android-chip-riscv64-zip "
                     "--expected-target-label chip-riscv64 "
                     "--expected-cpu-abi riscv64 "
-                    "--evidence docs/evidence/android/eliza_launcher_runtime_evidence.json"
+                    "--evidence packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json"
                 ),
             ],
         },
@@ -377,9 +400,9 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
             "capture_commands": [
                 adb_prefix,
                 (
-                    "mkdir -p docs/evidence/android && "
+                    "mkdir -p packages/chip/docs/evidence/android && "
                     'adb -s "$CHIP_ANDROID_ADB_HOSTPORT" shell ps -A '
-                    "| tee docs/evidence/android/eliza_ai_soc_cvd_hal_processes.txt"
+                    "| tee packages/chip/docs/evidence/android/eliza_ai_soc_cvd_hal_processes.txt"
                 ),
             ],
         },
@@ -438,14 +461,14 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
             "capture_commands": [
                 adb_prefix,
                 (
-                    "mkdir -p docs/evidence/android/security && "
+                    "mkdir -p packages/chip/docs/evidence/android/security && "
                     "state=$(adb -s \"$CHIP_ANDROID_ADB_HOSTPORT\" shell getprop "
                     "ro.boot.verifiedbootstate | tr -d '\\r') && "
                     "if [ \"$state\" = green ]; then result=0; verdict=pass; "
                     "else result=1; verdict=fail; fi; "
                     "printf 'VERIFIED_BOOT=%s\\nSTATE=%s\\nRESULT=%s\\n' "
                     "\"$verdict\" \"$state\" \"$result\" | tee "
-                    "docs/evidence/android/security/verified_boot_acceptance.log; "
+                    "packages/chip/docs/evidence/android/security/verified_boot_acceptance.log; "
                     "test \"$result\" = 0"
                 ),
             ],
@@ -460,9 +483,9 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
             "capture_commands": [
                 'test -n "$ELIZA_TAMPERED_BOOT_REJECTION_COMMAND"',
                 (
-                    "mkdir -p docs/evidence/android/security && "
+                    "mkdir -p packages/chip/docs/evidence/android/security && "
                     'sh -c "$ELIZA_TAMPERED_BOOT_REJECTION_COMMAND" '
-                    "| tee docs/evidence/android/security/tampered_boot_rejection.log"
+                    "| tee packages/chip/docs/evidence/android/security/tampered_boot_rejection.log"
                 ),
             ],
         },
@@ -476,9 +499,9 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
             "capture_commands": [
                 'test -n "$ELIZA_ROLLBACK_REJECTION_COMMAND"',
                 (
-                    "mkdir -p docs/evidence/android/security && "
+                    "mkdir -p packages/chip/docs/evidence/android/security && "
                     'sh -c "$ELIZA_ROLLBACK_REJECTION_COMMAND" '
-                    "| tee docs/evidence/android/security/rollback_rejection.log"
+                    "| tee packages/chip/docs/evidence/android/security/rollback_rejection.log"
                 ),
             ],
         },
@@ -492,9 +515,9 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
             "capture_commands": [
                 'test -n "$ELIZA_DEBUG_LOCK_KEY_PROVISIONING_COMMAND"',
                 (
-                    "mkdir -p docs/evidence/android/security && "
+                    "mkdir -p packages/chip/docs/evidence/android/security && "
                     'sh -c "$ELIZA_DEBUG_LOCK_KEY_PROVISIONING_COMMAND" '
-                    "| tee docs/evidence/android/security/debug_lock_key_provisioning.log"
+                    "| tee packages/chip/docs/evidence/android/security/debug_lock_key_provisioning.log"
                 ),
             ],
         },
@@ -508,9 +531,9 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
             "capture_commands": [
                 'test -n "$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND"',
                 (
-                    "mkdir -p docs/evidence/android/power && "
+                    "mkdir -p packages/chip/docs/evidence/android/power && "
                     'sh -c "$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND '
-                    '--output docs/evidence/android/power/sustained_npu_power_thermal_trace.json"'
+                    '--output packages/chip/docs/evidence/android/power/sustained_npu_power_thermal_trace.json"'
                 ),
             ],
         },
@@ -521,7 +544,7 @@ def evidence_capture_plan(path: Path) -> dict[str, Any]:
                 (
                     "python3 packages/chip/scripts/android/capture_e1_npu_hal_liveness.py "
                     '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" '
-                    "--output docs/evidence/android/eliza_ai_soc_e1_npu_hal_liveness.log"
+                    "--output $(pwd)/packages/chip/docs/evidence/android/eliza_ai_soc_e1_npu_hal_liveness.log"
                 ),
             ],
         },
@@ -851,6 +874,10 @@ def runtime_evidence_collection_inventory(evidence: dict[str, Any]) -> list[dict
                         "fail_closed_validation_rule": record.get("fail_closed_validation_rule"),
                         "capture_contract_manifest": record.get("capture_contract_manifest"),
                         "expected_output_files": record.get("expected_output_files", []),
+                        "repo_relative_expected_path": record.get("repo_relative_expected_path"),
+                        "package_relative_expected_path": record.get(
+                            "package_relative_expected_path"
+                        ),
                         "capture_commands": record.get("capture_commands", []),
                         "validation_command": record.get("validation_command"),
                         "validation_commands": record.get("validation_commands", []),

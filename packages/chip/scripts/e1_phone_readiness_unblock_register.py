@@ -291,6 +291,21 @@ def main() -> int:
             "local_development_route_count": local_progress.get("development_route_count", 0),
             "local_development_segment_count": local_progress.get("development_segment_count", 0),
             "local_development_via_count": local_progress.get("development_via_count", 0),
+            "local_development_controlled_impedance_route_count": local_progress.get(
+                "development_controlled_impedance_route_count", 0
+            ),
+            "local_development_route_classification_gap_count": local_progress.get(
+                "development_route_classification_gap_count", 0
+            ),
+            "local_development_route_segment_trace_bound_count": local_progress.get(
+                "development_route_segment_trace_bound_count", 0
+            ),
+            "local_development_missing_net_count": local_progress.get(
+                "development_missing_net_count", 0
+            ),
+            "local_development_route_traceability_complete": local_progress.get(
+                "development_route_traceability_complete", False
+            ),
             "local_development_required_shared_net_category_count": local_progress.get(
                 "development_required_shared_net_category_count", 0
             ),
@@ -404,6 +419,20 @@ def main() -> int:
             ),
             "local_cad_connection_represented_net_count_total": local_progress.get(
                 "cad_connection_represented_net_count_total", 0
+            ),
+            "local_cad_connection_represented_route_count_total": local_progress.get(
+                "cad_connection_represented_route_count_total", 0
+            ),
+            "local_cad_connection_represented_route_record_count_total": local_progress.get(
+                "cad_connection_represented_route_record_count_total", 0
+            ),
+            "local_cad_connection_represented_route_classification_gap_count": (
+                local_progress.get("cad_connection_represented_route_classification_gap_count", 0)
+            ),
+            "local_cad_connection_all_represented_routes_have_layer_source_and_class": (
+                local_progress.get(
+                    "cad_connection_all_represented_routes_have_layer_source_and_class", False
+                )
             ),
             "local_cad_connection_record_count": local_progress.get(
                 "cad_connection_record_count", 0

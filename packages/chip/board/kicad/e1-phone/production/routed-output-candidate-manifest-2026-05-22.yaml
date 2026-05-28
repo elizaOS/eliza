@@ -42,6 +42,12 @@ cad_connection_coverage:
   passing_connection_solid_step_part_set_count: 32
   connection_solid_step_part_bytes_total: 1501919
   represented_net_count_total: 150
+  represented_route_record_count_total: 153
+  represented_route_records_with_layer_count_total: 153
+  represented_route_records_with_source_domain_count_total: 153
+  represented_route_records_with_route_class_count_total: 153
+  represented_route_classification_gap_count: 0
+  all_represented_routes_have_layer_source_and_class: true
   visual_route_span_total_mm: 456.0
   endpoint_pair_distance_total_mm: 1521.175
   physical_medium_counts:
@@ -212,6 +218,12 @@ cad_connection_coverage:
     - DISP_TE
     - TOUCH_I2C_SCL
     - TOUCH_I2C_SDA
+    represented_route_record_count: 14
+    represented_route_records_with_layer_count: 14
+    represented_route_records_with_source_domain_count: 14
+    represented_route_records_with_route_class_count: 14
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -278,6 +290,12 @@ cad_connection_coverage:
     - CAM0_MCLK
     - CAM0_I2C_SCL
     - CAM0_I2C_SDA
+    represented_route_record_count: 13
+    represented_route_records_with_layer_count: 13
+    represented_route_records_with_source_domain_count: 13
+    represented_route_records_with_route_class_count: 13
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -336,6 +354,12 @@ cad_connection_coverage:
     - CAM1_MCLK
     - CAM1_I2C_SCL
     - CAM1_I2C_SDA
+    represented_route_record_count: 9
+    represented_route_records_with_layer_count: 9
+    represented_route_records_with_source_domain_count: 9
+    represented_route_records_with_route_class_count: 9
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -382,6 +406,12 @@ cad_connection_coverage:
     - PWR_KEY_N
     - VOL_UP_N
     - VOL_DOWN_N
+    represented_route_record_count: 3
+    represented_route_records_with_layer_count: 3
+    represented_route_records_with_source_domain_count: 3
+    represented_route_records_with_route_class_count: 3
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -430,6 +460,12 @@ cad_connection_coverage:
     - SYS
     - BAT_NTC
     - BAT_ID
+    represented_route_record_count: 4
+    represented_route_records_with_layer_count: 4
+    represented_route_records_with_source_domain_count: 4
+    represented_route_records_with_route_class_count: 4
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -480,6 +516,12 @@ cad_connection_coverage:
     - USB_CC2
     - USB_DP
     - USB_DN
+    represented_route_record_count: 5
+    represented_route_records_with_layer_count: 5
+    represented_route_records_with_source_domain_count: 5
+    represented_route_records_with_route_class_count: 5
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -530,6 +572,12 @@ cad_connection_coverage:
     - USB_CC2
     - USB_DP
     - USB_DN
+    represented_route_record_count: 5
+    represented_route_records_with_layer_count: 5
+    represented_route_records_with_source_domain_count: 5
+    represented_route_records_with_route_class_count: 5
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -588,6 +636,12 @@ cad_connection_coverage:
     - CHG_I2C_SCL
     - CHG_I2C_SDA
     - CHG_IRQ_N
+    represented_route_record_count: 9
+    represented_route_records_with_layer_count: 9
+    represented_route_records_with_source_domain_count: 9
+    represented_route_records_with_route_class_count: 9
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -636,6 +690,12 @@ cad_connection_coverage:
     - SYS
     - BAT_NTC
     - BAT_ID
+    represented_route_record_count: 4
+    represented_route_records_with_layer_count: 4
+    represented_route_records_with_source_domain_count: 4
+    represented_route_records_with_route_class_count: 4
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -680,6 +740,12 @@ cad_connection_coverage:
     represented_nets:
     - DISP_AVDD_5V5
     - DISP_AVEE_N5V5
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -726,6 +792,12 @@ cad_connection_coverage:
     - CAM_AVDD_2V8
     - CAM_DVDD_1V2
     - CAM0_RESET_N
+    represented_route_record_count: 3
+    represented_route_records_with_layer_count: 3
+    represented_route_records_with_source_domain_count: 3
+    represented_route_records_with_route_class_count: 3
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -772,6 +844,12 @@ cad_connection_coverage:
     - CAM_AVDD_2V8
     - CAM_DVDD_1V2
     - CAM1_RESET_N
+    represented_route_record_count: 3
+    represented_route_records_with_layer_count: 3
+    represented_route_records_with_source_domain_count: 3
+    represented_route_records_with_route_class_count: 3
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -846,6 +924,12 @@ cad_connection_coverage:
     - BT_UART_CTS_N
     - BT_UART_RTS_N
     - WIFI_HOST_WAKE
+    represented_route_record_count: 17
+    represented_route_records_with_layer_count: 17
+    represented_route_records_with_source_domain_count: 17
+    represented_route_records_with_route_class_count: 17
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -902,6 +986,12 @@ cad_connection_coverage:
     - CELL_PCIE_RX_N
     - CELL_RESET_N
     - CELL_W_DISABLE_N
+    represented_route_record_count: 8
+    represented_route_records_with_layer_count: 8
+    represented_route_records_with_source_domain_count: 8
+    represented_route_records_with_route_class_count: 8
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -946,6 +1036,12 @@ cad_connection_coverage:
     represented_nets:
     - SPK_P
     - SPK_N
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -990,6 +1086,12 @@ cad_connection_coverage:
     represented_nets:
     - PDM_CLK
     - PDM_DAT
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1034,6 +1136,12 @@ cad_connection_coverage:
     represented_nets:
     - PDM_CLK
     - PDM_DAT
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1078,6 +1186,12 @@ cad_connection_coverage:
     represented_nets:
     - SPK_P
     - SPK_N
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1120,6 +1234,12 @@ cad_connection_coverage:
     represented_net_count: 1
     represented_nets:
     - HAPTIC_OUT
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1164,6 +1284,12 @@ cad_connection_coverage:
     represented_nets:
     - SENSOR_I2C_SCL
     - SENSOR_I2C_SDA
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1222,6 +1348,12 @@ cad_connection_coverage:
     - ESIM_CLK
     - ESIM_RST
     - ESIM_IO
+    represented_route_record_count: 9
+    represented_route_records_with_layer_count: 9
+    represented_route_records_with_source_domain_count: 9
+    represented_route_records_with_route_class_count: 9
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1270,6 +1402,12 @@ cad_connection_coverage:
     - NFC_RF_N
     - NFC_IRQ_N
     - NFC_EN
+    represented_route_record_count: 4
+    represented_route_records_with_layer_count: 4
+    represented_route_records_with_source_domain_count: 4
+    represented_route_records_with_route_class_count: 4
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1328,6 +1466,12 @@ cad_connection_coverage:
     - CAM1_MCLK
     - LPDDR_CK_P
     - LPDDR_CK_N
+    represented_route_record_count: 9
+    represented_route_records_with_layer_count: 9
+    represented_route_records_with_source_domain_count: 9
+    represented_route_records_with_route_class_count: 9
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1370,6 +1514,12 @@ cad_connection_coverage:
     represented_net_count: 1
     represented_nets:
     - GND
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1414,6 +1564,12 @@ cad_connection_coverage:
     represented_nets:
     - GND
     - SHIELD_GND
+    represented_route_record_count: 3
+    represented_route_records_with_layer_count: 3
+    represented_route_records_with_source_domain_count: 3
+    represented_route_records_with_route_class_count: 3
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1456,6 +1612,12 @@ cad_connection_coverage:
     represented_net_count: 1
     represented_nets:
     - CELL_RF_MAIN
+    represented_route_record_count: 1
+    represented_route_records_with_layer_count: 1
+    represented_route_records_with_source_domain_count: 1
+    represented_route_records_with_route_class_count: 1
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1498,6 +1660,12 @@ cad_connection_coverage:
     represented_net_count: 1
     represented_nets:
     - CELL_RF_DIV
+    represented_route_record_count: 1
+    represented_route_records_with_layer_count: 1
+    represented_route_records_with_source_domain_count: 1
+    represented_route_records_with_route_class_count: 1
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1542,6 +1710,12 @@ cad_connection_coverage:
     represented_nets:
     - CELL_RF_DIV
     - RF_VBAT
+    represented_route_record_count: 2
+    represented_route_records_with_layer_count: 2
+    represented_route_records_with_source_domain_count: 2
+    represented_route_records_with_route_class_count: 2
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1584,6 +1758,12 @@ cad_connection_coverage:
     represented_net_count: 1
     represented_nets:
     - CELL_GNSS_RF
+    represented_route_record_count: 1
+    represented_route_records_with_layer_count: 1
+    represented_route_records_with_source_domain_count: 1
+    represented_route_records_with_route_class_count: 1
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1626,6 +1806,12 @@ cad_connection_coverage:
     represented_net_count: 1
     represented_nets:
     - WIFI_BT_RF0
+    represented_route_record_count: 1
+    represented_route_records_with_layer_count: 1
+    represented_route_records_with_source_domain_count: 1
+    represented_route_records_with_route_class_count: 1
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1668,6 +1854,12 @@ cad_connection_coverage:
     represented_net_count: 1
     represented_nets:
     - WIFI_BT_RF1
+    represented_route_record_count: 1
+    represented_route_records_with_layer_count: 1
+    represented_route_records_with_source_domain_count: 1
+    represented_route_records_with_route_class_count: 1
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1724,6 +1916,12 @@ cad_connection_coverage:
     - I2S_DIN
     - PDM_CLK
     - PDM_DAT
+    represented_route_record_count: 8
+    represented_route_records_with_layer_count: 8
+    represented_route_records_with_source_domain_count: 8
+    represented_route_records_with_route_class_count: 8
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     cad_part_present: true
     endpoints_present: true
     all_nets_in_routed_development_board: true
@@ -1746,6 +1944,13 @@ kicad_cad_traceability:
   all_pinout_bound_footprints_have_terminal_contract: true
   cad_connection_count: 32
   cad_connection_represented_net_count_total: 150
+  cad_connection_represented_route_count_total: 153
+  cad_connection_represented_route_record_count_total: 153
+  cad_connection_represented_route_records_with_layer_count_total: 153
+  cad_connection_represented_route_records_with_source_domain_count_total: 153
+  cad_connection_represented_route_records_with_route_class_count_total: 153
+  cad_connection_represented_route_classification_gap_count: 0
+  cad_connection_all_represented_routes_have_layer_source_and_class: true
   cad_connection_visual_route_span_total_mm: 456.0
   cad_connection_terminal_marker_count: 64
   cad_connection_terminal_pair_count: 32

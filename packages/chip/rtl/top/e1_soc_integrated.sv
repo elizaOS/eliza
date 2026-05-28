@@ -3086,7 +3086,7 @@ module e1_soc_integrated
     // display, weight buffer.  Unchanged from `e1_soc_top.sv`.
     // ----------------------------------------------------------------------
     e1_bootrom u_bootrom (
-        .addr  (mmio_addr[7:2]),
+        .addr  (mmio_addr[15:2]),
         .rdata (bootrom_rdata)
     );
 

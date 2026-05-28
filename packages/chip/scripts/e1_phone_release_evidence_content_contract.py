@@ -847,6 +847,39 @@ def build_report(
             "local_kicad_cad_connection_count": kicad_cad_traceability["summary"][
                 "cad_connection_count"
             ],
+            "local_kicad_cad_connection_represented_route_count_total": (
+                kicad_cad_traceability["summary"]["cad_connection_represented_route_count_total"]
+            ),
+            "local_kicad_cad_connection_represented_route_record_count_total": (
+                kicad_cad_traceability["summary"][
+                    "cad_connection_represented_route_record_count_total"
+                ]
+            ),
+            "local_kicad_cad_connection_represented_route_records_with_layer_count_total": (
+                kicad_cad_traceability["summary"][
+                    "cad_connection_represented_route_records_with_layer_count_total"
+                ]
+            ),
+            "local_kicad_cad_connection_represented_route_records_with_source_domain_count_total": (
+                kicad_cad_traceability["summary"][
+                    "cad_connection_represented_route_records_with_source_domain_count_total"
+                ]
+            ),
+            "local_kicad_cad_connection_represented_route_records_with_route_class_count_total": (
+                kicad_cad_traceability["summary"][
+                    "cad_connection_represented_route_records_with_route_class_count_total"
+                ]
+            ),
+            "local_kicad_cad_connection_represented_route_classification_gap_count": (
+                kicad_cad_traceability["summary"][
+                    "cad_connection_represented_route_classification_gap_count"
+                ]
+            ),
+            "local_kicad_cad_connection_all_represented_routes_have_layer_source_and_class": (
+                kicad_cad_traceability["summary"][
+                    "cad_connection_all_represented_routes_have_layer_source_and_class"
+                ]
+            ),
             "local_kicad_cad_connection_terminal_marker_count": kicad_cad_traceability["summary"][
                 "cad_connection_terminal_marker_count"
             ],

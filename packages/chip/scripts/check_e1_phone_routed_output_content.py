@@ -1174,6 +1174,17 @@ def main() -> int:
                 "assembly_manifest_missing_connection_solid_step_part_count",
             ): 0,
             ("cad_connection_coverage", "represented_net_count_total"): 150,
+            ("cad_connection_coverage", "represented_route_record_count_total"): 153,
+            ("cad_connection_coverage", "represented_route_records_with_layer_count_total"): 153,
+            (
+                "cad_connection_coverage",
+                "represented_route_records_with_source_domain_count_total",
+            ): 153,
+            (
+                "cad_connection_coverage",
+                "represented_route_records_with_route_class_count_total",
+            ): 153,
+            ("cad_connection_coverage", "represented_route_classification_gap_count"): 0,
             ("cad_connection_coverage", "connection_record_count"): 32,
             ("cad_connection_coverage", "represented_net_list_total"): 150,
             ("cad_connection_coverage", "controlled_impedance_connection_count"): 16,
@@ -1189,6 +1200,27 @@ def main() -> int:
             ("kicad_cad_traceability", "pinout_bound_footprint_count"): 21,
             ("kicad_cad_traceability", "cad_connection_count"): 32,
             ("kicad_cad_traceability", "cad_connection_represented_net_count_total"): 150,
+            ("kicad_cad_traceability", "cad_connection_represented_route_count_total"): 153,
+            (
+                "kicad_cad_traceability",
+                "cad_connection_represented_route_record_count_total",
+            ): 153,
+            (
+                "kicad_cad_traceability",
+                "cad_connection_represented_route_records_with_layer_count_total",
+            ): 153,
+            (
+                "kicad_cad_traceability",
+                "cad_connection_represented_route_records_with_source_domain_count_total",
+            ): 153,
+            (
+                "kicad_cad_traceability",
+                "cad_connection_represented_route_records_with_route_class_count_total",
+            ): 153,
+            (
+                "kicad_cad_traceability",
+                "cad_connection_represented_route_classification_gap_count",
+            ): 0,
             ("kicad_cad_traceability", "cad_connection_visual_route_span_total_mm"): 456.0,
             ("kicad_cad_traceability", "cad_connection_terminal_marker_count"): 64,
             ("kicad_cad_traceability", "cad_connection_terminal_pair_count"): 32,
@@ -1379,6 +1411,10 @@ def main() -> int:
                 "kicad_cad_traceability",
                 "all_pinout_bound_footprints_have_terminal_contract",
             ),
+            (
+                "kicad_cad_traceability",
+                "cad_connection_all_represented_routes_have_layer_source_and_class",
+            ),
             ("component_model_manifest_summary", "all_model_pad_counts_match_visuals"),
             ("component_model_manifest_summary", "all_models_have_visual_package_class"),
             (
@@ -1436,6 +1472,10 @@ def main() -> int:
             (
                 "cad_connection_coverage",
                 "all_connection_represented_nets_match_routed_nets",
+            ),
+            (
+                "cad_connection_coverage",
+                "all_represented_routes_have_layer_source_and_class",
             ),
             ("component_model_directory_summary", "all_model_records_present"),
             (
@@ -1544,6 +1584,11 @@ def main() -> int:
                     if model.get("local_discrete_step_solid_type") != "Solid":
                         contract_mismatches.append(
                             f"component 3D manifest local discrete STEP not solid: {reference}"
+                        )
+                    if model.get("local_discrete_step_imported_as_solid") is not True:
+                        contract_mismatches.append(
+                            "component 3D manifest local discrete STEP imported-as-solid "
+                            f"flag stale: {reference}"
                         )
                     if model.get("local_discrete_step_bbox_matches_envelope") is not True:
                         contract_mismatches.append(
@@ -1688,6 +1733,7 @@ def main() -> int:
                                 "local_discrete_step_status",
                                 "local_discrete_step_import_status",
                                 "local_discrete_step_solid_type",
+                                "local_discrete_step_imported_as_solid",
                                 "local_discrete_step_bbox_mm",
                                 "local_discrete_step_expected_bbox_mm",
                                 "local_discrete_step_bbox_matches_envelope",
@@ -1763,6 +1809,13 @@ def main() -> int:
                         ):
                             contract_mismatches.append(
                                 f"component model local record discrete STEP solid type stale: {reference}"
+                            )
+                        if record.get("local_discrete_step_imported_as_solid") != row.get(
+                            "local_discrete_step_imported_as_solid"
+                        ):
+                            contract_mismatches.append(
+                                "component model local record discrete STEP imported-as-solid "
+                                f"flag stale: {reference}"
                             )
                         if record.get("local_discrete_step_bbox_mm") != row.get(
                             "local_discrete_step_bbox_mm"
@@ -1868,6 +1921,7 @@ def main() -> int:
                                 "local_discrete_step_file",
                                 "local_discrete_step_sha256",
                                 "local_discrete_step_import_status",
+                                "local_discrete_step_imported_as_solid",
                                 "expected_supplier_step_file",
                                 "expected_supplier_brep_or_step_status",
                                 "supplier_step_intake_file",

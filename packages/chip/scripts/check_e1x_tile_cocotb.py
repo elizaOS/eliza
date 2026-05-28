@@ -10,6 +10,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/e1x_tile_cocotb.json"
+GENERATED_ROM_JSON = ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.json"
+GENERATED_ROM_HEX = ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.hex"
+GENERATED_MANIFEST_JSON = ROOT / "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_manifest.json"
 RUNS = {
     "tile": {
         "top": "e1x_tile_tb",
@@ -30,14 +33,51 @@ RUNS = {
             "repair_routed_tile_keeps_core_instruction_path_operational",
         },
     },
+    "repair_mmio_routed_tile": {
+        "top": "e1x_repair_mmio_routed_tile_tb",
+        "module": "test_e1x_repair_mmio_routed_tile",
+        "result": ROOT / "verify/cocotb/results/e1x_repair_mmio_routed_tile_tb_test_e1x_repair_mmio_routed_tile.xml",
+        "expected": {
+            "repair_mmio_routed_tile_programs_rom_and_reroutes_wavelet",
+            "repair_mmio_routed_tile_clear_removes_programmed_repair_route",
+        },
+    },
+    "generated_repair_mmio_routed_tile": {
+        "top": "e1x_repair_mmio_routed_tile_large_tb",
+        "module": "test_e1x_generated_repair_mmio_routed_tile",
+        "result": ROOT
+        / "verify/cocotb/results/e1x_repair_mmio_routed_tile_large_tb_test_e1x_generated_repair_mmio_routed_tile.xml",
+        "expected": {
+            "generated_high_failure_repair_rom_programs_tile_reroute_via_mmio",
+        },
+        "env": {
+            "E1X_REPAIR_ROM_JSON": str(GENERATED_ROM_JSON),
+            "E1X_REPAIR_ROM_HEX": str(GENERATED_ROM_HEX),
+            "E1X_REPAIR_MANIFEST_JSON": str(GENERATED_MANIFEST_JSON),
+        },
+    },
 }
 
 
-def run_cocotb(top: str, module: str) -> tuple[bool, str]:
+def ensure_generated_repair_rom() -> None:
+    if GENERATED_ROM_JSON.is_file() and GENERATED_ROM_HEX.is_file() and GENERATED_MANIFEST_JSON.is_file():
+        return
+    subprocess.run(
+        ["scripts/generate_e1x_scaled_model_evidence.py"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+
+def run_cocotb(top: str, module: str, extra_env: dict[str, str] | None = None) -> tuple[bool, str]:
     env = os.environ.copy()
     env["COCOTB_DIR"] = "verify/cocotb/e1x"
     env["COCOTB_TOPLEVEL"] = top
     env["COCOTB_MODULE"] = module
+    if extra_env:
+        env.update(extra_env)
     proc = subprocess.run(
         ["scripts/run_cocotb.sh"],
         cwd=ROOT,
@@ -72,10 +112,18 @@ def parse_results(result_xml: Path, expected_tests: set[str]) -> tuple[bool, str
 
 
 def main() -> int:
+    ensure_generated_repair_rom()
     checks = []
     aggregate_counts = {"testcases": 0, "failures": 0, "errors": 0, "missing_expected_tests": 0}
     for run_id, run in RUNS.items():
-        command_ok, command_detail = run_cocotb(str(run["top"]), str(run["module"]))
+        extra_env = run.get("env")
+        if extra_env is not None and not isinstance(extra_env, dict):
+            raise TypeError("invalid E1X tile cocotb env table")
+        command_ok, command_detail = run_cocotb(
+            str(run["top"]),
+            str(run["module"]),
+            {str(key): str(value) for key, value in extra_env.items()} if extra_env else None,
+        )
         result_path = run["result"]
         expected = run["expected"]
         if not isinstance(result_path, Path) or not isinstance(expected, set):
@@ -110,12 +158,22 @@ def main() -> int:
         "evidence_paths": [
             "rtl/e1x/e1x_tile.sv",
             "rtl/e1x/e1x_repair_routed_tile.sv",
+            "rtl/e1x/e1x_repair_mmio_routed_tile.sv",
             "verify/cocotb/e1x/e1x_tile_tb.sv",
             "verify/cocotb/e1x/e1x_repair_routed_tile_tb.sv",
+            "verify/cocotb/e1x/e1x_repair_mmio_routed_tile_tb.sv",
+            "verify/cocotb/e1x/e1x_repair_mmio_routed_tile_large_tb.sv",
             "verify/cocotb/e1x/test_e1x_tile.py",
             "verify/cocotb/e1x/test_e1x_repair_routed_tile.py",
+            "verify/cocotb/e1x/test_e1x_repair_mmio_routed_tile.py",
+            "verify/cocotb/e1x/test_e1x_generated_repair_mmio_routed_tile.py",
+            "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_manifest.json",
+            "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.json",
+            "benchmarks/results/e1x-scaled-8gb-model-load.high_failure_repair_rom.hex",
             "verify/cocotb/results/e1x_tile_tb_test_e1x_tile.xml",
             "verify/cocotb/results/e1x_repair_routed_tile_tb_test_e1x_repair_routed_tile.xml",
+            "verify/cocotb/results/e1x_repair_mmio_routed_tile_tb_test_e1x_repair_mmio_routed_tile.xml",
+            "verify/cocotb/results/e1x_repair_mmio_routed_tile_large_tb_test_e1x_generated_repair_mmio_routed_tile.xml",
         ],
         "checks": checks,
         "summary": {

@@ -2811,6 +2811,27 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             for net in represented_nets
             for route in routed_route_records_by_net.get(net, [])
         ]
+        represented_route_record_count = len(represented_route_records)
+        represented_route_records_with_layer_count = sum(
+            1 for route in represented_route_records if route.get("layer")
+        )
+        represented_route_records_with_source_domain_count = sum(
+            1 for route in represented_route_records if route.get("source_domains")
+        )
+        represented_route_records_with_route_class_count = sum(
+            1 for route in represented_route_records if route.get("route_classes")
+        )
+        represented_route_classification_gap_count = sum(
+            1
+            for route in represented_route_records
+            if not route.get("layer")
+            or not route.get("source_domains")
+            or not route.get("route_classes")
+        )
+        all_represented_routes_have_layer_source_and_class = (
+            represented_route_record_count > 0
+            and represented_route_classification_gap_count == 0
+        )
         from_center = bbox_center(part_rows_by_name.get(str(contract["from"]), {}))
         to_center = bbox_center(part_rows_by_name.get(str(contract["to"]), {}))
         endpoint_center_distance_mm = None
@@ -2836,6 +2857,22 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             "represented_route_ids": [str(route.get("id")) for route in represented_route_records],
             "represented_route_count": len(represented_route_records),
             "represented_route_records": represented_route_records,
+            "represented_route_record_count": represented_route_record_count,
+            "represented_route_records_with_layer_count": (
+                represented_route_records_with_layer_count
+            ),
+            "represented_route_records_with_source_domain_count": (
+                represented_route_records_with_source_domain_count
+            ),
+            "represented_route_records_with_route_class_count": (
+                represented_route_records_with_route_class_count
+            ),
+            "represented_route_classification_gap_count": (
+                represented_route_classification_gap_count
+            ),
+            "all_represented_routes_have_layer_source_and_class": (
+                all_represented_routes_have_layer_source_and_class
+            ),
             "represented_route_classes": sorted(
                 {
                     str(route_class)
@@ -2902,6 +2939,7 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
             and row["endpoints_present"]
             and row["all_nets_in_routed_development_board"]
             and row["all_represented_nets_have_route_trace"]
+            and row["all_represented_routes_have_layer_source_and_class"]
             and row["controlled_impedance_requirement_defined"]
             and row["bend_radius_requirement_defined"]
         )
@@ -2940,6 +2978,26 @@ def refresh_ocp_connection_coverage(part_rows: list[dict[str, Any]]) -> dict[str
         ),
         "represented_route_count_total": sum(
             int(row["represented_route_count"]) for row in connection_rows
+        ),
+        "represented_route_record_count_total": sum(
+            int(row["represented_route_record_count"]) for row in connection_rows
+        ),
+        "represented_route_records_with_layer_count_total": sum(
+            int(row["represented_route_records_with_layer_count"]) for row in connection_rows
+        ),
+        "represented_route_records_with_source_domain_count_total": sum(
+            int(row["represented_route_records_with_source_domain_count"])
+            for row in connection_rows
+        ),
+        "represented_route_records_with_route_class_count_total": sum(
+            int(row["represented_route_records_with_route_class_count"])
+            for row in connection_rows
+        ),
+        "represented_route_classification_gap_count": sum(
+            int(row["represented_route_classification_gap_count"]) for row in connection_rows
+        ),
+        "all_represented_routes_have_layer_source_and_class": all(
+            row["all_represented_routes_have_layer_source_and_class"] for row in connection_rows
         ),
         "represented_route_length_total_mm": round(
             sum(float(row["represented_route_length_total_mm"]) for row in connection_rows),
@@ -5892,6 +5950,27 @@ def write_solid_cad_handoff_artifacts(
                 for domain in route.get("source_domains", [])
             }
         )
+        represented_route_record_count = len(represented_route_records)
+        represented_route_records_with_layer_count = sum(
+            1 for route in represented_route_records if route.get("layer")
+        )
+        represented_route_records_with_source_domain_count = sum(
+            1 for route in represented_route_records if route.get("source_domains")
+        )
+        represented_route_records_with_route_class_count = sum(
+            1 for route in represented_route_records if route.get("route_classes")
+        )
+        represented_route_classification_gap_count = sum(
+            1
+            for route in represented_route_records
+            if not route.get("layer")
+            or not route.get("source_domains")
+            or not route.get("route_classes")
+        )
+        all_represented_routes_have_layer_source_and_class = (
+            represented_route_record_count > 0
+            and represented_route_classification_gap_count == 0
+        )
         represented_controlled_impedance_route_count = sum(
             1
             for route in represented_route_records
@@ -5927,6 +6006,22 @@ def write_solid_cad_handoff_artifacts(
                 "represented_route_records": represented_route_records,
                 "represented_route_classes": represented_route_classes,
                 "represented_source_domains": represented_source_domains,
+                "represented_route_record_count": represented_route_record_count,
+                "represented_route_records_with_layer_count": (
+                    represented_route_records_with_layer_count
+                ),
+                "represented_route_records_with_source_domain_count": (
+                    represented_route_records_with_source_domain_count
+                ),
+                "represented_route_records_with_route_class_count": (
+                    represented_route_records_with_route_class_count
+                ),
+                "represented_route_classification_gap_count": (
+                    represented_route_classification_gap_count
+                ),
+                "all_represented_routes_have_layer_source_and_class": (
+                    all_represented_routes_have_layer_source_and_class
+                ),
                 "represented_route_length_total_mm": represented_route_length_total_mm,
                 "represented_controlled_impedance_route_count": (
                     represented_controlled_impedance_route_count
@@ -5965,6 +6060,7 @@ def write_solid_cad_handoff_artifacts(
                     and endpoints_present
                     and all(routed_net_presence.values())
                     and all_represented_nets_have_route_trace
+                    and all_represented_routes_have_layer_source_and_class
                     and controlled_impedance_requirement_defined
                     and bend_radius_requirement_defined
                 ),
@@ -6014,6 +6110,26 @@ def write_solid_cad_handoff_artifacts(
         ),
         "represented_route_count_total": sum(
             int(row["represented_route_count"]) for row in connection_rows
+        ),
+        "represented_route_record_count_total": sum(
+            int(row["represented_route_record_count"]) for row in connection_rows
+        ),
+        "represented_route_records_with_layer_count_total": sum(
+            int(row["represented_route_records_with_layer_count"]) for row in connection_rows
+        ),
+        "represented_route_records_with_source_domain_count_total": sum(
+            int(row["represented_route_records_with_source_domain_count"])
+            for row in connection_rows
+        ),
+        "represented_route_records_with_route_class_count_total": sum(
+            int(row["represented_route_records_with_route_class_count"])
+            for row in connection_rows
+        ),
+        "represented_route_classification_gap_count": sum(
+            int(row["represented_route_classification_gap_count"]) for row in connection_rows
+        ),
+        "all_represented_routes_have_layer_source_and_class": all(
+            row["all_represented_routes_have_layer_source_and_class"] for row in connection_rows
         ),
         "represented_route_length_total_mm": round(
             sum(float(row["represented_route_length_total_mm"]) for row in connection_rows),

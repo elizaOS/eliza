@@ -86,6 +86,12 @@ candidate_end_to_end_context:
     passing_connection_solid_step_part_set_count: 32
     connection_solid_step_part_bytes_total: 1501919
     represented_net_count_total: 150
+    represented_route_record_count_total: 153
+    represented_route_records_with_layer_count_total: 153
+    represented_route_records_with_source_domain_count_total: 153
+    represented_route_records_with_route_class_count_total: 153
+    represented_route_classification_gap_count: 0
+    all_represented_routes_have_layer_source_and_class: true
     connection_record_count: 32
     represented_net_list_total: 150
     all_connection_records_have_represented_nets: true
@@ -140,6 +146,13 @@ candidate_end_to_end_context:
     all_pinout_bound_footprints_have_terminal_contract: true
     cad_connection_count: 32
     cad_connection_represented_net_count_total: 150
+    cad_connection_represented_route_count_total: 153
+    cad_connection_represented_route_record_count_total: 153
+    cad_connection_represented_route_records_with_layer_count_total: 153
+    cad_connection_represented_route_records_with_source_domain_count_total: 153
+    cad_connection_represented_route_records_with_route_class_count_total: 153
+    cad_connection_represented_route_classification_gap_count: 0
+    cad_connection_all_represented_routes_have_layer_source_and_class: true
     cad_connection_visual_route_span_total_mm: 456.0
     cad_connection_terminal_marker_count: 64
     cad_connection_terminal_pair_count: 32
@@ -291,7 +304,7 @@ candidate_end_to_end_context:
     status: blocked_local_component_binding_gap_matrix_not_supplier_approval
     row_count: 89
     csv_matrix: board/kicad/e1-phone/production/reports/component-3d-binding-matrix.csv
-    csv_matrix_sha256: 3c79dff53d63aaaf207f8d3989f016e71492f85fd0015c984842f5fc5d7fd1a1
+    csv_matrix_sha256: 1d6f28bd7b1097471d952df51ed68a42b5e5f35a06d327aea15c13e51a35ae0a
     csv_matrix_bytes: 50452
     local_discrete_step_file_count: 89
     local_discrete_step_import_pass_count: 89

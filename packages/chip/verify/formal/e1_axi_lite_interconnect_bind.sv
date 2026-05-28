@@ -73,7 +73,25 @@ module e1_axi_lite_interconnect_props_top (
     input  logic        dma_arready,
     input  logic        dma_rvalid,
     input  logic [31:0] dma_rdata,
-    input  logic [1:0]  dma_rresp
+    input  logic [1:0]  dma_rresp,
+
+    input  logic        npu_awready,
+    input  logic        npu_wready,
+    input  logic        npu_bvalid,
+    input  logic [1:0]  npu_bresp,
+    input  logic        npu_arready,
+    input  logic        npu_rvalid,
+    input  logic [31:0] npu_rdata,
+    input  logic [1:0]  npu_rresp,
+
+    input  logic        display_awready,
+    input  logic        display_wready,
+    input  logic        display_bvalid,
+    input  logic [1:0]  display_bresp,
+    input  logic        display_arready,
+    input  logic        display_rvalid,
+    input  logic [31:0] display_rdata,
+    input  logic [1:0]  display_rresp
 );
 
     logic        m_axil_awready;
@@ -132,6 +150,26 @@ module e1_axi_lite_interconnect_props_top (
     logic        dma_arvalid;
     logic [31:0] dma_araddr;
     logic        dma_rready;
+
+    logic        npu_awvalid;
+    logic [31:0] npu_awaddr;
+    logic        npu_wvalid;
+    logic [31:0] npu_wdata;
+    logic [3:0]  npu_wstrb;
+    logic        npu_bready;
+    logic        npu_arvalid;
+    logic [31:0] npu_araddr;
+    logic        npu_rready;
+
+    logic        display_awvalid;
+    logic [31:0] display_awaddr;
+    logic        display_wvalid;
+    logic [31:0] display_wdata;
+    logic [3:0]  display_wstrb;
+    logic        display_bready;
+    logic        display_arvalid;
+    logic [31:0] display_araddr;
+    logic        display_rready;
 
     logic [2:0]  arb_grant;
     logic [2:0]  timeout_irq;

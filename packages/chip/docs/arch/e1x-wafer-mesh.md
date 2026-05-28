@@ -87,6 +87,12 @@ python3 scripts/check_e1x_repair_rom_cocotb.py
   recovery behavior. A larger generated-ROM variant streams the complete
   high-failure 8GB repair ROM sidecar through that MMIO path into the RTL route
   table and validates manifest-sampled first-hop directions and hop counts.
+  The tile-level MMIO harness then binds the same programmer to the
+  repair-routed tile, proving firmware-loaded repair routes can steer a fabric
+  wavelet around a disabled output and that clear removes the programmed route.
+  A generated high-failure variant uses a large MMIO-routed tile instance,
+  streams the complete 8GB repair ROM sidecar through the tile programming
+  port, and verifies the tile fabric takes the manifest-selected first hop.
 - Repair ROM RTL: `rtl/e1x/e1x_repair_rom_loader.sv` consumes the 64-bit image
   format and emits decoded remap and route records. `rtl/e1x/e1x_repair_state.sv`
   stores those records in bounded remap/route memories and exposes lookup ports
@@ -110,9 +116,18 @@ python3 scripts/check_e1x_repair_rom_cocotb.py
   sideband over registered links and proves that different tiles can apply
   different ROM-loaded first-hop directions for the same logical source and
   destination.
+  `rtl/e1x/e1x_repair_mmio_routed_tile.sv` wraps the programmer and repair-routed
+  tile together so MMIO writes, status reads, and clear pulses feed the tile
+  repair ROM stream at the same boundary used by fabric traffic.
 - Model-load flow: quantized weights are sharded across repaired logical cores,
   runtime SRAM is reserved per core, and the model is accepted only if both
-  aggregate SRAM and per-core shard capacity fit.
+  aggregate SRAM and per-core shard capacity fit. `rtl/e1x/e1x_local_sram_shard_loader.sv`
+  is the current RTL-facing shard-load proof: it models the 48 KiB local SRAM
+  capacity, accepts packed 32-bit W4 weight words, exposes loaded-byte and
+  checksum counters, supports readback, and flags out-of-capacity shard writes.
+  The cocotb gate loads a deterministic quantized shard, verifies readback
+  including the last valid local SRAM word, and proves overflow plus clear
+  recovery at the per-tile memory boundary.
 - Model-run flow: a deterministic W4A8 static graph execution model reports
   load cycles, prefill cycles, decode cycles, activation wavelets, repaired-hop
   penalty, decode tokens/s, and a repeatable output checksum under the

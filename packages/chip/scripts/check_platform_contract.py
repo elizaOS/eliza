@@ -320,6 +320,7 @@ def check_contract(contract: dict) -> list[str]:
     check_qemu_virt_separation(contract, errors)
     check_cpu_variant_artifacts(contract, errors)
     check_cpu_variant_consumers(contract, errors)
+    check_cpu_variant_linux_contract_decode(contract, errors)
     return errors
 
 
@@ -389,6 +390,53 @@ def check_cpu_variant_consumers(contract: dict, errors: list[str]) -> None:
                     f"{path.relative_to(ROOT)} references {compatible} but does "
                     f"not use contract base {base_hex}"
                 )
+
+
+def check_cpu_variant_linux_contract_decode(contract: dict, errors: list[str]) -> None:
+    """Check the Linux-contract AXI-Lite decoder against generated CPU ABI bases."""
+    if "e1_chip_cpu_variant" not in contract:
+        return
+    interconnect = read_text(ROOT / "rtl/interconnect/e1_axi_lite_interconnect.sv")
+    wrapper = read_text(ROOT / "rtl/interconnect/e1_linux_soc_contract.sv")
+    v = contract["e1_chip_cpu_variant"]
+    devs = v["devices"]
+
+    params = {
+        name: h(value)
+        for name, value in re.findall(
+            r"localparam\s+logic\s+\[31:0\]\s+(\w+)_BASE\s*=\s*32'h([0-9A-Fa-f_]+)",
+            interconnect,
+        )
+    }
+    expected = {
+        "DRAM": h(v["dram"]["base"]),
+        "INTC": h(v["plic"]["base"]),
+        "DMA": h(devs["dma"]["base"]),
+        "NPU": h(devs["npu"]["base"]),
+        "DISP": h(devs["display"]["base"]),
+    }
+    for name, base in expected.items():
+        actual = params.get(name)
+        require(
+            actual == base,
+            f"Linux AXI-Lite contract {name}_BASE is {fmt_hex(actual or 0)}, "
+            f"CPU variant contract expects {fmt_hex(base)}",
+            errors,
+        )
+
+    for token in (
+        ".npu_awvalid(",
+        ".npu_arvalid(",
+        ".display_awvalid(",
+        ".display_arvalid(",
+        "e1_npu u_npu",
+        "e1_display u_display",
+    ):
+        require(
+            token in wrapper,
+            f"rtl/interconnect/e1_linux_soc_contract.sv missing Linux MMIO target token {token}",
+            errors,
+        )
 
 
 def code_from_text(text: str) -> str:

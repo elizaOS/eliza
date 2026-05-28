@@ -167,16 +167,16 @@ typecheck:
 analysis:
 	@$(PYTHON) scripts/run_analysis.py
 
-verify-all: lint typecheck smoke analysis cocotb cocotb-npu cocotb-contract cocotb-cpu qemu-status-test renode-status-test
+verify-all: lint typecheck smoke analysis cocotb cocotb-dma cocotb-npu cocotb-contract cocotb-cpu qemu-status-test renode-status-test
 	@echo "verify-all complete"
 
 smoke: lint typecheck docs-check project-plan-check record-tool-versions mvp-npu-ml-evidence-check prototype-status-dashboard-check npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check soc-thermal-sweep soc-optimization soc-optimization-work-order cpu-npu-modeled-benchmark-eval cpu-npu-burst-sustained-policy cpu-npu-burst-thermal-transient cpu-npu-aosp-governor-trace cpu-npu-14a-process-eval cpu-npu-competitive-envelope cpu-npu-tapeout-readiness-audit cpu-npu-tapeout-readiness-audit-test cpu-npu-design-space-frontier cpu-npu-2028-readiness-scorecard cpu-npu-manual-review scale-feasibility-gate verification-maturity-matrix-check platform-contract-check memory-uma-claim-gate memory-evidence-template-check memory-interconnect-contract-check power-thermal-evidence-check power-thermal-evidence-test process-14a-effects-check process-14a-effects-test chipyard-generator-check cpu-ap-scaffold-check cpu-ap-evidence-test cpu-ap-completion-gate stub-audit bsp-scaffold-check software-bsp-check tee-software-check otp-rtl-check dice-measurement-chain-check secure-boot-negative-evidence-check provisioning-readback-check qemu-check renode-check benchmarks-dry-run rtl-check synth
 	@echo "smoke complete"
 
-ci-fast: lint typecheck docs-check project-plan-check npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check scale-feasibility-gate verification-maturity-matrix-check platform-contract-check pinout-check stub-audit rtl-check synth cocotb cocotb-npu cocotb-contract cocotb-cpu verilator formal record-tool-versions mvp-npu-ml-evidence-check prototype-status-dashboard-check product-check
+ci-fast: lint typecheck docs-check project-plan-check npu-2028-target-check npu-runtime-contract-check npu-roadmap-check npu-open-scale-model-check npu-scale-sim-check scale-feasibility-gate verification-maturity-matrix-check platform-contract-check pinout-check stub-audit rtl-check synth cocotb cocotb-dma cocotb-npu cocotb-contract cocotb-cpu verilator formal record-tool-versions mvp-npu-ml-evidence-check prototype-status-dashboard-check product-check
 	@echo "ci-fast complete"
 
-ci-local: lint typecheck docs-check platform-contract-check pinout-check product-check rtl-check synth cocotb cocotb-npu cocotb-contract cocotb-cpu verilator formal record-tool-versions mvp-npu-ml-evidence-check prototype-status-dashboard-check tool-versions
+ci-local: lint typecheck docs-check platform-contract-check pinout-check product-check rtl-check synth cocotb cocotb-dma cocotb-npu cocotb-contract cocotb-cpu verilator formal record-tool-versions mvp-npu-ml-evidence-check prototype-status-dashboard-check tool-versions
 	@echo "ci-local complete"
 
 ci-strict: REQUIRE_SBY=1
@@ -1225,8 +1225,14 @@ rtl-check:
 stub-audit:
 	@$(PYTHON) verify/check_stub_audit.py
 
+.PHONY: cocotb-dma
 cocotb:
 	@PYTHON=$(COCOTB_PYTHON) scripts/run_cocotb.sh
+
+cocotb-dma:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_e1_dma COCOTB_TOPLEVEL=e1_dma scripts/run_cocotb.sh
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/dma COCOTB_MODULE=test_dma_long_transfer COCOTB_TOPLEVEL=e1_dma scripts/run_cocotb.sh
+	@$(PYTHON) scripts/check_dma_long_transfer_coverage.py
 
 cocotb-npu:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_e1_npu COCOTB_TOPLEVEL=e1_npu scripts/run_cocotb.sh
@@ -1243,7 +1249,7 @@ cocotb-cpu:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_tiny_cpu_execution COCOTB_TOPLEVEL=e1_tiny_cpu_contract_tb scripts/run_cocotb.sh
 
 .PHONY: cocotb-coverage
-cocotb-coverage: cocotb cocotb-npu
+cocotb-coverage: cocotb cocotb-dma cocotb-npu
 	@$(PYTHON) scripts/check_cocotb_coverage.py --require-blocks
 
 .PHONY: cocotb-bpu cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-h2p cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc formal-bpu branch-prediction-check mpki-eval mpki-eval-rtl mpki-eval-rtl-full mpki-eval-rtl-full-proxy-shard mpki-eval-rtl-full-io-media-shard mpki-eval-rtl-full-system-gpu-shard mpki-eval-rtl-full-browser-build-crypto-shard mpki-eval-rtl-full-compression-shard mpki-eval-rtl-full-agent-shard mpki-eval-rtl-stratified mpki-eval-model bpu-lint bpu-workload-trace bpu-workload-trace-manifest bpu-workload-trace-manifest-check bpu-workload-trace-decode bpu-sweep bpu-sweep-full bpu-sweep-full-proxy-shard bpu-sweep-full-io-media-shard bpu-sweep-full-system-gpu-shard bpu-sweep-full-browser-build-crypto-shard bpu-sweep-full-compression-shard bpu-sweep-full-agent-shard bpu-model-test bpu-vs-cva6-mpki
@@ -1673,6 +1679,7 @@ aosp-linux-handoff-build-only:
 
 platform-contract-check:
 	@$(PYTHON) scripts/check_platform_contract.py
+	@$(PYTHON) -m pytest scripts/test_platform_contract_linux_decode.py -q
 
 platform-artifacts:
 	@$(PYTHON) scripts/gen_platform_artifacts.py

@@ -117,7 +117,19 @@ def main() -> int:
     local_non_release_progress = {
         "development_route_count": int(development_route.get("route_count") or 0),
         "development_segment_count": int(development_route.get("segment_count") or 0),
-        "development_via_count": int(routed_visual.get("board_via_count") or 0),
+        "development_via_count": int(
+            development_route.get("via_count") or routed_visual.get("board_via_count") or 0
+        ),
+        "development_controlled_impedance_route_count": int(
+            development_route.get("controlled_impedance_route_count") or 0
+        ),
+        "development_route_classification_gap_count": int(
+            development_route.get("route_classification_gap_count") or 0
+        ),
+        "development_route_segment_trace_bound_count": int(
+            development_route.get("route_segment_trace_bound_count") or 0
+        ),
+        "development_missing_net_count": len(development_route.get("missing_nets", []) or []),
         "development_required_shared_net_category_count": int(len(route_domains)),
         "development_required_shared_net_count": int(
             sum(int(row.get("required_exact_net_count") or 0) for row in route_domains if isinstance(row, dict))
@@ -147,6 +159,12 @@ def main() -> int:
             int(row.get("missing_exact_net_count") or 0) == 0
             for row in route_domains
             if isinstance(row, dict)
+        ),
+        "development_route_traceability_complete": (
+            int(development_route.get("route_classification_gap_count") or 0) == 0
+            and int(development_route.get("route_segment_trace_bound_count") or 0)
+            == int(development_route.get("segment_count") or 0)
+            and not (development_route.get("missing_nets") or [])
         ),
         "real_footprint_development_refs": int(routed_visual.get("development_footprint_refs") or 0),
         "real_footprint_remaining_placeholder_markers": 0,
@@ -197,6 +215,28 @@ def main() -> int:
             cad_connection.get("assembly_manifest_missing_connection_solid_step_part_count") or 0
         ),
         "cad_connection_represented_net_count_total": int(cad_connection.get("represented_net_count_total") or 0),
+        "cad_connection_represented_route_count_total": int(
+            cad_connection.get("represented_route_record_count_total")
+            or traceability.get("cad_connection_represented_route_count_total")
+            or 0
+        ),
+        "cad_connection_represented_route_record_count_total": int(
+            cad_connection.get("represented_route_record_count_total")
+            or traceability.get("cad_connection_represented_route_record_count_total")
+            or 0
+        ),
+        "cad_connection_represented_route_classification_gap_count": int(
+            cad_connection.get("represented_route_classification_gap_count")
+            or traceability.get("cad_connection_represented_route_classification_gap_count")
+            or 0
+        ),
+        "cad_connection_all_represented_routes_have_layer_source_and_class": (
+            cad_connection.get("all_represented_routes_have_layer_source_and_class") is True
+            and traceability.get(
+                "cad_connection_all_represented_routes_have_layer_source_and_class"
+            )
+            is True
+        ),
         "cad_connection_record_count": int(cad_connection.get("connection_record_count") or 0),
         "cad_connection_represented_net_list_total": int(cad_connection.get("represented_net_list_total") or 0),
         "cad_connection_all_records_have_represented_nets": cad_connection.get(

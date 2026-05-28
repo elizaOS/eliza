@@ -163,6 +163,24 @@ def cad_connection_summary() -> dict[str, Any]:
                     item.get("represented_net_count", len(item.get("nets", []))) or 0
                 ),
                 "represented_nets": item.get("represented_nets", item.get("nets", [])),
+                "represented_route_record_count": int(
+                    item.get("represented_route_record_count", 0) or 0
+                ),
+                "represented_route_records_with_layer_count": int(
+                    item.get("represented_route_records_with_layer_count", 0) or 0
+                ),
+                "represented_route_records_with_source_domain_count": int(
+                    item.get("represented_route_records_with_source_domain_count", 0) or 0
+                ),
+                "represented_route_records_with_route_class_count": int(
+                    item.get("represented_route_records_with_route_class_count", 0) or 0
+                ),
+                "represented_route_classification_gap_count": int(
+                    item.get("represented_route_classification_gap_count", 0) or 0
+                ),
+                "all_represented_routes_have_layer_source_and_class": bool(
+                    item.get("all_represented_routes_have_layer_source_and_class", False)
+                ),
                 "cad_part_present": bool(item.get("cad_part_present", False)),
                 "endpoints_present": bool(item.get("endpoints_present", False)),
                 "all_nets_in_routed_development_board": bool(
@@ -217,6 +235,24 @@ def cad_connection_summary() -> dict[str, Any]:
             coverage.get("connection_solid_step_part_bytes_total", 0) or 0
         ),
         "represented_net_count_total": int(coverage.get("represented_net_count_total", 0) or 0),
+        "represented_route_record_count_total": int(
+            coverage.get("represented_route_record_count_total", 0) or 0
+        ),
+        "represented_route_records_with_layer_count_total": int(
+            coverage.get("represented_route_records_with_layer_count_total", 0) or 0
+        ),
+        "represented_route_records_with_source_domain_count_total": int(
+            coverage.get("represented_route_records_with_source_domain_count_total", 0) or 0
+        ),
+        "represented_route_records_with_route_class_count_total": int(
+            coverage.get("represented_route_records_with_route_class_count_total", 0) or 0
+        ),
+        "represented_route_classification_gap_count": int(
+            coverage.get("represented_route_classification_gap_count", 0) or 0
+        ),
+        "all_represented_routes_have_layer_source_and_class": bool(
+            coverage.get("all_represented_routes_have_layer_source_and_class", False)
+        ),
         "visual_route_span_total_mm": float(coverage.get("visual_route_span_total_mm", 0) or 0),
         "endpoint_pair_distance_total_mm": float(
             coverage.get("endpoint_pair_distance_total_mm", 0) or 0
@@ -272,6 +308,32 @@ def kicad_cad_traceability_summary() -> dict[str, Any]:
         "cad_connection_count": int(summary.get("cad_connection_count", 0) or 0),
         "cad_connection_represented_net_count_total": int(
             summary.get("cad_connection_represented_net_count_total", 0) or 0
+        ),
+        "cad_connection_represented_route_count_total": int(
+            summary.get("cad_connection_represented_route_count_total", 0) or 0
+        ),
+        "cad_connection_represented_route_record_count_total": int(
+            summary.get("cad_connection_represented_route_record_count_total", 0) or 0
+        ),
+        "cad_connection_represented_route_records_with_layer_count_total": int(
+            summary.get("cad_connection_represented_route_records_with_layer_count_total", 0)
+            or 0
+        ),
+        "cad_connection_represented_route_records_with_source_domain_count_total": int(
+            summary.get(
+                "cad_connection_represented_route_records_with_source_domain_count_total", 0
+            )
+            or 0
+        ),
+        "cad_connection_represented_route_records_with_route_class_count_total": int(
+            summary.get("cad_connection_represented_route_records_with_route_class_count_total", 0)
+            or 0
+        ),
+        "cad_connection_represented_route_classification_gap_count": int(
+            summary.get("cad_connection_represented_route_classification_gap_count", 0) or 0
+        ),
+        "cad_connection_all_represented_routes_have_layer_source_and_class": bool(
+            summary.get("cad_connection_all_represented_routes_have_layer_source_and_class", False)
         ),
         "cad_connection_visual_route_span_total_mm": float(
             summary.get("cad_connection_visual_route_span_total_mm", 0) or 0
@@ -1270,6 +1332,10 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
         local_step_sha256 = sha256(local_step_path)
         local_step_bytes = local_step_path.stat().st_size
         local_step_validation = validate_local_envelope_step(local_step_path, model)
+        local_discrete_step_imported_as_solid = (
+            local_step_validation.get("import_status") == "pass"
+            and local_step_validation.get("solid_type") == "Solid"
+        )
         record = {
             "schema": "eliza.e1_phone_local_component_model_record.v1",
             "status": "blocked_local_development_envelope_not_supplier_step",
@@ -1295,6 +1361,7 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                 "import_status", ""
             ),
             "local_discrete_step_solid_type": local_step_validation.get("solid_type", ""),
+            "local_discrete_step_imported_as_solid": local_discrete_step_imported_as_solid,
             "local_discrete_step_bbox_mm": local_step_validation.get("bbox_mm", {}),
             "local_discrete_step_expected_bbox_mm": local_step_validation.get(
                 "expected_bbox_mm", {}
@@ -1385,6 +1452,9 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                     "local_discrete_step_import_status"
                 ],
                 "local_discrete_step_solid_type": record["local_discrete_step_solid_type"],
+                "local_discrete_step_imported_as_solid": record[
+                    "local_discrete_step_imported_as_solid"
+                ],
                 "local_discrete_step_bbox_mm": record["local_discrete_step_bbox_mm"],
                 "local_discrete_step_expected_bbox_mm": record[
                     "local_discrete_step_expected_bbox_mm"
@@ -1452,6 +1522,9 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             "local_discrete_step_import_status"
         ]
         model["local_discrete_step_solid_type"] = record["local_discrete_step_solid_type"]
+        model["local_discrete_step_imported_as_solid"] = record[
+            "local_discrete_step_imported_as_solid"
+        ]
         model["local_discrete_step_bbox_mm"] = record["local_discrete_step_bbox_mm"]
         model["local_discrete_step_expected_bbox_mm"] = record[
             "local_discrete_step_expected_bbox_mm"

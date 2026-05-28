@@ -37,6 +37,9 @@ class MinimumLinuxNpuTargetTest(unittest.TestCase):
     def test_gate_reports_concrete_minimum_target_surfaces(self):
         report = self.run_json()
         self.assertEqual(report["schema"], "eliza.minimum_linux_npu_target.v1")
+        self.assertRegex(report["generated_utc"], r"^\d{4}-\d{2}-\d{2}T")
+        self.assertNotIn("/home/", json.dumps(report))
+        self.assertNotIn("/tmp/", json.dumps(report))
         self.assertIn(report["status"], {"blocked", "pass"})
         self.assertEqual(report["integrated_linux_npu_ml_claim"], report["status"] == "pass")
         self.assertIn("remaining_blockers", report)

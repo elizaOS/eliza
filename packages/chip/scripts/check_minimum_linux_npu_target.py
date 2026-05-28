@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -142,6 +144,7 @@ FDT_DIAGNOSIS_SUMMARY_FIELDS = (
     "loop_detected",
     "reason",
 )
+HOST_LOCAL_PATH = re.compile(r"/(?:home|Users|tmp|var/folders)/[^\s\"']+")
 
 
 def rel(path: Path) -> str:
@@ -149,6 +152,32 @@ def rel(path: Path) -> str:
         return path.relative_to(ROOT).as_posix()
     except ValueError:
         return str(path)
+
+
+def generated_utc() -> str:
+    return dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def provenance_safe_text(value: str) -> str:
+    sanitized = value
+    replacements = (
+        (str(ROOT), rel(ROOT)),
+        (str(ROOT.parent), ROOT.parent.name),
+        (str(ROOT.parent.parent), ROOT.parent.parent.name),
+    )
+    for source, replacement in replacements:
+        sanitized = sanitized.replace(source, replacement.rstrip("/"))
+    return HOST_LOCAL_PATH.sub(lambda match: Path(match.group(0)).name, sanitized)
+
+
+def provenance_safe_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: provenance_safe_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [provenance_safe_value(item) for item in value]
+    if isinstance(value, str):
+        return provenance_safe_text(value)
+    return value
 
 
 def read(path: Path) -> str:
@@ -1260,15 +1289,16 @@ def build_report() -> dict[str, Any]:
     }
     return {
         "schema": "eliza.minimum_linux_npu_target.v1",
+        "generated_utc": generated_utc(),
         "status": "fail" if errors else ("blocked" if blockers else "pass"),
         "claim_boundary": "minimum Linux basic ML only; not Android NNAPI or phone-class performance",
         "integrated_linux_npu_ml_claim": not errors and not blockers,
         "benchmark_command": BENCHMARK_COMMAND,
-        "blocking_summary": blocking_summary,
-        "remaining_blockers": remaining_blockers,
-        "gates": gates,
-        "errors": errors,
-        "blockers": blockers,
+        "blocking_summary": provenance_safe_value(blocking_summary),
+        "remaining_blockers": provenance_safe_value(remaining_blockers),
+        "gates": provenance_safe_value(gates),
+        "errors": provenance_safe_value(errors),
+        "blockers": provenance_safe_value(blockers),
     }
 
 

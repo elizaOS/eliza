@@ -51,6 +51,10 @@ local_non_release_progress_evidence:
   development_route_count: 153
   development_segment_count: 306
   development_via_count: 24
+  development_controlled_impedance_route_count: 48
+  development_route_classification_gap_count: 0
+  development_route_segment_trace_bound_count: 306
+  development_missing_net_count: 0
   development_required_shared_net_category_count: 7
   development_required_shared_net_count: 177
   development_routed_shared_net_count: 177
@@ -60,6 +64,7 @@ local_non_release_progress_evidence:
   development_route_domain_routed_or_aliased_net_count_total: 192
   development_missing_route_domain_net_count: 0
   development_all_route_domains_complete: true
+  development_route_traceability_complete: true
   real_footprint_development_refs: 89
   real_footprint_remaining_placeholder_markers: 0
   routed_step_candidate_present: true
@@ -93,6 +98,10 @@ local_non_release_progress_evidence:
   cad_connection_assembly_manifest_solid_step_part_count: 96
   cad_connection_assembly_manifest_missing_solid_step_part_count: 0
   cad_connection_represented_net_count_total: 150
+  cad_connection_represented_route_count_total: 153
+  cad_connection_represented_route_record_count_total: 153
+  cad_connection_represented_route_classification_gap_count: 0
+  cad_connection_all_represented_routes_have_layer_source_and_class: true
   cad_connection_record_count: 32
   cad_connection_represented_net_list_total: 150
   cad_connection_all_records_have_represented_nets: true

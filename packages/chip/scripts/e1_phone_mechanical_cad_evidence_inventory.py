@@ -253,6 +253,12 @@ def review_gate_inventory() -> dict[str, Any]:
             "connection_solid_step_part_bytes_total",
             "represented_net_count_total",
             "represented_route_count_total",
+            "represented_route_record_count_total",
+            "represented_route_records_with_layer_count_total",
+            "represented_route_records_with_source_domain_count_total",
+            "represented_route_records_with_route_class_count_total",
+            "represented_route_classification_gap_count",
+            "all_represented_routes_have_layer_source_and_class",
             "represented_route_length_total_mm",
             "represented_controlled_impedance_route_count_total",
             "all_represented_nets_have_route_trace",
@@ -302,6 +308,12 @@ def review_gate_inventory() -> dict[str, Any]:
             ) and all(
                 int(item.get("represented_route_count") or 0)
                 == len(item.get("represented_route_ids", []))
+                for item in connection_records
+            )
+            gate["cad_connection_all_represented_routes_have_layer_source_and_class"] = bool(
+                connection_records
+            ) and all(
+                item.get("all_represented_routes_have_layer_source_and_class") is True
                 for item in connection_records
             )
         gates[name] = gate
@@ -496,6 +508,26 @@ def build_report() -> dict[str, Any]:
             ),
             "cad_connection_represented_route_count_total": connection_coverage.get(
                 "represented_route_count_total"
+            ),
+            "cad_connection_represented_route_record_count_total": connection_coverage.get(
+                "represented_route_record_count_total"
+            ),
+            "cad_connection_represented_route_records_with_layer_count_total": (
+                connection_coverage.get("represented_route_records_with_layer_count_total")
+            ),
+            "cad_connection_represented_route_records_with_source_domain_count_total": (
+                connection_coverage.get(
+                    "represented_route_records_with_source_domain_count_total"
+                )
+            ),
+            "cad_connection_represented_route_records_with_route_class_count_total": (
+                connection_coverage.get("represented_route_records_with_route_class_count_total")
+            ),
+            "cad_connection_represented_route_classification_gap_count": (
+                connection_coverage.get("represented_route_classification_gap_count")
+            ),
+            "cad_connection_all_represented_routes_have_layer_source_and_class": (
+                connection_coverage.get("all_represented_routes_have_layer_source_and_class")
             ),
             "cad_connection_represented_route_length_total_mm": connection_coverage.get(
                 "represented_route_length_total_mm"

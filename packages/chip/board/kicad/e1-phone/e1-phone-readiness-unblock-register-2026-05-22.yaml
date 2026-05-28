@@ -28,6 +28,11 @@ summary:
   local_development_route_count: 153
   local_development_segment_count: 306
   local_development_via_count: 24
+  local_development_controlled_impedance_route_count: 48
+  local_development_route_classification_gap_count: 0
+  local_development_route_segment_trace_bound_count: 306
+  local_development_missing_net_count: 0
+  local_development_route_traceability_complete: true
   local_development_required_shared_net_category_count: 7
   local_development_required_shared_net_count: 177
   local_development_routed_shared_net_count: 177
@@ -68,6 +73,10 @@ summary:
   local_cad_connection_assembly_manifest_solid_step_part_count: 96
   local_cad_connection_assembly_manifest_missing_solid_step_part_count: 0
   local_cad_connection_represented_net_count_total: 150
+  local_cad_connection_represented_route_count_total: 153
+  local_cad_connection_represented_route_record_count_total: 153
+  local_cad_connection_represented_route_classification_gap_count: 0
+  local_cad_connection_all_represented_routes_have_layer_source_and_class: true
   local_cad_connection_record_count: 32
   local_cad_connection_represented_net_list_total: 150
   local_cad_connection_all_records_have_represented_nets: true
@@ -1060,10 +1069,7 @@ blockers:
     - sentinel_small_binary_artifact
     board/kicad/e1-phone/production/first-article:
     - blocked_candidate_not_approved
-    - candidate_not_release
     - not_approved
-    - placeholder
-    - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/gerbers:
@@ -1151,9 +1157,7 @@ blockers:
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/escape-density-via-count.yaml:
     - blocked_candidate_not_approved
-    - candidate_not_release
     - not_approved
-    - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/external-interface-design-review.yaml:
@@ -1204,10 +1208,7 @@ blockers:
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/rf:
     - blocked_candidate_not_approved
-    - candidate_not_release
     - not_approved
-    - placeholder
-    - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml:
@@ -1256,9 +1257,7 @@ blockers:
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml:
     - blocked_candidate_not_approved
-    - candidate_not_release
     - not_approved
-    - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml:
@@ -1273,10 +1272,7 @@ blockers:
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/si-pi:
     - blocked_candidate_not_approved
-    - candidate_not_release
     - not_approved
-    - placeholder
-    - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml:
@@ -1313,17 +1309,12 @@ blockers:
     - candidate_not_release
     board/kicad/e1-phone/production/step:
     - blocked_candidate_not_approved
-    - candidate_not_release
     - not_approved
-    - placeholder
-    - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/test/factory-test-limits.yaml:
     - blocked_candidate_not_approved
-    - candidate_not_release
     - not_approved
-    - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/test/first-article-test-transcript.json:
@@ -1435,10 +1426,7 @@ blockers:
   non_release_acceptance_artifacts:
     board/kicad/e1-phone/production/first-article:
     - blocked_candidate_not_approved
-    - candidate_not_release
     - not_approved
-    - placeholder
-    - 'release_allowed: false'
     - 'release_credit: false'
     - unreviewed_local_candidate
     board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json:

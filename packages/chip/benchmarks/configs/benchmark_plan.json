@@ -292,6 +292,8 @@
         "high_failure_repair_manifest_remaps",
         "high_failure_repair_manifest_sampled_routes",
         "high_failure_repair_rom_words",
+        "high_failure_model_shard_sample_sha256",
+        "high_failure_execution_trace_sha256",
         "benchmark_success_allowed"
       ],
       "timeout_seconds": 120

@@ -1039,14 +1039,14 @@ def chip_release_report_dependency(gate_name: str) -> BlockerDependency | None:
     dependency_from_counts = dependency_from_blocker_counts(report)
     if dependency_from_counts is not None:
         return dependency_from_counts
-    dependency_from_rows = dependency_from_blocker_rows(report)
-    if dependency_from_rows is not None:
-        return dependency_from_rows
 
     if report_has_repo_generatable_now(report):
         return "repo_artifact_generation"
     if report_has_blocked_generation_without_repo_close(report):
         return "actionable_external_dependency"
+    dependency_from_rows = dependency_from_blocker_rows(report)
+    if dependency_from_rows is not None:
+        return dependency_from_rows
     if report_text_has_live_dependency(report):
         return "live_device_validation"
     if report_text_has_external_dependency(report):
@@ -1107,9 +1107,9 @@ def dependency_from_blocker_rows(report: dict[str, object]) -> BlockerDependency
         if isinstance(value, list):
             rows.extend(value)
     dependencies: set[str] = {
-        str(row.get("blocker_dependency"))
+        str(row.get("blocker_dependency") or row.get("dependency_type"))
         for row in rows
-        if isinstance(row, dict) and row.get("blocker_dependency")
+        if isinstance(row, dict) and (row.get("blocker_dependency") or row.get("dependency_type"))
     }
     if "repo_artifact_generation" in dependencies:
         return "repo_artifact_generation"
@@ -1313,6 +1313,128 @@ def count_value(summary: dict[str, object], key: str) -> int:
         return 0
 
 
+def chip_report_findings(path: Path) -> list[dict[str, object]]:
+    report = read_report(path)
+    findings = report.get("findings")
+    return [row for row in findings if isinstance(row, dict)] if isinstance(findings, list) else []
+
+
+def pd_signoff_action() -> str:
+    summary = report_summary(PD_SIGNOFF_REPORT_PATH)
+    findings = chip_report_findings(PD_SIGNOFF_REPORT_PATH)
+    closest_run = summary.get("closest_run")
+    missing = count_value(summary, "closest_run_missing_artifact_count")
+    gates = count_value(summary, "blocked_release_gate_count")
+    first_steps = [
+        str(row.get("message"))
+        for row in findings[:3]
+        if isinstance(row.get("message"), str)
+    ]
+    detail = f" Closest run: {closest_run}; missing artifact classes: {missing}." if closest_run else ""
+    samples = f" Current blockers: {'; '.join(first_steps)}." if first_steps else ""
+    return (
+        "Archive a complete release-clean PD signoff run with run manifest, DRC, LVS, "
+        "antenna, STA, IR/EM, density, SI/PI/current-budget, padframe/package, and "
+        "tool-version evidence; rerun python3 scripts/check_pd_signoff.py. "
+        f"Blocked release gates: {gates}."
+        + detail
+        + samples
+    )
+
+
+def pd_release_evidence_action() -> str:
+    summary = report_summary(PD_RELEASE_EVIDENCE_REPORT_PATH)
+    bucket_actions = summary.get("bucket_next_actions")
+    rows = [row for row in bucket_actions if isinstance(row, dict)] if isinstance(bucket_actions, list) else []
+    top = [
+        f"{row.get('bucket')}={row.get('count')} via {row.get('next_command')}"
+        for row in rows[:5]
+    ]
+    bucket_text = f" Top blocker buckets: {'; '.join(top)}." if top else ""
+    return (
+        "Replace prohibited/draft PD evidence manifests with release-ready, externally "
+        "reviewed signoff evidence and close each bucket in "
+        "build/reports/pd_release_evidence.json; rerun python3 scripts/check_pd_release_evidence.py."
+        + bucket_text
+    )
+
+
+def pdk_access_action() -> str:
+    summary = report_summary(PDK_ACCESS_GATE_REPORT_PATH)
+    return (
+        "Execute and record foundry, commercial EDA, hard-IP, mask/NRE, tapeout budget, "
+        "and wafer-allocation agreements in docs/evidence/process/pdk-access-gate.yaml; "
+        "rerun python3 scripts/check_pdk_access_gate.py. "
+        f"Global unmet: {count_value(summary, 'global_unmet')}; "
+        f"advanced targets blocked: {count_value(summary, 'blocked_targets')}/"
+        f"{count_value(summary, 'advanced_targets')}; checklist items not started: "
+        f"{count_value(summary, 'checklist_not_started')}."
+    )
+
+
+def io_cell_contract_action() -> str:
+    summary = report_summary(IO_CELL_CONTRACT_REPORT_PATH)
+    findings = chip_report_findings(IO_CELL_CONTRACT_REPORT_PATH)
+    classes = []
+    for row in findings[:5]:
+        evidence = row.get("evidence")
+        if isinstance(evidence, dict) and evidence.get("class"):
+            classes.append(str(evidence["class"]))
+    class_text = f" Sample blocked classes: {', '.join(classes)}." if classes else ""
+    return (
+        "Archive foundry IO-cell Liberty, LEF, GDS, SPICE, IBIS, ESD/latchup, "
+        "and corner-coverage deliverables for each blocked pad class, then rerun "
+        "python3 scripts/check_io_cell_contract.py. "
+        f"Classes blocked: {count_value(summary, 'classes_blocked')}/"
+        f"{count_value(summary, 'classes_total')}."
+        + class_text
+    )
+
+
+def antenna_metadata_action() -> str:
+    summary = report_summary(ANTENNA_METADATA_REPORT_PATH)
+    return (
+        "Instantiate release IO/pad cells and archive padframe-inclusive antenna gate/diffusion "
+        "metadata for every top-level pin; rerun python3 scripts/check_antenna_metadata.py --release. "
+        f"Missing input gate metadata: {count_value(summary, 'missing_input_gate_metadata_count')}; "
+        f"missing output diffusion metadata: {count_value(summary, 'missing_output_diffusion_metadata_count')}; "
+        f"pins blocked: {count_value(summary, 'missing_pin_count')}."
+    )
+
+
+def boot_security_chain_action() -> str:
+    findings = chip_report_findings(BOOT_SECURITY_CHAIN_CONTRACT_REPORT_PATH)
+    next_steps = [
+        str(row.get("next_step"))
+        for row in findings
+        if isinstance(row.get("next_step"), str)
+    ]
+    suffix = f" Required promotion step: {next_steps[0]}" if next_steps else ""
+    return (
+        "Promote the boot security chain only after secure boot, AVB/rollback, key ceremony, "
+        "negative tests, provisioning records, and boot transcripts are implemented and archived; "
+        "rerun python3 scripts/check_boot_security_chain_contract.py."
+        + suffix
+    )
+
+
+def openlane_release_preflight_action() -> str:
+    summary = report_summary(OPENLANE_RELEASE_PREFLIGHT_REPORT_PATH)
+    findings = chip_report_findings(OPENLANE_RELEASE_PREFLIGHT_REPORT_PATH)
+    messages = [
+        str(row.get("message"))
+        for row in findings[:3]
+        if isinstance(row.get("message"), str)
+    ]
+    sample = f" Current gates: {'; '.join(messages)}." if messages else ""
+    return (
+        "Run a complete pinned OpenLane release flow and archive release-clean PD, tapeout, "
+        "and board-fabrication gate evidence; rerun python3 scripts/check_openlane_run_preflight.py --release. "
+        f"Blocked release gates: {count_value(summary, 'blocked_release_gate_count')}."
+        + sample
+    )
+
+
 def externalized_candidate_action(
     *,
     noun: str,
@@ -1416,6 +1538,14 @@ def blocker_action(result: GateResult) -> dict[str, object]:
     approval_summary = report_summary(E1_PHONE_RELEASE_APPROVAL_REPORT_PATH)
     action_by_gate = {
         "cpu-ap-completion-gate": cpu_ap_completion_action(),
+        "boot-security-chain-contract-check": boot_security_chain_action(),
+        "pdk-access-gate": pdk_access_action(),
+        "pd-signoff-check": pd_signoff_action(),
+        "pd-release-evidence-check": pd_release_evidence_action(),
+        "io-cell-contract-check": io_cell_contract_action(),
+        "antenna-metadata-check": antenna_metadata_action(),
+        "antenna-metadata-release-check": antenna_metadata_action(),
+        "openlane-run-release-preflight-check": openlane_release_preflight_action(),
         "e1-phone-board-package-check": (
             "Keep structural board package checks green while replacing fail-closed "
             "planning/candidate artifacts with release evidence from the underlying "

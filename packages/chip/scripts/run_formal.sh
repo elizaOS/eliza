@@ -53,16 +53,22 @@ if mode == "fallback":
     add("e1_dbg_mmio_bridge", "blocked_requires_sby", None, None)
     add("e1_npu", "fallback_structural_only", None, root / "build/reports/e1_npu_formal_yosys.log")
     add("e1_dma", "fallback_yosys_sat", None, root / "build/reports/e1_dma_formal_yosys.log")
+    add("e1_axi_lite_dram", "blocked_requires_sby", None, None)
+    add("e1_axi_lite_interconnect", "blocked_requires_sby", None, None)
     add("e1_soc_top", "fallback_structural_only", None, root / "build/reports/e1_soc_top_formal_yosys.log")
 elif mode == "sby-shallow-top":
     add("e1_dbg_mmio_bridge", "sby_bmc", root / "verify/formal/e1_dbg_mmio_bridge/status", root / "verify/formal/e1_dbg_mmio_bridge/logfile.txt")
     add("e1_npu", "sby_bmc", root / "verify/formal/e1_npu/status", root / "verify/formal/e1_npu/logfile.txt")
     add("e1_dma", "sby_bmc", root / "verify/formal/e1_dma/status", root / "verify/formal/e1_dma/logfile.txt")
+    add("e1_axi_lite_dram", "sby_bmc", root / "verify/formal/e1_axi_lite_dram/status", root / "verify/formal/e1_axi_lite_dram/logfile.txt")
+    add("e1_axi_lite_interconnect", "sby_bmc", root / "verify/formal/e1_axi_lite_interconnect/status", root / "verify/formal/e1_axi_lite_interconnect/logfile.txt")
     add("e1_soc_top", "fallback_structural_only", None, root / "build/reports/e1_soc_top_formal_yosys.log")
 else:
     add("e1_dbg_mmio_bridge", "sby_bmc", root / "verify/formal/e1_dbg_mmio_bridge/status", root / "verify/formal/e1_dbg_mmio_bridge/logfile.txt")
     add("e1_npu", "sby_bmc", root / "verify/formal/e1_npu/status", root / "verify/formal/e1_npu/logfile.txt")
     add("e1_dma", "sby_bmc", root / "verify/formal/e1_dma/status", root / "verify/formal/e1_dma/logfile.txt")
+    add("e1_axi_lite_dram", "sby_bmc", root / "verify/formal/e1_axi_lite_dram/status", root / "verify/formal/e1_axi_lite_dram/logfile.txt")
+    add("e1_axi_lite_interconnect", "sby_bmc", root / "verify/formal/e1_axi_lite_interconnect/status", root / "verify/formal/e1_axi_lite_interconnect/logfile.txt")
     add("e1_soc_top", "sby_bmc_deep", root / "verify/formal/e1_soc_top/status", root / "verify/formal/e1_soc_top/logfile.txt")
 
 sources = {}
@@ -110,16 +116,26 @@ run_sby() {
     prefix="build/formal/${name}.$$"
     canonical="verify/formal/$name"
 
-    rm -rf "$prefix"
+    rm -rf "$prefix" "$prefix"_*
     sby --prefix "$prefix" -f "$spec"
     mkdir -p "$canonical"
-    cp "$prefix/status" "$canonical/status"
-    cp "$prefix/logfile.txt" "$canonical/logfile.txt"
+    if [ -f "$prefix/status" ]; then
+        result_dir="$prefix"
+    elif [ -f "${prefix}_bmc/status" ]; then
+        result_dir="${prefix}_bmc"
+    else
+        echo "missing SymbiYosys status for $name under $prefix"
+        exit 1
+    fi
+    cp "$result_dir/status" "$canonical/status"
+    cp "$result_dir/logfile.txt" "$canonical/logfile.txt"
 }
 
 run_sby e1_dbg_mmio_bridge
 run_sby e1_npu
 run_sby e1_dma
+run_sby e1_axi_lite_dram
+run_sby e1_axi_lite_interconnect
 if [ "${REQUIRE_DEEP_FORMAL:-0}" = "1" ]; then
     run_sby e1_soc_top
     write_manifest sby-deep-top

@@ -1086,6 +1086,26 @@ def main() -> int:
             "cad_connection_represented_route_count_total": connection_coverage.get(
                 "represented_route_count_total"
             ),
+            "cad_connection_represented_route_record_count_total": connection_coverage.get(
+                "represented_route_record_count_total"
+            ),
+            "cad_connection_represented_route_records_with_layer_count_total": (
+                connection_coverage.get("represented_route_records_with_layer_count_total")
+            ),
+            "cad_connection_represented_route_records_with_source_domain_count_total": (
+                connection_coverage.get(
+                    "represented_route_records_with_source_domain_count_total"
+                )
+            ),
+            "cad_connection_represented_route_records_with_route_class_count_total": (
+                connection_coverage.get("represented_route_records_with_route_class_count_total")
+            ),
+            "cad_connection_represented_route_classification_gap_count": (
+                connection_coverage.get("represented_route_classification_gap_count")
+            ),
+            "cad_connection_all_represented_routes_have_layer_source_and_class": (
+                connection_coverage.get("all_represented_routes_have_layer_source_and_class")
+            ),
             "cad_connection_represented_route_length_total_mm": connection_coverage.get(
                 "represented_route_length_total_mm"
             ),
@@ -1539,8 +1559,17 @@ def main() -> int:
             raise ValueError("CAD connection coverage passing count stale")
         if connection_coverage.get("represented_route_count_total") != 153:
             raise ValueError("CAD connection coverage represented route count stale")
+        if connection_coverage.get("represented_route_record_count_total") != 153:
+            raise ValueError("CAD connection coverage represented route record count stale")
+        if connection_coverage.get("represented_route_classification_gap_count") != 0:
+            raise ValueError("CAD connection coverage represented route classification gaps remain")
         if connection_coverage.get("all_represented_nets_have_route_trace") is not True:
             raise ValueError("CAD connection coverage lost routed-trace binding")
+        if (
+            connection_coverage.get("all_represented_routes_have_layer_source_and_class")
+            is not True
+        ):
+            raise ValueError("CAD connection coverage lost route layer/source/class binding")
         required_connection_ids = {
             "display_touch_fpc",
             "rear_camera_csi_fpc",
@@ -1587,6 +1616,8 @@ def main() -> int:
             or row.get("endpoints_present") is not True
             or row.get("all_nets_in_routed_development_board") is not True
             or row.get("all_represented_nets_have_route_trace") is not True
+            or row.get("all_represented_routes_have_layer_source_and_class") is not True
+            or int(row.get("represented_route_classification_gap_count") or 0) != 0
             or int(row.get("represented_route_count") or 0) <= 0
             or len(row.get("represented_route_ids", [])) != int(
                 row.get("represented_route_count") or 0

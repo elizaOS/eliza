@@ -200,6 +200,25 @@ def candidate_end_to_end_context(
             "represented_net_count_total": int(
                 connection.get("represented_net_count_total", 0) or 0
             ),
+            "represented_route_record_count_total": int(
+                connection.get("represented_route_record_count_total", 0) or 0
+            ),
+            "represented_route_records_with_layer_count_total": int(
+                connection.get("represented_route_records_with_layer_count_total", 0) or 0
+            ),
+            "represented_route_records_with_source_domain_count_total": int(
+                connection.get("represented_route_records_with_source_domain_count_total", 0)
+                or 0
+            ),
+            "represented_route_records_with_route_class_count_total": int(
+                connection.get("represented_route_records_with_route_class_count_total", 0) or 0
+            ),
+            "represented_route_classification_gap_count": int(
+                connection.get("represented_route_classification_gap_count", 0) or 0
+            ),
+            "all_represented_routes_have_layer_source_and_class": bool(
+                connection.get("all_represented_routes_have_layer_source_and_class", False)
+            ),
             "connection_record_count": len(connection_records),
             "represented_net_list_total": represented_net_list_total,
             "all_connection_records_have_represented_nets": all(
@@ -243,6 +262,39 @@ def candidate_end_to_end_context(
             "cad_connection_count": int(traceability.get("cad_connection_count", 0) or 0),
             "cad_connection_represented_net_count_total": int(
                 traceability.get("cad_connection_represented_net_count_total", 0) or 0
+            ),
+            "cad_connection_represented_route_count_total": int(
+                traceability.get("cad_connection_represented_route_count_total", 0) or 0
+            ),
+            "cad_connection_represented_route_record_count_total": int(
+                traceability.get("cad_connection_represented_route_record_count_total", 0) or 0
+            ),
+            "cad_connection_represented_route_records_with_layer_count_total": int(
+                traceability.get(
+                    "cad_connection_represented_route_records_with_layer_count_total", 0
+                )
+                or 0
+            ),
+            "cad_connection_represented_route_records_with_source_domain_count_total": int(
+                traceability.get(
+                    "cad_connection_represented_route_records_with_source_domain_count_total", 0
+                )
+                or 0
+            ),
+            "cad_connection_represented_route_records_with_route_class_count_total": int(
+                traceability.get(
+                    "cad_connection_represented_route_records_with_route_class_count_total", 0
+                )
+                or 0
+            ),
+            "cad_connection_represented_route_classification_gap_count": int(
+                traceability.get("cad_connection_represented_route_classification_gap_count", 0)
+                or 0
+            ),
+            "cad_connection_all_represented_routes_have_layer_source_and_class": bool(
+                traceability.get(
+                    "cad_connection_all_represented_routes_have_layer_source_and_class", False
+                )
             ),
             "cad_connection_visual_route_span_total_mm": float(
                 traceability.get("cad_connection_visual_route_span_total_mm", 0) or 0

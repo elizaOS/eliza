@@ -27,6 +27,8 @@ FORMAL_TARGETS = {
     "e1_dbg_mmio_bridge",
     "e1_npu",
     "e1_dma",
+    "e1_axi_lite_dram",
+    "e1_axi_lite_interconnect",
     "e1_soc_top",
 }
 
@@ -38,6 +40,10 @@ REQUIRED_SOURCE = [
     "scripts/test_sota_parity_audit.py",
     "scripts/test_pipeline_formal_manifest.py",
     "scripts/test_release_archive_simulator_evidence.py",
+    "scripts/test_platform_contract_linux_decode.py",
+    "scripts/test_dma_long_transfer_coverage.py",
+    "scripts/check_dma_long_transfer_coverage.py",
+    "verify/cocotb/dma/test_dma_long_transfer.py",
     "scripts/check_software_bsp_scope.py",
     "scripts/check_cpu_ap_scope.py",
     "scripts/check_npu_scope.py",

@@ -10,7 +10,7 @@
   "claim_level": "L1_RTL_FULL_SOC",
   "provenance": "simulator",
   "flow": "cva6 veri-testharness (verif/regress/coremark.sh build flags); model work-ver/Variane_testharness",
-  "result_recorded_at": "2026-05-22T17:07:51Z",
+  "result_recorded_at": "2026-05-28T20:16:11Z",
   "tools": {
     "verilator": "Verilator 5.049 devel rev v5.048-46-g7c5069c7d (mod)",
     "gcc": "15.2.0 (xpack riscv-none-elf)",
@@ -19,17 +19,17 @@
     "spike": "/home/shaw/milady/eliza/packages/chip/external/cva6/cva6/tools/spike (CVA6 pinned, libfesvr read_elf)"
   },
   "metrics": {
-    "total_cycles": 922711,
-    "retired_instructions": 719540,
-    "cpi": 1.2824,
+    "total_cycles": 1028734,
+    "retired_instructions": 731555,
+    "cpi": 1.4062,
     "coremark_iterations": 1,
-    "coremark_timed_ticks": 442557,
-    "coremark_per_mhz": 2.2596,
-    "coremark_banner_per_mhz": 2.25
+    "coremark_timed_ticks": 462848,
+    "coremark_per_mhz": 2.1605,
+    "coremark_banner_per_mhz": 2.16
   },
   "coremark_per_mhz_formula": "iterations / (coremark_timed_ticks / 1e6); timed region only (mcycle), frequency-independent",
   "cpi_scope": "whole program incl. startup/teardown (total_cycles / retired_instructions)",
   "published_reference": {"cva6_coremark_per_mhz": 2.83, "note": "OpenHW Group published CVA6 figure measured with its reference toolchain; the delta vs this measurement is a compiler/codegen difference (xpack gcc 15.2.0 -march=rv64gc), not a microarchitecture difference. Same RTL, same cv64a6_imafdc_sv39 config."},
   "run_command": "external/cva6/cva6/work-ver/Variane_testharness /home/shaw/milady/eliza/packages/chip/build/cva6-verilator/coremark.cva6.rv64gc.elf +elf_file=/home/shaw/milady/eliza/packages/chip/build/cva6-verilator/coremark.cva6.rv64gc.elf",
-  "raw_coremark_stdout": "This emulator compiled with JTAG Remote Bitbang client. To enable, use +jtag_rbb_enable=1.\nListening on port 37861\n/home/shaw/milady/eliza/packages/chip/build/cva6-verilator/coremark.cva6.rv64gc.elf *** SUCCESS *** (tohost = 0) after 922723 cycles\n*** [rvf_tracer] INFO: Loading binary : /home/shaw/milady/eliza/packages/chip/build/cva6-verilator/coremark.cva6.rv64gc.elf\n*** [rvf_tracer] INFO: tohost_addr: 0000000080001000\n2K performance run parameters for coremark.\nCoreMark Size    : 666\nTotal ticks      : 442557\nTotal time (secs): 0\nIterations       : 1\nCompiler version : GCC15.2.0\nCompiler flags   : -O3 -march=rv64gc -mabi=lp64d\nMemory location  : \nseedcrc          : 0xe9f5\n[0]crclist       : 0xe714\n[0]crcmatrix     : 0x1fd7\n[0]crcstate      : 0x8e3a\n[0]crcfinal      : 0xe714\nCorrect operation validated. See README.md for run and reporting rules.\nCoreMark/MHz 1.0 : 2.25 / GCC15.2.0 -O3 -march=rv64gc -mabi=lp64d / UNSPECIFIED() RATIOS:1\n*** [rvfi_tracer] INFO: Simulation terminated after     922711 cycles!\n\nCPU time used: 55714.50 ms\nWall clock time passed: 56252.63 ms\n"
+  "raw_coremark_stdout": "This emulator compiled with JTAG Remote Bitbang client. To enable, use +jtag_rbb_enable=1.\nListening on port 44649\n/home/shaw/milady/eliza/packages/chip/build/cva6-verilator/coremark.cva6.rv64gc.elf *** SUCCESS *** (tohost = 0) after 1028746 cycles\n*** [rvf_tracer] INFO: Loading binary : /home/shaw/milady/eliza/packages/chip/build/cva6-verilator/coremark.cva6.rv64gc.elf\n*** [rvf_tracer] INFO: tohost_addr: 0000000080001000\n2K performance run parameters for coremark.\nCoreMark Size    : 666\nTotal ticks      : 462848\nTotal time (secs): 0\nIterations       : 1\nCompiler version : GCC15.2.0\nCompiler flags   : -O3 -march=rv64gc -mabi=lp64d\nMemory location  : \nseedcrc          : 0xe9f5\n[0]crclist       : 0xe714\n[0]crcmatrix     : 0x1fd7\n[0]crcstate      : 0x8e3a\n[0]crcfinal      : 0xe714\nCorrect operation validated. See README.md for run and reporting rules.\nCoreMark/MHz 1.0 : 2.16 / GCC15.2.0 -O3 -march=rv64gc -mabi=lp64d / UNSPECIFIED() RATIOS:1\n*** [rvfi_tracer] INFO: Simulation terminated after    1028734 cycles!\n\nCPU time used: 57089.04 ms\nWall clock time passed: 57244.49 ms\n"
 }
