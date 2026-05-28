@@ -351,7 +351,7 @@ e1x-wafer-mesh-evidence:
 e1x-wafer-mesh-test:
 	@$(PYTHON) -m pytest scripts/test_e1x_wafer_mesh_model.py -q
 
-.PHONY: e1x-rtl-contract-check e1x-rtl-contract-test e1x-benchmark e1x-benchmark-test e1x-repair-rom-cocotb e1x-repair-rom-cocotb-test e1x-core-cocotb e1x-core-cocotb-test e1x-pe-core-cocotb e1x-pe-core-cocotb-test e1x-tile-cocotb e1x-tile-cocotb-test e1x-fabric-cocotb e1x-fabric-cocotb-test e1x-credit-router-cocotb e1x-credit-router-cocotb-test e1x-dft-cocotb e1x-dft-cocotb-test e1x-dft-strategy e1x-formal e1x-formal-test
+.PHONY: e1x-rtl-contract-check e1x-rtl-contract-test e1x-benchmark e1x-benchmark-test e1x-kernel-codegen e1x-kernel-codegen-test e1x-repair-rom-cocotb e1x-repair-rom-cocotb-test e1x-core-cocotb e1x-core-cocotb-test e1x-pe-core-cocotb e1x-pe-core-cocotb-test e1x-tile-cocotb e1x-tile-cocotb-test e1x-fabric-cocotb e1x-fabric-cocotb-test e1x-credit-router-cocotb e1x-credit-router-cocotb-test e1x-dft-cocotb e1x-dft-cocotb-test e1x-dft-strategy e1x-formal e1x-formal-test
 
 e1x-rtl-contract-check:
 	@$(PYTHON) scripts/check_e1x_rtl_contract.py
@@ -364,6 +364,12 @@ e1x-benchmark:
 
 e1x-benchmark-test:
 	@$(PYTHON) -m pytest scripts/test_e1x_benchmark.py -q
+
+e1x-kernel-codegen:
+	@$(PYTHON) scripts/check_e1x_kernel_codegen.py
+
+e1x-kernel-codegen-test:
+	@$(PYTHON) -m pytest scripts/test_e1x_kernel_codegen.py -q
 
 e1x-repair-rom-cocotb:
 	@$(PYTHON) scripts/check_e1x_repair_rom_cocotb.py
@@ -395,7 +401,7 @@ e1x-fabric-cocotb:
 e1x-fabric-cocotb-test:
 	@$(PYTHON) -m pytest scripts/test_e1x_fabric_cocotb.py -q
 
-.PHONY: e1x3d-wafer-stack-evidence e1x3d-scaled-model-evidence e1x3d-model-test e1x3d-benchmark e1x3d-fabric-cocotb e1x3d-fabric-cocotb-test
+.PHONY: e1x3d-wafer-stack-evidence e1x3d-scaled-model-evidence e1x3d-model-test e1x3d-benchmark e1x3d-fabric-cocotb e1x3d-fabric-cocotb-test e1x3d-placement-evidence e1x3d-placement e1x3d-placement-test
 
 e1x3d-wafer-stack-evidence:
 	@$(PYTHON) scripts/generate_e1x3d_wafer_stack_evidence.py
@@ -414,6 +420,15 @@ e1x3d-fabric-cocotb:
 
 e1x3d-fabric-cocotb-test:
 	@$(PYTHON) -m pytest scripts/test_e1x3d_fabric_cocotb.py -q
+
+e1x3d-placement-evidence:
+	@$(PYTHON) scripts/generate_e1x3d_placement_evidence.py
+
+e1x3d-placement:
+	@$(PYTHON) scripts/check_e1x3d_placement.py
+
+e1x3d-placement-test:
+	@$(PYTHON) -m pytest scripts/test_e1x3d_placement_model.py -q
 
 e1x-credit-router-cocotb:
 	@$(PYTHON) scripts/check_e1x_credit_router_cocotb.py
