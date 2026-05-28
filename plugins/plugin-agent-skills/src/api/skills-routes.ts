@@ -12,7 +12,6 @@ import {
   PostSkillCatalogInstallRequestSchema,
   PostSkillCatalogUninstallRequestSchema,
   PostSkillCreateRequestSchema,
-  PutMarketplaceConfigRequestSchema,
   PutSkillSourceRequestSchema,
   parseClampedInteger,
 } from "@elizaos/shared";
@@ -1486,10 +1485,7 @@ export async function handleSkillsRoutes(
           path: body.path,
           name: body.name,
           description: body.description,
-          source:
-            body.source === "manual" || body.source === "skillsmp"
-              ? body.source
-              : ("clawhub" as const),
+          source: body.source === "manual" ? "manual" : "clawhub",
         });
 
         state.skills = await discoverSkills(
@@ -1551,34 +1547,6 @@ export async function handleSkillsRoutes(
         500,
       );
     }
-    return true;
-  }
-
-  // ── GET /api/skills/marketplace/config ──────────────────────────────────
-  if (method === "GET" && pathname === "/api/skills/marketplace/config") {
-    json(res, { keySet: Boolean(process.env.SKILLSMP_API_KEY?.trim()) });
-    return true;
-  }
-
-  // ── PUT /api/skills/marketplace/config ─────────────────────────────────
-  if (method === "PUT" && pathname === "/api/skills/marketplace/config") {
-    const rawMpCfg = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawMpCfg === null) return true;
-    const parsedMpCfg = PutMarketplaceConfigRequestSchema.safeParse(rawMpCfg);
-    if (!parsedMpCfg.success) {
-      error(
-        res,
-        parsedMpCfg.error.issues[0]?.message ?? "Invalid request body",
-        400,
-      );
-      return true;
-    }
-    const apiKey = parsedMpCfg.data.apiKey;
-    process.env.SKILLSMP_API_KEY = apiKey;
-    if (!state.config.env) state.config.env = {};
-    (state.config.env as Record<string, string>).SKILLSMP_API_KEY = apiKey;
-    saveElizaConfig(state.config);
-    json(res, { ok: true, keySet: true });
     return true;
   }
 
