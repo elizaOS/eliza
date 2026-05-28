@@ -836,6 +836,17 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 	"PLATFORM_CHAT_CONTEXT",
 	"PLATFORM_USER_CONTEXT",
 	"RUNTIME_MODEL_CONTEXT",
+	// FACTS is dynamic and would otherwise never run during response
+	// composition. Stage 1 keeps it rendered when present (see
+	// STAGE1_EXTRA_PROVIDER_EXCLUSIONS) precisely so durable user facts
+	// ("my dog's name is Jeff", "my car is named Bertha") persisted by the
+	// facts-and-relationships stage can be recalled on a later turn — even a
+	// simple-path turn after the source message has scrolled out of the
+	// RECENT_MESSAGES window. Without this, stored facts are written but
+	// never retrieved into the answer. FACTS content is stable across calls
+	// (refreshes only when the store changes) so it does not churn the
+	// prefix cache the way CURRENT_TIME would.
+	"FACTS",
 	// CURRENT_TIME is dynamic and would otherwise be filtered out before
 	// reaching the response handler. The wall-clock time is a baseline
 	// signal for nearly every routing decision (scheduling, freshness of
