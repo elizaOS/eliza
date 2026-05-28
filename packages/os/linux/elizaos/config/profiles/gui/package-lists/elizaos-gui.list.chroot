@@ -7,8 +7,11 @@ cage
 seatd
 
 # Electrobun and Epiphany are GTK/WebKit-based.
+# trixie renamed the GTK3 runtime to libgtk-3-0t64 in the 64-bit time_t (t64)
+# ABI transition; the unsuffixed libgtk-3-0 has no installation candidate and
+# fails the apt chroot stage on every arch.
 libwebkit2gtk-4.1-0
-libgtk-3-0
+libgtk-3-0t64
 libdbusmenu-gtk3-4
 libgl1-mesa-dri
 libegl1
