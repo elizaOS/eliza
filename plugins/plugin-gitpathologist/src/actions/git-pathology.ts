@@ -168,10 +168,7 @@ export const gitPathologyAction: Action & { suppressPostActionContinuation: true
       content.params && typeof content.params === "object"
         ? (content.params as Record<string, unknown>)
         : null;
-    if (
-      params &&
-      typeof params.action === "string"
-    ) {
+    if (params && typeof params.action === "string") {
       return true;
     }
     if (params && typeof params.surface === "string") return true;
