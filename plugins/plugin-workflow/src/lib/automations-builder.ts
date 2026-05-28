@@ -618,9 +618,14 @@ export async function buildAutomationListResponse(
     );
   }
 
+  const coordinatorTriggerItems = triggerItems.map((trigger) =>
+    _buildCoordinatorTriggerItem(trigger, _triggerRooms.get(trigger.id))
+  );
+
   const automations = [
     ...automationDraftItems,
     ...workflowDraftItems,
+    ...coordinatorTriggerItems,
     ...taskItems,
     ...workflowItemsById.values(),
   ].sort(compareAutomationItems);

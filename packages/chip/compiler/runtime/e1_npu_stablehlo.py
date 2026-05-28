@@ -26,7 +26,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 
 class YamlModule(Protocol):
@@ -36,11 +36,11 @@ class YamlModule(Protocol):
 
 
 try:  # PyYAML is part of the chip toolchain (see requirements.txt).
-    import yaml as yaml_module
+    import yaml as _yaml_module
 except ImportError:  # pragma: no cover - yaml is required by the chip env.
-    yaml_module = None
-
-_yaml: YamlModule | None = yaml_module
+    _yaml: YamlModule | None = None
+else:
+    _yaml = cast(YamlModule, _yaml_module)
 
 SCHEMA = "eliza.e1_npu_stablehlo_subset.v1"
 

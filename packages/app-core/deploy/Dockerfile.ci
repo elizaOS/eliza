@@ -37,6 +37,9 @@ RUN mkdir -p /tmp/docker-runtime-deps \
   && cd /tmp/docker-runtime-deps \
   && npm init -y >/dev/null \
   && npm install --omit=dev --ignore-scripts --no-package-lock \
+    --fetch-retries=5 \
+    --fetch-retry-mintimeout=20000 \
+    --fetch-retry-maxtimeout=120000 \
     @electric-sql/pglite@0.4.5 \
     @neondatabase/serverless@1.1.0 \
     @node-rs/argon2@2.0.2 \
