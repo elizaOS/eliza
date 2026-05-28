@@ -5,7 +5,6 @@
  * Actions:
  *   report (default) — full pathology report for a surface
  *   list             — list cached reports for the repo root
- *   trace/diff       — legacy v2 placeholders retained as explicit errors
  */
 
 import path from "node:path";
@@ -25,14 +24,9 @@ import {
 } from "../services/git-pathology-service.ts";
 import type { AnalysisOptions, Operation, PathologyReport, SurfaceSpec } from "../types.ts";
 
-type GitPathologyOperation = Operation | "trace" | "diff";
+type GitPathologyOperation = Operation;
 
-const VALID_ACTIONS: ReadonlySet<GitPathologyOperation> = new Set([
-  "report",
-  "list",
-  "trace",
-  "diff",
-]);
+const VALID_ACTIONS: ReadonlySet<GitPathologyOperation> = new Set(["report", "list"]);
 const SURFACE_HINT_RE =
   /\b(pathology|git\s+history|code\s+health|drift|rot|inflection|when\s+did\s+(?:this\s+)?(?:code|file|module|package|plugin|service|component|path|repo|repository|branch|commit))\b/i;
 
@@ -54,8 +48,7 @@ function paramsRecord(
 }
 
 function readAction(params: Record<string, unknown>): GitPathologyOperation {
-  const rawValue =
-    params.action ?? params.operation ?? params.op ?? params.subaction;
+  const rawValue = params.action;
   const raw = typeof rawValue === "string" ? rawValue.toLowerCase() : "report";
   return VALID_ACTIONS.has(raw as GitPathologyOperation)
     ? (raw as GitPathologyOperation)
@@ -112,11 +105,6 @@ function listResult(service: GitPathologyService, repoRoot: string): ActionResul
     text: `Cached pathology reports:\n${lines.join("\n")}`,
     data: { reports: summaries },
   };
-}
-
-function notImplementedResult(operation: GitPathologyOperation): ActionResult {
-  const text = `Operation "${operation}" is not implemented in gitpathologist v1. Use action="report" or action="list".`;
-  return { success: false, text, error: "NOT_IMPLEMENTED" };
 }
 
 function reportResult(report: PathologyReport): ActionResult {
@@ -182,10 +170,7 @@ export const gitPathologyAction: Action & { suppressPostActionContinuation: true
         : null;
     if (
       params &&
-      (typeof params.action === "string" ||
-        typeof params.operation === "string" ||
-        typeof params.op === "string" ||
-        typeof params.subaction === "string")
+      typeof params.action === "string"
     ) {
       return true;
     }
@@ -211,14 +196,6 @@ export const gitPathologyAction: Action & { suppressPostActionContinuation: true
 
     if (action === "list") {
       const result = listResult(service, repoRoot);
-      if (callback && typeof result.text === "string") {
-        await callback({ text: result.text });
-      }
-      return result;
-    }
-
-    if (action === "trace" || action === "diff") {
-      const result = notImplementedResult(action);
       if (callback && typeof result.text === "string") {
         await callback({ text: result.text });
       }

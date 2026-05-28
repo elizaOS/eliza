@@ -247,6 +247,7 @@ export type PlannerToolActionShape = Pick<
 	| "name"
 	| "description"
 	| "descriptionCompressed"
+	| "compressedDescription"
 	| "routingHint"
 	| "parameters"
 	| "allowAdditionalParameters"
