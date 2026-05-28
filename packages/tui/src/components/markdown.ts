@@ -15,18 +15,18 @@ import type { ListRenderContext } from "./markdown/list-renderer.js";
 import { renderList as renderListUtil } from "./markdown/list-renderer.js";
 import type { TableRenderContext } from "./markdown/table-renderer.js";
 import { renderTable as renderTableUtil } from "./markdown/table-renderer.js";
-import type { InlineStyleContext } from "./markdown/types.js";
+import type {
+  DefaultTextStyle,
+  InlineStyleContext,
+  MarkdownTheme,
+} from "./markdown/types.js";
 import { getStylePrefix } from "./markdown/types.js";
 
 // Re-export types for backward compatibility
 export type {
   DefaultTextStyle,
-  InlineStyleContext,
   MarkdownTheme,
 } from "./markdown/types.js";
-
-// Import types for internal use
-import type { DefaultTextStyle, MarkdownTheme } from "./markdown/types.js";
 
 export class Markdown implements Component {
   private text: string;

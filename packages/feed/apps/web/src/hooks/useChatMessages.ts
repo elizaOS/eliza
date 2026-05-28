@@ -8,7 +8,7 @@ import {
   type ReplyToMessage,
 } from "@/components/chats/types";
 import { useAuth } from "@/hooks/useAuth";
-import { getPrivyAccessTokenSafely } from "@/lib/auth/privyAccessToken";
+import { getAccessTokenSafely } from "@/lib/auth/privyAccessToken";
 import { setCachedMessages } from "@/lib/chat/message-store";
 import { CHAT_PAGE_SIZE } from "@/lib/constants";
 import { useAuthStore } from "@/stores/authStore";
@@ -218,7 +218,7 @@ export function useChatMessages(chatId: string | null) {
 
   const getSafeAccessToken = useCallback(
     () =>
-      getPrivyAccessTokenSafely(getAccessToken, {
+      getAccessTokenSafely(getAccessToken, {
         onError: (error) => {
           logger.warn(
             "Failed to retrieve chat access token",

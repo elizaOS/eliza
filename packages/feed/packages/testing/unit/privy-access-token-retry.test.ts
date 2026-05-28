@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import {
-  getPrivyAccessTokenWithRetry,
-  isRetryablePrivyAccessTokenError,
+  getAccessTokenWithRetry,
+  isRetryableAccessTokenError,
 } from "../../../apps/web/src/lib/auth/privyAccessToken";
 
-describe("privy access token retry", () => {
+describe("access token retry", () => {
   beforeEach(() => {
     mock.restore();
   });
@@ -14,7 +14,7 @@ describe("privy access token retry", () => {
       .mockRejectedValueOnce(new Error("Failed to fetch session"))
       .mockResolvedValueOnce("token-123");
 
-    const token = await getPrivyAccessTokenWithRetry(getAccessToken, {
+    const token = await getAccessTokenWithRetry(getAccessToken, {
       maxAttempts: 2,
       initialDelayMs: 0,
       maxDelayMs: 0,
@@ -29,7 +29,7 @@ describe("privy access token retry", () => {
     const getAccessToken = mock().mockRejectedValue(new Error("Invalid JWT"));
 
     await expect(
-      getPrivyAccessTokenWithRetry(getAccessToken, {
+      getAccessTokenWithRetry(getAccessToken, {
         maxAttempts: 2,
         initialDelayMs: 0,
         maxDelayMs: 0,
@@ -40,14 +40,14 @@ describe("privy access token retry", () => {
     expect(getAccessToken).toHaveBeenCalledTimes(1);
   });
 
-  it("classifies network-shaped Privy errors as retryable", () => {
+  it("classifies network-shaped access-token errors as retryable", () => {
     expect(
-      isRetryablePrivyAccessTokenError(
+      isRetryableAccessTokenError(
         new Error("Load failed while refreshing session"),
       ),
     ).toBe(true);
     expect(
-      isRetryablePrivyAccessTokenError(new Error("Invalid JWT token")),
+      isRetryableAccessTokenError(new Error("Invalid JWT token")),
     ).toBe(false);
   });
 });

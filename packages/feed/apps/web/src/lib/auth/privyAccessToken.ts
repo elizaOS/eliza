@@ -2,7 +2,7 @@
  * Access token retry utilities.
  *
  * Originally written for Privy; now used with Steward tokens via the compat shim.
- * TODO: Phase 3 — rename this file to `accessToken.ts` and remove Privy naming.
+ * TODO: Phase 3 - rename this file to `accessToken.ts` and remove Privy naming.
  */
 import { extractErrorMessage, sleep } from "@feed/shared";
 
@@ -102,7 +102,7 @@ export async function getAccessTokenSafely(
   }
 }
 
-// ── Deprecated aliases (backward compatibility) ──────────────────────────────
+// Deprecated aliases for backward compatibility.
 
 /** @deprecated Use `AccessTokenRetryOptions` */
 export type PrivyAccessTokenRetryOptions = AccessTokenRetryOptions;

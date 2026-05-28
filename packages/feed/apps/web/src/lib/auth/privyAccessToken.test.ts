@@ -1,13 +1,13 @@
 import { describe, expect, it, mock } from "bun:test";
 import {
-  getPrivyAccessTokenSafely,
-  getPrivyAccessTokenWithRetry,
+  getAccessTokenSafely,
+  getAccessTokenWithRetry,
 } from "./privyAccessToken";
 
 describe("privyAccessToken", () => {
   it("returns the token when the getter succeeds", async () => {
     await expect(
-      getPrivyAccessTokenSafely(() => Promise.resolve("token-123")),
+      getAccessTokenSafely(() => Promise.resolve("token-123")),
     ).resolves.toBe("token-123");
   });
 
@@ -15,7 +15,7 @@ describe("privyAccessToken", () => {
     const onError = mock<(error: Error) => void>(() => {});
 
     await expect(
-      getPrivyAccessTokenSafely(() => Promise.reject(null), { onError }),
+      getAccessTokenSafely(() => Promise.reject(null), { onError }),
     ).resolves.toBeNull();
 
     expect(onError).toHaveBeenCalledTimes(1);
@@ -26,15 +26,15 @@ describe("privyAccessToken", () => {
 
   it("returns null when onError is not provided", async () => {
     await expect(
-      getPrivyAccessTokenSafely(() => Promise.reject(new Error("test"))),
+      getAccessTokenSafely(() => Promise.reject(new Error("test"))),
     ).resolves.toBeNull();
   });
 
-  it("normalizes object-shaped Privy rejections before reporting them", async () => {
+  it("normalizes object-shaped access-token rejections before reporting them", async () => {
     const onError = mock<(error: Error) => void>(() => {});
 
     await expect(
-      getPrivyAccessTokenSafely(
+      getAccessTokenSafely(
         () =>
           Promise.reject({
             code: "privy_access_token_rejected",
@@ -60,7 +60,7 @@ describe("privyAccessToken", () => {
     });
 
     await expect(
-      getPrivyAccessTokenWithRetry(getAccessToken, {
+      getAccessTokenWithRetry(getAccessToken, {
         initialDelayMs: 1,
         maxDelayMs: 1,
       }),
