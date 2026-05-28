@@ -38,6 +38,8 @@ ROBOT = "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot"
 SRC = os.path.join(ROBOT, "assets/profiles/asimov-1/meshes")
 OUT = os.path.join(ROBOT, "cad/asimov-feminine/output/stl")
 
+AXIS_IDX = {"x": 0, "y": 1, "z": 2}
+
 # ── Even feminine slimming (constant cross-section scale; 1.0 = unchanged) ────
 # One factor per limb family so the limb reads as UNIFORMLY slim end-to-end.
 ARM = 0.78    # whole arm chain (shoulder roll/yaw, elbow, wrist)
@@ -61,28 +63,74 @@ for _k in list(SLIM.keys()):
     if _k.startswith("LEFT_"):
         SLIM[_k.replace("LEFT_", "RIGHT_")] = SLIM[_k]
 
-# Torso (WAIST_YAW) chest/back shaping. z local frame: waist mate at 0, shoulders
-# ~0.261, neck ~0.378. Front = +X.
+# Torso (WAIST_YAW) chest/back shaping. z local frame (waist mate at 0, shoulders
+# ~0.261, neck ~0.378). Robot front = +X; the round waist-actuator drums sit at
+# the lateral ±Y sides with their axis along Y. So the ONLY feature-safe moves are:
+#   * waist cinch  -> scale Y only (along the drum axis: circular XZ faces preserved)
+#   * bust         -> push the +X FRONT sector outward in X only, narrow enough to
+#                     stay clear of the ±Y drums (sector half-angle < 90deg)
+#   * back relief  -> pull the -X BACK sector in slightly, same clearance
+# Everything is blended to zero at the neck + both shoulder mates and at the pelvis
+# mate, so nothing that mates is touched. No centroid shift (it would shear the
+# Y-axis drums across their z-span).
+TORSO = dict(
+    cinch_y_min=0.84, cinch_z=0.135, cinch_sigma=0.075,   # waist width (Y)
+    bust_gain=1.12, bust_z=0.175, bust_sigma=0.05, bust_halfdeg=58.0,
+    back_in=0.95, back_z=0.150, back_sigma=0.07, back_halfdeg=45.0,
+    z_lo=0.02, z_hi=0.235,   # shaping confined between pelvis skirt and shoulders
+)
+
+
+def _slice_centroids(v, axis_z, lo, hi, step=0.005):
+    levels = np.arange(lo, hi + step, step)
+    cx = np.zeros_like(levels)
+    cy = np.zeros_like(levels)
+    for i, z in enumerate(levels):
+        sel = np.abs(axis_z - z) < step
+        if sel.sum() >= 3:
+            cx[i] = v[sel, 0].mean()
+            cy[i] = v[sel, 1].mean()
+    return levels, cx, cy
+
+
 def _torso_warp(mesh):
     reserved = C.reserved_levels("WAIST_YAW")
+    P = TORSO
+    m = mesh.copy()
+    v = m.vertices.copy()
+    z = v[:, 2]
+    w = W.connection_weight(z, reserved, ramp=0.03)
+    # confine shaping to the mid torso band (smooth window)
+    band = np.clip((z - P["z_lo"]) / 0.04, 0, 1) * np.clip((P["z_hi"] - z) / 0.04, 0, 1)
+    w = w * band
+    levels, cx, _ = _slice_centroids(v, z, mesh.bounds[0][2], mesh.bounds[1][2])
+    cxz = np.interp(z, levels, cx)
 
-    def cinch(z):  # uniform waist cinch low, ribcage taper above
-        waist = 0.86 + 0.14 * (1 - math.exp(-((z - 0.06) ** 2) / (2 * 0.05 ** 2)))
-        rib = 0.94 if z > 0.18 else 1.0
-        return min(waist, 1.0) * rib
+    # 1) waist cinch in Y only (drum axis) -> circular faces preserved
+    gy = 1.0 + (P["cinch_y_min"] - 1.0) * np.exp(-((z - P["cinch_z"]) ** 2) / (2 * P["cinch_sigma"] ** 2))
+    fy = 1.0 + (gy - 1.0) * w
+    v[:, 1] = v[:, 1] * fy  # centroid Y ~ 0
 
-    def bust_gain(z):  # +X front sector gain, localised at the bust band
-        return 1.0 + 0.16 * math.exp(-((z - 0.215) ** 2) / (2 * 0.055 ** 2))
+    # angle of each vertex about the per-slice X centre (front = +X)
+    dx = v[:, 0] - cxz
+    ang = np.degrees(np.arctan2(v[:, 1], dx))
 
-    def arch(z):  # gentle posture S: chest forward (+X) high, small -X mid
-        fwd = 0.010 * math.exp(-((z - 0.27) ** 2) / (2 * 0.06 ** 2))
-        return (fwd, 0.0)
+    # 2) bust: push +X front sector outward in X (cosine falloff, clear of drums)
+    gb = (P["bust_gain"] - 1.0) * np.exp(-((z - P["bust_z"]) ** 2) / (2 * P["bust_sigma"] ** 2))
+    front = (np.abs(ang) <= P["bust_halfdeg"]) & (dx > 0)
+    fall = np.where(front, 0.5 * (1 + np.cos(np.pi * np.abs(ang) / P["bust_halfdeg"])), 0.0)
+    push = 1.0 + gb * fall * w
+    v[front, 0] = cxz[front] + dx[front] * push[front]
 
-    return W.warp_profile(
-        mesh, axis="z", scale_fn=cinch,
-        bulges=[{"center": 0.0, "width": math.radians(150), "gain": bust_gain}],
-        shift_fn=arch, reserved=reserved, ramp=0.03,
-    )
+    # 3) back relief: pull -X back sector in slightly
+    gk = (P["back_in"] - 1.0) * np.exp(-((z - P["back_z"]) ** 2) / (2 * P["back_sigma"] ** 2))
+    back = (np.abs(np.abs(ang) - 180.0) <= P["back_halfdeg"]) & (dx < 0)
+    fallb = np.where(back, 0.5 * (1 + np.cos(np.pi * (180.0 - np.abs(ang)) / P["back_halfdeg"])), 0.0)
+    pullb = 1.0 + gk * fallb * w
+    v[back, 0] = cxz[back] + dx[back] * pullb[back]
+
+    m.vertices = v
+    return m
 
 
 def _pelvis_warp(mesh):
@@ -100,14 +148,51 @@ def _pelvis_warp(mesh):
     return m
 
 
+def _joint_centerline(link, spine_i):
+    """In-plane joint points vs spine coordinate: self origin (0,0) at spine 0
+    plus every child joint at its spine level. Scaling the cross-section about
+    THIS line (not the fixed spine axis) keeps every joint point exactly in
+    place, so laterally-offset child mounts (elbow->wrist, ankle->toe, hip yoke)
+    do not drift when the part is slimmed."""
+    pd = [d for d in range(3) if d != spine_i]
+    pts = [(0.0, (0.0, 0.0))]
+    for pos in C.LINKS[link]["children"].values():
+        pts.append((pos[spine_i], (pos[pd[0]], pos[pd[1]])))
+    pts.sort(key=lambda kv: kv[0])
+    levels = np.array([p[0] for p in pts])
+    c0 = np.array([p[1][0] for p in pts])
+    c1 = np.array([p[1][1] for p in pts])
+    if len(levels) == 1:  # only the self joint -> constant centre on the axis
+        levels = np.array([-1.0, 1.0])
+        c0 = np.array([0.0, 0.0])
+        c1 = np.array([0.0, 0.0])
+    return levels, c0, c1
+
+
+def _limb_warp(mesh, link, factor):
+    if factor == 1.0:
+        return mesh.copy()
+    spine_i = AXIS_IDX[C.LINKS[link]["spine"]]
+    pd = [d for d in range(3) if d != spine_i]
+    levels, c0, c1 = _joint_centerline(link, spine_i)
+    m = mesh.copy()
+    v = m.vertices.copy()
+    t = v[:, spine_i]
+    cen0 = np.interp(t, levels, c0)
+    cen1 = np.interp(t, levels, c1)
+    v[:, pd[0]] = cen0 + (v[:, pd[0]] - cen0) * factor
+    v[:, pd[1]] = cen1 + (v[:, pd[1]] - cen1) * factor
+    m.vertices = v
+    return m
+
+
 def build_part(link: str) -> trimesh.Trimesh:
     m = trimesh.load(os.path.join(SRC, f"{link}.STL"))
     if link == "WAIST_YAW":
         return _torso_warp(m)
     if link == "IMU_ORIGIN":
         return _pelvis_warp(m)
-    spine = C.LINKS[link]["spine"]
-    return W.warp_affine(m, spine=spine, factor=SLIM.get(link, 1.0), center=(0.0, 0.0))
+    return _limb_warp(m, link, SLIM.get(link, 1.0))
 
 
 def run() -> None:

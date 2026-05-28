@@ -18,6 +18,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -191,10 +192,12 @@ function TextInput({
   placeholder?: string;
   value: string;
 }) {
+  const id = useId();
   return (
-    <label className="grid gap-1 text-sm text-txt">
+    <label className="grid gap-1 text-sm text-txt" htmlFor={id}>
       <span className="font-medium">{label}</span>
       <Input
+        id={id}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
@@ -214,10 +217,12 @@ function TextArea({
   placeholder?: string;
   value: string;
 }) {
+  const id = useId();
   return (
-    <label className="grid gap-1 text-sm text-txt">
+    <label className="grid gap-1 text-sm text-txt" htmlFor={id}>
       <span className="font-medium">{label}</span>
       <Textarea
+        id={id}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}

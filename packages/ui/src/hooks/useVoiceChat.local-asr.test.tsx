@@ -44,6 +44,7 @@ describe("useVoiceChat local ASR", () => {
     startLocalAsrRecorderMock.mockResolvedValue({
       stop,
       cancel: vi.fn(),
+      analyser: null,
     });
     const onTranscript = vi.fn();
     const onTranscriptPreview = vi.fn();

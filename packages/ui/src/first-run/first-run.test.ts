@@ -5,6 +5,7 @@ import {
   applyFirstRunVoiceTranscript,
   buildFirstRunSubmitPlan,
   clearPersistedFirstRunState,
+  DEFAULT_AGENT_NAME,
   type FirstRunProfileDraft,
   firstRunRuntimeTarget,
   isFirstRunPromptEcho,
@@ -17,7 +18,6 @@ import {
 } from "./first-run";
 
 const fallbackDraft: FirstRunProfileDraft = {
-  ownerName: "Fallback Owner",
   agentName: "Fallback Agent",
   runtime: "local",
   remoteApiBase: "",
@@ -38,11 +38,15 @@ describe("first-run flow", () => {
     expect(normalizeFirstRunName("  Ada   Lovelace  ")).toBe("Ada Lovelace");
   });
 
-  it("moves through the deterministic first-run steps", () => {
-    expect(nextFirstRunStep("owner")).toBe("agent");
-    expect(nextFirstRunStep("agent")).toBe("runtime");
-    expect(previousFirstRunStep("runtime")).toBe("agent");
-    expect(previousFirstRunStep("owner")).toBeNull();
+  it("defaults the agent name to the first style preset", () => {
+    expect(DEFAULT_AGENT_NAME).toBe("Eliza");
+  });
+
+  it("moves through the runtime → remote steps without name capture", () => {
+    expect(nextFirstRunStep("runtime")).toBe("remote");
+    expect(nextFirstRunStep("remote")).toBeNull();
+    expect(previousFirstRunStep("remote")).toBe("runtime");
+    expect(previousFirstRunStep("runtime")).toBeNull();
   });
 
   it("maps runtime choices to canonical first-run targets", () => {
@@ -53,8 +57,7 @@ describe("first-run flow", () => {
 
   it("round-trips first-run progress until setup completes", () => {
     const draft: FirstRunProfileDraft = {
-      ownerName: "Ada",
-      agentName: "Milady",
+      agentName: "Eliza",
       runtime: "remote",
       remoteApiBase: "https://agent.example.com",
       remoteToken: "token",
@@ -71,12 +74,11 @@ describe("first-run flow", () => {
     expect(loadPersistedFirstRunState(fallbackDraft)).toBeNull();
   });
 
-  it("builds a server-backed local first-run payload", () => {
+  it("builds a server-backed local first-run payload without an owner name", () => {
     const plan = buildFirstRunSubmitPlan({
       uiLanguage: "en",
       draft: {
-        ownerName: "Ada",
-        agentName: "Milady",
+        agentName: "Eliza",
         runtime: "local",
         remoteApiBase: "",
         remoteToken: "",
@@ -85,8 +87,7 @@ describe("first-run flow", () => {
     });
 
     expect(plan.payload).toMatchObject({
-      name: "Milady",
-      ownerName: "Ada",
+      name: "Eliza",
       sandboxMode: "off",
       deploymentTarget: { runtime: "local" },
       features: {
@@ -95,67 +96,42 @@ describe("first-run flow", () => {
         voice: { enabled: true, firstRun: true },
       },
     });
+    expect(plan.payload).not.toHaveProperty("ownerName");
     expect(plan.runtimeConfig.needsProviderSetup).toBe(true);
   });
 
-  it("rejects first-run submission until the required spoken names exist", () => {
-    expect(
-      validateFirstRunSubmitDraft({
-        ...fallbackDraft,
-        ownerName: "",
-        agentName: "Milady",
-      }),
-    ).toMatchObject({
-      valid: false,
-      step: "owner",
-    });
-
-    expect(
-      validateFirstRunSubmitDraft({
-        ...fallbackDraft,
-        ownerName: "Ada",
+  it("falls back to the default agent name when none is provided", () => {
+    const plan = buildFirstRunSubmitPlan({
+      uiLanguage: "en",
+      draft: {
         agentName: "",
-      }),
-    ).toMatchObject({
-      valid: false,
-      step: "agent",
+        runtime: "local",
+        remoteApiBase: "",
+        remoteToken: "",
+        useLocalEmbeddings: false,
+      },
     });
+    expect(plan.payload).toMatchObject({ name: DEFAULT_AGENT_NAME });
+  });
 
+  it("only blocks submission when a remote runtime is missing its URL", () => {
     expect(
       validateFirstRunSubmitDraft({
         ...fallbackDraft,
-        ownerName: "Ada",
-        agentName: "Milady",
         runtime: "remote",
         remoteApiBase: "",
       }),
-    ).toMatchObject({
-      valid: false,
-      step: "remote",
-    });
-  });
+    ).toMatchObject({ valid: false, step: "remote" });
 
-  it("does not silently submit an anonymous first-run profile", () => {
-    expect(() =>
-      buildFirstRunSubmitPlan({
-        uiLanguage: "en",
-        draft: {
-          ownerName: "",
-          agentName: "Milady",
-          runtime: "local",
-          remoteApiBase: "",
-          remoteToken: "",
-          useLocalEmbeddings: false,
-        },
-      }),
-    ).toThrow("First-run profile requires an owner name.");
+    expect(
+      validateFirstRunSubmitDraft({ ...fallbackDraft, runtime: "local" }),
+    ).toMatchObject({ valid: true });
   });
 
   it("keeps remote runtime addresses in the persisted config", () => {
     const plan = buildFirstRunSubmitPlan({
       uiLanguage: "en",
       draft: {
-        ownerName: "Ada",
         agentName: "Remote Agent",
         runtime: "remote",
         remoteApiBase: "https://agent.example.com",
@@ -175,35 +151,24 @@ describe("first-run flow", () => {
     });
   });
 
-  it("applies voice transcripts as the canonical first-run input path", () => {
-    const owner = applyFirstRunVoiceTranscript({
-      step: "owner",
+  it("applies voice transcripts to select and launch a runtime", () => {
+    const remote = applyFirstRunVoiceTranscript({
+      step: "runtime",
       draft: fallbackDraft,
-      transcript: "my name is Ada Lovelace",
+      transcript: "use a remote server",
     });
-    expect(owner).toMatchObject({
-      step: "agent",
-      draft: { ownerName: "Ada Lovelace" },
+    expect(remote).toMatchObject({
+      step: "remote",
+      draft: { runtime: "remote" },
       action: "none",
     });
 
-    const agent = applyFirstRunVoiceTranscript({
-      step: "agent",
-      draft: owner.draft,
-      transcript: "keep Milady",
-    });
-    expect(agent).toMatchObject({
+    const local = applyFirstRunVoiceTranscript({
       step: "runtime",
-      draft: { agentName: "Milady" },
-      action: "none",
-    });
-
-    const runtime = applyFirstRunVoiceTranscript({
-      step: "runtime",
-      draft: agent.draft,
+      draft: fallbackDraft,
       transcript: "start local",
     });
-    expect(runtime).toMatchObject({
+    expect(local).toMatchObject({
       step: "runtime",
       draft: { runtime: "local" },
       action: "finish",
@@ -213,33 +178,22 @@ describe("first-run flow", () => {
   it("filters prompt echo before voice transcripts can mutate setup state", () => {
     expect(
       isFirstRunPromptEcho({
-        promptText: "What should Milady call you?",
-        transcript: "what should milady call you",
+        promptText: "Where should Eliza run?",
+        transcript: "where should eliza run",
       }),
     ).toBe(true);
     expect(
       isFirstRunPromptEcho({
-        promptText: "What should Milady call you?",
-        transcript: "my name is Ada",
+        promptText: "Where should Eliza run?",
+        transcript: "use a remote server",
       }),
     ).toBe(false);
   });
 
   it("routes spoken remote setup without leaving the first-run contract", () => {
-    const runtime = applyFirstRunVoiceTranscript({
-      step: "runtime",
-      draft: fallbackDraft,
-      transcript: "use a remote server",
-    });
-    expect(runtime).toMatchObject({
-      step: "remote",
-      draft: { runtime: "remote" },
-      action: "none",
-    });
-
     const remote = applyFirstRunVoiceTranscript({
       step: "remote",
-      draft: runtime.draft,
+      draft: { ...fallbackDraft, runtime: "remote" },
       transcript: "agent dot example dot com",
     });
     expect(remote).toMatchObject({

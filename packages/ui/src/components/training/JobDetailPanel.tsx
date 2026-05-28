@@ -104,7 +104,10 @@ function CheckpointsList({
   return (
     <div className="space-y-2">
       {checkpoints.map((cp) => (
-        <div key={cp.step} className="text-xs border border-border rounded-sm p-2">
+        <div
+          key={cp.step}
+          className="text-xs border border-border rounded-sm p-2"
+        >
           <div className="font-mono text-txt-strong">Step {cp.step}</div>
           <div className="text-muted">
             {cp.size_mb.toFixed(1)} MB ·{" "}

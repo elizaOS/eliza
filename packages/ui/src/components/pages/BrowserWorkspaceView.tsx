@@ -2075,10 +2075,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           <span className="mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-muted/70">
             {tabHasSessionFocus ? (
               <>
-                <span
-                  aria-hidden
-                  className="h-2 w-2 rounded-full bg-accent "
-                />
+                <span aria-hidden className="h-2 w-2 rounded-full bg-accent " />
                 <span className="sr-only">
                   {t("browserworkspace.AgentActive", {
                     defaultValue: "Agent is on this tab",

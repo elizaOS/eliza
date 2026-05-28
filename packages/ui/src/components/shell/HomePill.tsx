@@ -61,11 +61,9 @@ export function HomePill({
         // Booting: dim, non-interactive
         phase === "booting" && "opacity-60 cursor-not-allowed",
         // Listening: red pulse + accent ring using the brand orange token
-        phase === "listening" &&
-          "bg-warn/30 border-warn/60 animate-pulse",
+        phase === "listening" && "bg-warn/30 border-warn/60 animate-pulse",
         // Responding: ambient glow on brand orange
-        phase === "responding" &&
-          "",
+        phase === "responding" && "",
         // Summoned: faint glow
         phase === "summoned" && "",
       )}
@@ -83,8 +81,7 @@ export function HomePill({
           className={cn(
             "h-2.5 w-2.5 rounded-full bg-accent ",
             phase === "booting" && "bg-muted shadow-none",
-            phase === "listening" &&
-              "bg-warn ",
+            phase === "listening" && "bg-warn ",
           )}
         />
       </span>

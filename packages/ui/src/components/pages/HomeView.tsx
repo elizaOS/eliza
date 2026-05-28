@@ -4,9 +4,9 @@ import { useMemo, useState } from "react";
 
 import { CloudVideoBackground } from "../../backgrounds/CloudVideoBackground";
 import { cn } from "../../lib/utils";
+import { useShellControllerContext } from "../shell/ShellControllerContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { useShellControllerContext } from "../shell/ShellControllerContext";
 import { VoiceWaveform } from "../voice/VoiceWaveform";
 
 export function HomeView(): React.JSX.Element {
@@ -48,7 +48,11 @@ export function HomeView(): React.JSX.Element {
       >
         <div className="flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center justify-center gap-5">
           <div className="relative grid h-[min(42vh,280px)] min-h-44 w-full place-items-center">
-            <VoiceWaveform mode={mode} size={240} />
+            <VoiceWaveform
+              mode={mode}
+              analyser={controller?.analyser ?? null}
+              size={240}
+            />
           </div>
           <p
             className="min-h-6 max-w-xl text-center text-sm text-muted"

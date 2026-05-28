@@ -8,6 +8,7 @@
  */
 
 import { existsSync } from "node:fs";
+import { totalmem } from "node:os";
 import { join as pathJoin } from "node:path";
 import {
 	type AgentRuntime,
@@ -50,6 +51,7 @@ import {
 	type MemoryPressureSource,
 	nodeOsPressureSource,
 } from "./memory-pressure";
+import { ramHeadroomReserveMb } from "./ram-budget";
 import { buildTextGenerationReadiness } from "./readiness";
 import {
 	chooseSmallerFallbackModel,
@@ -487,6 +489,15 @@ export class LocalInferenceService {
 		const arbiter = new MemoryArbiter({
 			registry: localInferenceEngine.getSharedResources(),
 			pressureSource: composite,
+			// Usable RAM for the proactive fit-to-budget LRU path: host RAM
+			// minus the OS/runtime headroom reserve. On mobile the OS-pressure
+			// bridge is the primary signal; this is the desktop multi-model
+			// backstop that evicts the coldest model before an overcommit.
+			budgetMb: () =>
+				Math.max(
+					0,
+					Math.floor(totalmem() / (1024 * 1024)) - ramHeadroomReserveMb(),
+				),
 		});
 		arbiter.start();
 		setMemoryArbiter(arbiter);

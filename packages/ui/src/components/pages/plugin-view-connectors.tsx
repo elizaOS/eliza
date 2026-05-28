@@ -602,8 +602,7 @@ function ConnectorPluginCard({
         <BrandIcon className="h-5 w-5 shrink-0" />
       ) : (
         renderResolvedIcon(plugin, {
-          className:
-            "h-4 w-4 shrink-0 rounded-sm object-contain",
+          className: "h-4 w-4 shrink-0 rounded-sm object-contain",
           emojiClassName: "text-base",
         })
       )}
@@ -722,9 +721,7 @@ function ConnectorPluginCard({
         data-testid={`connector-card-${plugin.id}`}
         expanded={isExpanded}
         expandOnCollapsedSurfaceClick
-        className={`border-transparent transition-all ${
-          isSelected ? "" : ""
-        }`}
+        className={`border-transparent transition-all ${isSelected ? "" : ""}`}
         onExpandedChange={(nextExpanded) =>
           handleConnectorExpandedChange(plugin.id, nextExpanded)
         }

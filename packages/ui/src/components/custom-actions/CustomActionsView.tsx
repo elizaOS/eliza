@@ -15,8 +15,7 @@ const CUSTOM_ACTIONS_SHELL_CLASS =
   "flex h-full min-h-0 flex-col gap-4 rounded-sm border border-border/60 bg-card/70 p-4 ring-1 ring-border/15 backdrop-blur-sm";
 const CUSTOM_ACTIONS_PANEL_CLASS =
   "rounded-sm border border-border/45 bg-bg/20 ";
-const CUSTOM_ACTIONS_TOOLBAR_BUTTON_CLASS =
-  "h-10 rounded-sm px-3 text-sm ";
+const CUSTOM_ACTIONS_TOOLBAR_BUTTON_CLASS = "h-10 rounded-sm px-3 text-sm ";
 const CUSTOM_ACTIONS_INPUT_CLASS =
   "h-10 rounded-sm border-border/60 bg-bg/55 px-3 text-sm ";
 

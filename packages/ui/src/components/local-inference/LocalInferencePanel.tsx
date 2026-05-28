@@ -319,9 +319,7 @@ export function LocalInferencePanel() {
               type="button"
               onClick={() => setTab(id)}
               className={`h-7 rounded-sm px-2.5 text-xs font-medium transition-colors ${
-                active
-                  ? "bg-card text-txt "
-                  : "text-muted hover:text-txt"
+                active ? "bg-card text-txt " : "text-muted hover:text-txt"
               }`}
             >
               <span className="inline-flex items-center gap-1.5">

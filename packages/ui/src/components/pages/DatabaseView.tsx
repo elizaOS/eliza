@@ -272,9 +272,7 @@ export function DatabaseView({
       <div className="flex items-center gap-2 text-sm font-medium text-txt">
         <span
           className={`h-2.5 w-2.5 rounded-full ${
-            dbStatus?.connected
-              ? "bg-ok "
-              : "bg-danger"
+            dbStatus?.connected ? "bg-ok " : "bg-danger"
           }`}
         />
         <span>{dbStatus?.provider ?? t("game.connecting")}</span>

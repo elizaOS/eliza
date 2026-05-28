@@ -868,15 +868,29 @@ function killOrphanedWorkspaceProcesses() {
 killOrphanedWorkspaceProcesses();
 killPort(UI_PORT);
 
-// Ensure vision dependencies are installed
-try {
-  execFileSync("node", [visionDepsScriptPath, `--name=${cliName}`], {
-    stdio: "inherit",
-  });
-} catch (error) {
+// Ensure vision dependencies are installed (non-blocking — just probes/installs
+// an optional camera binary; nothing in the boot path depends on its result, so
+// it must not gate API/Vite startup).
+const visionDepsChild = spawn(
+  "node",
+  [visionDepsScriptPath, `--name=${cliName}`],
+  { stdio: "inherit" },
+);
+visionDepsChild.on("error", (error) => {
   process.env.ELIZA_VISION_DEPS_STATUS = "degraded";
   console.warn(buildVisionDepsFailureMessage(error, visionDepsRetryCommand));
-}
+});
+visionDepsChild.on("exit", (code) => {
+  if (code !== 0) {
+    process.env.ELIZA_VISION_DEPS_STATUS = "degraded";
+    console.warn(
+      buildVisionDepsFailureMessage(
+        new Error(`vision deps check exited with code ${code}`),
+        visionDepsRetryCommand,
+      ),
+    );
+  }
+});
 
 if (!uiOnly) {
   killPort(API_PORT);
@@ -1239,6 +1253,14 @@ if (uiOnly) {
 
   apiSupervisor.start();
 
+  // Start Vite immediately, in parallel with the API boot. The dev server only
+  // proxies to the API at request time — it has no startup dependency on the
+  // API being up — so gating it behind waitForPort(API_PORT) just stacked the
+  // full runtime+plugin boot in front of first paint. Booting both at once
+  // gives the browser a UI as soon as Vite is ready, and requests resolve once
+  // the API comes up moments later.
+  startVite();
+
   const startTime = Date.now();
   let phase = "port";
   const dots = setInterval(() => {
@@ -1258,7 +1280,6 @@ if (uiOnly) {
       process.stdout.write(
         `\r  ${green(logPrefix)} ${green(`API port open`)} ${dim(`(${portElapsed}s)`)}          \n`,
       );
-      startVite();
       phase = "agent";
       return waitForAgentReady(API_PORT);
     })

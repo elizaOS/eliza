@@ -9,20 +9,20 @@ import {
 } from "./first-run-config";
 import type { FirstRunRuntimeTarget } from "./runtime-target";
 
-export type FirstRunStep = "owner" | "agent" | "runtime" | "remote";
+export type FirstRunStep = "runtime" | "remote";
 export type FirstRunRuntime = "local" | "cloud" | "remote";
 
 export const FIRST_RUN_STEPS: readonly FirstRunStep[] = [
-  "owner",
-  "agent",
   "runtime",
   "remote",
 ] as const;
 
 const FIRST_RUN_STATE_STORAGE_KEY = "eliza:first-run";
 
+/** Default agent name when the user does not pick one (the first style preset). */
+export const DEFAULT_AGENT_NAME = getDefaultStylePreset().name;
+
 export interface FirstRunProfileDraft {
-  ownerName: string;
   agentName: string;
   runtime: FirstRunRuntime;
   remoteApiBase: string;
@@ -69,12 +69,7 @@ export function normalizeFirstRunName(value: string): string {
 }
 
 function isFirstRunStep(value: unknown): value is FirstRunStep {
-  return (
-    value === "owner" ||
-    value === "agent" ||
-    value === "runtime" ||
-    value === "remote"
-  );
+  return value === "runtime" || value === "remote";
 }
 
 function isFirstRunRuntime(value: unknown): value is FirstRunRuntime {
@@ -100,13 +95,10 @@ function normalizePersistedDraft(
   if (!value || typeof value !== "object") return fallback;
   const record = value as Record<string, unknown>;
   return {
-    ownerName:
-      readStringField(record, "ownerName") ||
-      normalizeFirstRunName(fallback.ownerName),
     agentName:
       readStringField(record, "agentName") ||
       normalizeFirstRunName(fallback.agentName) ||
-      "Milady",
+      DEFAULT_AGENT_NAME,
     runtime: isFirstRunRuntime(record.runtime)
       ? record.runtime
       : fallback.runtime,
@@ -125,7 +117,7 @@ export function loadPersistedFirstRunState(
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     return {
-      step: isFirstRunStep(parsed.step) ? parsed.step : "owner",
+      step: isFirstRunStep(parsed.step) ? parsed.step : "runtime",
       draft: normalizePersistedDraft(parsed.draft, fallbackDraft),
     };
   } catch {
@@ -158,7 +150,7 @@ export function clearPersistedFirstRunState(): void {
 
 export function nextFirstRunStep(step: FirstRunStep): FirstRunStep | null {
   const index = FIRST_RUN_STEPS.indexOf(step);
-  if (index < 0) return "owner";
+  if (index < 0) return "runtime";
   return FIRST_RUN_STEPS[index + 1] ?? null;
 }
 
@@ -189,18 +181,6 @@ function normalizeFirstRunVoiceCommand(value: string): string {
     .replace(/[.,!?;:]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function stripNameIntroduction(value: string): string {
-  return value.replace(/^(?:my name is|i am|i'm|im|call me)\s+/i, "").trim();
-}
-
-function parseAgentNameFromVoice(value: string): string {
-  const trimmed = value.trim();
-  const match = trimmed.match(
-    /^(?:call|name|rename)\s+(?:(?:the\s+)?agent|her|him|it)?\s*(?:to\s+)?(.+)$/i,
-  );
-  return normalizeFirstRunName(match?.[1] ?? trimmed);
 }
 
 function hasFinishCommand(command: string): boolean {
@@ -239,28 +219,6 @@ export function applyFirstRunVoiceTranscript(args: {
 
   if (!spoken || !command) {
     return { step: args.step, draft, action: "none" };
-  }
-
-  if (args.step === "owner") {
-    draft.ownerName = normalizeFirstRunName(stripNameIntroduction(spoken));
-    return {
-      step: draft.ownerName ? "agent" : "owner",
-      draft,
-      action: "none",
-    };
-  }
-
-  if (args.step === "agent") {
-    if (/\b(?:keep|default|same|milady)\b/.test(command)) {
-      draft.agentName = "Milady";
-    } else {
-      draft.agentName = parseAgentNameFromVoice(spoken);
-    }
-    return {
-      step: draft.agentName ? "runtime" : "agent",
-      draft,
-      action: "none",
-    };
   }
 
   if (args.step === "runtime") {
@@ -319,20 +277,6 @@ export function applyFirstRunVoiceTranscript(args: {
 export function validateFirstRunSubmitDraft(
   draft: FirstRunProfileDraft,
 ): FirstRunSubmitValidation {
-  if (!normalizeFirstRunName(draft.ownerName)) {
-    return {
-      valid: false,
-      step: "owner",
-      message: "Tell me your name first.",
-    };
-  }
-  if (!normalizeFirstRunName(draft.agentName)) {
-    return {
-      valid: false,
-      step: "agent",
-      message: "Name the agent first.",
-    };
-  }
   if (
     draft.runtime === "remote" &&
     !normalizeSpokenRemoteTarget(draft.remoteApiBase)
@@ -362,10 +306,6 @@ export function buildFirstRunSubmitPlan(args: {
 }): FirstRunSubmitPlan {
   const style = getDefaultStylePreset(args.uiLanguage);
   const agentName = trimmedOrDefault(args.draft.agentName, style.name);
-  const ownerName = normalizeFirstRunName(args.draft.ownerName);
-  if (!ownerName) {
-    throw new Error("First-run profile requires an owner name.");
-  }
   const serverTarget = firstRunRuntimeTarget(args.draft.runtime);
   const runtimeConfig = buildFirstRunRuntimeConfig({
     firstRunRuntimeTarget: serverTarget,
@@ -397,7 +337,6 @@ export function buildFirstRunSubmitPlan(args: {
     runtimeConfig,
     payload: {
       name: agentName,
-      ownerName,
       sandboxMode: args.draft.runtime === "cloud" ? "standard" : "off",
       bio: style.bio ?? ["An autonomous AI agent."],
       systemPrompt,

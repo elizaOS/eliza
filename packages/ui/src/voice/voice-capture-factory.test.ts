@@ -44,6 +44,7 @@ describe("createVoiceCapture", () => {
         return {
           stop,
           cancel: vi.fn(),
+          analyser: null,
         };
       },
     );
@@ -70,5 +71,30 @@ describe("createVoiceCapture", () => {
       backend: "local-inference",
     });
     expect(onStateChange).toHaveBeenLastCalledWith("stopped", undefined);
+  });
+
+  it("exposes the recorder's analyser for the voice avatar", async () => {
+    const analyser = { frequencyBinCount: 128 } as unknown as AnalyserNode;
+    startLocalAsrRecorderMock.mockResolvedValue({
+      stop: vi.fn().mockResolvedValue(new Uint8Array([1])),
+      cancel: vi.fn(),
+      analyser,
+    });
+    const capture = createVoiceCapture({
+      asrProvider: "local-inference",
+      onTranscript: vi.fn(),
+    });
+
+    expect(capture.getAnalyser()).toBeNull();
+    await capture.start();
+    expect(capture.getAnalyser()).toBe(analyser);
+  });
+
+  it("has no analyser for the browser SpeechRecognition backend", async () => {
+    const capture = createVoiceCapture({
+      asrProvider: "browser",
+      onTranscript: vi.fn(),
+    });
+    expect(capture.getAnalyser()).toBeNull();
   });
 });

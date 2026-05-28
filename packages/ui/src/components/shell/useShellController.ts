@@ -15,6 +15,8 @@ export interface ShellController {
   recording: boolean;
   /** Visual mode for the waveform visualizer. */
   waveformMode: "idle" | "listening" | "responding";
+  /** Live mic analyser while recording, for the voice avatar. `null` otherwise. */
+  analyser: AnalyserNode | null;
   open: () => void;
   close: () => void;
   send: (text: string) => void;
@@ -44,6 +46,7 @@ export function useShellController(): ShellController {
   const ready = startupCoordinator.phase === "ready";
   const [isOpen, setIsOpen] = React.useState(false);
   const [recording, setRecording] = React.useState(false);
+  const [analyser, setAnalyser] = React.useState<AnalyserNode | null>(null);
   const captureRef = React.useRef<VoiceCaptureHandle | null>(null);
 
   const messages = React.useMemo<ShellMessage[]>(() => {
@@ -74,6 +77,7 @@ export function useShellController(): ShellController {
       void handle.stop().catch(() => {});
       handle.dispose();
     }
+    setAnalyser(null);
     setRecording(false);
   }, []);
 
@@ -93,10 +97,16 @@ export function useShellController(): ShellController {
     });
     captureRef.current = handle;
     setRecording(true);
-    void handle.start().catch(() => {
-      captureRef.current = null;
-      setRecording(false);
-    });
+    handle
+      .start()
+      .then(() => {
+        if (captureRef.current === handle) setAnalyser(handle.getAnalyser());
+      })
+      .catch(() => {
+        captureRef.current = null;
+        setAnalyser(null);
+        setRecording(false);
+      });
   }, [send]);
 
   const toggleRecording = React.useCallback(() => {
@@ -141,6 +151,7 @@ export function useShellController(): ShellController {
     canSend,
     recording,
     waveformMode,
+    analyser,
     open,
     close,
     send,

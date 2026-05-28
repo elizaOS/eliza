@@ -15,10 +15,9 @@ function props(
   overrides: Partial<FirstRunShellProps> = {},
 ): FirstRunShellProps {
   return {
-    step: "owner",
+    step: "runtime",
     draft: {
-      ownerName: "",
-      agentName: "",
+      agentName: "Eliza",
       runtime: "local",
       remoteApiBase: "",
       remoteToken: "",
@@ -40,7 +39,6 @@ function props(
     canBack: false,
     updateDraft: vi.fn(),
     setStep: vi.fn(),
-    goNext: vi.fn(),
     goBack: vi.fn(),
     finishRuntime: vi.fn(),
     toggleVoice: vi.fn(async () => {}),
@@ -74,7 +72,7 @@ describe("FirstRunShell", () => {
     expect(voiceToggle.textContent).toBe("Not listening");
     expect(voiceToggle.querySelector("svg")).toBeNull();
     expect(voiceToggle.className).toContain("bg-transparent");
-    expect(voiceToggle.className).toContain("[text-shadow:");
+    expect(voiceToggle.className).toContain("hover:text-accent");
 
     fireEvent.click(voiceToggle);
 

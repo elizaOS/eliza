@@ -1,6 +1,11 @@
 export interface LocalAsrRecorder {
   stop(): Promise<Uint8Array>;
   cancel(): void;
+  /**
+   * Live analyser tapped off the same mic stream, for amplitude visualization.
+   * `null` once the recorder has been stopped / cancelled (the context closes).
+   */
+  analyser: AnalyserNode | null;
 }
 
 export interface LocalAsrAutoStopOptions {
@@ -233,6 +238,10 @@ export async function startLocalAsrRecorder(
 
   const source = context.createMediaStreamSource(stream);
   const processor = context.createScriptProcessor(4096, 1, 1);
+  let analyser: AnalyserNode | null = context.createAnalyser();
+  analyser.fftSize = 256;
+  analyser.smoothingTimeConstant = 0.8;
+  source.connect(analyser);
   const chunks: Float32Array[] = [];
   let stopped = false;
   let autoStopRequested = false;
@@ -272,6 +281,12 @@ export async function startLocalAsrRecorder(
     stopped = true;
     processor.onaudioprocess = null;
     try {
+      analyser?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    analyser = null;
+    try {
       source.disconnect();
     } catch {
       /* already disconnected */
@@ -288,6 +303,9 @@ export async function startLocalAsrRecorder(
   };
 
   return {
+    get analyser() {
+      return analyser;
+    },
     async stop() {
       const sampleRate = context.sampleRate;
       await cleanup();

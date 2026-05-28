@@ -231,10 +231,7 @@ export function LogViewer({
   }, [lines]);
 
   return (
-    <BrandCard
-      className={cn("relative ", className)}
-      cornerSize="sm"
-    >
+    <BrandCard className={cn("relative ", className)} cornerSize="sm">
       <div className="relative z-10 space-y-6">
         <div className="flex flex-col gap-4 border-b border-white/10 pb-4 lg:flex-row lg:items-start lg:justify-between">
           <div>

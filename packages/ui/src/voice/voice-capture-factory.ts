@@ -101,6 +101,12 @@ export interface VoiceCaptureHandle {
   dispose(): void;
   /** `true` while a capture is open (between successful `start` and `stop`). */
   isActive(): boolean;
+  /**
+   * Live amplitude analyser for the active capture, when the backend exposes
+   * one (local-inference taps the mic stream). `null` for the browser
+   * SpeechRecognition backend, which has no audio graph to read.
+   */
+  getAnalyser(): AnalyserNode | null;
 }
 
 interface ResolvedBackend {
@@ -302,5 +308,6 @@ export function createVoiceCapture(
     stop,
     dispose,
     isActive: () => active,
+    getAnalyser: () => recorder?.analyser ?? null,
   };
 }

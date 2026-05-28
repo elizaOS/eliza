@@ -29,7 +29,6 @@ import {
   firstRunRuntimeTarget,
   isFirstRunPromptEcho,
   loadPersistedFirstRunState,
-  nextFirstRunStep,
   normalizeFirstRunName,
   previousFirstRunStep,
   savePersistedFirstRunState,
@@ -83,7 +82,6 @@ export interface FirstRunController {
   canBack: boolean;
   updateDraft: FirstRunDraftUpdate;
   setStep: (step: FirstRunStep) => void;
-  goNext: () => void;
   goBack: () => void;
   finishRuntime: () => Promise<void>;
   startVoice: () => Promise<void>;
@@ -242,7 +240,6 @@ export function useFirstRunController(): FirstRunController {
     elizaCloudLoginError,
     handleCloudLogin,
     firstRunName,
-    ownerName,
     setActionNotice,
     setState,
     uiLanguage,
@@ -250,14 +247,13 @@ export function useFirstRunController(): FirstRunController {
   const initialRuntimeTarget = React.useMemo(readFirstRunRuntimeTarget, []);
   const initialDraft = React.useMemo<FirstRunProfileDraft>(
     () => ({
-      ownerName: normalizeFirstRunName(ownerName ?? ""),
-      agentName: normalizeFirstRunName(firstRunName) || "Milady",
+      agentName: normalizeFirstRunName(firstRunName) || "Eliza",
       runtime: initialRuntimeTarget ?? "local",
       remoteApiBase: "",
       remoteToken: "",
       useLocalEmbeddings: false,
     }),
-    [initialRuntimeTarget, firstRunName, ownerName],
+    [initialRuntimeTarget, firstRunName],
   );
   const persistedFirstRunState = React.useMemo(
     () =>
@@ -267,7 +263,7 @@ export function useFirstRunController(): FirstRunController {
   const [step, setStepState] = React.useState<FirstRunStep>(() => {
     if (persistedFirstRunState) return persistedFirstRunState.step;
     if (initialRuntimeTarget === "remote") return "remote";
-    return initialRuntimeTarget ? "runtime" : "owner";
+    return "runtime";
   });
   const [draft, setDraft] = React.useState<FirstRunProfileDraft>(
     () => persistedFirstRunState?.draft ?? initialDraft,
@@ -353,12 +349,7 @@ export function useFirstRunController(): FirstRunController {
 
   const syncIdentity = React.useCallback(
     (sourceDraft: FirstRunProfileDraft) => {
-      const ownerName = normalizeFirstRunName(sourceDraft.ownerName);
       const agentName = normalizeFirstRunName(sourceDraft.agentName);
-      if (ownerName) {
-        setState("ownerName", ownerName);
-        setState("firstRunOwnerName", ownerName);
-      }
       if (agentName) {
         setState("firstRunName", agentName);
       }
@@ -775,22 +766,6 @@ export function useFirstRunController(): FirstRunController {
     [cancelVoiceCapture, clearListenAfterSpeechTimer, startVoice, uiLanguage],
   );
 
-  const goNext = React.useCallback(() => {
-    const ownerName = normalizeFirstRunName(draft.ownerName);
-    const agentName = normalizeFirstRunName(draft.agentName);
-    if (step === "owner" && !ownerName) {
-      setError("Enter your name.");
-      return;
-    }
-    if (step === "agent" && !agentName) {
-      setError("Name the agent.");
-      return;
-    }
-    setError(null);
-    const next = nextFirstRunStep(step);
-    if (next) setStep(next);
-  }, [draft.agentName, draft.ownerName, setStep, step]);
-
   const goBack = React.useCallback(() => {
     const previous = previousFirstRunStep(step);
     if (previous) setStep(previous);
@@ -819,7 +794,6 @@ export function useFirstRunController(): FirstRunController {
     canBack: previousFirstRunStep(step) !== null && !submitting,
     updateDraft,
     setStep,
-    goNext,
     goBack,
     finishRuntime,
     startVoice,

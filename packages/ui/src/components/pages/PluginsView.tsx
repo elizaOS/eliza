@@ -854,8 +854,7 @@ function PluginListView({
             src={imageSrc}
             alt=""
             className={
-              options?.className ??
-              "w-5 h-5 rounded-sm object-contain"
+              options?.className ?? "w-5 h-5 rounded-sm object-contain"
             }
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = "none";
