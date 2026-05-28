@@ -5,9 +5,15 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "ainex-robot-code/eliza/packages/python"))
+
+# Cross-package integration test: the AiNex plugin lives in a separate
+# workspace package that is not installed in the robot venv. Skip cleanly
+# when it is absent instead of erroring out at collection.
+pytest.importorskip("elizaos_plugin_ainex")
 
 from elizaos_plugin_ainex.execution_service import AinexExecutionService  # noqa: E402
 from eliza_robot.interfaces import CanonicalIntentType  # noqa: E402
