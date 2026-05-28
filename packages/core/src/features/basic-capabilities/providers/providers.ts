@@ -75,9 +75,7 @@ export const providersProvider: Provider = {
 			const providerSpec = getProviderSpec(provider.name);
 			return (
 				provider.descriptionCompressed ??
-				provider.compressedDescription ??
 				providerSpec?.descriptionCompressed ??
-				providerSpec?.compressedDescription ??
 				(provider.description
 					? compressPromptDescription(provider.description)
 					: "No description available")
