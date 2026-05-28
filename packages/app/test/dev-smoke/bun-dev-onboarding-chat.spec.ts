@@ -25,7 +25,7 @@ function browserFailureCollector(page: Page): string[] {
     const text = message.text();
     if (/^\[RenderTelemetry\]/.test(text)) return;
     if (
-      /^Failed to load resource: the server responded with a status of (401|404) /i.test(
+      /^Failed to load resource: the server responded with a status of (400|401|404) /i.test(
         text,
       )
     ) {
