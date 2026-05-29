@@ -30,6 +30,7 @@
         "../ui/src/cloud-ui/components/dropdown-menu.tsx"
       ],
       "@elizaos/ui/input": ["../ui/src/cloud-ui/components/input.tsx"],
+      "@elizaos/ui/i18n/region": ["../ui/src/i18n/region.ts"],
       "@elizaos/ui/product-switcher": [
         "../ui/src/cloud-ui/components/product-switcher.tsx"
       ]
