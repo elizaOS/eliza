@@ -173,6 +173,25 @@ def _build_agent_fn_openclaw(
     )
 
 
+def _build_agent_fn_smithers(
+    *,
+    scenario_yaml: dict[str, Any],
+    fixtures: dict[str, Any],
+    model_name: str,
+) -> Any:
+    _prepend_adapter_package("smithers-adapter")
+    from smithers_adapter.client import SmithersClient
+    from smithers_adapter.clawbench import build_clawbench_agent_fn
+
+    client = SmithersClient(provider="cerebras", model=model_name)
+    return build_clawbench_agent_fn(
+        client=client,
+        scenario_yaml=scenario_yaml,
+        fixtures=fixtures,
+        model_name=model_name,
+    )
+
+
 def _build_agent_fn_eliza(
     *,
     scenario_yaml: dict[str, Any],
@@ -193,6 +212,7 @@ _HARNESS_BUILDERS = {
     "eliza": _build_agent_fn_eliza,
     "hermes": _build_agent_fn_hermes,
     "openclaw": _build_agent_fn_openclaw,
+    "smithers": _build_agent_fn_smithers,
 }
 
 

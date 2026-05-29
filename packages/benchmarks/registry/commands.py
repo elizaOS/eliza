@@ -1169,7 +1169,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         agent = str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
         scenario = extra.get("scenario")
         scenario_name = scenario.strip() if isinstance(scenario, str) and scenario.strip() else "inbox_triage"
-        if agent in {"eliza", "hermes", "openclaw"}:
+        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
             output_path = output_dir / f"trajectory_{scenario_name}.json"
             args = [
                 python,
