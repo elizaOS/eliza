@@ -150,21 +150,18 @@ def test_eliza1_tier_ids_are_canonical():
         "turboquant_q4",
         "qjl",
         "polarquant",
-        "mtp",
         "turbo3_tcq",
     )
     assert REQUIRED_KERNELS_BY_TIER["2b"] == (
         "turboquant_q4",
         "qjl",
         "polarquant",
-        "mtp",
         "turbo3_tcq",
     )
     assert REQUIRED_KERNELS_BY_TIER["4b"] == (
         "turboquant_q4",
         "qjl",
         "polarquant",
-        "mtp",
         "turbo3_tcq",
     )
     assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("omnivoice", "kokoro")
@@ -311,10 +308,11 @@ def test_every_tier_validates(tier: str):
 
 def test_missing_required_kernel_rejected():
     kwargs = base_kwargs("4b")
-    kwargs["kernels_required"] = ["turboquant_q4", "qjl", "polarquant"]  # no mtp
+    # turbo3_tcq is required for every tier; dropping it must be rejected.
+    kwargs["kernels_required"] = ["turboquant_q4", "qjl", "polarquant"]
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
-    assert any("mtp" in e for e in exc.value.errors)
+    assert any("turbo3_tcq" in e for e in exc.value.errors)
 
 
 def test_default_eligible_requires_recipe_manifest_for_quant_kernels():

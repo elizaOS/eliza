@@ -55,7 +55,6 @@ ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
     "turboquant_q4",
     "qjl",
     "polarquant",
-    "mtp",
     "turbo3_tcq",
 )
 
@@ -155,42 +154,12 @@ CANONICAL_TEXT_SOURCE_REPOS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "mtp",
-        "turbo3_tcq",
-    ),
-    "2b": ("turboquant_q4", "qjl", "polarquant", "mtp", "turbo3_tcq"),
-    "4b": (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "mtp",
-        "turbo3_tcq",
-    ),
-    "9b": (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "mtp",
-        "turbo3_tcq",
-    ),
-    "27b": (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "mtp",
-        "turbo3_tcq",
-    ),
-    "27b-256k": (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "mtp",
-        "turbo3_tcq",
-    ),
+    "0_8b": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
+    "2b": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
+    "4b": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
+    "9b": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
+    "27b": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
+    "27b-256k": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
 }
 
 RECIPE_TARGETS_BY_REQUIRED_KERNEL: Final[Mapping[str, tuple[str, ...]]] = {
