@@ -19,7 +19,11 @@ interface DesktopTrayMenuItem {
 }
 
 export const DESKTOP_TRAY_MENU_ITEMS: readonly DesktopTrayMenuItem[] = [
-  { id: "tray-open-chat", label: "Open Chat", labelKey: "desktop.tray.openChat" },
+  {
+    id: "tray-open-chat",
+    label: "Open Chat",
+    labelKey: "desktop.tray.openChat",
+  },
   {
     id: "tray-open-plugins",
     label: "Open Plugins",

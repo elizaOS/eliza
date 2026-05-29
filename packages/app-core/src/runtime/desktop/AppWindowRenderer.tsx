@@ -175,7 +175,10 @@ function AppWindowSpinner({ label }: { label: string }): JSX.Element {
     <div className="flex h-screen min-h-0 w-screen flex-col items-center justify-center gap-2 bg-bg text-txt">
       <div className="h-6 w-6 animate-spin rounded-full border-2 border-accent border-t-transparent" />
       <div className="text-sm text-muted">
-        {t("appwindow.Launching", { defaultValue: "Launching {{label}}…", label })}
+        {t("appwindow.Launching", {
+          defaultValue: "Launching {{label}}…",
+          label,
+        })}
       </div>
     </div>
   );
