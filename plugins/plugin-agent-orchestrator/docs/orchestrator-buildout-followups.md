@@ -70,6 +70,21 @@ mobile clients aren't hammering. Do not attempt blind — design + visual iterat
 ### E. Test depth `[T]`
 Add the report's e2e workflow matrix with mocked providers (create/fork/pause-all/archive/
 search/secret-flows/validation-failure-reopen), keeping live Claude/Codex tests env-gated.
+Also add an integration-level test that drives a `/credentials/*` request through the runtime
+route matcher (`matchPluginRoutePath`), not just the in-process dispatcher, so the
+registry-registration gap (fixed in this branch) can't silently reopen.
+
+### F. Deferred from adversarial review (low priority, not regressions)
+- **Bridge loopback hardening** `[BE]` — `bridge-routes.ts:isLoopback` trusts only
+  `req.socket.remoteAddress` (same model as the existing parent-context bridge). If the
+  runtime is ever fronted by a loopback-bound reverse proxy, mirror the extra checks from
+  `isTrustedLocalRequest` (reject forwarded/proxy-client headers and cross-site
+  `sec-fetch-site`). The single-use scopedToken remains the per-request defense regardless.
+- **Re-anchor follow-ups to the durable goal** `[BE]` — `buildGoalFollowUp` reads
+  `metadata.goal`, but the planner spawn paths in `tasks.ts` never stamp a `goal` key, so
+  follow-ups currently re-anchor to the latest message rather than the original objective.
+  Stash `goal: task` (or the durable goal) onto session metadata at spawn time to realize
+  the intended re-anchoring. Not a regression — the old code sent raw text.
 
 ## How to work this branch
 Isolated worktree `/home/nubs/Git/iqlabs/eliza-labs/eliza-orchestrator-feat`, branch
