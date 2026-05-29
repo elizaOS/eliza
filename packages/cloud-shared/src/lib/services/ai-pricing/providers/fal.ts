@@ -3,7 +3,9 @@ import type { PricingDimensions } from "../../../../db/schemas/ai-pricing";
 import { logger } from "../../../utils/logger";
 import {
   type PricingChargeUnit,
+  SUPPORTED_IMAGE_MODELS,
   SUPPORTED_VIDEO_MODELS,
+  type SupportedImageModelDefinition,
   type SupportedVideoModelDefinition,
 } from "../../ai-pricing-definitions";
 import { getCachedExternalEntries } from "../cache";
@@ -47,6 +49,47 @@ export function buildFalEntry(
     staleAfter: new Date(fetchedAt.getTime() + EXTERNAL_CACHE_TTL_MS),
     metadata,
   };
+}
+
+function buildFalImageEntry(
+  model: SupportedImageModelDefinition,
+  unitPrice: number,
+  metadata?: Record<string, unknown>,
+): PreparedPricingEntry {
+  const fetchedAt = new Date();
+  return {
+    billingSource: "fal",
+    provider: model.provider,
+    model: model.modelId,
+    productFamily: "image",
+    chargeType: "generation",
+    unit: "image",
+    unitPrice,
+    dimensions: model.defaultDimensions,
+    sourceKind: "fal_model_page",
+    sourceUrl: model.sourceUrl,
+    fetchedAt,
+    staleAfter: new Date(fetchedAt.getTime() + EXTERNAL_CACHE_TTL_MS),
+    metadata,
+  };
+}
+
+function buildFalImageSnapshotEntries(): PreparedPricingEntry[] {
+  const priceByModel: Record<string, number> = {
+    "fal-ai/flux/schnell": 0.003,
+    "fal-ai/flux/dev": 0.025,
+  };
+
+  return SUPPORTED_IMAGE_MODELS.filter((model) => model.billingSource === "fal").flatMap((model) => {
+    const unitPrice = priceByModel[model.modelId];
+    if (unitPrice === undefined) return [];
+    return [
+      buildFalImageEntry(model, unitPrice, {
+        tier: "manual_override_recommended",
+        note: "Manual fal image pricing seed. Refresh with account-specific pricing before production if needed.",
+      }),
+    ];
+  });
 }
 
 export function parseFalPricingEntries(
@@ -317,6 +360,10 @@ export async function fetchFalCatalogEntries(): Promise<PreparedPricingEntry[]> 
       }),
     );
 
-    return [...entryArrays.flat(), ...buildMusicSnapshotEntries("fal", "fal_model_page")];
+    return [
+      ...entryArrays.flat(),
+      ...buildFalImageSnapshotEntries(),
+      ...buildMusicSnapshotEntries("fal", "fal_model_page"),
+    ];
   });
 }

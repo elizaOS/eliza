@@ -1,4 +1,5 @@
 import type { PricingBillingSource } from "../../services/ai-pricing-definitions";
+import { falImageProvider } from "./fal-image-generation";
 import { openRouterImageProvider } from "./openrouter-image-generation";
 import type { ImageProvider } from "./types";
 
@@ -17,3 +18,4 @@ export function getImageProvider(billingSource: PricingBillingSource): ImageProv
 }
 
 registerImageProvider(openRouterImageProvider);
+registerImageProvider(falImageProvider);
