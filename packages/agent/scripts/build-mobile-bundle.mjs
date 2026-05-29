@@ -576,6 +576,7 @@ const corePackages = [
   "@elizaos/shared",
   "@elizaos/shared/brand",
   "@elizaos/shared-brand",
+  "@elizaos/ui",
   "@elizaos/plugin-sql",
   "@elizaos/plugin-omnivoice",
   "@elizaos/plugin-ollama",
@@ -625,6 +626,7 @@ const dedupeTargets = {
     "brand",
     "index.ts",
   ),
+  "@elizaos/ui": path.resolve(repoRoot, "packages", "ui", "src", "index.ts"),
   // Pin plugin-sql to its src as well. The published `dist/node/index.node.js`
   // was compiled against an older `@elizaos/core` API (pre-`getAgentsByIds`),
   // so the bundled `BaseDrizzleAdapter` is missing methods the current runtime
