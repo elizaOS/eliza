@@ -447,7 +447,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         # use that Python bridge surface, but their delegate clients must keep
         # the real provider/model from the orchestrator environment.
         bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
-        if agent in {"eliza", "hermes", "openclaw"}:
+        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--agent-harness", str(agent)])
             if model.model:
                 args.extend(["--model", model.model])
@@ -621,7 +621,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _swe_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [python, "-m", "benchmarks.swe_bench.cli", "--output", str(output_dir)]
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw"}:
+        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--harness", agent])
         if model.model:
             args.extend(["--model", model.model])
@@ -653,7 +653,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw"}:
+        if agent in {"eliza", "hermes", "openclaw", "smithers"}:
             args.extend(["--harness", agent])
         if model.model:
             args.extend(["--model", model.model])

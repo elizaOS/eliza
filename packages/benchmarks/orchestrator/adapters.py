@@ -124,6 +124,12 @@ SMITHERS_BENCHMARKS: frozenset[str] = frozenset(
         "mt_bench",
         "rlm_bench",
         "mind2web",
+        "terminal_bench",
+        "swe_bench",
+        "swe_bench_orchestrated",
+        "webshop",
+        "loca_bench",
+        "osworld",
     }
 )
 HYPERLIQUID_LIVE_UNAVAILABLE_REASON = (
@@ -318,6 +324,52 @@ def _has_hermes_sandbox_backend() -> bool:
 
 _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE: bool | None = None
 
+_ELIZA1_DEFAULT_BIN = "~/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli"
+_ELIZA1_DEFAULT_ASR_DIR = "~/.eliza/local-inference/models/eliza-1-2b.bundle/asr"
+
+
+def _eliza1_asr_assets_available() -> bool:
+    """True when the eliza-1 llama.cpp ASR binary + model + projector exist."""
+    cli = os.environ.get("ELIZA1_ASR_CLI", "").strip()
+    if cli:
+        binary = Path(cli).expanduser()
+    else:
+        bin_dir = os.environ.get("ELIZA1_LLAMA_BIN_DIR", "").strip()
+        binary = (
+            Path(bin_dir).expanduser() / "llama-mtmd-cli"
+            if bin_dir
+            else Path(_ELIZA1_DEFAULT_BIN).expanduser()
+        )
+    asr_dir = Path(os.environ.get("ELIZA1_ASR_DIR", _ELIZA1_DEFAULT_ASR_DIR)).expanduser()
+    model = os.environ.get("ELIZA1_ASR_MODEL", "").strip()
+    model_path = Path(model).expanduser() if model else asr_dir / "eliza-1-asr.gguf"
+    mmproj = os.environ.get("ELIZA1_ASR_MMPROJ", "").strip()
+    mmproj_path = Path(mmproj).expanduser() if mmproj else asr_dir / "eliza-1-asr-mmproj.gguf"
+    return binary.is_file() and model_path.is_file() and mmproj_path.is_file()
+
+
+def _say_binary_available() -> bool:
+    say_bin = os.environ.get("VOICEBENCH_SAY_BIN", "").strip()
+    if say_bin:
+        return Path(say_bin).expanduser().is_file()
+    return shutil.which("say") is not None or Path("/usr/bin/say").is_file()
+
+
+def _voiceagentbench_synthesize_enabled() -> bool:
+    return os.environ.get("VOICEAGENTBENCH_SYNTHESIZE_AUDIO", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _voicebench_synthesize_enabled() -> bool:
+    return os.environ.get("VOICEBENCH_SYNTHESIZE_AUDIO", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
 
 def _has_voiceagentbench_real_audio_dataset() -> bool:
     """Return true only when VoiceAgentBench can run as a real voice benchmark."""
@@ -327,7 +379,9 @@ def _has_voiceagentbench_real_audio_dataset() -> bool:
 
     stt_provider = os.environ.get("VOICEAGENTBENCH_STT_PROVIDER", "").strip().lower()
     if not stt_provider:
-        if os.environ.get("GROQ_API_KEY"):
+        if _eliza1_asr_assets_available():
+            stt_provider = "eliza1"
+        elif os.environ.get("GROQ_API_KEY"):
             stt_provider = "groq"
         elif importlib.util.find_spec("faster_whisper") is not None:
             stt_provider = "faster-whisper"
@@ -339,6 +393,8 @@ def _has_voiceagentbench_real_audio_dataset() -> bool:
         stt_ready = bool(
             (os.environ.get("ELIZA_API_BASE") or os.environ.get("ELIZA_BENCH_URL") or "").strip()
         )
+    elif stt_provider in {"eliza1", "eliza-1", "eliza1-asr"}:
+        stt_ready = _eliza1_asr_assets_available()
     elif stt_provider in {"faster-whisper", "local-whisper"}:
         stt_ready = importlib.util.find_spec("faster_whisper") is not None
     else:
@@ -352,6 +408,12 @@ def _has_voiceagentbench_real_audio_dataset() -> bool:
     if not stt_ready:
         _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = False
         return False
+
+    # Local synthesis path: macOS `say` renders fixture prompts to real audio,
+    # so neither huggingface_hub nor a precomputed dataset is required.
+    if _voiceagentbench_synthesize_enabled() and _say_binary_available():
+        _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = True
+        return True
 
     if not data_path_raw:
         _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = importlib.util.find_spec("huggingface_hub") is not None
@@ -398,6 +460,8 @@ def _voicebench_quality_stt_provider() -> str:
     ).strip().lower()
     if explicit:
         return explicit
+    if _eliza1_asr_assets_available():
+        return "eliza1"
     if os.environ.get("GROQ_API_KEY"):
         return "groq"
     if importlib.util.find_spec("faster_whisper") is not None:
@@ -410,9 +474,6 @@ def _has_voicebench_quality_real_inputs() -> bool:
     global _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE
     if _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE is not None:
         return _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE
-    if importlib.util.find_spec("datasets") is None:
-        _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE = False
-        return False
     stt_provider = _voicebench_quality_stt_provider()
     if stt_provider == "groq":
         ready = bool(os.environ.get("GROQ_API_KEY"))
@@ -420,10 +481,21 @@ def _has_voicebench_quality_real_inputs() -> bool:
         ready = bool(
             (os.environ.get("ELIZA_API_BASE") or os.environ.get("ELIZA_BENCH_URL") or "").strip()
         )
+    elif stt_provider in {"eliza1", "eliza-1", "eliza1-asr"}:
+        ready = _eliza1_asr_assets_available()
     elif stt_provider in {"faster-whisper", "local-whisper"}:
         ready = importlib.util.find_spec("faster_whisper") is not None
     else:
         ready = False
+    if not ready:
+        _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE = False
+        return False
+    # Local synthesis renders fixture prompts to audio via macOS `say`, so the
+    # heavy `datasets` HF dependency is only required for the remote dataset.
+    if _voicebench_synthesize_enabled() and _say_binary_available():
+        _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE = True
+        return True
+    ready = ready and importlib.util.find_spec("datasets") is not None
     _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE = ready
     return ready
 
@@ -451,22 +523,9 @@ def _has_vision_language_bundle(tier: str = "eliza-1-9b") -> bool:
         return False
     if not isinstance(manifest_payload, dict):
         return False
-    runtime = manifest_payload.get("runtime")
-    kernels = manifest_payload.get("kernels")
-    files = manifest_payload.get("files")
-    has_mtp_runtime = isinstance(runtime, dict) and "mtp" in runtime
-    has_mtp_kernel = (
-        isinstance(kernels, dict)
-        and isinstance(kernels.get("required"), list)
-        and "mtp" in {str(item) for item in kernels["required"]}
-    )
-    has_mtp_file = (
-        isinstance(files, dict)
-        and isinstance(files.get("mtp"), list)
-        and any(isinstance(item, dict) and item.get("path") for item in files["mtp"])
-    )
-    if not (has_mtp_runtime or has_mtp_kernel or has_mtp_file):
-        return False
+    # Vision VQA runs through llama-mtmd-cli with the bundle's text gguf + vision
+    # projector. It does not require the MTP text-generation kernel, so the gate
+    # only checks for the artifacts vision actually consumes (text gguf + mmproj).
     slug = tier.removeprefix("eliza-1-")
     text_candidates = [
         bundle / "text" / f"eliza-1-{slug}-64k.gguf",
@@ -601,9 +660,21 @@ def _has_voicebench_real_audio_assets() -> bool:
 
     profile = os.environ.get("VOICEBENCH_PROFILE", "").strip().lower()
     if not profile:
-        profile = "local-cerebras" if os.environ.get("CEREBRAS_API_KEY") else "groq"
+        if os.environ.get("CEREBRAS_API_KEY") and _eliza1_asr_assets_available():
+            profile = "local-eliza1"
+        elif os.environ.get("CEREBRAS_API_KEY"):
+            profile = "local-cerebras"
+        else:
+            profile = "groq"
 
-    if profile == "local-cerebras":
+    if profile == "local-eliza1":
+        if not os.environ.get("CEREBRAS_API_KEY"):
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+        if not _eliza1_asr_assets_available() or not _say_binary_available():
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+    elif profile == "local-cerebras":
         if not os.environ.get("CEREBRAS_API_KEY"):
             _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
             return False
@@ -641,6 +712,11 @@ def _has_voicebench_real_audio_assets() -> bool:
     ).strip()
     if dataset_raw:
         manifest_path = Path(dataset_raw).expanduser()
+    elif profile == "local-eliza1":
+        # run.sh generates a dataset from VoiceAgentBench's `say`-synthesized
+        # audio, so only the say binary (already checked) is required.
+        _VOICEBENCH_REAL_AUDIO_AVAILABLE = True
+        return True
     elif profile == "local-cerebras":
         _VOICEBENCH_REAL_AUDIO_AVAILABLE = importlib.util.find_spec("huggingface_hub") is not None
         return _VOICEBENCH_REAL_AUDIO_AVAILABLE
@@ -1589,7 +1665,7 @@ def _validate_osworld_dry_run_label(extra: dict[str, Any]) -> None:
         "dry-run",
         "smoke_dry_run",
     }
-    if agent_label in {"eliza", "hermes", "openclaw"} and not marked_smoke:
+    if agent_label in {"eliza", "hermes", "openclaw", "smithers"} and not marked_smoke:
         raise ValueError(
             "osworld dry_run is smoke-only. Set smoke=true or run_mode=smoke "
             "for smoke rows; omit dry_run for real VM benchmark rows."

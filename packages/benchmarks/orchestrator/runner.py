@@ -301,6 +301,7 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
         str((benchmarks_root / "eliza-adapter").resolve()),
         str((benchmarks_root / "hermes-adapter").resolve()),
         str((benchmarks_root / "openclaw-adapter").resolve()),
+        str((benchmarks_root / "smithers-adapter").resolve()),
     ]
     workspace_python = [
         str(workspace_root),
