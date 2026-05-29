@@ -865,8 +865,11 @@ def _score_from_voicebench_json(data: JSONValue) -> ScoreExtraction:
         runtime = str(root.get("runtime") or "").strip().lower()
         if runtime != "typescript":
             raise ValueError("voicebench: real score requires the TypeScript runtime artifact")
-        if profile not in {"groq", "elevenlabs", "local-cerebras"}:
-            raise ValueError("voicebench: real score requires a groq, elevenlabs, or local-cerebras profile")
+        if profile not in {"groq", "elevenlabs", "local-cerebras", "local-eliza1"}:
+            raise ValueError(
+                "voicebench: real score requires a groq, elevenlabs, "
+                "local-cerebras, or local-eliza1 profile"
+            )
         sample_count = expect_float(
             get_required(root, "sampleCount", ctx="voicebench:root"),
             ctx="voicebench:sampleCount",

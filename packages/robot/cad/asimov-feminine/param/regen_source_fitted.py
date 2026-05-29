@@ -460,9 +460,8 @@ def build_part(link: str, cleanup: bool = True) -> trimesh.Trimesh:
     if link == "WAIST_YAW":
         return _torso_skin(m)  # already a clean watertight skin
     if link == "IMU_ORIGIN":
-        shaped = _pelvis_warp(m)
-    else:
-        shaped = _limb_warp(m, link, SLIM.get(link, 1.0))
+        return _skin_part(_pelvis_warp(m), "z")
+    shaped = _limb_warp(m, link, SLIM.get(link, 1.0))
     if link in ("LEFT_ANKLE_B", "RIGHT_ANKLE_B", "LEFT_TOE", "RIGHT_TOE"):
         return _skin_part(shaped, C.LINKS[link]["spine"], flat_bottom=True)
     if link in SKIN_LIMBS:

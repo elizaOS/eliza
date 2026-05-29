@@ -106,6 +106,34 @@ export function computeBlobRadii(args: {
   return radii;
 }
 
+/** Brand orange fallback as an "r, g, b" triple (matches --accent-rgb). */
+const FALLBACK_ACCENT_RGB = "255, 88, 0";
+
+/**
+ * Resolve the `--accent-rgb` custom property to a concrete "r, g, b" string.
+ * Canvas color strings cannot contain `var()`, so this must be resolved before
+ * being handed to the 2D context. Returns the brand-orange fallback when the
+ * property is undefined, empty, or not a valid comma-separated RGB triple.
+ */
+function resolveAccentRgb(): string {
+  if (typeof window === "undefined" || typeof getComputedStyle !== "function") {
+    return FALLBACK_ACCENT_RGB;
+  }
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue("--accent-rgb")
+    .trim();
+  const channels = raw.split(",").map((part) => Number(part.trim()));
+  if (
+    channels.length !== 3 ||
+    channels.some(
+      (channel) => !Number.isInteger(channel) || channel < 0 || channel > 255,
+    )
+  ) {
+    return FALLBACK_ACCENT_RGB;
+  }
+  return channels.join(", ");
+}
+
 function prefersReducedMotion(): boolean {
   if (
     typeof window === "undefined" ||
@@ -253,8 +281,11 @@ export function VoiceWaveform({
     const center = size / 2;
     const baseRadius = size * 0.3;
     const maxDeform = size * 0.16;
-    const accent = (alpha: number) =>
-      `rgba(var(--accent-rgb, 255, 88, 0), ${alpha})`;
+    // Canvas 2D cannot parse CSS `var()` in color strings — it throws on every
+    // addColorStop/fillStyle assignment. Resolve --accent-rgb to a concrete
+    // "r, g, b" triple once at paint-setup, falling back to brand orange.
+    const accentRgb = resolveAccentRgb();
+    const accent = (alpha: number) => `rgba(${accentRgb}, ${alpha})`;
 
     const smoothed = new Float32Array(POINTS).fill(baseRadius);
 
