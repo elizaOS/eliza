@@ -55,10 +55,19 @@ class CalibrationParameters:
     response_delay_s: float = 0.0
 
     def apply_to(self, joint_positions: dict[str, float], joint_order: list[str]) -> dict[str, float]:
-        """Apply the calibration to a commanded joint dict."""
+        """Apply the calibration to a commanded joint dict.
+
+        Only joints actually present in ``joint_positions`` are returned —
+        previously every joint in ``joint_order`` was emitted (with 0.0+offset
+        for uncommanded ones), which would drive joints the caller never asked
+        to move. ``joint_order`` is still used for the per-joint strength/offset
+        index alignment.
+        """
         out: dict[str, float] = {}
         for i, name in enumerate(joint_order):
-            val = float(joint_positions.get(name, 0.0))
+            if name not in joint_positions:
+                continue
+            val = float(joint_positions[name])
             if i < self.motor_strengths.shape[0]:
                 val *= float(self.motor_strengths[i])
                 val += float(self.joint_offsets[i])
