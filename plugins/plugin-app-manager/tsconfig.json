@@ -31,12 +31,22 @@
       "@elizaos/agent/utils/*": ["../../packages/agent/src/utils/*.ts"],
       "@elizaos/agent/services/*": ["../../packages/agent/src/services/*.ts"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/agent-bridge": ["../../packages/app-core/src/agent-bridge.ts"],
+      "@elizaos/app-core/agent-bridge": [
+        "../../packages/app-core/src/agent-bridge.ts"
+      ],
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
-      "@elizaos/plugin-capacitor-bridge": ["../../plugins/plugin-capacitor-bridge/src/index.ts"],
-      "@elizaos/plugin-capacitor-bridge/*": ["../../plugins/plugin-capacitor-bridge/src/*"],
-      "@elizaos/plugin-local-inference": ["../../plugins/plugin-local-inference/src/index.ts"],
-      "@elizaos/plugin-local-inference/*": ["../../plugins/plugin-local-inference/src/*"],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/*": [
+        "../../plugins/plugin-capacitor-bridge/src/*"
+      ],
+      "@elizaos/plugin-local-inference": [
+        "../../plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/*": [
+        "../../plugins/plugin-local-inference/src/*"
+      ],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"]
     }

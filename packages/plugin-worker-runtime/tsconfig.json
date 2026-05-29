@@ -22,13 +22,9 @@
       "@elizaos/plugin-remote-manifest": [
         "../plugin-remote-manifest/src/types.ts"
       ],
-      "@elizaos/plugin-remote-manifest/*": [
-        "../plugin-remote-manifest/src/*"
-      ],
+      "@elizaos/plugin-remote-manifest/*": ["../plugin-remote-manifest/src/*"],
       "@elizaos/security": ["../security/src/index.ts"],
-      "@elizaos/security/*": [
-        "../security/src/*"
-      ]
+      "@elizaos/security/*": ["../security/src/*"]
     },
     "rootDir": "..",
     "outDir": "dist"

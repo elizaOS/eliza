@@ -1,12 +1,8 @@
 {
   "compilerOptions": {
     "paths": {
-      "@elizaos/plugin-whatsapp": [
-        "../plugin-whatsapp/src/index.ts"
-      ],
-      "@elizaos/plugin-whatsapp/*": [
-        "../plugin-whatsapp/src/*"
-      ]
+      "@elizaos/plugin-whatsapp": ["../plugin-whatsapp/src/index.ts"],
+      "@elizaos/plugin-whatsapp/*": ["../plugin-whatsapp/src/*"]
     },
     "target": "ESNext",
     "module": "ESNext",
@@ -24,15 +20,9 @@
     "isolatedModules": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "types": [
-      "node",
-      "bun-types"
-    ]
+    "types": ["node", "bun-types"]
   },
-  "include": [
-    "src",
-    "../../packages/agent/src/external-modules.d.ts"
-  ],
+  "include": ["src", "../../packages/agent/src/external-modules.d.ts"],
   "exclude": [
     "dist",
     "node_modules",

@@ -6,7 +6,9 @@
   "main": "./dist/index.js",
   "license": "MIT",
   "private": true,
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "clean": "rm -rf dist",
     "build": "rm -rf dist tsconfig.build.tsbuildinfo && tsc --noCheck -p tsconfig.build.json",

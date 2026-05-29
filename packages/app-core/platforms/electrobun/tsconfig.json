@@ -32,7 +32,9 @@
       "@elizaos/plugin-remote-manifest": [
         "../../../plugin-remote-manifest/src/index.ts"
       ],
-      "@elizaos/plugin-remote-manifest/*": ["../../../plugin-remote-manifest/src/*"],
+      "@elizaos/plugin-remote-manifest/*": [
+        "../../../plugin-remote-manifest/src/*"
+      ],
       "@elizaos/plugin-worker-runtime": [
         "../../../plugin-worker-runtime/src/index.ts"
       ],
