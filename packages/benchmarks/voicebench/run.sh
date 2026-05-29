@@ -175,6 +175,10 @@ from pathlib import Path
 
 from elizaos_voiceagentbench.dataset import Suite, load_tasks
 
+import re as _re
+
+_TOOL_RE = _re.compile(r"\s*\[tool:.*?\]\s*", _re.DOTALL)
+
 out_dir = Path(sys.argv[1])
 manifest = Path(sys.argv[2])
 tasks = load_tasks(suite_filter=Suite.SINGLE, limit=1)
@@ -186,6 +190,9 @@ if query.audio_bytes is None:
     raise SystemExit(f"VoiceAgentBench task {task.task_id} has no audio bytes")
 audio_path = out_dir / f"{task.task_id}.wav"
 audio_path.write_bytes(query.audio_bytes)
+# Tool annotations like `[tool: ...]` are scoring hints, not spoken words, so
+# strip them from the expected transcript to keep the WER/accuracy metric fair.
+expected_text = _TOOL_RE.sub(" ", query.transcript).strip()
 manifest.write_text(
     json.dumps(
         {
@@ -194,7 +201,7 @@ manifest.write_text(
                 {
                     "id": task.task_id,
                     "audioPath": str(audio_path),
-                    "expectedText": query.transcript,
+                    "expectedText": expected_text,
                 }
             ],
         },

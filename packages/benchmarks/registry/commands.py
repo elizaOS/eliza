@@ -1308,10 +1308,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             profile = "elevenlabs"
         else:
             profile = "groq"
-        if profile not in {"groq", "elevenlabs", "mock", "local-cerebras"}:
+        if profile not in {"groq", "elevenlabs", "mock", "local-cerebras", "local-eliza1"}:
             raise ValueError(
                 f"voicebench: unsupported profile '{profile}' "
-                "(expected groq, elevenlabs, local-cerebras, or mock)"
+                "(expected groq, elevenlabs, local-cerebras, local-eliza1, or mock)"
             )
         args.append(f"--profile={profile}")
         iterations = extra.get("iterations")
