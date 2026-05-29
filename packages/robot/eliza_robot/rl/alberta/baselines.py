@@ -28,6 +28,7 @@ from typing import Any, Protocol
 import numpy as np
 
 from eliza_robot.rl.alberta.agent import AlbertaContinualController, AlbertaControllerConfig
+from eliza_robot.rl.alberta.cbp_agent import AlbertaCBPController, CBPControllerConfig
 from eliza_robot.rl.alberta.continual_env import JointReachEnv
 from eliza_robot.rl.alberta.loop import evaluate, train_online
 
@@ -198,14 +199,19 @@ def _eval_deterministic_env(env: JointReachEnv, task_id: int) -> None:
     env.set_task(task_id)
 
 
-class AlbertaSequentialLearner:
-    """Alberta streaming continual controller as a sequential learner."""
+class _StreamingControllerLearner:
+    """Shared sequential-learner logic for any Alberta streaming controller.
 
-    name = "alberta"
+    Subclasses set ``self.controller`` (anything implementing the
+    ``start``/``observe``/``act_greedy`` streaming surface) and ``name``; all
+    training/evaluation is identical so only the learning algorithm varies.
+    """
 
-    def __init__(self, env: JointReachEnv, controller_config: AlbertaControllerConfig):
+    name = "controller"
+
+    def __init__(self, env: JointReachEnv, controller: Any):
         self.env = env
-        self.controller = AlbertaContinualController(controller_config)
+        self.controller = controller
         self._eval_seed = 10_000
 
     def train_phase(self, task_id: int, steps: int) -> None:
@@ -239,6 +245,29 @@ class AlbertaSequentialLearner:
             trace_first_episode=True,
         )
         return trace or {}
+
+
+class AlbertaSequentialLearner(_StreamingControllerLearner):
+    """Linear Alberta streaming controller (frozen feature lift)."""
+
+    name = "alberta"
+
+    def __init__(self, env: JointReachEnv, controller_config: AlbertaControllerConfig):
+        super().__init__(env, AlbertaContinualController(controller_config))
+
+
+class AlbertaCBPSequentialLearner(_StreamingControllerLearner):
+    """Nonlinear Alberta streaming controller: Stream-AC(lambda) + Continual Backprop.
+
+    Same streaming protocol as :class:`AlbertaSequentialLearner`, but the
+    representation is a learned MLP kept plastic by generate-and-test rather than
+    a frozen feature lift — the principled continual-learning path.
+    """
+
+    name = "alberta_cbp"
+
+    def __init__(self, env: JointReachEnv, controller_config: CBPControllerConfig):
+        super().__init__(env, AlbertaCBPController(controller_config))
 
 
 class PPOSequentialLearner:

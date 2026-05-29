@@ -24,10 +24,12 @@ import numpy as np
 
 from eliza_robot.rl.alberta.agent import AlbertaControllerConfig
 from eliza_robot.rl.alberta.baselines import (
+    AlbertaCBPSequentialLearner,
     AlbertaSequentialLearner,
     PPOSequentialLearner,
     SACSequentialLearner,
 )
+from eliza_robot.rl.alberta.cbp_agent import CBPControllerConfig
 from eliza_robot.rl.alberta.continual_env import JointReachConfig, JointReachEnv
 from eliza_robot.rl.alberta.features import FeatureConfig
 from eliza_robot.rl.alberta.metrics import ContinualMetrics, compute_continual_metrics
@@ -52,6 +54,10 @@ class BenchmarkConfig:
     actor_lamda: float = 0.7
     critic_lamda: float = 0.7
     log_sigma_init: float = -1.0
+    # alberta_cbp controller knobs (nonlinear Stream-AC + Continual Backprop).
+    cbp_hidden_sizes: tuple[int, ...] = (64,)
+    cbp_replacement_rate: float = 1e-4
+    cbp_maturity_threshold: int = 100
     embed_dim: int = 16
     # Generously over-provisioned so distinct tasks land on distinct prototype
     # blocks (collision-free) — a collision shares a block between two tasks and
@@ -85,6 +91,7 @@ def _build_env(cfg: BenchmarkConfig, seed: int) -> JointReachEnv | ObstacleCours
 def _config_dict(cfg: BenchmarkConfig) -> dict:
     data = asdict(cfg)
     data["learners"] = list(cfg.learners)
+    data["cbp_hidden_sizes"] = list(cfg.cbp_hidden_sizes)
     return data
 
 
@@ -109,6 +116,32 @@ def _alberta_controller_config(cfg: BenchmarkConfig, env: JointReachEnv, seed: i
             gate_temperature=cfg.gate_temperature,
             proprio_random_dim=cfg.proprio_random_dim,
             seed=seed,
+        ),
+        seed=seed,
+    )
+
+
+def _alberta_cbp_controller_config(
+    cfg: BenchmarkConfig, env: JointReachEnv, seed: int
+) -> CBPControllerConfig:
+    from alberta_framework.core.continual_backprop import ContinualBackpropConfig
+
+    return CBPControllerConfig(
+        obs_dim=int(env.observation_space.shape[0]),
+        action_dim=int(env.action_space.shape[0]),
+        hidden_sizes=tuple(cfg.cbp_hidden_sizes),
+        gamma=cfg.gamma,
+        actor_step_size=cfg.actor_step_size,
+        critic_step_size=cfg.critic_step_size,
+        actor_lamda=cfg.actor_lamda,
+        critic_lamda=cfg.critic_lamda,
+        log_sigma_init=cfg.log_sigma_init,
+        learn_log_sigma=False,
+        obgd_kappa=2.0,
+        normalize=True,
+        cbp=ContinualBackpropConfig(
+            replacement_rate=cfg.cbp_replacement_rate,
+            maturity_threshold=cfg.cbp_maturity_threshold,
         ),
         seed=seed,
     )
@@ -169,7 +202,7 @@ class LearnerResult:
 def run_benchmark(cfg: BenchmarkConfig, out_dir: Path) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     requested = tuple(dict.fromkeys(cfg.learners))
-    invalid = sorted(set(requested) - {"alberta", "ppo", "sac"})
+    invalid = sorted(set(requested) - {"alberta", "alberta_cbp", "ppo", "sac"})
     if invalid:
         raise ValueError(f"unknown learner(s): {', '.join(invalid)}")
     if "alberta" not in requested or "ppo" not in requested:
@@ -184,6 +217,10 @@ def run_benchmark(cfg: BenchmarkConfig, out_dir: Path) -> dict:
             env = _build_env(cfg, seed)
             if name == "alberta":
                 learner = AlbertaSequentialLearner(env, _alberta_controller_config(cfg, env, seed))
+            elif name == "alberta_cbp":
+                learner = AlbertaCBPSequentialLearner(
+                    env, _alberta_cbp_controller_config(cfg, env, seed)
+                )
             elif name == "ppo":
                 learner = PPOSequentialLearner(env, seed=seed)
             elif name == "sac":
@@ -506,10 +543,22 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument(
         "--learners",
         nargs="+",
-        choices=("alberta", "ppo", "sac"),
+        choices=("alberta", "alberta_cbp", "ppo", "sac"),
         default=list(BenchmarkConfig.learners),
-        help="Sequential learners to run. Alberta and PPO are required; add sac for an off-policy baseline.",
+        help=(
+            "Sequential learners to run. Alberta and PPO are required; add "
+            "alberta_cbp (nonlinear Stream-AC + Continual Backprop) and/or sac."
+        ),
     )
+    p.add_argument(
+        "--cbp-hidden-sizes",
+        type=int,
+        nargs="+",
+        default=list(BenchmarkConfig.cbp_hidden_sizes),
+        help="MLP hidden-layer widths for the alberta_cbp controller.",
+    )
+    p.add_argument("--cbp-replacement-rate", type=float, default=BenchmarkConfig.cbp_replacement_rate)
+    p.add_argument("--cbp-maturity-threshold", type=int, default=BenchmarkConfig.cbp_maturity_threshold)
     p.add_argument("--out-dir", type=str, default="evidence/alberta")
     args = p.parse_args(argv)
 
@@ -528,6 +577,9 @@ def main(argv: list[str] | None = None) -> None:
         proprio_random_dim=args.proprio_random_dim,
         n_prototypes=args.n_prototypes,
         obstacle_episode_steps=args.obstacle_episode_steps,
+        cbp_hidden_sizes=tuple(args.cbp_hidden_sizes),
+        cbp_replacement_rate=args.cbp_replacement_rate,
+        cbp_maturity_threshold=args.cbp_maturity_threshold,
         learners=tuple(args.learners),
     )
     bundle = run_benchmark(cfg, Path(args.out_dir))
