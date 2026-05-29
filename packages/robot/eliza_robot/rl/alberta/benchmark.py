@@ -29,7 +29,7 @@ from eliza_robot.rl.alberta.baselines import (
     PPOSequentialLearner,
     SACSequentialLearner,
 )
-from eliza_robot.rl.alberta.cbp_agent import CBPControllerConfig
+from eliza_robot.rl.alberta.cbp_agent import CBPControllerConfig, RetentionConfig
 from eliza_robot.rl.alberta.continual_env import JointReachConfig, JointReachEnv
 from eliza_robot.rl.alberta.features import FeatureConfig
 from eliza_robot.rl.alberta.metrics import ContinualMetrics, compute_continual_metrics
@@ -55,9 +55,14 @@ class BenchmarkConfig:
     critic_lamda: float = 0.7
     log_sigma_init: float = -1.0
     # alberta_cbp controller knobs (nonlinear Stream-AC + Continual Backprop).
-    cbp_hidden_sizes: tuple[int, ...] = (64,)
+    cbp_hidden_sizes: tuple[int, ...] = (128,)
     cbp_replacement_rate: float = 1e-4
     cbp_maturity_threshold: int = 100
+    # Retention (anti-forgetting). Default to the phase-agnostic frozen-trunk
+    # multi-head recipe: per-task readout over CBP-curated random features.
+    cbp_retention_mode: str = "frozen"  # none | multihead | frozen | warmupfreeze
+    cbp_n_slots: int = 64
+    cbp_trunk_step_scale: float = 1.0
     embed_dim: int = 16
     # Generously over-provisioned so distinct tasks land on distinct prototype
     # blocks (collision-free) — a collision shares a block between two tasks and
@@ -121,6 +126,29 @@ def _alberta_controller_config(cfg: BenchmarkConfig, env: JointReachEnv, seed: i
     )
 
 
+def _retention_config(cfg: BenchmarkConfig) -> RetentionConfig:
+    """Map the benchmark's retention-mode label to a RetentionConfig.
+
+    - ``none``         single shared head (best learner, forgets).
+    - ``multihead``    per-task heads, fully plastic shared trunk.
+    - ``frozen``       per-task heads over a CBP-curated *frozen* random trunk
+                       (phase-agnostic; near-perfect retention).
+    - ``warmupfreeze`` plastic trunk for the first task, then consolidated.
+    """
+    mode = cfg.cbp_retention_mode
+    if mode == "none":
+        return RetentionConfig(mode="none")
+    common = {"mode": "multihead", "n_slots": cfg.cbp_n_slots, "embed_dim": cfg.embed_dim}
+    if mode == "multihead":
+        return RetentionConfig(trunk_step_scale=cfg.cbp_trunk_step_scale, **common)
+    if mode == "frozen":
+        return RetentionConfig(trunk_step_scale=0.0, **common)
+    if mode == "warmupfreeze":
+        # Consolidate the trunk after the first task's step budget.
+        return RetentionConfig(trunk_step_scale=1.0, trunk_freeze_after=cfg.steps_per_task, **common)
+    raise ValueError(f"unknown cbp_retention_mode {mode!r}")
+
+
 def _alberta_cbp_controller_config(
     cfg: BenchmarkConfig, env: JointReachEnv, seed: int
 ) -> CBPControllerConfig:
@@ -138,11 +166,16 @@ def _alberta_cbp_controller_config(
         log_sigma_init=cfg.log_sigma_init,
         learn_log_sigma=False,
         obgd_kappa=2.0,
-        normalize=True,
+        # The EMA normalizer is a shared global stat that drifts toward the
+        # current task and corrupts earlier tasks' inputs — a continual-learning
+        # leak. Disable it (the env obs are already well-scaled), matching the
+        # linear controller's benchmark config.
+        normalize=False,
         cbp=ContinualBackpropConfig(
             replacement_rate=cfg.cbp_replacement_rate,
             maturity_threshold=cfg.cbp_maturity_threshold,
         ),
+        retention=_retention_config(cfg),
         seed=seed,
     )
 
@@ -205,8 +238,11 @@ def run_benchmark(cfg: BenchmarkConfig, out_dir: Path) -> dict:
     invalid = sorted(set(requested) - {"alberta", "alberta_cbp", "ppo", "sac"})
     if invalid:
         raise ValueError(f"unknown learner(s): {', '.join(invalid)}")
-    if "alberta" not in requested or "ppo" not in requested:
-        raise ValueError("benchmark evidence must include at least alberta and ppo")
+    if "ppo" not in requested or not ({"alberta", "alberta_cbp"} & set(requested)):
+        raise ValueError(
+            "benchmark evidence must include ppo (baseline) and at least one "
+            "alberta-family learner (alberta or alberta_cbp)"
+        )
     per_seed: dict[str, list[ContinualMetrics]] = {name: [] for name in requested}
     results: list[LearnerResult] = []
 
@@ -272,7 +308,7 @@ def run_benchmark(cfg: BenchmarkConfig, out_dir: Path) -> dict:
 
 
 def _write_report(cfg: BenchmarkConfig, summary: dict, results, out_dir: Path) -> None:
-    a, p = summary.get("alberta"), summary.get("ppo")
+    a, p = summary.get("alberta") or summary.get("alberta_cbp"), summary.get("ppo")
     lines = [
         "# Continual learning: Alberta vs PPO",
         "",
@@ -476,9 +512,10 @@ def _plot(per_seed, results, out_dir: Path) -> None:
     except Exception:
         return
 
-    # Mean retention curve: performance on task 0 across phases, both learners.
+    # Mean retention curve: performance on task 0 across phases, every learner.
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.5))
-    for name in ("alberta", "ppo"):
+    names = list(dict.fromkeys(r.name for r in results))
+    for name in names:
         mats = [np.array(r.matrix) for r in results if r.name == name]
         if not mats:
             continue
@@ -559,6 +596,14 @@ def main(argv: list[str] | None = None) -> None:
     )
     p.add_argument("--cbp-replacement-rate", type=float, default=BenchmarkConfig.cbp_replacement_rate)
     p.add_argument("--cbp-maturity-threshold", type=int, default=BenchmarkConfig.cbp_maturity_threshold)
+    p.add_argument(
+        "--cbp-retention-mode",
+        choices=("none", "multihead", "frozen", "warmupfreeze"),
+        default=BenchmarkConfig.cbp_retention_mode,
+        help="alberta_cbp anti-forgetting mechanism (see RetentionConfig).",
+    )
+    p.add_argument("--cbp-n-slots", type=int, default=BenchmarkConfig.cbp_n_slots)
+    p.add_argument("--cbp-trunk-step-scale", type=float, default=BenchmarkConfig.cbp_trunk_step_scale)
     p.add_argument("--out-dir", type=str, default="evidence/alberta")
     args = p.parse_args(argv)
 
@@ -580,6 +625,9 @@ def main(argv: list[str] | None = None) -> None:
         cbp_hidden_sizes=tuple(args.cbp_hidden_sizes),
         cbp_replacement_rate=args.cbp_replacement_rate,
         cbp_maturity_threshold=args.cbp_maturity_threshold,
+        cbp_retention_mode=args.cbp_retention_mode,
+        cbp_n_slots=args.cbp_n_slots,
+        cbp_trunk_step_scale=args.cbp_trunk_step_scale,
         learners=tuple(args.learners),
     )
     bundle = run_benchmark(cfg, Path(args.out_dir))
