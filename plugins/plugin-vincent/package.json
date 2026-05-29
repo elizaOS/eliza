@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-vincent",
-  "version": "2.0.3",
+  "version": "2.0.3-beta.0",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
